@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluckhold - Chicken Coop Tower Defense</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Three.js canvas gets inserted here by renderer.js -->
+
+        <!-- HUD Overlay -->
+        <div id="hud">
+            <div id="top-bar">
+                <div id="phase-indicator">
+                    <span id="phase-icon">☀️</span>
+                    <span id="phase-text">DAY</span>
+                    <span id="phase-timer">90s</span>
+                </div>
+                <div id="wave-info">Wave <span id="wave-number">0</span>/30</div>
+                <div id="resources">
+                    <div class="resource" id="gold-display">
+                        <span class="resource-icon">🪙</span>
+                        <span id="gold-amount">100</span>
+                    </div>
+                    <div class="resource" id="egg-display">
+                        <span class="resource-icon">🥚</span>
+                        <span id="egg-amount">0</span>
+                    </div>
+                    <div class="resource" id="lives-display">
+                        <span class="resource-icon">❤️</span>
+                        <span id="lives-amount">20</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="left-panel">
+                <h3>Towers</h3>
+                <div id="tower-shop">
+                    <div class="tower-option" data-tower="scarecrow">
+                        <div class="tower-preview scarecrow-preview"></div>
+                        <span class="tower-name">Scarecrow</span>
+                        <span class="tower-cost">25🪙</span>
+                    </div>
+                    <div class="tower-option" data-tower="rooster">
+                        <div class="tower-preview rooster-preview"></div>
+                        <span class="tower-name">Rooster Tower</span>
+                        <span class="tower-cost">40🪙</span>
+                    </div>
+                    <div class="tower-option" data-tower="eggcatapult">
+                        <div class="tower-preview catapult-preview"></div>
+                        <span class="tower-name">Egg Catapult</span>
+                        <span class="tower-cost">60🪙</span>
+                    </div>
+                    <div class="tower-option" data-tower="lantern">
+                        <div class="tower-preview lantern-preview"></div>
+                        <span class="tower-name">Lantern Post</span>
+                        <span class="tower-cost">30🪙</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="bottom-bar">
+                <button id="start-night-btn" class="action-btn">Start Night</button>
+                <div id="speed-controls">
+                    <button class="speed-btn active" data-speed="1">1x</button>
+                    <button class="speed-btn" data-speed="2">2x</button>
+                    <button class="speed-btn" data-speed="3">3x</button>
+                </div>
+            </div>
+
+            <!-- Tower info popup when clicking a placed tower -->
+            <div id="tower-info" class="hidden">
+                <h4 id="tower-info-name"></h4>
+                <p id="tower-info-stats"></p>
+                <button id="tower-sell-btn" class="action-btn small">Sell</button>
+            </div>
+        </div>
+
+        <!-- Game over overlay -->
+        <div id="game-over" class="hidden">
+            <h1>THE COOP HAS FALLEN</h1>
+            <p>Your chickens survived <span id="final-wave">0</span> nights</p>
+            <button id="restart-btn" class="action-btn">Try Again</button>
+        </div>
+
+        <!-- Start screen -->
+        <div id="start-screen">
+            <h1>CLUCKHOLD</h1>
+            <p class="subtitle">Chicken Coop Tower Defense</p>
+            <button id="play-btn" class="action-btn large">Play</button>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+        }
+    }
+    </script>
+
+    <script type="module" src="js/game.js"></script>
+</body>
+</html>
