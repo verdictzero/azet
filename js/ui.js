@@ -303,7 +303,7 @@ export class UIManager {
     for (let i = 0; i < Math.min(items.length, maxVisible); i++) {
       const item = items[i];
       const sel = i === this.selectedIndex;
-      const equipped = player.isEquipped && player.isEquipped(item) ? '[E]' : '   ';
+      const equipped = (player.equipment && Object.values(player.equipment).some(e => e && e.id === item.id)) ? '[E]' : '   ';
 
       r.drawString(px + 2, listY + i,
         (sel ? '> ' : '  ') + item.char + ' ' + item.name.substring(0, panelW - 16) + ' ' + equipped,

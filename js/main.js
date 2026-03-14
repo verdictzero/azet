@@ -522,8 +522,52 @@ class Game {
     const option = this.ui.dialogueState.options[index];
     if (!option) return;
 
-    if (option.action === 'shop' && this.activeNPC && this.activeNPC.shop) {
+    if (option.action === 'shop' && this.activeNPC && (this.activeNPC.shop || this.activeNPC.role === 'merchant' || this.activeNPC.role === 'blacksmith')) {
       this.openShop(this.activeNPC);
+      return;
+    }
+
+    if (option.action === 'heal' && this.activeNPC) {
+      const cost = 10;
+      if (this.player.gold >= cost) {
+        this.player.gold -= cost;
+        this.player.heal(this.player.stats.maxHp);
+        this.ui.addMessage('The priest heals your wounds.', COLORS.BRIGHT_GREEN);
+      } else {
+        this.ui.addMessage('You don\'t have enough gold for healing.', COLORS.BRIGHT_RED);
+      }
+      return;
+    }
+
+    if (option.action === 'rest' && this.activeNPC) {
+      const cost = 5;
+      if (this.player.gold >= cost) {
+        this.player.gold -= cost;
+        this.player.heal(this.player.stats.maxHp);
+        this.player.stats.mana = this.player.stats.maxMana;
+        this.timeSystem.advance(8);
+        this.ui.addMessage('You rest at the inn. Fully restored!', COLORS.BRIGHT_GREEN);
+      } else {
+        this.ui.addMessage('You can\'t afford a room.', COLORS.BRIGHT_RED);
+      }
+      this.activeNPC = null;
+      this.setState(this.prevState || 'LOCATION');
+      return;
+    }
+
+    if (option.action === 'bounty') {
+      const quest = this.questSystem.generateQuest(this.rng, this.activeNPC,
+        this.player.stats.level, this.gameContext);
+      this.questSystem.acceptQuest(quest.id);
+      this.ui.addMessage(`Bounty accepted: ${quest.title}`, COLORS.BRIGHT_YELLOW);
+      this.activeNPC = null;
+      this.setState(this.prevState || 'LOCATION');
+      return;
+    }
+
+    if (option.action === 'teach') {
+      this.ui.addMessage('The scholar shares some knowledge. +10 XP.', COLORS.BRIGHT_CYAN);
+      this.player.addXP(10);
       return;
     }
 
@@ -564,7 +608,7 @@ class Game {
       return;
     }
 
-    if (option.action === 'close') {
+    if (option.action === 'close' || option.action === 'exit') {
       this.activeNPC = null;
       this.setState(this.prevState || 'LOCATION');
       return;
@@ -673,7 +717,7 @@ class Game {
     if (!this.combatState) return;
 
     if (key === 'a' || key === 'A' || key === 'Enter') {
-      // Attack
+      // Attack - combat system already handles damage application via resolveRound
       const result = this.combat.resolveRound(this.player, this.combatState.enemy);
       for (const msg of result.messages) {
         this.ui.addMessage(msg, COLORS.BRIGHT_RED);
@@ -717,7 +761,8 @@ class Game {
         // Enemy gets free attack
         const result = this.combat.calculateAttack(this.combatState.enemy, this.player);
         if (result.hit) {
-          this.player.takeDamage(result.damage);
+          // Combat system already calculates defense mitigation, apply raw
+          this.player.stats.hp -= result.damage;
           this.ui.addMessage(result.message, COLORS.BRIGHT_RED);
         }
         if (this.player.isDead()) {
@@ -909,7 +954,8 @@ class Game {
         if (dist <= 1.5) {
           const result = this.combat.calculateAttack(enemy, this.player);
           if (result.hit) {
-            this.player.takeDamage(result.damage);
+            // Combat system already calculates defense, apply raw damage
+            this.player.stats.hp -= result.damage;
             this.ui.addMessage(result.message, COLORS.BRIGHT_RED);
             if (this.player.isDead()) {
               this.combatState = { enemy };
@@ -951,7 +997,7 @@ class Game {
   }
 
   openShop(npc) {
-    const shopType = npc.shop?.type || 'general';
+    const shopType = (npc.shop && (npc.shop.type || npc.shop.specialization)) || (npc.role === 'blacksmith' ? 'blacksmith' : 'general');
     const locTier = this.gameContext.currentLocation?.type || 'village';
     const inventory = this.shopSystem.generateInventory(this.rng, shopType, locTier, 1);
 
@@ -978,20 +1024,32 @@ class Game {
 
   useItem(item) {
     if (item.type === 'potion') {
-      if (item.subType === 'mana' || item.name.toLowerCase().includes('mana')) {
-        const restore = item.stats?.mana || 20;
+      const effect = item.effect || item.stats || {};
+      if (item.subtype === 'mana' || item.name.toLowerCase().includes('mana')) {
+        const restore = effect.mana || 20;
         this.player.stats.mana = Math.min(this.player.stats.mana + restore, this.player.stats.maxMana);
         this.ui.addMessage(`Restored ${restore} mana!`, COLORS.BRIGHT_BLUE);
-      } else {
-        const restore = item.stats?.hp || 15;
+      } else if (item.subtype === 'healing' || effect.heal) {
+        const restore = effect.heal || 15;
         this.player.heal(restore);
         this.ui.addMessage(`Restored ${restore} HP!`, COLORS.BRIGHT_GREEN);
+      } else {
+        this.ui.addMessage(`Used ${item.name}.`, COLORS.BRIGHT_CYAN);
       }
       this.player.removeItem(item.id);
     } else if (item.type === 'food') {
-      this.player.heal(item.stats?.hp || 5);
+      const heal = (item.effect && item.effect.heal) || (item.stats && item.stats.hp) || 5;
+      this.player.heal(heal);
       this.player.removeItem(item.id);
       this.ui.addMessage(`Ate ${item.name}. Feel a bit better.`, COLORS.BRIGHT_GREEN);
+    } else if (item.type === 'scroll') {
+      const effect = item.effect || {};
+      if (effect.damage) {
+        this.ui.addMessage(`The scroll erupts with ${effect.type || 'magical'} energy!`, COLORS.BRIGHT_MAGENTA);
+      } else {
+        this.ui.addMessage(`Used ${item.name}.`, COLORS.BRIGHT_CYAN);
+      }
+      this.player.removeItem(item.id);
     }
   }
 

@@ -1,54 +1,141 @@
+// ============================================================================
+// entities.js — Entity/NPC system for a retro ASCII roguelike game
+// ============================================================================
+
 import { SeededRNG, distance, manhattanDist } from './utils.js';
 
-// ═══════════════════════════════════════════
-//  NAME GENERATOR
-// ═══════════════════════════════════════════
+let _entityIdCounter = 0;
+function nextId(prefix = 'ent') {
+  return `${prefix}_${++_entityIdCounter}`;
+}
+
+// ============================================================================
+// NameGenerator — Produces names for NPCs and settlements
+// ============================================================================
 
 const NAME_POOLS = {
   human: {
-    male: ['Aldric','Marcus','Roland','Garrett','Cedric','Edmund','Roderick','Bran','Osric','Leoric','Godwin','Alaric','Beorn','Cyrus','Drake','Elric','Fenris','Gareth','Hector','Isen'],
-    female: ['Elena','Sarah','Miriel','Rowena','Elara','Cordelia','Isolde','Lyra','Maren','Nessa','Brynn','Cassandra','Daria','Freya','Gwen','Helena','Iris','Jocelyn','Kara','Liana'],
-    last: ['Ironforge','Blackwood','Stormwind','Ashford','Whitehall','Greymane','Thornwall','Ravencrest','Coldwell','Brightmore','Dunbar','Fairfax','Grimshaw','Holt','Kingswood','Marsh','Northcott','Oakheart','Redfield','Stone']
+    male: [
+      'Aldric', 'Marcus', 'Thorin', 'Cedric', 'Gareth', 'Roland', 'Edmund',
+      'Aldwin', 'Brant', 'Conrad', 'Darian', 'Edwin', 'Falric', 'Godwin',
+      'Harald', 'Ivan', 'Jareth', 'Kelvin', 'Leoric', 'Malcolm', 'Neville',
+      'Oswald', 'Percival', 'Quinton', 'Roderick', 'Sigmund', 'Tristan',
+      'Ulric', 'Victor', 'Warren',
+    ],
+    female: [
+      'Elena', 'Sarah', 'Lyria', 'Marian', 'Gwendolyn', 'Rowena', 'Isolde',
+      'Adeline', 'Beatrice', 'Cordelia', 'Davina', 'Elspeth', 'Freya',
+      'Giselle', 'Helena', 'Ingrid', 'Juliana', 'Kathryn', 'Lenora',
+      'Mirabel', 'Nerissa', 'Ophelia', 'Priscilla', 'Rosalind', 'Sybil',
+      'Thalia', 'Ursula', 'Vivienne', 'Winifred', 'Yseult',
+    ],
+    last: [
+      'Ironforge', 'Blackwood', 'Stormwind', 'Ashford', 'Thornwall',
+      'Greymane', 'Brightmore', 'Dunhaven', 'Fairweather', 'Goleli',
+      'Hawkridge', 'Kingsmill', 'Langley', 'Moorfield', 'Northcott',
+      'Oakenshield', 'Ravenscar', 'Silverlock', 'Whitmore', 'Yarwood',
+    ],
   },
   elf: {
-    male: ['Aelindor','Sylvain','Thalion','Caelum','Faelar','Galathil','Ithilien','Lorien','Maedhros','Noldor','Orophin','Quellon','Rilien','Silaen','Tauriel','Ulmo','Vaelen','Xael','Yavien','Zephael'],
-    female: ['Lirieth','Arwen','Celeste','Elanor','Faenya','Galadria','Haleth','Idril','Jessiel','Kethiel','Luthien','Miriel','Naeriel','Olwen','Phaedra','Quelara','Rienne','Silivren','Tinuviel','Undomiel'],
-    last: ['Moonwhisper','Starfall','Silverleaf','Dawnstrider','Nightbloom','Sunweaver','Windwalker','Dewdrop','Mistwood','Thornrose','Brightwater','Crystalvale','Everglade','Fernheart','Glimmerstone']
+    male: [
+      'Aelindor', 'Sylvain', 'Thalion', 'Celeborn', 'Elrandir', 'Faelar',
+      'Galathil', 'Haldir', 'Ithilion', 'Lanthir', 'Maeglin', 'Noldir',
+      'Orophin', 'Pelendur', 'Quennar', 'Rhovannion', 'Silarion', 'Tauriel',
+      'Vanyar', 'Wraithion',
+    ],
+    female: [
+      'Lirieth', 'Arwen', 'Elowen', 'Galadriel', 'Idhriel', 'Miriel',
+      'Nimrodel', 'Silinde', 'Tindome', 'Vanesse', 'Aerith', 'Caladwen',
+      'Elanor', 'Finduilas', 'Hithlain', 'Laurelin', 'Melian', 'Nessa',
+      'Raina', 'Yavanna',
+    ],
+    last: [
+      'Moonwhisper', 'Starfall', 'Silverleaf', 'Dawnweaver', 'Nightbloom',
+      'Sunfire', 'Windrunner', 'Dewdancer', 'Mistwalker', 'Thornblossom',
+      'Greenvale', 'Brightwater', 'Shadowmere', 'Goldentree', 'Crystalbrook',
+      'Silentglade', 'Swiftarrow', 'Moonshadow', 'Starbreeze', 'Leafwhirl',
+    ],
   },
   dwarf: {
-    male: ['Thorin','Gimli','Balin','Durin','Dwalin','Fili','Kili','Nori','Ori','Gloin','Bombur','Bofur','Bifur','Dain','Fundin','Groin','Thror','Thrain','Nain','Oin'],
-    female: ['Disa','Hilda','Inga','Bruni','Dagny','Helga','Astrid','Sigrid','Frida','Gudrun','Thyra','Ragna','Solveig','Toril','Ylva'],
-    last: ['Ironbeard','Forgemaster','Stonehammer','Deepdelver','Goldvein','Battleaxe','Copperkettle','Darkmine','Emberheart','Flintlock','Granitehold','Hammerfall','Ironfist','Keenedge','Longbeard']
+    male: [
+      'Thorin', 'Gimli', 'Balin', 'Durin', 'Dwalin', 'Gloin', 'Bofur',
+      'Bombur', 'Nori', 'Oin', 'Kili', 'Fili', 'Dain', 'Thror', 'Fundin',
+      'Grolin', 'Nain', 'Borin', 'Farin', 'Loni',
+    ],
+    female: [
+      'Disa', 'Helga', 'Bruni', 'Thora', 'Greta', 'Hilda', 'Sigrid',
+      'Brunhild', 'Dagny', 'Eira', 'Frida', 'Gudrun', 'Ingra', 'Kelda',
+      'Magna', 'Riva', 'Sif', 'Thyra', 'Ulfhild', 'Yrsa',
+    ],
+    last: [
+      'Ironbeard', 'Forgemaster', 'Stonehammer', 'Deepdelve', 'Goldvein',
+      'Copperbolt', 'Anviltop', 'Granitepick', 'Runecarver', 'Blazeforge',
+      'Steelhand', 'Thunderaxe', 'Orebreaker', 'Gemcutter', 'Coalheap',
+      'Ironpick', 'Hammerfall', 'Mithrilbeard', 'Darkmine', 'Boulderback',
+    ],
   },
   orc: {
-    male: ['Grukk','Throg','Mogash','Zugthar','Gorbag','Lurtz','Azog','Bolg','Ugluk','Shagrat','Muzgash','Narzug','Gothmog','Grishnakh','Snaga'],
-    female: ['Gashna','Threka','Mogra','Urzul','Borkha','Lagash','Nazgha','Shelob','Grisha','Murga','Karsha','Zorga','Thraga','Bulgha','Durza'],
-    last: ['Skullcrusher','Bloodfang','Bonegnawer','Deathgrip','Fleshrender','Goreclaw','Hellscream','Ironjaw','Killshot','Maneater','Nightstalker','Poisontooth','Rageclaw','Soulripper','Warbringer']
+    male: [
+      'Grukk', 'Throg', 'Mogash', 'Uzgul', 'Brakka', 'Durgash', 'Ghorn',
+      'Kragoth', 'Lugdush', 'Muzgash', 'Nazgoth', 'Orgrim', 'Skullgar',
+      'Ugroth', 'Zargoth',
+    ],
+    female: [
+      'Gorza', 'Shagra', 'Bolgra', 'Durza', 'Gashna', 'Krella', 'Mogra',
+      'Nargha', 'Rishka', 'Sharog', 'Uglasha', 'Vorgha', 'Yazga', 'Zulka',
+      'Breka',
+    ],
+    last: [
+      'Skullcrusher', 'Bloodfang', 'Bonegnaw', 'Deathgrip', 'Fleshrender',
+      'Goreblade', 'Hellscream', 'Ironfist', 'Jawbreaker', 'Mauler',
+      'Rageclaw', 'Spinebreaker', 'Warfang', 'Doomhowl', 'Blacktusk',
+    ],
   },
   halfling: {
-    male: ['Pippin','Merry','Samwise','Frodo','Bilbo','Drogo','Hamfast','Lotho','Odo','Ponto','Rufus','Sancho','Tolman','Wilcome','Bandobras'],
-    female: ['Rosie','Peony','Daisy','Lobelia','Primula','Amaranth','Belladonna','Celandine','Dora','Eglantine','Goldilocks','Hilda','Iris','Jasmine','Lily'],
-    last: ['Goodbarrel','Underhill','Thornberry','Brandybuck','Gamgee','Baggins','Took','Proudfoot','Burrows','Chubb','Grubb','Hornblower','Sackville','Whitfoot','Boffin']
-  }
+    male: [
+      'Pippin', 'Merry', 'Samwise', 'Frodo', 'Bilbo', 'Lotho', 'Folco',
+      'Drogo', 'Hamfast', 'Griffo', 'Bingo', 'Largo', 'Polo', 'Hugo',
+      'Cosimo',
+    ],
+    female: [
+      'Rosie', 'Daisy', 'Petunia', 'Marigold', 'Primrose', 'Lobelia',
+      'Belladonna', 'Esmeralda', 'Celandine', 'Amaranth', 'Pansy',
+      'Daffodil', 'Clover', 'Ivy', 'Poppy',
+    ],
+    last: [
+      'Goodbarrel', 'Underhill', 'Proudfoot', 'Baggins', 'Took',
+      'Brandybuck', 'Gamgee', 'Hornblower', 'Burrows', 'Chubb',
+      'Greenhand', 'Longbottom', 'Sackville', 'Rumble', 'Hayward',
+    ],
+  },
 };
 
 const NICKNAMES = [
-  'the Brave','the Bold','the Wise','the Cunning','Shadowblade','Truthseeker',
-  'Ironwill','the Fierce','Lightbringer','Doomhammer','the Swift','Silvertongue',
-  'the Wanderer','Stormcaller','Flameheart','the Silent','the Just','Voidwalker',
-  'the Unyielding','Bonecrusher'
+  'the Brave', 'the Bold', 'Shadowblade', 'Truthseeker', 'the Wise',
+  'Ironwill', 'Stormbringer', 'the Wanderer', 'Flameheart', 'the Swift',
+  'Dawnbringer', 'the Silent', 'Dragonslayer', 'the Merciful', 'Nightstalker',
+  'the Just', 'Oathkeeper', 'the Unyielding', 'Grimjaw', 'Thornheart',
 ];
 
-const PLACE_PREFIXES = ['Thorn','Iron','Shadow','Storm','Silver','Dark','White','Red','Green','Black','Stone','Frost','Dawn','Amber','Raven'];
-const PLACE_SUFFIXES = ['brook','hold','vale','haven','dale','ford','mere','wick','gate','crest','fell','moor','stead','watch','hollow'];
+const PLACE_PREFIXES = [
+  'Thorn', 'Iron', 'Shadow', 'Storm', 'Oak', 'Raven', 'Wolf', 'Stone',
+  'Silver', 'Black', 'White', 'Frost', 'Dark', 'Golden', 'Ember',
+];
+
+const PLACE_SUFFIXES = [
+  'brook', 'hold', 'vale', 'haven', 'fall', 'gate', 'ford', 'wick',
+  'keep', 'mere', 'ridge', 'dale', 'watch', 'crest', 'hollow',
+];
 
 export class NameGenerator {
-  generate(rng, race) {
+  generate(rng, race = 'human') {
     const pool = NAME_POOLS[race] || NAME_POOLS.human;
     const isMale = rng.chance(0.5);
     const firstNames = isMale ? pool.male : pool.female;
+
     const first = rng.random(firstNames);
     const last = rng.random(pool.last);
+
     let nickname = null;
     let full = `${first} ${last}`;
 
@@ -65,781 +152,1310 @@ export class NameGenerator {
   }
 }
 
-// ═══════════════════════════════════════════
-//  NPC GENERATOR
-// ═══════════════════════════════════════════
+// ============================================================================
+// NPCGenerator — Creates fully-fleshed NPC objects
+// ============================================================================
 
 const PERSONALITY_TRAITS = [
-  'grumpy','cheerful','suspicious','generous','greedy','brave','cowardly',
-  'wise','foolish','honest','deceitful','loyal','treacherous','patient',
-  'hot-tempered','humble','arrogant','curious','reclusive','kind',
-  'stern','jovial','cautious','reckless','scholarly','superstitious',
-  'devout','cynical','romantic','pragmatic'
+  'grumpy', 'cheerful', 'suspicious', 'generous', 'greedy', 'brave',
+  'cowardly', 'wise', 'foolish', 'honest', 'deceitful', 'loyal',
+  'treacherous', 'patient', 'hot-tempered', 'humble', 'arrogant',
+  'curious', 'reclusive', 'devout', 'pragmatic', 'idealistic',
+  'stoic', 'jovial', 'sarcastic', 'grim', 'compassionate', 'ruthless',
+  'scholarly', 'superstitious',
 ];
 
-const ARCHETYPES = ['mentor','rival','ally','antagonist','neutral','comic_relief'];
+const ARCHETYPES = ['mentor', 'rival', 'ally', 'antagonist', 'neutral', 'comic_relief'];
 
 const ROLE_CHARS = {
   merchant: 'M', blacksmith: 'M', barkeep: 'B', priest: 'P', guard: 'G',
-  noble: 'N', farmer: 'F', miner: 'W', hunter: 'H', scholar: 'S',
-  beggar: 'b', child: 'c'
+  noble: 'N', farmer: 'N', miner: 'N', hunter: 'N', scholar: 'N',
+  beggar: 'N', child: 'N', knight: 'K',
 };
 
 const ROLE_COLORS = {
-  merchant: '#FFFF55', blacksmith: '#FF5555', barkeep: '#AAAA00',
-  priest: '#FFFFFF', guard: '#5555FF', noble: '#FF55FF',
-  farmer: '#55FF55', miner: '#AAAAAA', hunter: '#00AA00',
-  scholar: '#55FFFF', beggar: '#555555', child: '#55FF55'
+  merchant:   '#e6c619',
+  blacksmith: '#cc6633',
+  barkeep:    '#d4915c',
+  priest:     '#f0f0f0',
+  guard:      '#7799cc',
+  noble:      '#cc66cc',
+  farmer:     '#88aa44',
+  miner:      '#aa8855',
+  hunter:     '#66aa66',
+  scholar:    '#aaaaee',
+  beggar:     '#888888',
+  child:      '#ffaaaa',
+  knight:     '#ccccdd',
 };
 
 const ROLE_TITLES = {
-  merchant: ['Traveling Merchant','Shopkeeper','Trader','Peddler'],
-  blacksmith: ['Master Blacksmith','Weapon Smith','Armor Smith','Forge Worker'],
-  barkeep: ['Innkeeper','Barkeep','Tavern Owner','Alewife'],
-  priest: ['High Priest','Temple Cleric','Healer','Acolyte'],
-  guard: ['Town Guard','Watch Captain','Sentinel','Gate Keeper'],
-  noble: ['Lord','Lady','Baron','Count'],
-  farmer: ['Farmer','Rancher','Miller','Shepherd'],
-  miner: ['Miner','Prospector','Tunneler','Gem Cutter'],
-  hunter: ['Hunter','Tracker','Trapper','Ranger'],
-  scholar: ['Scholar','Sage','Librarian','Lorekeeper'],
-  beggar: ['Beggar','Vagabond','Wanderer','Drifter'],
-  child: ['Child','Youngster','Urchin','Kid']
+  merchant:   ['Traveling Merchant', 'Street Vendor', 'Master Trader', 'Peddler', 'Shopkeeper'],
+  blacksmith: ['Master Blacksmith', 'Apprentice Smith', 'Armorer', 'Weapon Smith', 'Tinker'],
+  barkeep:    ['Innkeeper', 'Barkeep', 'Tavern Owner', 'Bartender', 'Publican'],
+  priest:     ['High Priest', 'Acolyte', 'Temple Warden', 'Healer', 'Cleric'],
+  guard:      ['Town Guard', 'Gate Watchman', 'Patrol Captain', 'Militia Guard', 'Sentry'],
+  noble:      ['Lord', 'Lady', 'Baron', 'Baroness', 'Count'],
+  farmer:     ['Farmer', 'Farmhand', 'Shepherd', 'Miller', 'Grower'],
+  miner:      ['Miner', 'Tunnel Foreman', 'Ore Prospector', 'Stone Mason', 'Excavator'],
+  hunter:     ['Ranger', 'Trapper', 'Big Game Hunter', 'Forester', 'Tracker'],
+  scholar:    ['Scholar', 'Sage', 'Archivist', 'Lorekeeper', 'Historian'],
+  beggar:     ['Beggar', 'Street Urchin', 'Vagabond', 'Drifter', 'Pauper'],
+  child:      ['Child', 'Street Kid', 'Orphan', 'Young One', 'Little One'],
 };
 
 const SECRET_TEMPLATES = [
-  'hiding a cursed artifact in their basement',
-  'was once a soldier in the great war',
-  'has a long-lost sibling in a distant city',
+  'is secretly a former assassin',
+  'was once nobility before being disgraced',
   'knows the location of a hidden treasure',
-  'is secretly working for the thieves guild',
-  'was cursed by a witch years ago',
+  'is wanted in another province',
+  'worships a forbidden deity',
+  'has an illegitimate child in another town',
+  'poisoned the previous guild master',
+  'can see glimpses of the future in dreams',
+  'stole their identity from a dead traveler',
+  'is a spy for a rival faction',
+  'owes a massive debt to a crime lord',
+  'accidentally caused a fire that burned down a village',
+  'possesses a forbidden artifact hidden in their home',
+  'was raised by a monster in the wilds',
+  'knows a secret passage beneath the town',
+  'made a pact with a demon long ago',
+  'is descended from an ancient royal bloodline',
   'witnessed a murder and never spoke of it',
-  'is heir to a forgotten noble house',
-  'made a deal with a demon',
-  'knows the true history of this settlement'
+  'has a twin sibling no one knows about',
+  'can speak an ancient dead language',
+];
+
+const ROLE_SCHEDULES = {
+  merchant: [
+    { hour: 0, location: 'home', action: 'sleeping' },
+    { hour: 6, location: 'home', action: 'eating breakfast' },
+    { hour: 7, location: 'market', action: 'setting up shop' },
+    { hour: 8, location: 'market', action: 'selling wares' },
+    { hour: 12, location: 'tavern', action: 'having lunch' },
+    { hour: 13, location: 'market', action: 'selling wares' },
+    { hour: 18, location: 'market', action: 'closing shop' },
+    { hour: 19, location: 'tavern', action: 'having dinner' },
+    { hour: 21, location: 'home', action: 'resting' },
+    { hour: 22, location: 'home', action: 'sleeping' },
+  ],
+  blacksmith: [
+    { hour: 0, location: 'home', action: 'sleeping' },
+    { hour: 5, location: 'forge', action: 'lighting the forge' },
+    { hour: 6, location: 'forge', action: 'smithing' },
+    { hour: 12, location: 'tavern', action: 'having lunch' },
+    { hour: 13, location: 'forge', action: 'smithing' },
+    { hour: 18, location: 'forge', action: 'banking the forge' },
+    { hour: 19, location: 'tavern', action: 'having dinner' },
+    { hour: 21, location: 'home', action: 'resting' },
+    { hour: 22, location: 'home', action: 'sleeping' },
+  ],
+  barkeep: [
+    { hour: 0, location: 'tavern', action: 'cleaning up' },
+    { hour: 2, location: 'home', action: 'sleeping' },
+    { hour: 6, location: 'tavern', action: 'opening tavern' },
+    { hour: 7, location: 'tavern', action: 'serving breakfast' },
+    { hour: 10, location: 'market', action: 'buying supplies' },
+    { hour: 11, location: 'tavern', action: 'serving drinks' },
+    { hour: 14, location: 'tavern', action: 'cleaning' },
+    { hour: 16, location: 'tavern', action: 'serving drinks' },
+    { hour: 24, location: 'tavern', action: 'closing up' },
+  ],
+  priest: [
+    { hour: 0, location: 'temple', action: 'sleeping' },
+    { hour: 5, location: 'temple', action: 'morning prayers' },
+    { hour: 7, location: 'temple', action: 'tending the sick' },
+    { hour: 10, location: 'temple', action: 'studying scripture' },
+    { hour: 12, location: 'temple', action: 'midday sermon' },
+    { hour: 14, location: 'town', action: 'visiting townsfolk' },
+    { hour: 17, location: 'temple', action: 'evening prayers' },
+    { hour: 19, location: 'temple', action: 'meditation' },
+    { hour: 21, location: 'temple', action: 'sleeping' },
+  ],
+  guard: [
+    { hour: 0, location: 'barracks', action: 'sleeping' },
+    { hour: 6, location: 'barracks', action: 'suiting up' },
+    { hour: 7, location: 'gate', action: 'standing watch' },
+    { hour: 10, location: 'town', action: 'patrolling' },
+    { hour: 12, location: 'barracks', action: 'having lunch' },
+    { hour: 13, location: 'town', action: 'patrolling' },
+    { hour: 16, location: 'gate', action: 'standing watch' },
+    { hour: 18, location: 'barracks', action: 'off duty' },
+    { hour: 20, location: 'tavern', action: 'relaxing' },
+    { hour: 22, location: 'barracks', action: 'sleeping' },
+  ],
+  noble: [
+    { hour: 0, location: 'manor', action: 'sleeping' },
+    { hour: 8, location: 'manor', action: 'having breakfast' },
+    { hour: 9, location: 'manor', action: 'attending to affairs' },
+    { hour: 12, location: 'manor', action: 'having lunch' },
+    { hour: 13, location: 'town', action: 'inspecting the town' },
+    { hour: 15, location: 'manor', action: 'meeting with advisors' },
+    { hour: 18, location: 'manor', action: 'having dinner' },
+    { hour: 20, location: 'manor', action: 'reading' },
+    { hour: 22, location: 'manor', action: 'sleeping' },
+  ],
+  farmer: [
+    { hour: 0, location: 'home', action: 'sleeping' },
+    { hour: 4, location: 'home', action: 'waking up' },
+    { hour: 5, location: 'farm', action: 'feeding animals' },
+    { hour: 7, location: 'farm', action: 'working fields' },
+    { hour: 12, location: 'home', action: 'having lunch' },
+    { hour: 13, location: 'farm', action: 'working fields' },
+    { hour: 17, location: 'farm', action: 'harvesting' },
+    { hour: 19, location: 'home', action: 'having dinner' },
+    { hour: 20, location: 'tavern', action: 'relaxing' },
+    { hour: 21, location: 'home', action: 'sleeping' },
+  ],
+  miner: [
+    { hour: 0, location: 'home', action: 'sleeping' },
+    { hour: 5, location: 'home', action: 'waking up' },
+    { hour: 6, location: 'mine', action: 'mining ore' },
+    { hour: 12, location: 'mine', action: 'break' },
+    { hour: 13, location: 'mine', action: 'mining ore' },
+    { hour: 17, location: 'mine', action: 'leaving mine' },
+    { hour: 18, location: 'tavern', action: 'having dinner' },
+    { hour: 20, location: 'tavern', action: 'drinking' },
+    { hour: 22, location: 'home', action: 'sleeping' },
+  ],
+  hunter: [
+    { hour: 0, location: 'home', action: 'sleeping' },
+    { hour: 4, location: 'home', action: 'preparing gear' },
+    { hour: 5, location: 'wilderness', action: 'hunting' },
+    { hour: 10, location: 'wilderness', action: 'tracking prey' },
+    { hour: 14, location: 'town', action: 'selling pelts' },
+    { hour: 16, location: 'home', action: 'repairing gear' },
+    { hour: 18, location: 'tavern', action: 'telling stories' },
+    { hour: 21, location: 'home', action: 'sleeping' },
+  ],
+  scholar: [
+    { hour: 0, location: 'library', action: 'sleeping' },
+    { hour: 7, location: 'library', action: 'reading' },
+    { hour: 10, location: 'library', action: 'researching' },
+    { hour: 12, location: 'tavern', action: 'having lunch' },
+    { hour: 13, location: 'library', action: 'writing' },
+    { hour: 16, location: 'town', action: 'lecturing students' },
+    { hour: 18, location: 'library', action: 'cataloging' },
+    { hour: 20, location: 'library', action: 'reading by candlelight' },
+    { hour: 23, location: 'library', action: 'sleeping' },
+  ],
+  beggar: [
+    { hour: 0, location: 'alley', action: 'sleeping' },
+    { hour: 7, location: 'market', action: 'begging' },
+    { hour: 12, location: 'temple', action: 'receiving charity' },
+    { hour: 13, location: 'market', action: 'begging' },
+    { hour: 17, location: 'tavern', action: 'scrounging for scraps' },
+    { hour: 20, location: 'alley', action: 'sleeping' },
+  ],
+  child: [
+    { hour: 0, location: 'home', action: 'sleeping' },
+    { hour: 7, location: 'home', action: 'eating breakfast' },
+    { hour: 8, location: 'town', action: 'playing' },
+    { hour: 12, location: 'home', action: 'having lunch' },
+    { hour: 13, location: 'town', action: 'playing' },
+    { hour: 16, location: 'town', action: 'exploring' },
+    { hour: 18, location: 'home', action: 'having dinner' },
+    { hour: 19, location: 'home', action: 'doing chores' },
+    { hour: 20, location: 'home', action: 'sleeping' },
+  ],
+};
+
+const NPC_FACTIONS = [
+  'Town Council', 'Merchants Guild', 'Thieves Guild', 'Temple of Light',
+  'Rangers Order', 'Miners Union', 'Farmers Collective', 'Noble Court',
+  'Adventurers League', 'None',
 ];
 
 export class NPCGenerator {
   constructor() {
     this.nameGen = new NameGenerator();
-    this.nextId = 1;
   }
 
-  generate(rng, role, race, locationContext) {
+  generate(rng, role = 'farmer', race = 'human', locationContext = null) {
     const name = this.nameGen.generate(rng, race);
-    const id = `npc_${this.nextId++}`;
+    const title = rng.random(ROLE_TITLES[role] || ROLE_TITLES.farmer);
+    const char = ROLE_CHARS[role] || 'N';
+    const color = ROLE_COLORS[role] || '#cccccc';
 
-    const traits = [];
-    const traitPool = [...PERSONALITY_TRAITS];
-    const traitCount = rng.nextInt(2, 4);
-    for (let i = 0; i < traitCount; i++) {
-      const idx = rng.nextInt(0, traitPool.length - 1);
-      traits.push(traitPool.splice(idx, 1)[0]);
+    // Stats scale by role
+    const isCombat = role === 'guard' || role === 'knight';
+    const baseHp = isCombat ? 40 : 20;
+    const baseAtk = isCombat ? 8 : 3;
+    const baseDef = isCombat ? 6 : 2;
+    const level = rng.nextInt(1, 5);
+    const hp = baseHp + level * 5 + rng.nextInt(-3, 3);
+
+    // Personality: pick 3 unique traits
+    const shuffledTraits = rng.shuffle(PERSONALITY_TRAITS);
+    const traits = shuffledTraits.slice(0, 3);
+    const mood = rng.random(['neutral', 'happy', 'angry', 'suspicious']);
+    const archetype = rng.random(ARCHETYPES);
+
+    // Schedule
+    const schedule = (ROLE_SCHEDULES[role] || ROLE_SCHEDULES.farmer).map(s => ({ ...s }));
+
+    // Faction
+    let faction = rng.random(NPC_FACTIONS);
+    if (role === 'merchant' || role === 'blacksmith') faction = 'Merchants Guild';
+    if (role === 'guard' || role === 'knight') faction = 'Town Council';
+    if (role === 'priest') faction = 'Temple of Light';
+
+    // Secrets (1-2)
+    const shuffledSecrets = rng.shuffle(SECRET_TEMPLATES);
+    const secretCount = rng.nextInt(1, 2);
+    const secrets = shuffledSecrets.slice(0, secretCount);
+
+    // Position from location context
+    const position = locationContext
+      ? { x: locationContext.x || 0, y: locationContext.y || 0 }
+      : { x: 0, y: 0 };
+
+    // Shop data for merchant-type roles
+    let shop = null;
+    if (role === 'merchant' || role === 'blacksmith' || role === 'barkeep') {
+      shop = {
+        inventory: [],
+        buyMultiplier: 0.5 + rng.nextFloat(0, 0.3),
+        sellMultiplier: 1.0 + rng.nextFloat(0, 0.5),
+        restockInterval: rng.nextInt(50, 150),
+        lastRestock: 0,
+        specialization: role === 'blacksmith'
+          ? rng.random(['weapons', 'armor', 'tools'])
+          : role === 'barkeep'
+            ? 'tavern'
+            : rng.random(['general', 'potions', 'scrolls', 'food']),
+      };
     }
 
-    const level = rng.nextInt(1, 10);
-    const titles = ROLE_TITLES[role] || ['Villager'];
-    const title = rng.random(titles);
-
-    const schedule = this.generateSchedule(role);
-    const secrets = [rng.random(SECRET_TEMPLATES)];
-    if (rng.chance(0.3)) secrets.push(rng.random(SECRET_TEMPLATES));
-
-    const npc = {
-      id,
-      name,
+    return {
+      id: nextId('npc'),
+      name: { first: name.first, last: name.last, full: name.full },
       race,
       role,
       title,
-      char: ROLE_CHARS[role] || 'N',
-      color: ROLE_COLORS[role] || '#AAAAAA',
-      position: { x: 0, y: 0 },
+      char,
+      color,
+      position,
       stats: {
-        hp: 20 + level * 5,
-        maxHp: 20 + level * 5,
-        attack: 2 + level,
-        defense: 1 + Math.floor(level / 2),
-        level
+        hp,
+        maxHp: hp,
+        attack: baseAtk + level + rng.nextInt(0, 2),
+        defense: baseDef + Math.floor(level / 2) + rng.nextInt(0, 2),
+        level,
       },
-      personality: {
-        traits,
-        mood: rng.random(['happy', 'neutral', 'neutral', 'neutral', 'angry', 'suspicious']),
-        archetype: rng.random(ARCHETYPES)
-      },
+      personality: { traits, mood, archetype },
       schedule,
-      faction: this.getFaction(role),
+      faction,
       playerReputation: 0,
       memory: [],
       secrets,
-      shop: this.generateShopData(rng, role),
+      shop,
       quests: [],
-      dialogue: {}
-    };
-
-    // Combat methods for NPC
-    npc.getAttackPower = function() { return this.stats.attack; };
-    npc.getDefense = function() { return this.stats.defense; };
-
-    return npc;
-  }
-
-  generateSchedule(role) {
-    const schedules = {
-      merchant: [
-        { hour: 7, location: 'home', action: 'wake' },
-        { hour: 8, location: 'shop', action: 'open_shop' },
-        { hour: 12, location: 'tavern', action: 'lunch' },
-        { hour: 13, location: 'shop', action: 'work' },
-        { hour: 18, location: 'tavern', action: 'dinner' },
-        { hour: 21, location: 'home', action: 'sleep' }
-      ],
-      blacksmith: [
-        { hour: 6, location: 'smithy', action: 'wake' },
-        { hour: 7, location: 'smithy', action: 'work' },
-        { hour: 12, location: 'tavern', action: 'lunch' },
-        { hour: 13, location: 'smithy', action: 'work' },
-        { hour: 17, location: 'tavern', action: 'dinner' },
-        { hour: 20, location: 'home', action: 'sleep' }
-      ],
-      barkeep: [
-        { hour: 9, location: 'home', action: 'wake' },
-        { hour: 10, location: 'tavern', action: 'open' },
-        { hour: 23, location: 'tavern', action: 'close' },
-        { hour: 0, location: 'home', action: 'sleep' }
-      ],
-      guard: [
-        { hour: 6, location: 'barracks', action: 'wake' },
-        { hour: 7, location: 'gate', action: 'patrol' },
-        { hour: 12, location: 'barracks', action: 'lunch' },
-        { hour: 13, location: 'square', action: 'patrol' },
-        { hour: 18, location: 'barracks', action: 'off_duty' },
-        { hour: 22, location: 'barracks', action: 'sleep' }
-      ],
-      priest: [
-        { hour: 5, location: 'temple', action: 'morning_prayer' },
-        { hour: 8, location: 'temple', action: 'services' },
-        { hour: 12, location: 'temple', action: 'meditation' },
-        { hour: 15, location: 'square', action: 'bless' },
-        { hour: 18, location: 'temple', action: 'evening_prayer' },
-        { hour: 21, location: 'temple', action: 'sleep' }
-      ]
-    };
-    return schedules[role] || [
-      { hour: 7, location: 'home', action: 'wake' },
-      { hour: 8, location: 'work', action: 'work' },
-      { hour: 18, location: 'tavern', action: 'relax' },
-      { hour: 21, location: 'home', action: 'sleep' }
-    ];
-  }
-
-  getFaction(role) {
-    const map = {
-      guard: 'TOWN_GUARD', merchant: 'MERCHANTS_GUILD', blacksmith: 'MERCHANTS_GUILD',
-      priest: 'TEMPLE_ORDER', noble: 'NOBILITY', barkeep: 'MERCHANTS_GUILD'
-    };
-    return map[role] || 'CIVILIAN';
-  }
-
-  generateShopData(rng, role) {
-    const shopRoles = ['merchant', 'blacksmith', 'barkeep'];
-    if (!shopRoles.includes(role)) return null;
-
-    const types = { merchant: 'general', blacksmith: 'blacksmith', barkeep: 'tavern' };
-    return {
-      type: types[role] || 'general',
-      name: role === 'blacksmith' ? 'The Forge' : role === 'barkeep' ? 'The Tavern' : 'General Store',
-      specialty: role
+      dialogue: {},
     };
   }
 }
 
-// ═══════════════════════════════════════════
-//  DIALOGUE SYSTEM
-// ═══════════════════════════════════════════
+// ============================================================================
+// DialogueSystem — Generates dialogue, greetings, options, and rumors
+// ============================================================================
 
 const GREETINGS = {
   friendly: [
-    "Hail, friend! Welcome back.",
-    "Good to see you! How goes the adventure?",
-    "Ah, a familiar face! Come in, come in.",
-    "Welcome back! I was hoping you'd return.",
-    "Well met, friend! What can I do for you today?",
-    "It's good to see you again. What brings you by?",
-    "Ah, my favorite customer! How can I help?",
-    "Glad you're here. I could use a hand with something.",
-    "The hero returns! What news do you bring?",
-    "Always a pleasure. What do you need?"
+    'Hail, friend! Welcome back.',
+    'Good to see you! How goes the adventure?',
+    'Ah, my favorite visitor returns!',
+    'Well met, companion! What can I do for you today?',
+    'A pleasure, as always! Come in, come in.',
+    'You look well! The road has treated you kindly.',
+    'Welcome, welcome! I was hoping you would stop by.',
+    'By the gods, it is good to see a friendly face!',
+    'Ho there! Pull up a seat and rest your bones.',
+    'The hero returns! What news do you bring?',
   ],
   neutral: [
-    "What brings you here?",
-    "State your business.",
-    "I don't believe we've met. What do you want?",
-    "Can I help you with something?",
-    "Hmm? What is it?",
-    "Looking for something specific?",
-    "You're not from around here, are you?",
-    "Speak, traveler. I'm busy.",
-    "Another adventurer. What do you seek?",
-    "Welcome to our settlement. Mind your manners."
+    'What brings you here?',
+    'State your business.',
+    "I don't believe we've met.",
+    'Can I help you with something?',
+    'Yes? What do you need?',
+    'Hmm. You look like an adventurer.',
+    'Another traveler. What do you want?',
+    "If you're looking for trouble, look elsewhere.",
+    'Speak up, I have not got all day.',
+    'Well? Spit it out.',
   ],
   hostile: [
-    "Stay back! I don't trust you.",
-    "Not you again...",
-    "I thought I told you to leave!",
-    "You have some nerve showing your face here.",
-    "Get lost before I call the guards."
-  ]
+    'Stay back!',
+    'Not you again...',
+    'I thought I told you to leave!',
+    "Get out of my sight before I call the guards!",
+    "You've got some nerve showing your face here.",
+  ],
 };
 
 const RUMOR_TEMPLATES = [
-  "They say {LOCATION} is cursed ever since the old war...",
-  "I heard strange lights in the mountains last night.",
-  "The merchants won't travel the eastern road anymore.",
-  "Word is a dragon was spotted near the northern peaks.",
-  "They say the old ruins hold treasures beyond imagining.",
-  "Bandits have been raiding caravans on the trade route.",
-  "The temple priests have been acting strangely lately.",
-  "I hear the king is looking for brave adventurers.",
-  "Someone found ancient runes in the caves to the south.",
-  "The blacksmith says he can forge legendary weapons... for a price.",
-  "A mysterious stranger arrived last week. Nobody knows who they are.",
-  "The guards found tracks of something large near the village.",
-  "An old prophecy speaks of a hero who will save these lands.",
-  "The tavern owner says ghosts haunt the cellar at night.",
-  "Miners broke through to a new cavern full of crystals.",
-  "A traveling bard sang of a hidden kingdom underground.",
-  "The harvest this year was poor. Some blame dark magic.",
-  "There's a bounty on a criminal who escaped the dungeon.",
-  "Sailors report sea monsters in the coastal waters.",
-  "An ancient tower appeared overnight in the forest..."
+  'They say {LOCATION} is cursed by an ancient evil...',
+  'I heard {NPC_NAME} used to be a {PROFESSION} before settling here.',
+  'Strange lights have been seen near the old ruins at night.',
+  'The mine has been closed ever since the cave-in. Some say it was no accident.',
+  'A merchant was found dead on the road last week. Bandits, they say.',
+  "There's talk of war brewing in the eastern kingdoms.",
+  "The blacksmith's apprentice vanished three nights ago. Nobody's talking about it.",
+  'They say a dragon was spotted flying over the mountains.',
+  "The well water has tasted strange lately. Some folk won't drink it.",
+  'An old hermit in the forest supposedly knows the cure for any ailment.',
+  'I overheard the guards talking about something in the dungeon below the keep.',
+  "The temple's been collecting more donations than usual. Wonder what for.",
+  'A strange traveler was asking questions about the old king last week.',
+  "They say there's treasure buried beneath {LOCATION}, if you dare to look.",
+  'The harvest has been poor. Some blame witchcraft, others blame the weather.',
+  'I saw a ship with black sails anchored in the bay at midnight.',
+  "The noble's daughter has been secretly meeting someone outside the walls.",
+  'An earthquake opened a fissure near the old cemetery. Best stay away.',
+  "Word is, the thieves' guild is recruiting. Not that I'd know anything about that.",
+  'Some say the forest is growing... expanding toward the village each year.',
 ];
 
-export class DialogueSystem {
-  generateGreeting(npc, playerRep) {
-    let pool;
-    if (playerRep > 30) pool = GREETINGS.friendly;
-    else if (playerRep < -30) pool = GREETINGS.hostile;
-    else pool = GREETINGS.neutral;
+const TOPIC_DIALOGUE = {
+  self: [
+    "I've been living here for as long as I can remember.",
+    'My work keeps me busy, but I cannot complain.',
+    "I used to travel, but those days are behind me now.",
+    "There's not much to tell, really. I'm just a simple {ROLE}.",
+    'I learned my trade from my father, and he from his.',
+    "Name's {FIRST}. {TITLE} is what they call me around here.",
+  ],
+  location: [
+    "This place has seen better days, but it's home.",
+    'The town was founded generations ago by settlers from the east.',
+    "Watch yourself around here. Not everyone's as friendly as me.",
+    "We're a small community, but we look out for each other.",
+    'The land around here is rich, if you know how to work it.',
+    'Travelers pass through here on their way to the capital.',
+  ],
+  faction: [
+    'The {FACTION} keeps things running around here, for better or worse.',
+    "I'm loyal to the {FACTION}, and they've done right by me.",
+    'Between you and me, the {FACTION} has too much power.',
+    'Without the {FACTION}, this place would fall apart.',
+    'The {FACTION}? I stay out of politics, friend.',
+  ],
+  quest: [
+    'Actually, now that you mention it, I could use some help.',
+    "There's a task I've been meaning to find someone for.",
+    "I might have something, but it won't be easy.",
+    'If you are looking for work, talk to the {FACTION}.',
+    'Nothing right now, but check back later.',
+  ],
+};
 
-    const rng = new SeededRNG(Date.now());
-    return { text: rng.random(pool), options: [] };
+export class DialogueSystem {
+  generateGreeting(npc, playerRep = 0) {
+    let templates;
+    let tone;
+    if (playerRep > 30) {
+      templates = GREETINGS.friendly;
+      tone = 'friendly';
+    } else if (playerRep < -30) {
+      templates = GREETINGS.hostile;
+      tone = 'hostile';
+    } else {
+      templates = GREETINGS.neutral;
+      tone = 'neutral';
+    }
+
+    const text = templates[Math.floor(Math.random() * templates.length)];
+    const options = this.generateOptions(npc, playerRep);
+
+    return { text, tone, options };
   }
 
-  generateOptions(npc, playerRep, gameContext) {
+  generateOptions(npc, playerRep = 0, gameContext = null) {
     const options = [];
 
     options.push({
       text: 'Tell me about this place.',
       action: 'lore',
-      hint: 'Learn about the area'
+      consequence: null,
     });
 
-    if (npc.role !== 'child' && npc.role !== 'beggar') {
+    if (playerRep >= -10) {
       options.push({
         text: 'Any work available?',
         action: 'quest',
-        hint: 'Get a quest'
+        consequence: null,
       });
     }
 
-    if (npc.shop) {
+    if ((npc.role === 'merchant' || npc.role === 'blacksmith') && playerRep >= -20) {
       options.push({
         text: 'Let me see your wares.',
         action: 'shop',
-        hint: 'Open shop'
+        consequence: null,
+      });
+    }
+
+    if (playerRep >= 0) {
+      options.push({
+        text: 'Heard any rumors?',
+        action: 'rumor',
+        consequence: null,
+      });
+    }
+
+    if (npc.role === 'priest' && playerRep >= -10) {
+      options.push({
+        text: 'I need healing.',
+        action: 'heal',
+        consequence: null,
+      });
+    }
+
+    if (npc.role === 'scholar' && playerRep >= 0) {
+      options.push({
+        text: 'What can you teach me?',
+        action: 'teach',
+        consequence: null,
+      });
+    }
+
+    if (npc.role === 'barkeep') {
+      options.push({
+        text: 'I need a room for the night.',
+        action: 'rest',
+        consequence: null,
+      });
+    }
+
+    if (npc.role === 'guard' && playerRep >= 10) {
+      options.push({
+        text: 'Any trouble in the area?',
+        action: 'bounty',
+        consequence: null,
       });
     }
 
     options.push({
-      text: 'Heard any rumors?',
-      action: 'rumor',
-      hint: 'Hear a rumor'
-    });
-
-    options.push({
       text: 'Goodbye.',
-      action: 'close'
+      action: 'exit',
+      consequence: null,
     });
 
     return options;
   }
 
-  generateRumor(rng, worldContext) {
-    let rumor = rng.random(RUMOR_TEMPLATES);
-    const locName = worldContext?.currentLocationName || 'this place';
-    rumor = rumor.replace('{LOCATION}', locName);
-    return rumor;
+  generateRumor(rng, worldContext = null) {
+    let template = rng.random(RUMOR_TEMPLATES);
+
+    const location = worldContext && worldContext.locations
+      ? rng.random(worldContext.locations)
+      : 'the old ruins';
+    const npcName = worldContext && worldContext.npcNames
+      ? rng.random(worldContext.npcNames)
+      : 'Old Tom';
+    const profession = rng.random([
+      'soldier', 'thief', 'wizard', 'noble', 'pirate', 'monk', 'assassin',
+      'knight', 'merchant prince', 'gladiator',
+    ]);
+
+    template = template.replace('{LOCATION}', location);
+    template = template.replace('{NPC_NAME}', npcName);
+    template = template.replace('{PROFESSION}', profession);
+
+    return template;
   }
 
-  modifyReputation(npc, amount, reason) {
-    npc.playerReputation = (npc.playerReputation || 0) + amount;
-    npc.memory.push({ date: Date.now(), event: reason, repChange: amount });
+  modifyReputation(npc, amount, reason = '') {
+    npc.playerReputation = Math.max(-100, Math.min(100, (npc.playerReputation || 0) + amount));
+    npc.memory.push({
+      type: 'reputation_change',
+      amount,
+      reason,
+      timestamp: Date.now(),
+    });
   }
 
-  getDialogue(npc, topic, playerRep) {
-    const rng = new SeededRNG(Date.now());
-    const topics = {
-      self: [
-        `I'm ${npc.name.first}, the ${npc.title}. Been here for years.`,
-        `Name's ${npc.name.first}. I work as a ${npc.role} around here.`,
-        `${npc.title} is my trade. It's honest work.`
-      ],
-      location: [
-        "This settlement has stood for generations.",
-        "It's a quiet place, mostly. Except when monsters show up.",
-        "We're a small community, but we look after our own."
-      ],
-      faction: [
-        "The factions around here are always squabbling.",
-        "Best to stay neutral, if you ask me.",
-        "Pick your allies carefully in these parts."
-      ]
-    };
-    const pool = topics[topic] || topics.self;
-    return rng.random(pool);
+  getDialogue(npc, topic, playerRep = 0) {
+    const templates = TOPIC_DIALOGUE[topic];
+    if (!templates) return 'I have nothing to say about that.';
+
+    let text = templates[Math.floor(Math.random() * templates.length)];
+    text = text.replace('{ROLE}', npc.role || 'person');
+    text = text.replace('{FACTION}', npc.faction || 'the powers that be');
+    text = text.replace('{FIRST}', npc.name ? npc.name.first : 'stranger');
+    text = text.replace('{TITLE}', npc.title || npc.role || 'worker');
+
+    return text;
   }
 }
 
-// ═══════════════════════════════════════════
-//  LORE GENERATOR
-// ═══════════════════════════════════════════
+// ============================================================================
+// LoreGenerator — Generates world history, backstories, and artifact lore
+// ============================================================================
 
 const WORLD_HISTORY_TEMPLATES = [
-  "The kingdom fell to {ENEMY} {YEARS} years ago, and we've never fully recovered.",
-  "A great plague swept through {REGION} a century past. Some say it was no natural sickness.",
-  "{FACTION_A} betrayed {FACTION_B} in the War of Shadows. The scars remain.",
-  "An ancient prophecy speaks of a hero who will unite the scattered realms.",
-  "The old gods abandoned these lands when the last temple was desecrated.",
-  "Long ago, a great wizard sealed an evil beneath the mountains.",
-  "The last dragon was slain {YEARS} years ago. Or so they say.",
-  "War between the northern and southern kingdoms shaped this land.",
-  "A meteor fell from the sky ages ago, creating the great crater lake.",
-  "The forest was once a thriving kingdom, before the curse took hold."
+  'The kingdom fell to {ENEMY} {YEARS} years ago, and the land has never fully recovered.',
+  'A great plague swept through {REGION}, killing nearly half the population.',
+  'The alliance between {FACTION1} and {FACTION2} was forged in blood during the Battle of {LOCATION}.',
+  'Long ago, a powerful wizard sealed an ancient evil beneath {LOCATION}, but the seals are weakening.',
+  '{FACTION1} and {FACTION2} fought a bitter war over control of the mines, leaving scars on the land.',
+  'The old king vanished mysteriously {YEARS} years ago. Some say he still walks the earth.',
+  'A comet streaked across the sky {YEARS} years ago, heralding an age of turmoil and change.',
+  'The great library of {LOCATION} burned in a fire set by zealots who feared forbidden knowledge.',
+  'The dwarven tunnels beneath the mountains were sealed after something was unearthed in the deep.',
+  'A great flood reshaped the coastline {YEARS} years ago, swallowing entire villages beneath the waves.',
+  'The elves retreated from the world after the betrayal at {LOCATION}, and few have been seen since.',
+  'An order of knights once protected the realm, but they were disbanded under accusations of treason.',
+  'The crown jewels were stolen {YEARS} years ago and never recovered. Some say they hold great power.',
+  'A volcanic eruption buried the ancient city of {LOCATION} under ash and stone.',
+  'The treaty that ended the Border Wars is said to have been signed in the blood of both kings.',
+  'Legends speak of a hero who slew a dragon at {LOCATION}, but scholars debate whether it truly happened.',
+  'A sect of dark cultists nearly opened a portal to the abyss before they were stopped by {FACTION1}.',
+  'The trade routes were established {YEARS} years ago, bringing prosperity but also new dangers.',
 ];
 
 const ARTIFACT_TEMPLATES = [
-  "This {ITEM} was forged by the legendary smith {SMITH}.",
-  "Legend says {ITEM} grants its wielder {POWER}.",
-  "Warning: {ITEM} is said to be cursed by an ancient sorcerer.",
-  "This relic dates back to the First Age of this world.",
-  "Many have sought {ITEM}. Few have survived the quest."
+  'This blade was forged by {SMITH} in the fires of Mount {MOUNTAIN}.',
+  'Legend says it grants {POWER} to its wielder, but at a terrible cost.',
+  'It was last seen in the hands of {HERO}, who carried it into the final battle.',
+  'The runes etched along its surface glow faintly in the presence of evil.',
+  'Crafted from star-metal that fell from the heavens {YEARS} years ago.',
+  'It is said to be one of seven artifacts created to hold back the darkness.',
+  'The enchantment was laid upon it by {SMITH}, the last of the great enchanters.',
+  'Those who carry it long enough begin to hear whispers from another age.',
+  'It was believed destroyed during the fall of {LOCATION}, yet here it remains.',
+  'The gem set in its hilt is said to contain the soul of a trapped demon.',
+  'Warriors have fought and died for centuries over possession of this relic.',
+  'It was a gift from the elven queen to a mortal champion, ages past.',
+  'Scholars believe it predates the current age by thousands of years.',
+  'Its true power can only be unlocked when brought to {LOCATION}.',
+  'The inscription reads: "May this weapon serve the just and smite the wicked."',
+  'It hums with a strange energy, as though it has a will of its own.',
+  'According to legend, it cannot be destroyed by any mortal means.',
 ];
 
-const LOCATION_HISTORY_TEMPLATES = [
-  "{LOCATION} was built as a {PURPOSE} over {YEARS} years ago.",
-  "They say {LOCATION} is haunted by the spirits of its founders.",
-  "The ruins of {LOCATION} hold secrets from a forgotten civilization.",
-  "{LOCATION} has changed hands many times. Each ruler left their mark.",
-  "Once a thriving hub, {LOCATION} fell into decline after the war.",
-  "Travelers have long known {LOCATION} as a safe haven on the road.",
-  "{LOCATION} was established by refugees fleeing the Great Calamity.",
-  "The founders of {LOCATION} chose this site for its natural defenses."
+const LOCATION_TEMPLATES = [
+  'Built as a {PURPOSE}, it has served the realm for {YEARS} years.',
+  'The ruins here date back to the First Age, when giants walked the earth.',
+  'This place was once a thriving hub of trade, before the roads shifted.',
+  'The locals avoid this area after dark, whispering of ghosts and worse.',
+  'A great battle was fought here {YEARS} years ago, and the land still bears the scars.',
+  'It was constructed by dwarven architects, renowned for their mastery of stone.',
+  'The well at its center is said to grant visions to those who drink from it.',
+  'Travelers have reported strange sounds emanating from deep underground.',
+  'Once the seat of a powerful lord, it fell into disrepair after the uprising.',
+  'The forest around it is unnaturally dense, as if the trees themselves guard a secret.',
+  'Built atop an ancient burial site, it has always had a dark reputation.',
+  'The walls bear faded murals depicting scenes from a forgotten mythology.',
+  'It served as a refuge during the Last War, sheltering hundreds of survivors.',
+  'The architecture suggests elven influence, though no elves live here now.',
+  'A natural hot spring beneath the foundation keeps the stone warm even in winter.',
+  'According to legend, a powerful artifact lies hidden somewhere within.',
+  'The stained glass windows depict the rise and fall of a civilization long gone.',
+  'It was abandoned after a mysterious illness swept through its inhabitants.',
 ];
 
 const NPC_BACKSTORY_TEMPLATES = [
-  "I used to be a soldier, before an injury forced me to settle down.",
-  "My family came from a distant land. We fled the troubles there.",
-  "I've lived here all my life. Wouldn't have it any other way.",
-  "Before this, I was an adventurer like you. Then I took an arrow...",
-  "I came here seeking fortune. Found something better — a home.",
-  "The road was my life for many years. I've seen things you wouldn't believe.",
-  "I was trained in the capital, but the politics drove me away.",
-  "My parents were {PROFESSION}s. I followed in their footsteps."
+  'I used to be a {PROFESSION} before I settled down here.',
+  'My family was from {PLACE}, but we had to flee when the wars came.',
+  'I lost everything in the great fire and had to start over from nothing.',
+  'My father taught me this trade, and his father before him.',
+  'I came here seeking fortune, but found something more valuable: peace.',
+  'I served in the militia during the Border Wars. Saw things I wish I could forget.',
+  'I was an orphan, raised by the priests at the temple.',
+  'I traveled the world for ten years before settling in this quiet corner.',
+  "There's a reason I left my old life behind, and I'd rather not speak of it.",
+  'I was apprenticed to a master craftsman who taught me everything I know.',
+  'My mother was a healer, and she passed her knowledge on to me.',
+  'I made my fortune in the gem trade, but lost it all to bad luck and worse friends.',
+  'I ran away from home as a child and never looked back.',
+  'I once served a noble house, but they fell from grace and I had to find my own way.',
+  'I found this place by accident and decided it was as good as anywhere to stay.',
+  'I was shipwrecked on the coast and wandered inland until I found civilization.',
+  'My family has lived here for seven generations. This land is in my blood.',
+  'I came here to escape a blood feud. So far, no one has found me.',
+  'I won this establishment in a game of cards. Best hand I ever played.',
+  'I was once a scholar, but the politics of the academy drove me away.',
 ];
 
-const LEGENDARY_SMITHS = ['Volundr','Durendal','Mjolnar','Caliburn','Hephaestus'];
-const POWERS = ['unmatched strength','true sight','immunity to fire','eternal youth','dominion over shadows'];
-const PURPOSES = ['fortress','trading post','monastery','watchtower','mining outpost','sanctuary','prison'];
-const PROFESSIONS = ['blacksmith','farmer','soldier','scholar','merchant','healer','hunter'];
+const LORE_ENEMIES = [
+  'the Dark Horde', 'an undead army', 'the Orc Clans', 'a dragon',
+  'a demonic incursion', 'the Shadow King', 'barbarian raiders',
+  'a powerful lich', 'the Crimson Legion',
+];
+
+const LORE_REGIONS = [
+  'the Northlands', 'the Eastern Reach', 'the Heartlands', 'the Southern Coast',
+  'the Western Marches', 'the Ironfoot Mountains', 'the Whisperwood',
+];
+
+const LORE_POWERS = [
+  'immense strength', 'the gift of foresight', 'invisibility', 'fire resistance',
+  'the ability to speak with the dead', 'enhanced speed', 'magical shielding',
+  'dominion over beasts', 'immunity to poison',
+];
+
+const LORE_SMITHS = [
+  'Durin the Elder', 'Master Aelindor', 'the Blind Forgemaster', 'Queen Isolde',
+  'Thargrim Steelhand', 'the ancient dwarves', 'an unnamed elven smith',
+];
+
+const LORE_HEROES = [
+  'King Aldric the Bold', 'the Champion of Dawn', 'Selene the Wanderer',
+  'Sir Roderick Ashford', 'the last Paladin', 'the legendary Thorin Stonehammer',
+];
+
+const LORE_MOUNTAINS = [
+  'Erebus', 'Ashfall', 'Thunderpeak', 'Dragonspire', 'Ironcrags', 'Frostholm',
+];
+
+const LORE_PURPOSES = [
+  'fortress', 'temple', 'trading post', 'mining outpost', 'watch tower',
+  'monastery', 'prison', 'royal retreat', 'sanctuary', 'library',
+];
+
+const LORE_PROFESSIONS = [
+  'soldier', 'sailor', 'thief', 'scholar', 'merchant', 'gladiator',
+  'monk', 'ranger', 'bard', 'knight', 'pirate', "wizard's apprentice",
+];
+
+const LORE_PLACES = [
+  'the capital city', 'a small fishing village', 'the northern frontier',
+  'across the sea', 'the elven forests', 'the dwarven holds', 'a faraway kingdom',
+  'the borderlands', 'the desert oasis', 'the mountain passes',
+];
 
 export class LoreGenerator {
-  generateWorldHistory(rng, factionNames, locationNames) {
-    const entries = [];
-    const count = rng.nextInt(5, 10);
+  _fillTemplate(rng, template, factionNames, locationNames) {
+    let text = template;
 
-    for (let i = 0; i < count; i++) {
-      let template = rng.random(WORLD_HISTORY_TEMPLATES);
-      template = template.replace('{ENEMY}', rng.random(factionNames.length ? factionNames : ['an ancient evil']));
-      template = template.replace('{YEARS}', rng.nextInt(50, 500).toString());
-      template = template.replace('{REGION}', rng.random(locationNames.length ? locationNames : ['the land']));
-      template = template.replace('{FACTION_A}', rng.random(factionNames.length ? factionNames : ['The Alliance']));
-      template = template.replace('{FACTION_B}', rng.random(factionNames.length ? factionNames : ['The Order']));
-      entries.push(template);
+    text = text.replace('{ENEMY}', rng.random(LORE_ENEMIES));
+    text = text.replace('{YEARS}', String(rng.nextInt(50, 500)));
+    text = text.replace('{REGION}', rng.random(LORE_REGIONS));
+    text = text.replace('{POWER}', rng.random(LORE_POWERS));
+    text = text.replace('{SMITH}', rng.random(LORE_SMITHS));
+    text = text.replace('{HERO}', rng.random(LORE_HEROES));
+    text = text.replace('{MOUNTAIN}', rng.random(LORE_MOUNTAINS));
+    text = text.replace('{PURPOSE}', rng.random(LORE_PURPOSES));
+    text = text.replace('{PROFESSION}', rng.random(LORE_PROFESSIONS));
+    text = text.replace('{PLACE}', rng.random(LORE_PLACES));
+
+    if (factionNames && factionNames.length > 0) {
+      text = text.replace('{FACTION1}', rng.random(factionNames));
+      text = text.replace('{FACTION2}', rng.random(factionNames));
+    } else {
+      text = text.replace('{FACTION1}', 'the Old Guard');
+      text = text.replace('{FACTION2}', 'the Northern Alliance');
     }
+
+    if (locationNames && locationNames.length > 0) {
+      text = text.replace(/{LOCATION}/g, rng.random(locationNames));
+    } else {
+      text = text.replace(/{LOCATION}/g, 'the ancient ruins');
+    }
+
+    return text;
+  }
+
+  generateWorldHistory(rng, factionNames = [], locationNames = []) {
+    const count = rng.nextInt(5, 10);
+    const shuffled = rng.shuffle(WORLD_HISTORY_TEMPLATES);
+    const entries = [];
+
+    for (let i = 0; i < count && i < shuffled.length; i++) {
+      entries.push({
+        era: rng.nextInt(1, 5),
+        text: this._fillTemplate(rng, shuffled[i], factionNames, locationNames),
+      });
+    }
+
+    entries.sort((a, b) => a.era - b.era);
     return entries;
   }
 
-  generateArtifactLore(rng, itemName) {
-    let template = rng.random(ARTIFACT_TEMPLATES);
-    template = template.replace(/{ITEM}/g, itemName);
-    template = template.replace('{SMITH}', rng.random(LEGENDARY_SMITHS));
-    template = template.replace('{POWER}', rng.random(POWERS));
-    return template;
+  generateArtifactLore(rng, itemName = 'this artifact') {
+    const template = rng.random(ARTIFACT_TEMPLATES);
+    const text = this._fillTemplate(rng, template, [], []);
+    return `${itemName}: ${text}`;
   }
 
-  generateLocationHistory(rng, locationName, locationType) {
-    let template = rng.random(LOCATION_HISTORY_TEMPLATES);
-    template = template.replace(/{LOCATION}/g, locationName || 'This place');
-    template = template.replace('{PURPOSE}', rng.random(PURPOSES));
-    template = template.replace('{YEARS}', rng.nextInt(50, 300).toString());
-    return template;
+  generateLocationHistory(rng, locationName = 'this place', locationType = 'ruins') {
+    const template = rng.random(LOCATION_TEMPLATES);
+    const text = this._fillTemplate(rng, template, [], [locationName]);
+    return `${locationName}: ${text}`;
   }
 
   generateNPCBackstory(rng, npc) {
-    let template = rng.random(NPC_BACKSTORY_TEMPLATES);
-    template = template.replace('{PROFESSION}', rng.random(PROFESSIONS));
-    return template;
+    const template = rng.random(NPC_BACKSTORY_TEMPLATES);
+    const text = this._fillTemplate(rng, template, [], []);
+    const name = npc && npc.name ? npc.name.full : 'Unknown';
+    return `${name}: "${text}"`;
   }
 }
 
-// ═══════════════════════════════════════════
-//  PLAYER
-// ═══════════════════════════════════════════
+// ============================================================================
+// Player — The player character entity
+// ============================================================================
 
-const CLASS_STATS = {
-  warrior: { str: 16, dex: 12, con: 15, int: 8, wis: 10, cha: 10, hp: 50, mana: 10 },
-  mage:    { str: 8, dex: 10, con: 10, int: 16, wis: 14, cha: 10, hp: 30, mana: 50 },
-  rogue:   { str: 10, dex: 16, con: 11, int: 12, wis: 10, cha: 14, hp: 35, mana: 20 },
-  ranger:  { str: 13, dex: 14, con: 13, int: 10, wis: 13, cha: 10, hp: 40, mana: 25 }
+const CLASS_COLORS = {
+  warrior: '#dd4444',
+  mage:    '#6666ee',
+  rogue:   '#aaaa22',
+  ranger:  '#44aa44',
 };
 
-const RACE_BONUSES = {
-  human:    { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 },
-  elf:      { str: -1, dex: 2, con: -1, int: 2, wis: 1, cha: 1 },
-  dwarf:    { str: 2, dex: -1, con: 2, int: 0, wis: 1, cha: -1 },
-  orc:      { str: 3, dex: 0, con: 2, int: -2, wis: -1, cha: -2 },
-  halfling: { str: -2, dex: 3, con: 0, int: 1, wis: 1, cha: 2 }
+const CLASS_BASE_STATS = {
+  warrior: { str: 16, dex: 10, con: 14, int: 8,  wis: 10, cha: 10 },
+  mage:    { str: 8,  dex: 10, con: 10, int: 16, wis: 14, cha: 10 },
+  rogue:   { str: 10, dex: 16, con: 10, int: 10, wis: 8,  cha: 14 },
+  ranger:  { str: 12, dex: 14, con: 12, int: 10, wis: 12, cha: 10 },
 };
 
 const CLASS_ABILITIES = {
-  warrior: [{ name: 'Power Strike', manaCost: 5, damage: 1.5, cooldown: 2, description: 'A mighty blow dealing 150% damage.' }],
-  mage:    [{ name: 'Fireball', manaCost: 15, damage: 2.0, cooldown: 3, description: 'Hurl a ball of flame for 200% damage.' }],
-  rogue:   [{ name: 'Backstab', manaCost: 8, damage: 2.5, cooldown: 3, description: 'Strike from shadows for 250% damage.' }],
-  ranger:  [{ name: 'Arrow Rain', manaCost: 10, damage: 1.3, cooldown: 2, description: 'Rain arrows for 130% damage.' }]
+  warrior: [
+    { name: 'Power Strike', manaCost: 5, damage: 8, type: 'melee', description: 'A devastating melee blow.' },
+    { name: 'Shield Bash', manaCost: 3, damage: 4, type: 'melee', description: 'Stun an enemy with your shield.' },
+  ],
+  mage: [
+    { name: 'Fireball', manaCost: 8, damage: 12, type: 'ranged', description: 'Hurl a ball of fire at your foes.' },
+    { name: 'Frost Nova', manaCost: 6, damage: 6, type: 'aoe', description: 'Freeze nearby enemies.' },
+    { name: 'Arcane Shield', manaCost: 4, damage: 0, type: 'buff', description: 'Create a magical barrier.' },
+  ],
+  rogue: [
+    { name: 'Backstab', manaCost: 5, damage: 14, type: 'melee', description: 'Strike from the shadows for massive damage.' },
+    { name: 'Smoke Bomb', manaCost: 4, damage: 0, type: 'utility', description: 'Vanish in a cloud of smoke.' },
+  ],
+  ranger: [
+    { name: 'Aimed Shot', manaCost: 5, damage: 10, type: 'ranged', description: 'A carefully aimed arrow.' },
+    { name: 'Trap', manaCost: 3, damage: 6, type: 'utility', description: 'Set a trap for unsuspecting enemies.' },
+    { name: "Nature's Mend", manaCost: 6, damage: 0, type: 'heal', description: 'Call upon nature to heal wounds.' },
+  ],
 };
 
-const STARTING_GEAR = {
-  warrior: { mainHand: { id: 'start_sword', name: 'Iron Sword', type: 'weapon', subType: 'sword', char: '/', color: '#AAAAAA', value: 30, stats: { attack: 5 }, description: 'A sturdy iron sword.' } },
-  mage:    { mainHand: { id: 'start_staff', name: 'Wooden Staff', type: 'weapon', subType: 'staff', char: '|', color: '#AAAA00', value: 20, stats: { attack: 2, int: 3 }, description: 'A simple wooden staff.' } },
-  rogue:   { mainHand: { id: 'start_dagger', name: 'Steel Dagger', type: 'weapon', subType: 'dagger', char: '-', color: '#AAAAAA', value: 25, stats: { attack: 4 }, description: 'A sharp steel dagger.' } },
-  ranger:  { mainHand: { id: 'start_bow', name: 'Short Bow', type: 'weapon', subType: 'bow', char: '}', color: '#AAAA00', value: 25, stats: { attack: 4 }, description: 'A reliable short bow.' } }
+const CLASS_STARTING_GEAR = {
+  warrior: {
+    mainHand: { id: 'start_sword', name: 'Worn Longsword', type: 'weapon', subtype: 'sword', char: '/', color: '#aaaaaa', rarity: 'common', value: 10, stats: { attack: 4 }, description: 'A battered but serviceable longsword.' },
+    chest: { id: 'start_chain', name: 'Rusty Chainmail', type: 'armor', subtype: 'chestplate', char: '[', color: '#888888', rarity: 'common', value: 15, stats: { defense: 3 }, description: 'Old chainmail with a few missing links.' },
+  },
+  mage: {
+    mainHand: { id: 'start_staff', name: 'Gnarled Staff', type: 'weapon', subtype: 'staff', char: '~', color: '#8866aa', rarity: 'common', value: 8, stats: { attack: 2, mana: 10 }, description: 'A twisted wooden staff that hums with faint magic.' },
+  },
+  rogue: {
+    mainHand: { id: 'start_dagger', name: 'Chipped Dagger', type: 'weapon', subtype: 'dagger', char: '-', color: '#aaaaaa', rarity: 'common', value: 6, stats: { attack: 3 }, description: 'A small but sharp dagger.' },
+    chest: { id: 'start_leather', name: 'Worn Leather Armor', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 10, stats: { defense: 1 }, description: 'Cracked leather armor offering modest protection.' },
+  },
+  ranger: {
+    mainHand: { id: 'start_bow', name: 'Short Bow', type: 'weapon', subtype: 'bow', char: '}', color: '#aa8844', rarity: 'common', value: 8, stats: { attack: 3 }, description: 'A simple but reliable short bow.' },
+    chest: { id: 'start_hide', name: 'Hide Tunic', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 8, stats: { defense: 2 }, description: 'A sturdy tunic made from animal hides.' },
+  },
 };
 
 export class Player {
-  constructor(name, race, playerClass) {
+  constructor(name, race = 'human', playerClass = 'warrior') {
     this.name = name;
     this.race = race;
     this.playerClass = playerClass;
     this.char = '@';
-    this.color = playerClass === 'warrior' ? '#FF5555' : playerClass === 'mage' ? '#5555FF' :
-      playerClass === 'rogue' ? '#55FF55' : '#FFFF55';
-
+    this.color = CLASS_COLORS[playerClass] || '#ffffff';
     this.position = { x: 0, y: 0 };
 
-    const base = CLASS_STATS[playerClass] || CLASS_STATS.warrior;
-    const bonus = RACE_BONUSES[race] || RACE_BONUSES.human;
-
+    const base = CLASS_BASE_STATS[playerClass] || CLASS_BASE_STATS.warrior;
     this.stats = {
-      hp: base.hp, maxHp: base.hp,
-      mana: base.mana, maxMana: base.mana,
-      str: base.str + bonus.str,
-      dex: base.dex + bonus.dex,
-      con: base.con + bonus.con,
-      int: base.int + bonus.int,
-      wis: base.wis + bonus.wis,
-      cha: base.cha + bonus.cha,
-      level: 1, xp: 0, xpToNext: 100
+      hp: 20 + base.con,
+      maxHp: 20 + base.con,
+      mana: 10 + base.int,
+      maxMana: 10 + base.int,
+      str: base.str,
+      dex: base.dex,
+      con: base.con,
+      int: base.int,
+      wis: base.wis,
+      cha: base.cha,
+      level: 1,
+      xp: 0,
+      xpToNext: 100,
     };
 
     this.equipment = {
-      head: null, chest: null, hands: null, legs: null,
-      feet: null, mainHand: null, offHand: null, ring: null, amulet: null
+      head: null,
+      chest: null,
+      hands: null,
+      legs: null,
+      feet: null,
+      mainHand: null,
+      offHand: null,
+      ring: null,
+      amulet: null,
     };
 
     // Equip starting gear
-    const gear = STARTING_GEAR[playerClass];
-    if (gear) {
-      for (const [slot, item] of Object.entries(gear)) {
-        this.equipment[slot] = { ...item };
-      }
+    const startGear = CLASS_STARTING_GEAR[playerClass] || {};
+    for (const slot of Object.keys(startGear)) {
+      this.equipment[slot] = { ...startGear[slot] };
     }
 
     this.inventory = [];
-    this.abilities = [...(CLASS_ABILITIES[playerClass] || [])];
+    this.abilities = (CLASS_ABILITIES[playerClass] || []).map(a => ({ ...a }));
     this.quests = { active: [], completed: [] };
     this.knownLocations = new Set();
     this.gold = 50;
   }
 
-  getAttackPower() {
-    let atk = Math.floor(this.stats.str / 2);
-    if (this.equipment.mainHand && this.equipment.mainHand.stats) {
-      atk += this.equipment.mainHand.stats.attack || 0;
-    }
-    return atk;
-  }
-
-  getDefense() {
-    let def = Math.floor(this.stats.con / 3);
-    for (const slot of ['head', 'chest', 'hands', 'legs', 'feet', 'offHand']) {
-      const item = this.equipment[slot];
-      if (item && item.stats) {
-        def += item.stats.defense || 0;
-      }
-    }
-    return def;
-  }
-
-  heal(amount) {
-    this.stats.hp = Math.min(this.stats.hp + amount, this.stats.maxHp);
-  }
-
-  takeDamage(amount) {
-    this.stats.hp = Math.max(0, this.stats.hp - amount);
-  }
-
-  isDead() {
-    return this.stats.hp <= 0;
-  }
-
   addXP(amount) {
     this.stats.xp += amount;
+    const leveled = [];
     while (this.stats.xp >= this.stats.xpToNext) {
       this.stats.xp -= this.stats.xpToNext;
       this.stats.level++;
       this.stats.xpToNext = this.stats.level * 100;
-      this.stats.maxHp += 5 + Math.floor(this.stats.con / 3);
+
+      // Stat gains on level up
+      this.stats.maxHp += 5 + Math.floor(this.stats.con / 4);
       this.stats.hp = this.stats.maxHp;
-      this.stats.maxMana += 3 + Math.floor(this.stats.int / 4);
+      this.stats.maxMana += 2 + Math.floor(this.stats.int / 4);
       this.stats.mana = this.stats.maxMana;
       this.stats.str += 1;
       this.stats.dex += 1;
+      this.stats.con += 1;
+      this.stats.int += 1;
+      this.stats.wis += 1;
+      this.stats.cha += 1;
+
+      leveled.push(this.stats.level);
     }
+    return leveled;
+  }
+
+  getAttackPower() {
+    let power = Math.floor(this.stats.str / 2);
+    for (const slot of Object.values(this.equipment)) {
+      if (slot && slot.stats && slot.stats.attack) {
+        power += slot.stats.attack;
+      }
+    }
+    return power;
+  }
+
+  getDefense() {
+    let defense = Math.floor(this.stats.con / 4);
+    for (const slot of Object.values(this.equipment)) {
+      if (slot && slot.stats && slot.stats.defense) {
+        defense += slot.stats.defense;
+      }
+    }
+    return defense;
+  }
+
+  heal(amount) {
+    this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + amount);
+  }
+
+  takeDamage(amount) {
+    const mitigated = Math.max(1, amount - this.getDefense());
+    this.stats.hp -= mitigated;
+    return mitigated;
   }
 
   addItem(item) {
-    if (this.inventory.length >= 20) return false;
+    if (this.inventory.length >= 20) {
+      return false;
+    }
     this.inventory.push(item);
     return true;
   }
 
   removeItem(itemId) {
-    this.inventory = this.inventory.filter(i => i.id !== itemId);
+    const idx = this.inventory.findIndex(i => i.id === itemId);
+    if (idx === -1) return null;
+    return this.inventory.splice(idx, 1)[0];
   }
 
   equip(item) {
-    let slot = null;
-    if (item.type === 'weapon') slot = 'mainHand';
-    else if (item.type === 'armor') {
-      const subSlots = { helmet: 'head', chestplate: 'chest', gloves: 'hands', leggings: 'legs', boots: 'feet', shield: 'offHand' };
-      slot = subSlots[item.subType] || 'chest';
-    }
-    if (!slot) return;
+    const slotMap = {
+      sword: 'mainHand', axe: 'mainHand', mace: 'mainHand', dagger: 'mainHand',
+      staff: 'mainHand', bow: 'mainHand',
+      helmet: 'head', chestplate: 'chest', gloves: 'hands', leggings: 'legs',
+      boots: 'feet', shield: 'offHand',
+      ring: 'ring', amulet: 'amulet',
+    };
 
-    // Unequip current
-    if (this.equipment[slot]) {
-      this.inventory.push(this.equipment[slot]);
+    const slot = slotMap[item.subtype] || slotMap[item.type];
+    if (!slot) return false;
+
+    // Unequip current item in that slot back to inventory
+    const current = this.equipment[slot];
+    if (current) {
+      if (!this.addItem(current)) return false;
     }
-    this.equipment[slot] = item;
+
+    // Remove new item from inventory and equip it
     this.removeItem(item.id);
+    this.equipment[slot] = item;
+    return true;
   }
 
   unequip(slot) {
-    if (this.equipment[slot]) {
-      if (this.inventory.length >= 20) return false;
-      this.inventory.push(this.equipment[slot]);
-      this.equipment[slot] = null;
-      return true;
-    }
-    return false;
+    const item = this.equipment[slot];
+    if (!item) return false;
+    if (!this.addItem(item)) return false;
+    this.equipment[slot] = null;
+    return true;
   }
 
-  isEquipped(item) {
-    return Object.values(this.equipment).some(e => e && e.id === item.id);
+  isDead() {
+    return this.stats.hp <= 0;
   }
 }
 
-// ═══════════════════════════════════════════
-//  ITEM GENERATOR
-// ═══════════════════════════════════════════
+// ============================================================================
+// ItemGenerator — Generates weapons, armor, potions, scrolls, and more
+// ============================================================================
+
+const WEAPON_SUBTYPES = {
+  sword:  { char: '/', baseDmg: 5, name: 'Sword' },
+  axe:    { char: '\\', baseDmg: 6, name: 'Axe' },
+  mace:   { char: '|', baseDmg: 5, name: 'Mace' },
+  dagger: { char: '-', baseDmg: 3, name: 'Dagger' },
+  staff:  { char: '~', baseDmg: 3, name: 'Staff' },
+  bow:    { char: '}', baseDmg: 4, name: 'Bow' },
+};
+
+const ARMOR_SUBTYPES = {
+  helmet:     { char: '^', baseDef: 2, name: 'Helmet' },
+  chestplate: { char: '[', baseDef: 4, name: 'Chestplate' },
+  gloves:     { char: '{', baseDef: 1, name: 'Gloves' },
+  leggings:   { char: '=', baseDef: 3, name: 'Leggings' },
+  boots:      { char: '_', baseDef: 1, name: 'Boots' },
+  shield:     { char: ']', baseDef: 3, name: 'Shield' },
+};
 
 const ITEM_PREFIXES = [
-  { name: 'Rusty', stats: { attack: -1 }, valueMod: 0.5 },
-  { name: 'Iron', stats: { attack: 1 }, valueMod: 1.0 },
-  { name: 'Steel', stats: { attack: 2 }, valueMod: 1.5 },
-  { name: 'Blessed', stats: { attack: 2, defense: 1 }, valueMod: 2.0 },
-  { name: 'Cursed', stats: { attack: 3 }, valueMod: 1.2 },
-  { name: 'Flaming', stats: { attack: 3 }, valueMod: 2.5 },
-  { name: 'Frost', stats: { attack: 2, defense: 1 }, valueMod: 2.5 },
-  { name: 'Keen', stats: { attack: 2 }, valueMod: 1.8 },
-  { name: 'Brutal', stats: { attack: 4 }, valueMod: 2.0 },
-  { name: 'Ancient', stats: { attack: 3, defense: 2 }, valueMod: 3.0 },
-  { name: 'Enchanted', stats: { attack: 2, int: 2 }, valueMod: 2.5 },
-  { name: 'Masterwork', stats: { attack: 3 }, valueMod: 2.0 },
-  { name: 'Shadow', stats: { attack: 2, dex: 1 }, valueMod: 2.0 },
-  { name: 'Gilded', stats: { attack: 1 }, valueMod: 3.0 },
-  { name: 'Crude', stats: { attack: -2 }, valueMod: 0.3 }
+  { name: 'Rusty',     statMul: 0.7 },
+  { name: 'Iron',      statMul: 1.0 },
+  { name: 'Steel',     statMul: 1.2 },
+  { name: 'Blessed',   statMul: 1.3 },
+  { name: 'Cursed',    statMul: 1.1 },
+  { name: 'Flaming',   statMul: 1.4 },
+  { name: 'Frost',     statMul: 1.4 },
+  { name: 'Keen',      statMul: 1.3 },
+  { name: 'Brutal',    statMul: 1.5 },
+  { name: 'Radiant',   statMul: 1.6 },
+  { name: 'Shadow',    statMul: 1.5 },
+  { name: 'Ancient',   statMul: 1.7 },
+  { name: 'Gilded',    statMul: 1.3 },
+  { name: 'Volcanic',  statMul: 1.8 },
+  { name: 'Celestial', statMul: 2.0 },
 ];
 
 const ITEM_SUFFIXES = [
-  { name: 'of Might', stats: { str: 2 }, valueMod: 1.5 },
-  { name: 'of Speed', stats: { dex: 2 }, valueMod: 1.5 },
-  { name: 'of Wisdom', stats: { wis: 2 }, valueMod: 1.5 },
-  { name: 'of the Bear', stats: { con: 3, str: 1 }, valueMod: 2.0 },
-  { name: 'of Flames', stats: { attack: 2 }, valueMod: 1.8 },
-  { name: 'of the Eagle', stats: { dex: 2, wis: 1 }, valueMod: 1.8 },
-  { name: 'of Protection', stats: { defense: 3 }, valueMod: 2.0 },
-  { name: 'of the Magi', stats: { int: 3 }, valueMod: 2.0 },
-  { name: 'of Stealth', stats: { dex: 3 }, valueMod: 1.8 },
-  { name: 'of Valor', stats: { str: 2, con: 1 }, valueMod: 1.5 },
-  { name: 'of the Phoenix', stats: { hp: 10 }, valueMod: 2.5 },
-  { name: 'of Life', stats: { hp: 5, con: 1 }, valueMod: 1.8 },
-  { name: 'of the Storm', stats: { attack: 3 }, valueMod: 2.0 },
-  { name: 'of Shadow', stats: { dex: 2 }, valueMod: 1.5 },
-  { name: 'of the Void', stats: { int: 2, wis: 2 }, valueMod: 2.5 }
+  { name: 'of Might',       bonus: { str: 2 } },
+  { name: 'of Speed',       bonus: { dex: 2 } },
+  { name: 'of Wisdom',      bonus: { wis: 2 } },
+  { name: 'of the Bear',    bonus: { con: 3 } },
+  { name: 'of Flames',      bonus: { attack: 3 } },
+  { name: 'of Frost',       bonus: { defense: 2 } },
+  { name: 'of the Eagle',   bonus: { dex: 3 } },
+  { name: 'of the Ox',      bonus: { str: 3 } },
+  { name: 'of Intellect',   bonus: { int: 2 } },
+  { name: 'of Vitality',    bonus: { hp: 10 } },
+  { name: 'of the Wolf',    bonus: { attack: 2 } },
+  { name: 'of Warding',     bonus: { defense: 3 } },
+  { name: 'of the Ages',    bonus: { wis: 3, int: 2 } },
+  { name: 'of Slaying',     bonus: { attack: 5 } },
+  { name: 'of the Phoenix', bonus: { hp: 15, str: 1 } },
 ];
 
-const WEAPON_BASES = [
-  { name: 'Sword', subType: 'sword', char: '/', attack: 5, value: 30 },
-  { name: 'Axe', subType: 'axe', char: '\\', attack: 6, value: 35 },
-  { name: 'Mace', subType: 'mace', char: '!', attack: 5, value: 28 },
-  { name: 'Dagger', subType: 'dagger', char: '-', attack: 3, value: 15 },
-  { name: 'Staff', subType: 'staff', char: '|', attack: 3, value: 20 },
-  { name: 'Bow', subType: 'bow', char: '}', attack: 4, value: 25 },
-  { name: 'Spear', subType: 'spear', char: '/', attack: 5, value: 30 },
-  { name: 'Hammer', subType: 'hammer', char: 'T', attack: 7, value: 40 }
+const RARITY_MULTIPLIERS = {
+  common:    { stat: 1.0, value: 1.0 },
+  uncommon:  { stat: 1.3, value: 2.0 },
+  rare:      { stat: 1.7, value: 4.0 },
+  epic:      { stat: 2.2, value: 8.0 },
+  legendary: { stat: 3.0, value: 16.0 },
+};
+
+const RARITY_COLORS = {
+  common:    '#aaaaaa',
+  uncommon:  '#44cc44',
+  rare:      '#4488ff',
+  epic:      '#bb44ee',
+  legendary: '#ffaa00',
+};
+
+const POTION_BASES = [
+  { name: 'Healing Potion',  subtype: 'healing',  color: '#ff4444', effect: { heal: 20 },              value: 15, description: 'A vial of crimson liquid that restores health.' },
+  { name: 'Mana Potion',     subtype: 'mana',     color: '#4444ff', effect: { mana: 20 },              value: 15, description: 'A vial of glowing blue liquid that restores mana.' },
+  { name: 'Strength Potion', subtype: 'strength', color: '#ff8800', effect: { str: 3, duration: 50 },  value: 25, description: 'An orange brew that temporarily boosts strength.' },
+  { name: 'Poison Vial',     subtype: 'poison',   color: '#44ff44', effect: { damage: 15 },            value: 20, description: 'A sickly green liquid. Probably not for drinking.' },
 ];
 
-const ARMOR_BASES = [
-  { name: 'Helmet', subType: 'helmet', char: '^', defense: 2, value: 20 },
-  { name: 'Chestplate', subType: 'chestplate', char: '[', defense: 5, value: 50 },
-  { name: 'Gloves', subType: 'gloves', char: '{', defense: 1, value: 12 },
-  { name: 'Leggings', subType: 'leggings', char: '=', defense: 3, value: 30 },
-  { name: 'Boots', subType: 'boots', char: '_', defense: 2, value: 18 },
-  { name: 'Shield', subType: 'shield', char: ']', defense: 4, value: 35 }
+const SCROLL_BASES = [
+  { name: 'Scroll of Fireball',    effect: 'fireball',  damage: 20, value: 30, description: 'Unleash a burst of flame upon reading.' },
+  { name: 'Scroll of Teleport',    effect: 'teleport',  damage: 0,  value: 40, description: 'Instantly relocate to a random position on the map.' },
+  { name: 'Scroll of Identify',    effect: 'identify',  damage: 0,  value: 20, description: 'Reveals the true nature of an item.' },
+  { name: 'Scroll of Enchantment', effect: 'enchant',   damage: 0,  value: 50, description: 'Enhance an item with magical properties.' },
+  { name: 'Scroll of Mapping',     effect: 'map',       damage: 0,  value: 25, description: 'Reveals the layout of the current floor.' },
+  { name: 'Scroll of Lightning',   effect: 'lightning', damage: 25, value: 35, description: 'A bolt of lightning strikes the nearest enemy.' },
 ];
 
-const POTION_TYPES = [
-  { name: 'Healing Potion', subType: 'healing', char: '!', color: '#FF5555', stats: { hp: 20 }, value: 15 },
-  { name: 'Mana Potion', subType: 'mana', char: '!', color: '#5555FF', stats: { mana: 20 }, value: 15 },
-  { name: 'Strength Potion', subType: 'strength', char: '!', color: '#FFAA00', stats: { str: 3 }, value: 25 },
-  { name: 'Speed Potion', subType: 'speed', char: '!', color: '#55FF55', stats: { dex: 3 }, value: 25 },
-  { name: 'Antidote', subType: 'antidote', char: '!', color: '#55FFFF', stats: { hp: 10 }, value: 10 },
-  { name: 'Greater Healing Potion', subType: 'healing', char: '!', color: '#FF5555', stats: { hp: 50 }, value: 40 }
+const FOOD_BASES = [
+  { name: 'Bread Loaf',      heal: 5,  value: 3,  description: 'A simple loaf of bread. Filling enough.' },
+  { name: 'Cheese Wheel',    heal: 8,  value: 5,  description: 'A hearty wedge of aged cheese.' },
+  { name: 'Dried Meat',      heal: 10, value: 6,  description: 'Salted and preserved strips of meat.' },
+  { name: 'Elven Waybread',  heal: 20, value: 15, description: 'Light and nourishing. A single bite sustains for a day.' },
+  { name: 'Mushroom Stew',   heal: 12, value: 8,  description: 'A warm bowl of earthy mushroom stew.' },
+];
+
+const MATERIAL_BASES = [
+  { name: 'Iron Ore',       value: 5,  description: 'A chunk of raw iron ore.' },
+  { name: 'Gold Nugget',    value: 25, description: 'A gleaming nugget of gold.' },
+  { name: 'Gemstone',       value: 40, description: 'An uncut gemstone with potential.' },
+  { name: 'Dragon Scale',   value: 80, description: 'A scale from a mighty dragon. Very rare.' },
+  { name: 'Mithril Shard',  value: 60, description: 'A fragment of the legendary mithril metal.' },
+  { name: 'Leather Hide',   value: 8,  description: 'A cured animal hide, ready for crafting.' },
+  { name: 'Enchanted Dust', value: 30, description: 'Sparkling dust infused with magical energy.' },
+  { name: 'Bone Fragment',  value: 3,  description: 'A bleached piece of bone. Might be useful.' },
+];
+
+const ARTIFACT_BASES = [
+  { name: 'Crown of the Forgotten King', stats: { int: 5, wis: 5, cha: 5 },  description: 'A crown worn by a king whose name has been lost to time.' },
+  { name: 'Orb of Eternal Night',        stats: { int: 8, attack: 5 },       description: 'A sphere of pure darkness that pulses with malevolent energy.' },
+  { name: 'Blade of the First Dawn',     stats: { attack: 12, str: 4 },      description: 'A radiant sword said to have been forged at the dawn of creation.' },
+  { name: 'Amulet of the Void',          stats: { defense: 6, wis: 6 },      description: 'An amulet that seems to absorb light around it.' },
+  { name: 'Ring of the Undying',         stats: { hp: 30, con: 5 },           description: 'A ring that pulses with life force, warding off death itself.' },
+  { name: 'Gauntlets of the Titan',      stats: { str: 8, attack: 4 },       description: 'Massive gauntlets that grant the strength of a giant.' },
 ];
 
 export class ItemGenerator {
-  constructor() {
-    this.nextId = 1;
-  }
-
-  generate(rng, type, rarity, depth) {
-    const id = `item_${this.nextId++}_${rng.nextInt(1000, 9999)}`;
-    rarity = rarity || 'common';
-    depth = depth || 1;
+  generate(rng, type = 'weapon', rarity = 'common', depth = 1) {
+    const rarityMul = RARITY_MULTIPLIERS[rarity] || RARITY_MULTIPLIERS.common;
+    const depthScale = 1 + depth * 0.1;
 
     switch (type) {
-      case 'weapon': return this.generateWeapon(rng, rarity, depth, id);
-      case 'armor': return this.generateArmor(rng, rarity, depth, id);
-      case 'potion': return this.generatePotion(rng, depth, id);
-      default: return this.generateMisc(rng, depth, id);
+      case 'weapon':   return this._generateWeapon(rng, rarity, rarityMul, depthScale);
+      case 'armor':    return this._generateArmor(rng, rarity, rarityMul, depthScale);
+      case 'potion':   return this._generatePotion(rng, rarity);
+      case 'scroll':   return this._generateScroll(rng, rarity);
+      case 'food':     return this._generateFood(rng);
+      case 'ring':     return this._generateAccessory(rng, 'ring', '=', rarity, rarityMul, depthScale);
+      case 'amulet':   return this._generateAccessory(rng, 'amulet', '"', rarity, rarityMul, depthScale);
+      case 'material': return this._generateMaterial(rng);
+      case 'artifact': return this._generateArtifact(rng, depthScale);
+      default:         return this._generateWeapon(rng, rarity, rarityMul, depthScale);
     }
   }
 
-  generateWeapon(rng, rarity, depth, id) {
-    const base = rng.random(WEAPON_BASES);
-    const depthScale = 1 + (depth - 1) * 0.2;
+  _generateWeapon(rng, rarity, rarityMul, depthScale) {
+    const subtypeKeys = Object.keys(WEAPON_SUBTYPES);
+    const subtypeKey = rng.random(subtypeKeys);
+    const subtype = WEAPON_SUBTYPES[subtypeKey];
 
-    let name = base.name;
-    let value = Math.round(base.value * depthScale);
-    const stats = { attack: Math.round(base.attack * depthScale) };
-    let color = '#AAAAAA';
+    let name = subtype.name;
+    let prefix = null;
+    let suffix = null;
+    const stats = {};
 
-    if (rarity !== 'common' && rng.chance(0.7)) {
-      const prefix = rng.random(ITEM_PREFIXES);
-      name = prefix.name + ' ' + name;
-      value = Math.round(value * prefix.valueMod);
-      Object.entries(prefix.stats).forEach(([k, v]) => stats[k] = (stats[k] || 0) + v);
-      color = '#55FF55';
+    const baseAttack = Math.round(subtype.baseDmg * rarityMul.stat * depthScale);
+    stats.attack = baseAttack;
+
+    if (rarity !== 'common') {
+      if (rng.chance(0.7)) {
+        prefix = rng.random(ITEM_PREFIXES);
+        stats.attack = Math.round(stats.attack * prefix.statMul);
+      }
+      if (rng.chance(0.5)) {
+        suffix = rng.random(ITEM_SUFFIXES);
+        for (const [k, v] of Object.entries(suffix.bonus)) {
+          stats[k] = (stats[k] || 0) + v;
+        }
+      }
     }
 
-    if ((rarity === 'rare' || rarity === 'epic' || rarity === 'legendary') && rng.chance(0.6)) {
-      const suffix = rng.random(ITEM_SUFFIXES);
-      name = name + ' ' + suffix.name;
-      value = Math.round(value * suffix.valueMod);
-      Object.entries(suffix.stats).forEach(([k, v]) => stats[k] = (stats[k] || 0) + v);
-      color = rarity === 'rare' ? '#5555FF' : rarity === 'epic' ? '#FF55FF' : '#FFFF55';
-    }
+    if (prefix) name = `${prefix.name} ${name}`;
+    if (suffix) name = `${name} ${suffix.name}`;
+
+    const value = Math.round(10 * rarityMul.value * depthScale);
 
     return {
-      id, name, type: 'weapon', subType: base.subType,
-      char: base.char, color, rarity, value, stats,
-      description: `A ${rarity} ${base.name.toLowerCase()}. Attack: ${stats.attack}`
+      id: nextId('item'),
+      name,
+      type: 'weapon',
+      subtype: subtypeKey,
+      rarity,
+      char: subtype.char,
+      color: RARITY_COLORS[rarity],
+      value,
+      stats,
+      description: `A ${rarity} ${subtypeKey} suitable for combat.`,
     };
   }
 
-  generateArmor(rng, rarity, depth, id) {
-    const base = rng.random(ARMOR_BASES);
-    const depthScale = 1 + (depth - 1) * 0.2;
+  _generateArmor(rng, rarity, rarityMul, depthScale) {
+    const subtypeKeys = Object.keys(ARMOR_SUBTYPES);
+    const subtypeKey = rng.random(subtypeKeys);
+    const subtype = ARMOR_SUBTYPES[subtypeKey];
 
-    let name = base.name;
-    let value = Math.round(base.value * depthScale);
-    const stats = { defense: Math.round(base.defense * depthScale) };
-    let color = '#AAAAAA';
+    let name = subtype.name;
+    let prefix = null;
+    let suffix = null;
+    const stats = {};
 
-    if (rarity !== 'common' && rng.chance(0.7)) {
-      const prefix = rng.random(ITEM_PREFIXES);
-      name = prefix.name + ' ' + name;
-      value = Math.round(value * prefix.valueMod);
-      Object.entries(prefix.stats).forEach(([k, v]) => stats[k] = (stats[k] || 0) + v);
-      color = '#55FF55';
+    const baseDef = Math.round(subtype.baseDef * rarityMul.stat * depthScale);
+    stats.defense = baseDef;
+
+    if (rarity !== 'common') {
+      if (rng.chance(0.7)) {
+        prefix = rng.random(ITEM_PREFIXES);
+        stats.defense = Math.round(stats.defense * prefix.statMul);
+      }
+      if (rng.chance(0.5)) {
+        suffix = rng.random(ITEM_SUFFIXES);
+        for (const [k, v] of Object.entries(suffix.bonus)) {
+          stats[k] = (stats[k] || 0) + v;
+        }
+      }
     }
 
-    if ((rarity === 'rare' || rarity === 'epic') && rng.chance(0.6)) {
-      const suffix = rng.random(ITEM_SUFFIXES);
-      name = name + ' ' + suffix.name;
-      value = Math.round(value * suffix.valueMod);
-      Object.entries(suffix.stats).forEach(([k, v]) => stats[k] = (stats[k] || 0) + v);
-      color = rarity === 'rare' ? '#5555FF' : '#FF55FF';
-    }
+    if (prefix) name = `${prefix.name} ${name}`;
+    if (suffix) name = `${name} ${suffix.name}`;
+
+    const value = Math.round(12 * rarityMul.value * depthScale);
 
     return {
-      id, name, type: 'armor', subType: base.subType,
-      char: base.char, color, rarity, value, stats,
-      description: `A ${rarity} ${base.name.toLowerCase()}. Defense: ${stats.defense}`
+      id: nextId('item'),
+      name,
+      type: 'armor',
+      subtype: subtypeKey,
+      rarity,
+      char: subtype.char,
+      color: RARITY_COLORS[rarity],
+      value,
+      stats,
+      description: `A ${rarity} piece of ${subtypeKey} armor.`,
     };
   }
 
-  generatePotion(rng, depth, id) {
-    const base = rng.random(POTION_TYPES);
-    const stats = { ...base.stats };
-
-    // Scale with depth
-    if (stats.hp) stats.hp = Math.round(stats.hp * (1 + (depth - 1) * 0.15));
-    if (stats.mana) stats.mana = Math.round(stats.mana * (1 + (depth - 1) * 0.15));
+  _generateAccessory(rng, type, char, rarity, rarityMul, depthScale) {
+    const suffix = rng.random(ITEM_SUFFIXES);
+    const stats = {};
+    for (const [k, v] of Object.entries(suffix.bonus)) {
+      stats[k] = v;
+    }
+    const materialName = rng.random(['Golden', 'Silver', 'Bronze', 'Crystal', 'Obsidian', 'Jade']);
+    const typeName = type === 'ring' ? 'Ring' : 'Amulet';
+    const name = `${materialName} ${typeName} ${suffix.name}`;
+    const value = Math.round(20 * rarityMul.value * depthScale);
 
     return {
-      id, name: base.name, type: 'potion', subType: base.subType,
-      char: base.char, color: base.color, rarity: 'common',
-      value: base.value, stats,
-      description: `${base.name}. ${Object.entries(stats).map(([k, v]) => `+${v} ${k}`).join(', ')}`
+      id: nextId('item'),
+      name,
+      type,
+      subtype: type,
+      rarity,
+      char,
+      color: RARITY_COLORS[rarity],
+      value,
+      stats,
+      description: `A ${rarity} ${type} shimmering with enchantment.`,
     };
   }
 
-  generateMisc(rng, depth, id) {
-    const miscItems = [
-      { name: 'Torch', char: '/', color: '#FFAA00', value: 3, description: 'A simple torch.' },
-      { name: 'Rope', char: '~', color: '#AAAA00', value: 5, description: 'A coil of rope.' },
-      { name: 'Lockpick', char: '-', color: '#AAAAAA', value: 10, description: 'For picking locks.' },
-      { name: 'Gemstone', char: '*', color: '#55FFFF', value: 50, description: 'A valuable gemstone.' },
-      { name: 'Ancient Coin', char: '$', color: '#FFFF55', value: 25, description: 'A coin from a lost era.' },
-      { name: 'Bread', char: '%', color: '#AAAA00', value: 3, stats: { hp: 5 }, description: 'A loaf of bread.' },
-      { name: 'Dried Meat', char: '%', color: '#AA0000', value: 5, stats: { hp: 8 }, description: 'Salted meat.' }
-    ];
-    const base = rng.random(miscItems);
+  _generatePotion(rng, rarity) {
+    const base = rng.random(POTION_BASES);
+    const mul = rarity === 'common' ? 1 : rarity === 'uncommon' ? 1.5 : 2;
+    const effect = {};
+    for (const [k, v] of Object.entries(base.effect)) {
+      effect[k] = typeof v === 'number' ? Math.round(v * mul) : v;
+    }
+
     return {
-      id, ...base, type: base.stats ? 'food' : 'material', subType: 'misc', rarity: 'common'
+      id: nextId('item'),
+      name: mul > 1 ? `Greater ${base.name}` : base.name,
+      type: 'potion',
+      subtype: base.subtype,
+      rarity,
+      char: '!',
+      color: base.color,
+      value: Math.round(base.value * mul),
+      stats: {},
+      effect,
+      description: base.description,
+    };
+  }
+
+  _generateScroll(rng, rarity) {
+    const base = rng.random(SCROLL_BASES);
+    const mul = rarity === 'common' ? 1 : rarity === 'uncommon' ? 1.5 : 2;
+
+    return {
+      id: nextId('item'),
+      name: base.name,
+      type: 'scroll',
+      subtype: base.effect,
+      rarity,
+      char: '?',
+      color: '#f0f0cc',
+      value: Math.round(base.value * mul),
+      stats: {},
+      effect: { type: base.effect, damage: Math.round(base.damage * mul) },
+      description: base.description,
+    };
+  }
+
+  _generateFood(rng) {
+    const base = rng.random(FOOD_BASES);
+
+    return {
+      id: nextId('item'),
+      name: base.name,
+      type: 'food',
+      subtype: 'food',
+      rarity: 'common',
+      char: '%',
+      color: '#cc8844',
+      value: base.value,
+      stats: {},
+      effect: { heal: base.heal },
+      description: base.description,
+    };
+  }
+
+  _generateMaterial(rng) {
+    const mat = rng.random(MATERIAL_BASES);
+
+    return {
+      id: nextId('item'),
+      name: mat.name,
+      type: 'material',
+      subtype: 'material',
+      rarity: 'common',
+      char: '*',
+      color: '#ddcc88',
+      value: mat.value,
+      stats: {},
+      description: mat.description,
+    };
+  }
+
+  _generateArtifact(rng, depthScale) {
+    const art = rng.random(ARTIFACT_BASES);
+    const scaledStats = {};
+    for (const [k, v] of Object.entries(art.stats)) {
+      scaledStats[k] = Math.round(v * depthScale);
+    }
+
+    return {
+      id: nextId('item'),
+      name: art.name,
+      type: 'artifact',
+      subtype: 'artifact',
+      rarity: 'legendary',
+      char: '&',
+      color: RARITY_COLORS.legendary,
+      value: Math.round(200 * depthScale),
+      stats: scaledStats,
+      description: art.description,
     };
   }
 }
