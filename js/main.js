@@ -317,7 +317,8 @@ class Game {
   }
 
   enterLocation(location) {
-    const locRng = new SeededRNG(this.seed + location.id.charCodeAt(0) * 1000);
+    const locId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
+    const locRng = new SeededRNG(this.seed + locId * 1000);
     this.currentSettlement = this.settlementGen.generate(locRng, location.type, location.population || 10, 'plains');
     this.currentSettlement.name = location.name;
     this.currentSettlement.locationData = location;
@@ -354,7 +355,8 @@ class Game {
   }
 
   enterTower(location) {
-    const towerRng = new SeededRNG(this.seed + (location.id ? location.id.charCodeAt(0) : 0) * 4000);
+    const towerId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
+    const towerRng = new SeededRNG(this.seed + towerId * 4000);
     const purpose = towerRng.random(['wizard', 'dark', 'military']);
     const floors = towerRng.nextInt(5, 10);
     this.currentTower = this.towerGen.generate(towerRng, floors, purpose);
@@ -397,7 +399,8 @@ class Game {
   }
 
   enterRuin(location) {
-    const ruinRng = new SeededRNG(this.seed + (location.id ? location.id.charCodeAt(0) : 0) * 5000);
+    const ruinId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
+    const ruinRng = new SeededRNG(this.seed + ruinId * 5000);
     const ruin = this.ruinGen.generate(ruinRng, 'settlement', ruinRng.nextInt(50, 90));
     this.currentDungeon = ruin;
     this.currentFloor = 0;
@@ -452,7 +455,8 @@ class Game {
   }
 
   enterDungeon(location) {
-    const dungRng = new SeededRNG(this.seed + (location.id ? location.id.charCodeAt(0) : 0) * 2000);
+    const dungId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
+    const dungRng = new SeededRNG(this.seed + dungId * 2000);
     this.currentFloor = 0;
     const dungeon = this.dungeonGen.generate(dungRng, 60, 40, 1, 'standard');
     this.currentDungeon = dungeon;
