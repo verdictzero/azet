@@ -24,7 +24,7 @@ export class UIManager {
 
   // ─── HUD ───
 
-  drawHUD(player, timeSystem, gameState) {
+  drawHUD(player, timeSystem, gameState, statusEffects = [], weatherSystem = null) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -38,8 +38,22 @@ export class UIManager {
     const time = timeSystem ? timeSystem.getTimeString() : '';
     const loc = gameState.currentLocationName || 'Wilderness';
 
+    // Time-of-day indicator
+    const tod = timeSystem ? timeSystem.getTimeOfDay() : '';
+    const todIcons = { dawn: '☀', morning: '☀', afternoon: '☀', evening: '☾', night: '☾' };
+    const todStr = todIcons[tod] || '';
+
     r.drawString(1, 0, loc, COLORS.BRIGHT_WHITE, COLORS.BLUE);
-    r.drawString(cols - time.length - 1, 0, time, COLORS.BRIGHT_YELLOW, COLORS.BLUE);
+
+    // Weather indicator on top bar
+    if (weatherSystem && weatherSystem.current !== 'clear') {
+      const weatherIcons = { rain: '♒', snow: '❄', storm: '⚡', fog: '≈', sandstorm: '≈', cloudy: '☁' };
+      const wIcon = weatherIcons[weatherSystem.current] || '';
+      r.drawString(loc.length + 3, 0, wIcon, COLORS.BRIGHT_CYAN, COLORS.BLUE);
+    }
+
+    r.drawString(cols - time.length - todStr.length - 2, 0, todStr + ' ' + time,
+      tod === 'night' || tod === 'evening' ? COLORS.BRIGHT_BLUE : COLORS.BRIGHT_YELLOW, COLORS.BLUE);
 
     // Bottom stats bar
     const barY = rows - 7;
@@ -48,6 +62,26 @@ export class UIManager {
     r.drawString(hp.length + 2, barY, mp, COLORS.BRIGHT_CYAN);
     r.drawString(hp.length + mp.length + 3, barY, lv, COLORS.BRIGHT_YELLOW);
     r.drawString(hp.length + mp.length + lv.length + 4, barY, gold, COLORS.BRIGHT_YELLOW);
+
+    // Status effects bar
+    if (statusEffects && statusEffects.length > 0) {
+      let sx = hp.length + mp.length + lv.length + gold.length + 6;
+      for (const effect of statusEffects) {
+        const effectColors = {
+          poisoned: COLORS.GREEN,
+          weakened: COLORS.YELLOW,
+          exposed: COLORS.RED,
+          rooted: COLORS.GREEN,
+          shielded: COLORS.BRIGHT_CYAN,
+        };
+        const color = effectColors[effect.name] || COLORS.BRIGHT_BLACK;
+        const tag = `[${effect.name.toUpperCase()}:${effect.duration}]`;
+        if (sx + tag.length < cols - 25) {
+          r.drawString(sx, barY, tag, color);
+          sx += tag.length + 1;
+        }
+      }
+    }
 
     // HP bar
     const barWidth = 20;
@@ -58,6 +92,55 @@ export class UIManager {
 
     // Message log
     this.drawMessageLog(rows);
+  }
+
+  /**
+   * Draw a minimap in the top-right corner during dungeon exploration.
+   */
+  drawMinimap(renderer, dungeon, player, enemies = []) {
+    if (!dungeon || !dungeon.tiles) return;
+
+    const r = renderer;
+    const mapW = 14;
+    const mapH = 10;
+    const startX = r.cols - mapW - 2;
+    const startY = 1;
+
+    r.drawBox(startX, startY, mapW + 2, mapH + 2, COLORS.BRIGHT_BLACK, COLORS.BLACK, ' MAP ');
+
+    const scaleX = dungeon.tiles[0].length / mapW;
+    const scaleY = dungeon.tiles.length / mapH;
+
+    for (let my = 0; my < mapH; my++) {
+      for (let mx = 0; mx < mapW; mx++) {
+        const wx = Math.floor(mx * scaleX);
+        const wy = Math.floor(my * scaleY);
+        if (wy < dungeon.tiles.length && wx < dungeon.tiles[0].length) {
+          const tile = dungeon.tiles[wy][wx];
+          if (tile.walkable) {
+            r.drawChar(startX + 1 + mx, startY + 1 + my, '.', COLORS.BRIGHT_BLACK);
+          } else if (tile.type === 'WALL') {
+            r.drawChar(startX + 1 + mx, startY + 1 + my, '#', COLORS.WHITE);
+          }
+        }
+      }
+    }
+
+    // Draw enemies on minimap
+    for (const enemy of enemies) {
+      const mx = Math.floor(enemy.position.x / scaleX);
+      const my = Math.floor(enemy.position.y / scaleY);
+      if (mx >= 0 && mx < mapW && my >= 0 && my < mapH) {
+        r.drawChar(startX + 1 + mx, startY + 1 + my, '!', COLORS.BRIGHT_RED);
+      }
+    }
+
+    // Draw player
+    const pmx = Math.floor(player.position.x / scaleX);
+    const pmy = Math.floor(player.position.y / scaleY);
+    if (pmx >= 0 && pmx < mapW && pmy >= 0 && pmy < mapH) {
+      r.drawChar(startX + 1 + pmx, startY + 1 + pmy, '@', COLORS.BRIGHT_YELLOW);
+    }
   }
 
   drawMessageLog(rows) {
@@ -235,7 +318,7 @@ export class UIManager {
 
   // ─── SHOP ───
 
-  drawShop(shopState) {
+  drawShop(shopState, player = null) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -278,8 +361,50 @@ export class UIManager {
       r.drawString(px + 4, listY + 1, 'Nothing available.', COLORS.BRIGHT_BLACK);
     }
 
+    // Selected item details with equipment comparison
+    if (items.length > 0 && this.selectedIndex < items.length) {
+      const item = items[this.selectedIndex];
+      const detY = py + panelH - 5;
+      r.drawString(px + 1, detY, '─'.repeat(panelW - 2), COLORS.BRIGHT_BLACK);
+
+      // Show item stats
+      if (item.stats && Object.keys(item.stats).length > 0) {
+        const statStr = Object.entries(item.stats)
+          .map(([k, v]) => `${k}:${v > 0 ? '+' : ''}${v}`).join(' ');
+        r.drawString(px + 2, detY + 1, statStr, COLORS.BRIGHT_CYAN);
+      }
+      if (item.description) {
+        r.drawString(px + 2, detY + 2, item.description.substring(0, panelW - 4), COLORS.BRIGHT_BLACK);
+      }
+
+      // Equipment comparison — show stat diff vs currently equipped item (green=better, red=worse)
+      if (player && player.equipment && tab === 'buy' && item.stats) {
+        const slot = item.type === 'weapon' ? 'weapon' : item.type === 'armor' ? 'armor' : item.type;
+        const equipped = player.equipment[slot];
+        if (equipped && equipped.stats) {
+          r.drawString(px + 2, detY + 3, 'vs equipped:', COLORS.BRIGHT_BLACK);
+          let cx = px + 15;
+          const allKeys = new Set([...Object.keys(item.stats), ...Object.keys(equipped.stats)]);
+          for (const k of allKeys) {
+            const diff = (item.stats[k] || 0) - (equipped.stats[k] || 0);
+            if (diff !== 0) {
+              const color = diff > 0 ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED;
+              const sign = diff > 0 ? '+' : '';
+              const seg = `${k}:${sign}${diff} `;
+              if (cx + seg.length < px + panelW - 2) {
+                r.drawString(cx, detY + 3, seg, color);
+                cx += seg.length;
+              }
+            }
+          }
+        } else if (!equipped) {
+          r.drawString(px + 2, detY + 3, '(no item equipped in slot)', COLORS.BRIGHT_BLACK);
+        }
+      }
+    }
+
     // Footer
-    r.drawString(px + 2, py + panelH - 2,
+    r.drawString(px + 2, py + panelH - 1,
       '[Enter] Buy/Sell  [H]aggle  [Esc] Leave', COLORS.BRIGHT_BLACK);
   }
 
@@ -333,7 +458,7 @@ export class UIManager {
 
   // ─── CHARACTER SHEET ───
 
-  drawCharacterSheet(player) {
+  drawCharacterSheet(player, factionSystem = null) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -393,6 +518,64 @@ export class UIManager {
     const def = player.getDefense ? player.getDefense() : s.con;
     r.drawString(px + 4, y, `Attack: ${atk}`, COLORS.BRIGHT_YELLOW);
     r.drawString(px + 20, y, `Defense: ${def}`, COLORS.BRIGHT_YELLOW);
+
+    // Abilities section
+    y += 2;
+    if (player.abilities && player.abilities.length > 0) {
+      r.drawString(px + 2, y, 'ABILITIES:', COLORS.BRIGHT_WHITE); y++;
+      for (const ab of player.abilities) {
+        if (y < py + panelH - 2) {
+          r.drawString(px + 4, y, `${ab.name} (${ab.manaCost}mp) - ${ab.description || ''}`.substring(0, panelW - 6), COLORS.BRIGHT_MAGENTA);
+          y++;
+        }
+      }
+    }
+
+    r.drawString(px + 2, py + panelH - 1, '[Esc] Close  [F] Factions', COLORS.BRIGHT_BLACK);
+  }
+
+  // ─── FACTION PANEL ───
+
+  drawFactionPanel(factionSystem) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const panelW = Math.min(cols - 4, 55);
+    const panelH = Math.min(rows - 4, 22);
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.floor((rows - panelH) / 2);
+
+    r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_YELLOW, COLORS.BLACK, ' FACTION STANDINGS ');
+
+    let y = py + 2;
+    const factionIds = ['TOWN_GUARD', 'MERCHANTS_GUILD', 'TEMPLE_ORDER', 'THIEVES_GUILD',
+      'NOBILITY', 'BANDITS', 'MONSTER_HORDE', 'UNDEAD'];
+
+    for (const id of factionIds) {
+      if (y >= py + panelH - 2) break;
+      const faction = factionSystem._factions.get(id);
+      if (!faction) continue;
+      const standing = factionSystem.getPlayerStanding(id);
+
+      // Standing bar
+      const barW = 20;
+      const normalized = Math.round(((standing + 100) / 200) * barW);
+      const bar = '█'.repeat(Math.max(0, normalized)) + '░'.repeat(Math.max(0, barW - normalized));
+
+      const standingLabel = standing > 50 ? 'Allied' : standing > 20 ? 'Friendly' :
+        standing > -20 ? 'Neutral' : standing > -50 ? 'Unfriendly' : 'Hostile';
+      const labelColor = standing > 50 ? COLORS.BRIGHT_GREEN : standing > 20 ? COLORS.GREEN :
+        standing > -20 ? COLORS.WHITE : standing > -50 ? COLORS.YELLOW : COLORS.BRIGHT_RED;
+
+      r.drawString(px + 2, y, faction.name.padEnd(18), COLORS.BRIGHT_WHITE);
+      r.drawString(px + 20, y, bar, labelColor);
+      r.drawString(px + 42, y, standingLabel, labelColor);
+      y++;
+    }
+
+    y += 2;
+    r.drawString(px + 2, y, 'Kill monsters to improve standing', COLORS.BRIGHT_BLACK);
+    r.drawString(px + 2, y + 1, 'with guards and merchants.', COLORS.BRIGHT_BLACK);
 
     r.drawString(px + 2, py + panelH - 1, '[Esc] Close', COLORS.BRIGHT_BLACK);
   }
@@ -496,7 +679,7 @@ export class UIManager {
       }
     }
 
-    r.drawString(2, rows - 1, '[Esc] Close  ○Village □Town ▣City ♦Castle ▼Dungeon', COLORS.BRIGHT_BLACK);
+    r.drawString(2, rows - 1, '[Esc] Close ○Village □Town ▣City ♦Castle ▼Dungeon ▲Tower ▪Ruins', COLORS.BRIGHT_BLACK);
   }
 
   // ─── GAME OVER ───
@@ -600,8 +783,13 @@ export class UIManager {
       ['C', 'Character sheet'],
       ['Q', 'Quest log'],
       ['M', 'World map'],
+      ['F', 'Faction standings'],
       ['T', 'Talk to NPC'],
+      ['G', 'Pick up item'],
       ['R', 'Rest / Wait'],
+      ['P', 'Quick save'],
+      ['O', 'Settings'],
+      ['1-3', 'Use abilities (combat)'],
       ['Escape', 'Back / Close menu'],
       ['?', 'This help screen']
     ];
@@ -611,6 +799,37 @@ export class UIManager {
     }
 
     r.drawString(px + 2, py + panelH - 1, '[Esc] Close', COLORS.BRIGHT_BLACK);
+  }
+
+  // ─── SETTINGS ───
+
+  drawSettings(settings) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const panelW = Math.min(cols - 4, 45);
+    const panelH = 14;
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.floor((rows - panelH) / 2);
+
+    r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_CYAN, COLORS.BLACK, ' SETTINGS ');
+
+    const items = [
+      { key: '1', label: 'CRT Effects', value: settings.crtEffects ? 'ON' : 'OFF', color: settings.crtEffects ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+      { key: '2', label: 'Font Size', value: `${settings.fontSize}px`, color: COLORS.BRIGHT_YELLOW },
+      { key: '3', label: 'Touch Controls', value: settings.touchControls ? 'ON' : 'OFF', color: settings.touchControls ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+      { key: '4', label: 'Auto-Save Interval', value: `${settings.autoSaveInterval} turns`, color: COLORS.BRIGHT_YELLOW },
+    ];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const y = py + 3 + i * 2;
+      r.drawString(px + 3, y, `[${item.key}]`, COLORS.BRIGHT_WHITE);
+      r.drawString(px + 7, y, item.label, COLORS.WHITE);
+      r.drawString(px + panelW - item.value.length - 3, y, item.value, item.color);
+    }
+
+    r.drawString(px + 2, py + panelH - 2, 'Press key to toggle  [Esc] Close', COLORS.BRIGHT_BLACK);
   }
 
   // ─── CONFIRM DIALOG ───

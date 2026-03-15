@@ -637,6 +637,35 @@ export class DialogueSystem {
       });
     }
 
+    // Secret revelation at high rep
+    if (playerRep > 50 && npc.secrets && npc.secrets.length > 0) {
+      options.push({
+        text: 'You can trust me... tell me something secret.',
+        action: 'secret',
+        consequence: null,
+        hint: 'High reputation required',
+      });
+    }
+
+    // Ask about their backstory
+    if (playerRep >= 10) {
+      options.push({
+        text: 'Tell me about yourself.',
+        action: 'backstory',
+        consequence: null,
+      });
+    }
+
+    // Quest turn-in (checked dynamically in main.js)
+    // Faction gossip at moderate rep
+    if (playerRep >= 0 && npc.faction && npc.faction !== 'None') {
+      options.push({
+        text: `What about the ${npc.faction}?`,
+        action: 'factionGossip',
+        consequence: null,
+      });
+    }
+
     options.push({
       text: 'Goodbye.',
       action: 'exit',
@@ -644,6 +673,35 @@ export class DialogueSystem {
     });
 
     return options;
+  }
+
+  /**
+   * Get current schedule activity for an NPC at the given hour.
+   */
+  getScheduleActivity(npc, hour) {
+    if (!npc.schedule || npc.schedule.length === 0) return null;
+    let current = npc.schedule[0];
+    for (const entry of npc.schedule) {
+      if (hour >= entry.hour) {
+        current = entry;
+      }
+    }
+    return current;
+  }
+
+  /**
+   * Generate a schedule-aware greeting modifier.
+   */
+  getScheduleGreeting(npc, hour) {
+    const activity = this.getScheduleActivity(npc, hour);
+    if (!activity) return '';
+    if (activity.action === 'sleeping') {
+      return '*yawn* You woke me up... ';
+    }
+    if (activity.action.includes('eating') || activity.action.includes('lunch') || activity.action.includes('dinner') || activity.action.includes('breakfast')) {
+      return '*chewing* Sorry, in the middle of a meal. ';
+    }
+    return '';
   }
 
   generateRumor(rng, worldContext = null) {
@@ -1228,7 +1286,32 @@ const ARTIFACT_BASES = [
 ];
 
 export class ItemGenerator {
-  generate(rng, type = 'weapon', rarity = 'common', depth = 1) {
+  // Roll a rarity using weighted probabilities, influenced by depth
+  rollRarity(rng, depth = 1) {
+    const depthBonus = Math.min(depth * 0.02, 0.15); // deeper = slightly better loot
+    return rng.weighted([
+      { value: 'common',    weight: Math.max(0.1, 0.50 - depthBonus) },
+      { value: 'uncommon',  weight: 0.28 },
+      { value: 'rare',      weight: 0.14 + depthBonus * 0.5 },
+      { value: 'epic',      weight: 0.06 + depthBonus * 0.3 },
+      { value: 'legendary', weight: 0.02 + depthBonus * 0.2 },
+    ]);
+  }
+
+  // Roll a stat value using gaussian distribution (bell curve centered on base)
+  rollStat(rng, base, spread = 0.2) {
+    const raw = rng.gaussian(base, base * spread);
+    return Math.max(1, Math.round(raw));
+  }
+
+  generate(rng, typeOrOpts = 'weapon', rarity = 'common', depth = 1) {
+    // Accept either positional args or an options object
+    let type = typeOrOpts;
+    if (typeOrOpts && typeof typeOrOpts === 'object') {
+      type = typeOrOpts.type || 'weapon';
+      rarity = typeOrOpts.rarity || 'common';
+      depth = typeOrOpts.depth || typeOrOpts.level || 1;
+    }
     const rarityMul = RARITY_MULTIPLIERS[rarity] || RARITY_MULTIPLIERS.common;
     const depthScale = 1 + depth * 0.1;
 
@@ -1257,7 +1340,7 @@ export class ItemGenerator {
     const stats = {};
 
     const baseAttack = Math.round(subtype.baseDmg * rarityMul.stat * depthScale);
-    stats.attack = baseAttack;
+    stats.attack = this.rollStat(rng, baseAttack);
 
     if (rarity !== 'common') {
       if (rng.chance(0.7)) {
@@ -1302,7 +1385,7 @@ export class ItemGenerator {
     const stats = {};
 
     const baseDef = Math.round(subtype.baseDef * rarityMul.stat * depthScale);
-    stats.defense = baseDef;
+    stats.defense = this.rollStat(rng, baseDef);
 
     if (rarity !== 'common') {
       if (rng.chance(0.7)) {
@@ -1457,5 +1540,120 @@ export class ItemGenerator {
       stats: scaledStats,
       description: art.description,
     };
+  }
+}
+
+// ============================================================================
+// CreatureGenerator — Biome-specific enemy generation with abilities
+// ============================================================================
+
+const CREATURE_TABLES = {
+  forest: [
+    { name: 'Wolf', char: 'w', color: '#888888', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15 },
+    { name: 'Giant Spider', char: 'S', color: '#448844', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'poison' },
+    { name: 'Treant', char: 'T', color: '#226622', behavior: 'patrol', hp: 30, attack: 6, defense: 5, xpBase: 40, ability: 'rootGrab' },
+    { name: 'Bandit', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'BANDITS' },
+    { name: 'Wild Boar', char: 'b', color: '#886644', behavior: 'coward', hp: 14, attack: 4, defense: 3, xpBase: 12 },
+    { name: 'Forest Sprite', char: 'f', color: '#44FF44', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 8 },
+  ],
+  cave: [
+    { name: 'Giant Bat', char: 'b', color: '#886688', behavior: 'aggressive', hp: 8, attack: 3, defense: 1, xpBase: 10 },
+    { name: 'Slime', char: 's', color: '#44AA44', behavior: 'patrol', hp: 20, attack: 2, defense: 4, xpBase: 15, ability: 'acidSplash' },
+    { name: 'Cave Troll', char: 'T', color: '#668866', behavior: 'aggressive', hp: 35, attack: 8, defense: 4, xpBase: 50, ability: 'regenerate' },
+    { name: 'Kobold', char: 'k', color: '#AA6644', behavior: 'coward', hp: 8, attack: 3, defense: 2, xpBase: 8 },
+    { name: 'Rock Golem', char: 'G', color: '#888888', behavior: 'patrol', hp: 40, attack: 6, defense: 8, xpBase: 45 },
+  ],
+  crypt: [
+    { name: 'Skeleton', char: 's', color: '#CCCCCC', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'UNDEAD' },
+    { name: 'Wraith', char: 'W', color: '#8888FF', behavior: 'aggressive', hp: 18, attack: 7, defense: 1, xpBase: 35, ability: 'lifeDrain', faction: 'UNDEAD' },
+    { name: 'Zombie', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'UNDEAD' },
+    { name: 'Lich', char: 'L', color: '#AA00FF', behavior: 'aggressive', hp: 50, attack: 12, defense: 5, xpBase: 100, ability: 'necroBolt', isBoss: true, faction: 'UNDEAD' },
+    { name: 'Ghost', char: 'g', color: '#AAAAFF', behavior: 'ambush', hp: 10, attack: 5, defense: 0, xpBase: 20, ability: 'phaseThrough', faction: 'UNDEAD' },
+  ],
+  swamp: [
+    { name: 'Swamp Hag', char: 'H', color: '#448844', behavior: 'ambush', hp: 22, attack: 6, defense: 3, xpBase: 30, ability: 'curse' },
+    { name: 'Bog Lurker', char: 'L', color: '#446644', behavior: 'ambush', hp: 25, attack: 5, defense: 5, xpBase: 25 },
+    { name: 'Poisonous Toad', char: 't', color: '#66AA44', behavior: 'coward', hp: 8, attack: 2, defense: 2, xpBase: 8, ability: 'poison' },
+    { name: 'Will-o-Wisp', char: '*', color: '#88FFFF', behavior: 'coward', hp: 5, attack: 3, defense: 0, xpBase: 12 },
+  ],
+  desert: [
+    { name: 'Giant Scorpion', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 16, attack: 6, defense: 4, xpBase: 22, ability: 'poison' },
+    { name: 'Mummy', char: 'M', color: '#AAAA88', behavior: 'patrol', hp: 28, attack: 5, defense: 6, xpBase: 35, ability: 'curse', faction: 'UNDEAD' },
+    { name: 'Sand Worm', char: 'W', color: '#CCAA66', behavior: 'ambush', hp: 40, attack: 10, defense: 3, xpBase: 55 },
+    { name: 'Dust Devil', char: 'd', color: '#CCAA88', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15 },
+  ],
+  mountain: [
+    { name: 'Mountain Lion', char: 'l', color: '#CCAA66', behavior: 'aggressive', hp: 18, attack: 6, defense: 3, xpBase: 25 },
+    { name: 'Harpy', char: 'h', color: '#AA88CC', behavior: 'aggressive', hp: 14, attack: 5, defense: 2, xpBase: 20, ability: 'screech' },
+    { name: 'Stone Giant', char: 'G', color: '#888888', behavior: 'patrol', hp: 50, attack: 10, defense: 8, xpBase: 60, isBoss: true },
+    { name: 'Wyvern', char: 'W', color: '#448844', behavior: 'aggressive', hp: 30, attack: 8, defense: 4, xpBase: 45 },
+  ],
+  dungeon: [
+    { name: 'Goblin', char: 'g', color: '#55AA55', behavior: 'coward', hp: 10, attack: 3, defense: 2, xpBase: 10 },
+    { name: 'Skeleton', char: 's', color: '#CCCCCC', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'UNDEAD' },
+    { name: 'Rat', char: 'r', color: '#886644', behavior: 'coward', hp: 5, attack: 2, defense: 1, xpBase: 5 },
+    { name: 'Spider', char: 'S', color: '#448844', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'poison' },
+    { name: 'Zombie', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'UNDEAD' },
+    { name: 'Bandit', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'BANDITS' },
+    { name: 'Dark Mage', char: 'M', color: '#8844AA', behavior: 'aggressive', hp: 14, attack: 8, defense: 1, xpBase: 30, ability: 'fireball' },
+    { name: 'Mimic', char: '!', color: '#FFDD44', behavior: 'ambush', hp: 22, attack: 6, defense: 4, xpBase: 35 },
+  ],
+};
+
+const ABILITY_EFFECTS = {
+  poison:      { name: 'Poison', damage: 3, duration: 3, type: 'dot', description: 'Poisons the target for 3 turns.' },
+  lifeDrain:   { name: 'Life Drain', damage: 5, heal: 5, type: 'drain', description: 'Drains life from the target.' },
+  fireball:    { name: 'Fireball', damage: 8, type: 'magic', description: 'Hurls a ball of fire.' },
+  necroBolt:   { name: 'Necro Bolt', damage: 10, type: 'magic', description: 'A bolt of necrotic energy.' },
+  acidSplash:  { name: 'Acid Splash', damage: 4, armorReduce: 1, type: 'debuff', description: 'Corrodes armor.' },
+  rootGrab:    { name: 'Root Grab', damage: 2, stun: true, type: 'control', description: 'Roots hold the target in place.' },
+  curse:       { name: 'Curse', damage: 0, attackReduce: 2, type: 'debuff', description: 'Weakens the target.' },
+  screech:     { name: 'Screech', damage: 0, defenseReduce: 2, type: 'debuff', description: 'A terrifying screech.' },
+  regenerate:  { name: 'Regenerate', damage: 0, healSelf: 5, type: 'heal', description: 'Slowly regenerates health.' },
+  phaseThrough:{ name: 'Phase', damage: 0, type: 'utility', description: 'Can pass through walls.' },
+};
+
+export class CreatureGenerator {
+  generate(rng, biome = 'dungeon', depth = 1, playerLevel = 1) {
+    const table = CREATURE_TABLES[biome] || CREATURE_TABLES.dungeon;
+    const template = rng.random(table);
+    const depthScale = 1 + depth * 0.15;
+    const levelScale = 1 + (playerLevel - 1) * 0.1;
+    const scale = depthScale * levelScale;
+
+    const hp = Math.round(template.hp * scale);
+    const creature = {
+      id: nextId('creature'),
+      name: template.name,
+      char: template.char,
+      color: template.color,
+      position: { x: 0, y: 0 },
+      behavior: template.behavior,
+      stats: {
+        hp,
+        maxHp: hp,
+        attack: Math.round(template.attack * scale),
+        defense: Math.round(template.defense * scale),
+        level: Math.max(1, Math.floor(depth + playerLevel * 0.5)),
+      },
+      faction: template.faction || 'MONSTER_HORDE',
+      isBoss: template.isBoss || false,
+      isElite: rng.chance(0.1),
+      xpBase: Math.round(template.xpBase * scale),
+      ability: template.ability ? { ...ABILITY_EFFECTS[template.ability] } : null,
+      getAttackPower() { return this.stats.attack; },
+      getDefense() { return this.stats.defense; },
+    };
+
+    // Elite boost
+    if (creature.isElite && !creature.isBoss) {
+      creature.name = 'Elite ' + creature.name;
+      creature.stats.hp = Math.round(creature.stats.hp * 1.5);
+      creature.stats.maxHp = creature.stats.hp;
+      creature.stats.attack = Math.round(creature.stats.attack * 1.3);
+      creature.xpBase = Math.round(creature.xpBase * 2);
+    }
+
+    return creature;
   }
 }

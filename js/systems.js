@@ -192,20 +192,20 @@ export class CombatSystem {
       drops.push({ type: 'gold', amount: gold, name: `${gold} gold` });
     }
 
-    // Item drop based on drop chance
+    // Item drop based on drop chance — weighted rarity distribution
     if (rng.chance(dropChance)) {
       const itemGen = new ItemGenerator();
-      const rarity = rng.chance(0.1 + depth * 0.02) ? 'uncommon' : 'common';
+      const rarity = itemGen.rollRarity(rng, depth);
       const item = itemGen.generate(rng, { depth, rarity, level });
       if (item) {
         drops.push(item);
       }
     }
 
-    // Rare second item for elites/bosses
+    // Rare second item for elites/bosses — boosted rarity
     if ((enemy.isBoss || enemy.isElite) && rng.chance(0.5)) {
       const itemGen = new ItemGenerator();
-      const rarity = enemy.isBoss ? 'rare' : 'uncommon';
+      const rarity = itemGen.rollRarity(rng, depth + (enemy.isBoss ? 5 : 2));
       const item = itemGen.generate(rng, { depth, rarity, level });
       if (item) {
         drops.push(item);
@@ -1284,5 +1284,95 @@ export class EventSystem {
       return `An event of type ${event.type} has occurred.`;
     }
     return this._rng.random(templates);
+  }
+}
+
+// ============================================================================
+// WeatherSystem — Biome-aware weather with visual and mechanical effects
+// ============================================================================
+
+export class WeatherSystem {
+  constructor(rng) {
+    this._rng = rng;
+    this.current = 'clear';
+    this.intensity = 0;      // 0-1
+    this.duration = 0;       // turns remaining
+    this._turnsSinceChange = 0;
+
+    this._biomeWeather = {
+      desert:    ['clear', 'clear', 'sandstorm'],
+      tundra:    ['clear', 'snow', 'snow', 'storm'],
+      swamp:     ['fog', 'rain', 'rain', 'cloudy'],
+      forest:    ['clear', 'cloudy', 'rain', 'fog'],
+      grassland: ['clear', 'clear', 'cloudy', 'rain'],
+      mountain:  ['clear', 'cloudy', 'snow', 'storm'],
+      ocean:     ['clear', 'rain', 'storm'],
+    };
+  }
+
+  update(biome = 'grassland') {
+    this._turnsSinceChange++;
+    if (this.duration > 0) {
+      this.duration--;
+      return;
+    }
+
+    // Change weather every 20-60 turns
+    if (this._turnsSinceChange < 20) return;
+    if (!this._rng.chance(0.05)) return;
+
+    const pool = this._biomeWeather[biome] || this._biomeWeather.grassland;
+    this.current = this._rng.random(pool);
+    this.intensity = 0.3 + this._rng.next() * 0.7;
+    this.duration = this._rng.nextInt(15, 50);
+    this._turnsSinceChange = 0;
+  }
+
+  /**
+   * Get FOV modifier: 1.0 = normal, < 1.0 = reduced visibility.
+   */
+  getFOVModifier() {
+    switch (this.current) {
+      case 'fog':       return 0.5;
+      case 'storm':     return 0.6;
+      case 'sandstorm': return 0.4;
+      case 'rain':      return 0.85;
+      case 'snow':      return 0.75;
+      default:          return 1.0;
+    }
+  }
+
+  /**
+   * Get visual particles for weather rendering.
+   * Returns array of { char, fg, density }.
+   */
+  getVisualEffect() {
+    switch (this.current) {
+      case 'rain':
+        return { char: '|', fg: '#4466AA', density: this.intensity * 0.08 };
+      case 'snow':
+        return { char: '.', fg: '#CCCCCC', density: this.intensity * 0.05 };
+      case 'storm':
+        return { char: '/', fg: '#6688CC', density: this.intensity * 0.12 };
+      case 'sandstorm':
+        return { char: '.', fg: '#AA8844', density: this.intensity * 0.1 };
+      case 'fog':
+        return { char: '~', fg: '#666666', density: this.intensity * 0.03 };
+      default:
+        return null;
+    }
+  }
+
+  getDescription() {
+    const descs = {
+      clear: 'The sky is clear.',
+      cloudy: 'Clouds gather overhead.',
+      rain: 'Rain falls steadily.',
+      storm: 'A fierce storm rages!',
+      snow: 'Snow drifts down softly.',
+      fog: 'A thick fog blankets the land.',
+      sandstorm: 'Sand whips through the air!',
+    };
+    return descs[this.current] || '';
   }
 }

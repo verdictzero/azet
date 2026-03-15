@@ -62,13 +62,15 @@ export class Renderer {
   resize() {
     const w = window.innerWidth;
 
-    // Responsive breakpoints
-    if (w < 600) {
-      this.fontSize = 12;
-    } else if (w < 1024) {
-      this.fontSize = 14;
-    } else {
-      this.fontSize = 16;
+    // Responsive breakpoints (only if no user override)
+    if (!this._userFontSize) {
+      if (w < 600) {
+        this.fontSize = 12;
+      } else if (w < 1024) {
+        this.fontSize = 14;
+      } else {
+        this.fontSize = 16;
+      }
     }
 
     // Measure a representative character to derive cell size
@@ -106,6 +108,19 @@ export class Renderer {
 
     // Force full redraw next frame
     this.prevBuffer = [];
+  }
+
+  setFontSize(size) {
+    this._userFontSize = true;
+    this.fontSize = size;
+    this.resize();
+  }
+
+  set enableCRT(val) {
+    this.effectsEnabled = !!val;
+  }
+  get enableCRT() {
+    return this.effectsEnabled;
   }
 
   /**
@@ -297,6 +312,79 @@ export class Renderer {
     }
   }
 
+  // ── Day/night tint overlay ─────────────────
+
+  /**
+   * Apply a color tint overlay to the entire canvas.
+   * @param {string} color - CSS color (e.g. 'rgba(0,0,50,0.3)')
+   * @param {number} alpha - opacity 0-1
+   */
+  tintOverlay(color, alpha) {
+    if (alpha <= 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.restore();
+  }
+
+  /**
+   * Apply day/night tint based on time-of-day phase string.
+   */
+  applyDayNightTint(timeOfDay) {
+    switch (timeOfDay) {
+      case 'night':
+        this.tintOverlay('#000033', 0.35);
+        break;
+      case 'dawn':
+        this.tintOverlay('#332200', 0.15);
+        break;
+      case 'evening':
+        this.tintOverlay('#331100', 0.2);
+        break;
+      // morning/afternoon: no tint
+    }
+  }
+
+  // ── Animated color cycling ────────────────
+
+  /**
+   * Return an animated color for special tile types.
+   * @param {string} baseColor - the tile's static fg color
+   * @param {string} tileType - WATER, DEEP_WATER, LAVA, FIREPLACE, etc.
+   * @returns {string} the current animated color
+   */
+  getAnimatedColor(baseColor, tileType) {
+    const t = Date.now() / 500;
+    const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
+
+    switch (tileType) {
+      case 'WATER':
+      case 'SHALLOW_WATER': {
+        const blues = ['#0055AA', '#0066BB', '#0044AA'];
+        return blues[Math.floor(t) % blues.length];
+      }
+      case 'DEEP_WATER': {
+        const deeps = ['#000088', '#000066', '#001199'];
+        return deeps[Math.floor(t) % deeps.length];
+      }
+      case 'LAVA': {
+        const r = Math.floor(200 + phase * 55);
+        const g = Math.floor(50 + phase * 80);
+        return `rgb(${r},${g},0)`;
+      }
+      case 'FIREPLACE':
+      case 'CAMPFIRE': {
+        const r = Math.floor(220 + phase * 35);
+        const g = Math.floor(80 + phase * 100);
+        return `rgb(${r},${g},0)`;
+      }
+      default:
+        return baseColor;
+    }
+  }
+
   // ── CRT Post-processing ────────────────────
 
   /**
@@ -307,6 +395,8 @@ export class Renderer {
     this.applyScanlines();
     this.applyFlicker();
     this.applyVignette();
+    this.applyPhosphorDecay();
+    this.applyGlitch();
   }
 
   /**
@@ -356,6 +446,143 @@ export class Renderer {
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
+
+  /**
+   * Phosphor decay: subtle ghosting from previous frame.
+   */
+  applyPhosphorDecay() {
+    // Implemented via slight blend — the double-buffer already handles this
+    // by only redrawing changed cells, creating a natural persistence effect.
+    // Add a very subtle green phosphor glow:
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 20, 0, 0.02)';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.restore();
+  }
+
+  /**
+   * Rare glitch: horizontal row shift triggered by damage or random chance.
+   */
+  applyGlitch() {
+    if (!this._glitchActive && Math.random() > 0.002) return;
+
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const ch = this.cellHeight;
+    const rows = this.rows;
+
+    // Shift 1-3 random rows by a few pixels
+    const glitchRows = Math.floor(Math.random() * 3) + 1;
+    for (let i = 0; i < glitchRows; i++) {
+      const row = Math.floor(Math.random() * rows);
+      const shift = (Math.random() * 6 - 3) | 0;
+      const y = row * ch;
+      const imgData = ctx.getImageData(0, y, w, ch);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, y, w, ch);
+      ctx.putImageData(imgData, shift, y);
+    }
+    this._glitchActive = false;
+  }
+
+  /**
+   * Trigger a glitch effect (call from combat hits, damage, etc.)
+   */
+  triggerGlitch() {
+    this._glitchActive = true;
+  }
+
+  /**
+   * Screen flash effect for critical hits, level-ups, etc.
+   * @param {string} color - flash color
+   * @param {number} alpha - flash intensity 0-1
+   */
+  flash(color, alpha) {
+    this._flashColor = color;
+    this._flashAlpha = alpha;
+  }
+
+  /**
+   * Apply and decay the flash overlay.
+   */
+  applyFlash() {
+    if (!this._flashAlpha || this._flashAlpha <= 0) return;
+    this.tintOverlay(this._flashColor || '#ffffff', this._flashAlpha);
+    this._flashAlpha -= 0.05;
+    if (this._flashAlpha <= 0) {
+      this._flashAlpha = 0;
+      this._flashColor = null;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// ParticleSystem — Lightweight character-based particle effects
+// ─────────────────────────────────────────────
+
+export class ParticleSystem {
+  constructor() {
+    this.particles = [];
+  }
+
+  /**
+   * Emit particles at a world position.
+   * @param {number} x - world x
+   * @param {number} y - world y
+   * @param {string} char - particle character
+   * @param {string} fg - particle color
+   * @param {number} count - number of particles
+   * @param {number} spread - max distance from origin
+   * @param {number} lifetime - frames until particle dies
+   */
+  emit(x, y, char, fg, count = 5, spread = 3, lifetime = 15) {
+    for (let i = 0; i < count; i++) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 0.5,
+        y: y + (Math.random() - 0.5) * 0.5,
+        vx: (Math.random() - 0.5) * spread * 0.15,
+        vy: (Math.random() - 0.5) * spread * 0.15 - 0.05,
+        char,
+        fg,
+        life: lifetime,
+        maxLife: lifetime,
+      });
+    }
+  }
+
+  /**
+   * Update all particles, removing dead ones.
+   */
+  update() {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.01; // slight gravity
+      p.life--;
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * Render particles to the renderer relative to camera.
+   */
+  render(renderer, cameraX, cameraY) {
+    for (const p of this.particles) {
+      const sx = Math.round(p.x - cameraX);
+      const sy = Math.round(p.y - cameraY);
+      if (sx >= 0 && sx < renderer.cols && sy >= 0 && sy < renderer.rows - 7) {
+        // Fade alpha by remaining life
+        const fade = p.life / p.maxLife;
+        if (fade > 0.3) {
+          renderer.drawChar(sx, sy, p.char, p.fg);
+        }
+      }
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -384,8 +611,10 @@ export class Camera {
    * Entity must have numeric x and y properties.
    */
   follow(entity) {
-    this.targetX = entity.x - Math.floor(this.viewportCols / 2);
-    this.targetY = entity.y - Math.floor(this.viewportRows / 2);
+    const ex = entity.position ? entity.position.x : entity.x;
+    const ey = entity.position ? entity.position.y : entity.y;
+    this.targetX = ex - Math.floor(this.viewportCols / 2);
+    this.targetY = ey - Math.floor(this.viewportRows / 2);
   }
 
   /**
@@ -446,6 +675,7 @@ export class InputManager {
 
     // Mobile detection
     this.isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    this._enableTouch = true;
 
     // Bind event listeners
     this._onKeyDown = this._onKeyDown.bind(this);
@@ -469,6 +699,8 @@ export class InputManager {
       e.preventDefault();
     }
     this._keysDown.add(e.key);
+    // Queue the key as a game action so the game loop can process it
+    this.lastAction = e.key;
   }
 
   _onKeyUp(e) {
@@ -484,6 +716,8 @@ export class InputManager {
       touchDiv.classList.remove('hidden');
     }
 
+    this._touchDiv = touchDiv;
+
     // D-pad direction buttons
     const dirButtons = document.querySelectorAll('[data-dir]');
     dirButtons.forEach((btn) => {
@@ -492,10 +726,10 @@ export class InputManager {
       const activate = (e) => {
         e.preventDefault();
         switch (dir) {
-          case 'up':    this._keysDown.add('ArrowUp');    break;
-          case 'down':  this._keysDown.add('ArrowDown');  break;
-          case 'left':  this._keysDown.add('ArrowLeft');  break;
-          case 'right': this._keysDown.add('ArrowRight'); break;
+          case 'up':    this._keysDown.add('ArrowUp');    this.lastAction = 'ArrowUp';    break;
+          case 'down':  this._keysDown.add('ArrowDown');  this.lastAction = 'ArrowDown';  break;
+          case 'left':  this._keysDown.add('ArrowLeft');  this.lastAction = 'ArrowLeft';  break;
+          case 'right': this._keysDown.add('ArrowRight'); this.lastAction = 'ArrowRight'; break;
           case 'wait':  this.lastAction = 'wait';         break;
         }
       };
@@ -516,20 +750,39 @@ export class InputManager {
       btn.addEventListener('mouseup', deactivate);
     });
 
-    // Action buttons
+    // Action buttons — map to the key values that handleInput expects
+    const actionKeyMap = {
+      interact: 'Enter',
+      inventory: 'i',
+      map: 'm',
+      menu: 'Escape',
+    };
+
     const actionButtons = document.querySelectorAll('[data-action]');
     actionButtons.forEach((btn) => {
       const action = btn.getAttribute('data-action');
 
       const fire = (e) => {
         e.preventDefault();
-        this.lastAction = action;
+        this.lastAction = actionKeyMap[action] || action;
       };
 
       btn.addEventListener('touchstart', fire, { passive: false });
       btn.addEventListener('mousedown', fire);
     });
   }
+
+  set enableTouch(val) {
+    this._enableTouch = !!val;
+    if (this._touchDiv) {
+      if (val && this.isMobile) {
+        this._touchDiv.classList.remove('hidden');
+      } else if (!val) {
+        this._touchDiv.classList.add('hidden');
+      }
+    }
+  }
+  get enableTouch() { return this._enableTouch; }
 
   // ── Per-frame queries ──────────────────────
 
