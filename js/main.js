@@ -2270,9 +2270,9 @@ class Game {
     }
 
     // Draw player
-    const px = Math.floor(cols / 2);
-    const py = Math.floor(rows / 2);
-    r.drawChar(px, py, '@', COLORS.BRIGHT_YELLOW);
+    const playerScreenX = Math.floor(cols / 2);
+    const playerScreenY = Math.floor(rows / 2);
+    r.drawChar(playerScreenX, playerScreenY, '@', COLORS.BRIGHT_YELLOW);
 
     // Render particles in dungeon
     this.particles.update();
