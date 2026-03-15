@@ -159,58 +159,161 @@ class Game {
 
   startNewGame() {
     this.setState('LOADING');
-    this.ui.drawLoading('Generating world...');
-    this.renderer.endFrame();
-    this.renderer.postProcess();
+    this._loadLog = [];
+    this._loadStep = 0;
 
-    setTimeout(() => {
-      this.seed = Date.now();
-      this.rng = new SeededRNG(this.seed);
+    const log = (text, color) => {
+      this._loadLog.push({ text, color: color || COLORS.BRIGHT_GREEN });
+    };
 
-      // Generate overworld
-      this.overworld = this.overworldGen.generate(this.seed);
+    const flush = (header) => {
+      this.ui.drawLoading(header, this._loadLog);
+      this.renderer.endFrame();
+      this.renderer.postProcess();
+    };
 
-      // Generate world events
-      this.eventSystem.generateWorldEvents(this.overworld);
+    // Step-by-step generation with visual feedback between each step
+    const steps = [
+      // Step 0: Initialize seed
+      () => {
+        log('Seeding random number generator...', COLORS.BRIGHT_CYAN);
+        log(`  Seed: ${Date.now()}`, COLORS.WHITE);
+        this.seed = Date.now();
+        this.rng = new SeededRNG(this.seed);
+        flush('Initializing...');
+      },
+      // Step 1: Generate terrain
+      () => {
+        log('Generating overworld terrain...', COLORS.BRIGHT_CYAN);
+        log('  Running Perlin noise heightmap (4 octaves)', COLORS.WHITE);
+        log('  Computing biome distribution from elevation + moisture', COLORS.WHITE);
+        flush('Generating terrain...');
+      },
+      // Step 2: Actually generate overworld
+      () => {
+        this.overworld = this.overworldGen.generate(this.seed);
+        const biomeCounts = {};
+        for (const row of this.overworld.tiles) {
+          for (const tile of row) {
+            biomeCounts[tile.biome || tile.type] = (biomeCounts[tile.biome || tile.type] || 0) + 1;
+          }
+        }
+        const biomeList = Object.entries(biomeCounts).sort((a, b) => b[1] - a[1]);
+        for (const [biome, count] of biomeList.slice(0, 5)) {
+          log(`  ${biome}: ${count} tiles`, COLORS.BRIGHT_BLACK);
+        }
+        log(`  Map size: ${this.overworld.tiles[0].length}x${this.overworld.tiles.length}`, COLORS.WHITE);
+        log(`  ${this.overworld.locations.length} locations discovered`, COLORS.BRIGHT_YELLOW);
+        flush('Generating terrain...');
+      },
+      // Step 3: Populate locations
+      () => {
+        log('Populating locations...', COLORS.BRIGHT_CYAN);
+        const typeCounts = {};
+        for (const loc of this.overworld.locations) {
+          typeCounts[loc.type] = (typeCounts[loc.type] || 0) + 1;
+        }
+        for (const [type, count] of Object.entries(typeCounts)) {
+          log(`  ${type}: ${count}`, COLORS.WHITE);
+        }
+        flush('Populating world...');
+      },
+      // Step 4: Initialize faction system
+      () => {
+        log('Establishing faction hierarchies...', COLORS.BRIGHT_CYAN);
+        const factions = Array.from(this.factionSystem._factions.values());
+        for (const f of factions) {
+          log(`  ${f.name} — standing: neutral`, COLORS.WHITE);
+        }
+        flush('Initializing factions...');
+      },
+      // Step 5: Generate world events
+      () => {
+        log('Scheduling world events...', COLORS.BRIGHT_CYAN);
+        this.eventSystem.generateWorldEvents(this.overworld);
+        log('  Festivals, plagues, and monster outbreaks queued', COLORS.WHITE);
+        log('  Eclipse and caravan schedules computed', COLORS.WHITE);
+        flush('Scheduling events...');
+      },
+      // Step 6: Generate lore
+      () => {
+        log('Writing world history...', COLORS.BRIGHT_CYAN);
+        const factionNames = Array.from(this.factionSystem._factions.values()).map(f => f.name);
+        const locationNames = this.overworld.locations.map(l => l.name);
+        this.worldLore = this.loreGen.generateWorldHistory(this.rng, factionNames, locationNames);
+        log('  Ancient conflicts documented', COLORS.WHITE);
+        log('  NPC backstory templates generated', COLORS.WHITE);
+        log('  Dungeon lore inscriptions prepared', COLORS.WHITE);
+        flush('Generating lore...');
+      },
+      // Step 7: Initialize weather
+      () => {
+        log('Initializing weather simulation...', COLORS.BRIGHT_CYAN);
+        log(`  Starting conditions: ${this.weatherSystem.current || 'clear'}`, COLORS.WHITE);
+        log('  Biome-specific weather tables loaded', COLORS.WHITE);
+        flush('Simulating weather...');
+      },
+      // Step 8: Create player
+      () => {
+        const race = this.charGenState.race || 'human';
+        const pClass = this.charGenState.playerClass || 'warrior';
+        const name = this.charGenState.name || 'Adventurer';
+        this.player = new Player(name, race, pClass);
+        log('Creating player character...', COLORS.BRIGHT_CYAN);
+        log(`  Name: ${this.player.name}`, COLORS.BRIGHT_WHITE);
+        log(`  Race: ${race}  Class: ${pClass}`, COLORS.WHITE);
+        log(`  HP: ${this.player.stats.maxHp}  MP: ${this.player.stats.maxMana}`, COLORS.WHITE);
+        log(`  STR: ${this.player.stats.str}  DEX: ${this.player.stats.dex}  INT: ${this.player.stats.int}`, COLORS.WHITE);
+        flush('Creating character...');
+      },
+      // Step 9: Place player and enter world
+      () => {
+        const startLoc = this.overworld.locations.find(l => l.type === 'village') || this.overworld.locations[0];
+        if (startLoc) {
+          this.player.position.x = startLoc.x;
+          this.player.position.y = startLoc.y;
+          this.player.knownLocations = new Set([startLoc.id]);
+          this.gameContext.currentLocationName = startLoc.name;
+          this.gameContext.currentLocation = startLoc;
+        }
 
-      // Generate lore
-      const factionNames = Object.values(this.factionSystem.factions).map(f => f.name);
-      const locationNames = this.overworld.locations.map(l => l.name);
-      this.worldLore = this.loreGen.generateWorldHistory(this.rng, factionNames, locationNames);
+        this.camera.follow(this.player);
+        this.camera.x = this.player.position.x - Math.floor(this.renderer.cols / 2);
+        this.camera.y = this.player.position.y - Math.floor(this.renderer.rows / 2);
+        this.camera.targetX = this.camera.x;
+        this.camera.targetY = this.camera.y;
 
-      // Create player
-      const race = this.charGenState.race || 'human';
-      const pClass = this.charGenState.playerClass || 'warrior';
-      const name = this.charGenState.name || 'Adventurer';
-      this.player = new Player(name, race, pClass);
+        log('Placing character in world...', COLORS.BRIGHT_CYAN);
+        if (startLoc) {
+          log(`  Starting location: ${startLoc.name} (${startLoc.type})`, COLORS.BRIGHT_WHITE);
+          log(`  Position: ${startLoc.x}, ${startLoc.y}`, COLORS.WHITE);
+        }
+        log('', COLORS.BLACK);
+        log('World generation complete.', COLORS.BRIGHT_YELLOW);
+        log('Entering game...', COLORS.BRIGHT_GREEN);
+        flush('Ready!');
 
-      // Find starting location (first village)
-      const startLoc = this.overworld.locations.find(l => l.type === 'village') || this.overworld.locations[0];
-      if (startLoc) {
-        this.player.position.x = startLoc.x;
-        this.player.position.y = startLoc.y;
-        this.player.knownLocations = new Set([startLoc.id]);
-        this.gameContext.currentLocationName = startLoc.name;
-        this.gameContext.currentLocation = startLoc;
-      }
+        // Short delay to let the user see "Ready!"
+        setTimeout(() => {
+          if (startLoc) {
+            this.enterLocation(startLoc);
+          } else {
+            this.setState('OVERWORLD');
+          }
+          this.ui.addMessage('Welcome to ASCIIQUEST!', COLORS.BRIGHT_YELLOW);
+          this.ui.addMessage(`${this.player.name} the ${this.player.race} ${this.player.playerClass} begins their journey.`, COLORS.BRIGHT_CYAN);
+          this.ui.addMessage('Press ? for help.', COLORS.BRIGHT_BLACK);
+        }, 400);
+      },
+    ];
 
-      this.camera.follow(this.player);
-      this.camera.x = this.player.position.x - Math.floor(this.renderer.cols / 2);
-      this.camera.y = this.player.position.y - Math.floor(this.renderer.rows / 2);
-      this.camera.targetX = this.camera.x;
-      this.camera.targetY = this.camera.y;
-
-      // Enter the starting location
-      if (startLoc) {
-        this.enterLocation(startLoc);
-      } else {
-        this.setState('OVERWORLD');
-      }
-
-      this.ui.addMessage('Welcome to ASCIIQUEST!', COLORS.BRIGHT_YELLOW);
-      this.ui.addMessage(`${this.player.name} the ${this.player.race} ${this.player.playerClass} begins their journey.`, COLORS.BRIGHT_CYAN);
-      this.ui.addMessage('Press ? for help.', COLORS.BRIGHT_BLACK);
-    }, 100);
+    // Run steps sequentially with delays between each for visual effect
+    const runStep = (i) => {
+      if (i >= steps.length) return;
+      steps[i]();
+      setTimeout(() => runStep(i + 1), 120);
+    };
+    setTimeout(() => runStep(0), 50);
   }
 
   enterLocation(location) {

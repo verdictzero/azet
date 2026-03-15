@@ -856,7 +856,7 @@ export class UIManager {
 
   // ─── LOADING SCREEN ───
 
-  drawLoading(message) {
+  drawLoading(message, logLines = []) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -865,8 +865,30 @@ export class UIManager {
     const t = Date.now() / 200;
     const spinner = ['|', '/', '-', '\\'][Math.floor(t) % 4];
 
-    r.drawString(Math.floor((cols - message.length) / 2) - 1, Math.floor(rows / 2),
+    // Title
+    const title = '═══ ASCIIQUEST ═══';
+    r.drawString(Math.floor((cols - title.length) / 2), 2, title, COLORS.BRIGHT_YELLOW);
+
+    // Progress bar area
+    const barY = 4;
+    r.drawString(Math.floor((cols - message.length) / 2) - 1, barY,
       spinner + ' ' + message + ' ' + spinner, COLORS.BRIGHT_GREEN);
+
+    // Verbose log lines — show terminal-style output
+    const logStartY = 6;
+    const maxLines = Math.min(logLines.length, rows - 10);
+    const startIdx = Math.max(0, logLines.length - maxLines);
+    for (let i = startIdx; i < logLines.length; i++) {
+      const line = logLines[i];
+      const y = logStartY + (i - startIdx);
+      if (y >= rows - 2) break;
+      const prefix = i === logLines.length - 1 ? '> ' : '  ';
+      const color = line.color || (i === logLines.length - 1 ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_BLACK);
+      r.drawString(2, y, prefix + line.text.substring(0, cols - 6), color);
+    }
+
+    // Footer
+    r.drawString(2, rows - 2, 'Initializing world systems...', COLORS.BRIGHT_BLACK);
   }
 
   // ─── UTILITIES ───
