@@ -22,7 +22,7 @@ class Game {
 
     // Settings (persisted to localStorage)
     this.settings = {
-      crtEffects: true,
+      crtEffects: false,
       fontSize: 16,
       touchControls: true,
       autoSaveInterval: 100, // turns

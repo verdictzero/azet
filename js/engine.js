@@ -47,7 +47,7 @@ export class Renderer {
     this.buffer = [];      // current frame being built
     this.prevBuffer = [];  // last rendered frame
 
-    this.effectsEnabled = true;
+    this.effectsEnabled = false; // visual FX disabled for now (toggle with settings)
 
     // Perform initial sizing
     this.resize();
