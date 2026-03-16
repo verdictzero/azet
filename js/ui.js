@@ -35,13 +35,7 @@ export class UIManager {
     const mp = `MP:${player.stats.mana}/${player.stats.maxMana}`;
     const lv = `Lv:${player.stats.level}`;
     const gold = `$${player.gold}`;
-    const time = timeSystem ? timeSystem.getTimeString() : '';
-    const loc = gameState.currentLocationName || 'Wilderness';
-
-    // Time-of-day indicator
-    const tod = timeSystem ? timeSystem.getTimeOfDay() : '';
-    const todIcons = { dawn: '☀', morning: '☀', afternoon: '☀', evening: '☾', night: '☾' };
-    const todStr = todIcons[tod] || '';
+    const loc = gameState.currentLocationName || 'Uncharted Sector';
 
     r.drawString(1, 0, loc, COLORS.BRIGHT_WHITE, COLORS.BLUE);
 
@@ -52,8 +46,52 @@ export class UIManager {
       r.drawString(loc.length + 3, 0, wIcon, COLORS.BRIGHT_CYAN, COLORS.BLUE);
     }
 
-    r.drawString(cols - time.length - todStr.length - 2, 0, todStr + ' ' + time,
-      tod === 'night' || tod === 'evening' ? COLORS.BRIGHT_BLUE : COLORS.BRIGHT_YELLOW, COLORS.BLUE);
+    // Clock + solar/lunar cycle indicator
+    if (timeSystem) {
+      const h = timeSystem.hour;
+      const hh = String(Math.floor(h)).padStart(2, '0');
+      const mm = String(Math.floor((h % 1) * 60)).padStart(2, '0');
+      const clock = `D${timeSystem.day} ${hh}:${mm}`;
+
+      // Lunar phase from day (29.5-day cycle)
+      const lunarPhase = (timeSystem.day % 30) / 30;
+      const lunarChars = ['●', '◗', '◑', '◖', '○', '◗', '◑', '◖'];
+      const moonChar = lunarChars[Math.floor(lunarPhase * 8) % 8];
+
+      // Solar cycle bar: 6 chars showing sun position through the day
+      // Sun rises ~6, sets ~20. Map hour to a position in the bar.
+      const barW = 8;
+      const sunPos = Math.floor((h / 24) * barW);
+      let cycleBar = '';
+      let cycleColors = [];
+      for (let i = 0; i < barW; i++) {
+        if (i === sunPos && h >= 5 && h < 20) {
+          cycleBar += '☀';
+          cycleColors.push(COLORS.BRIGHT_YELLOW);
+        } else if (i === sunPos && (h < 5 || h >= 20)) {
+          cycleBar += '☾';
+          cycleColors.push(COLORS.BRIGHT_CYAN);
+        } else if (i >= Math.floor((5 / 24) * barW) && i <= Math.floor((20 / 24) * barW)) {
+          cycleBar += '─';
+          cycleColors.push(COLORS.BRIGHT_BLACK);
+        } else {
+          cycleBar += '─';
+          cycleColors.push(COLORS.BLUE);
+        }
+      }
+
+      // Draw from right: [moon] [cycle bar] [clock]
+      const rightStr = `${moonChar} ${clock}`;
+      const rightX = cols - rightStr.length - 1;
+      r.drawString(rightX, 0, rightStr,
+        h >= 20 || h < 5 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_YELLOW, COLORS.BLUE);
+
+      // Draw cycle bar character by character for individual colors
+      const barX = rightX - barW - 1;
+      for (let i = 0; i < barW; i++) {
+        r.drawChar(barX + i, 0, cycleBar[i], cycleColors[i], COLORS.BLUE);
+      }
+    }
 
     // Bottom stats bar
     const barY = rows - 7;
@@ -95,7 +133,7 @@ export class UIManager {
   }
 
   /**
-   * Draw a minimap in the top-right corner during dungeon exploration.
+   * Draw a minimap in the top-right corner during sealed zone exploration.
    */
   drawMinimap(renderer, dungeon, player, enemies = []) {
     if (!dungeon || !dungeon.tiles) return;
@@ -170,19 +208,19 @@ export class UIManager {
     r.clear();
 
     const title = [
-      '╔═══════════════════════════════════════════╗',
-      '║     █████╗ ███████╗ ██████╗██╗██╗        ║',
-      '║    ██╔══██╗██╔════╝██╔════╝██║██║        ║',
-      '║    ███████║███████╗██║     ██║██║        ║',
-      '║    ██╔══██║╚════██║██║     ██║██║        ║',
-      '║    ██║  ██║███████║╚██████╗██║██║        ║',
-      '║    ╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝╚═╝        ║',
-      '║            Q U E S T                      ║',
-      '╚═══════════════════════════════════════════╝'
+      '╔═══════════════════════════════════════════════╗',
+      '║ ██████╗ ███████╗ ██████╗██╗  ██╗██████╗  ║',
+      '║ ██╔══██╗██╔════╝██╔════╝██║ ██╔╝██╔══██╗ ║',
+      '║ ██║  ██║█████╗  ██║     █████╔╝ ██████╔╝ ║',
+      '║ ██║  ██║██╔══╝  ██║     ██╔═██╗ ██╔══██╗ ║',
+      '║ ██████╔╝███████╗╚██████╗██║  ██╗██████╔╝ ║',
+      '║ ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═════╝  ║',
+      '║            B O R N                          ║',
+      '╚═══════════════════════════════════════════════╝'
     ];
 
     const startY = Math.floor(rows / 2) - 10;
-    const startX = Math.floor((cols - 45) / 2);
+    const startX = Math.floor((cols - 49) / 2);
 
     for (let i = 0; i < title.length; i++) {
       const colors = [COLORS.BRIGHT_RED, COLORS.BRIGHT_YELLOW, COLORS.BRIGHT_GREEN,
@@ -190,7 +228,7 @@ export class UIManager {
       r.drawString(startX, startY + i, title[i], colors[i % colors.length]);
     }
 
-    const subtitle = '~ A Retro Demoscene Roguelike ~';
+    const subtitle = '~ Beneath the Arch of the Builders ~';
     r.drawString(Math.floor((cols - subtitle.length) / 2), startY + title.length + 1,
       subtitle, COLORS.BRIGHT_BLACK);
 
@@ -226,13 +264,13 @@ export class UIManager {
 
     if (step === 'race') {
       r.drawString(4, 3, 'Choose your race:', COLORS.BRIGHT_WHITE);
-      const races = ['Human', 'Elf', 'Dwarf', 'Orc', 'Halfling'];
+      const races = ['Deckborn', 'Archborn', 'Boneborn', 'Voidtouched', 'Crawler'];
       const descs = [
-        'Balanced stats, versatile. +1 to all stats.',
-        'High DEX and INT, low CON. Attuned to magic.',
-        'High CON and STR, low DEX. Master crafters.',
-        'High STR, low INT and CHA. Fierce warriors.',
-        'High DEX and CHA, low STR. Lucky and nimble.'
+        'Balanced settlers of the main habitat decks',
+        'Upper-tier dwellers with keen senses and sharp minds',
+        'Stout hull workers from the lower decks',
+        'Radiation-hardened outcasts from the outer edge',
+        'Nimble duct-dwellers who know every maintenance shaft'
       ];
       for (let i = 0; i < races.length; i++) {
         const sel = i === this.selectedIndex;
@@ -242,12 +280,12 @@ export class UIManager {
       }
     } else if (step === 'class') {
       r.drawString(4, 3, 'Choose your class:', COLORS.BRIGHT_WHITE);
-      const classes = ['Warrior', 'Mage', 'Rogue', 'Ranger'];
+      const classes = ['Sentinel', 'Technomancer', 'Scavenger', 'Pathfinder'];
       const descs = [
-        'Heavy armor, high HP. Melee combat specialist.',
-        'Powerful spells, low HP. Arcane knowledge.',
-        'Stealth and daggers. Critical hit specialist.',
-        'Bow and survival skills. Balanced fighter.'
+        'Armored defenders of the colony corridors',
+        'Wielders of recovered Builder technology',
+        'Resourceful survivors who strip the old sectors',
+        'Scouts who map the unknown reaches of the colony'
       ];
       for (let i = 0; i < classes.length; i++) {
         const sel = i === this.selectedIndex;
@@ -265,7 +303,7 @@ export class UIManager {
       r.drawString(6, 5, `Name:  ${charGenState.name}`, COLORS.BRIGHT_CYAN);
       r.drawString(6, 6, `Race:  ${charGenState.race}`, COLORS.BRIGHT_CYAN);
       r.drawString(6, 7, `Class: ${charGenState.playerClass}`, COLORS.BRIGHT_CYAN);
-      r.drawString(6, 9, '[Enter] Begin Adventure    [Esc] Start Over', COLORS.BRIGHT_YELLOW);
+      r.drawString(6, 9, '[Enter] Begin Expedition    [Esc] Start Over', COLORS.BRIGHT_YELLOW);
     }
   }
 
@@ -548,8 +586,8 @@ export class UIManager {
     r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_YELLOW, COLORS.BLACK, ' FACTION STANDINGS ');
 
     let y = py + 2;
-    const factionIds = ['TOWN_GUARD', 'MERCHANTS_GUILD', 'TEMPLE_ORDER', 'THIEVES_GUILD',
-      'NOBILITY', 'BANDITS', 'MONSTER_HORDE', 'UNDEAD'];
+    const factionIds = ['COLONY_MILITIA', 'SALVAGE_GUILD', 'ORDER_OF_BUILDERS', 'TUNNEL_RUNNERS',
+      'THE_COUNCIL', 'SCRAP_RAIDERS', 'FERAL_SWARM', 'CORRUPTED'];
 
     for (const id of factionIds) {
       if (y >= py + panelH - 2) break;
@@ -574,8 +612,8 @@ export class UIManager {
     }
 
     y += 2;
-    r.drawString(px + 2, y, 'Kill monsters to improve standing', COLORS.BRIGHT_BLACK);
-    r.drawString(px + 2, y + 1, 'with guards and merchants.', COLORS.BRIGHT_BLACK);
+    r.drawString(px + 2, y, 'Clear hostiles to improve standing', COLORS.BRIGHT_BLACK);
+    r.drawString(px + 2, y + 1, 'with security and traders.', COLORS.BRIGHT_BLACK);
 
     r.drawString(px + 2, py + panelH - 1, '[Esc] Close', COLORS.BRIGHT_BLACK);
   }
@@ -591,16 +629,16 @@ export class UIManager {
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
-    r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_MAGENTA, COLORS.BLACK, ' QUEST LOG ');
+    r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_MAGENTA, COLORS.BLACK, ' MISSION LOG ');
 
     let y = py + 2;
     const active = questSystem.getActiveQuests();
     const completed = questSystem.getCompletedQuests();
 
-    r.drawString(px + 2, y, 'ACTIVE QUESTS:', COLORS.BRIGHT_WHITE); y++;
+    r.drawString(px + 2, y, 'ACTIVE MISSIONS:', COLORS.BRIGHT_WHITE); y++;
 
     if (active.length === 0) {
-      r.drawString(px + 4, y, 'No active quests.', COLORS.BRIGHT_BLACK); y++;
+      r.drawString(px + 4, y, 'No active missions.', COLORS.BRIGHT_BLACK); y++;
     }
     for (let i = 0; i < active.length && y < py + panelH - 8; i++) {
       const q = active[i];
@@ -634,7 +672,7 @@ export class UIManager {
     const cols = r.cols;
     const rows = r.rows;
 
-    r.drawBox(0, 0, cols, rows, COLORS.BRIGHT_BLACK, COLORS.BLACK, ' WORLD MAP ');
+    r.drawBox(0, 0, cols, rows, COLORS.BRIGHT_BLACK, COLORS.BLACK, ' COLONY MAP ');
 
     if (!overworld) return;
 
@@ -745,7 +783,7 @@ export class UIManager {
       }
     }
 
-    r.drawString(2, rows - 1, '[Esc] Close ○Village □Town ▣City ♦Castle ▼Dungeon ▲Tower ▪Ruins', COLORS.BRIGHT_BLACK);
+    r.drawString(2, rows - 1, '[Esc] Close ○Outpost □Habitat ▣Hub ♦Garrison ▼Sealed ▲Spire ▪Wreckage', COLORS.BRIGHT_BLACK);
   }
 
   // ─── GAME OVER ───
@@ -833,38 +871,228 @@ export class UIManager {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
-    const panelW = Math.min(cols - 4, 50);
-    const panelH = Math.min(rows - 4, 22);
+    const panelW = Math.min(cols - 4, 62);
+    const panelH = Math.min(rows - 2, 40);
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
-    r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_GREEN, COLORS.BLACK, ' CONTROLS ');
+    const tabs = ['Controls', 'Overworld', 'Locations', 'Combat', 'Systems', 'Tips'];
+    const tab = this.helpTab || 0;
 
-    const lines = [
-      ['Arrow/WASD', 'Move'],
-      ['Numpad', 'Move (8-dir)'],
-      ['Enter/Space', 'Interact / Confirm'],
-      ['E', 'Enter building / Use'],
-      ['I', 'Inventory'],
-      ['C', 'Character sheet'],
-      ['Q', 'Quest log'],
-      ['M', 'World map'],
-      ['F', 'Faction standings'],
-      ['T', 'Talk to NPC'],
-      ['G', 'Pick up item'],
-      ['R', 'Rest / Wait'],
-      ['P', 'Quick save'],
-      ['O', 'Settings'],
-      ['1-3', 'Use abilities (combat)'],
-      ['Escape', 'Back / Close menu'],
-      ['?', 'This help screen']
+    r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_GREEN, COLORS.BLACK, ' HELP ');
+
+    // Tab bar
+    let tx = px + 2;
+    for (let i = 0; i < tabs.length; i++) {
+      const label = `[${i + 1}]${tabs[i]}`;
+      const color = i === tab ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
+      r.drawString(tx, py + 1, label, color, COLORS.BLACK);
+      tx += label.length + 1;
+    }
+    r.drawString(px + 1, py + 2, '─'.repeat(panelW - 2), COLORS.BRIGHT_BLACK);
+
+    const contentY = py + 3;
+    const contentH = panelH - 5;
+    const w = panelW - 4;
+
+    const pages = [
+      // 0: Controls
+      [
+        { h: 'MOVEMENT', c: COLORS.BRIGHT_YELLOW },
+        { t: 'Arrow Keys / WASD    Move in 4 directions' },
+        { t: 'Numpad (1-9)         Move in 8 directions (diagonals)' },
+        { t: '' },
+        { h: 'INTERACTION', c: COLORS.BRIGHT_YELLOW },
+        { t: 'Enter / Space        Confirm selection / interact' },
+        { t: 'E                    Enter sector, sealed zone, or use terminal' },
+        { t: 'T                    Talk to nearby colonist' },
+        { t: 'G                    Pick up item on the ground' },
+        { t: '' },
+        { h: 'MENUS', c: COLORS.BRIGHT_YELLOW },
+        { t: 'I                    Open inventory' },
+        { t: 'C                    Character sheet & stats' },
+        { t: 'Q                    Mission log' },
+        { t: 'M                    Colony map (explored sectors)' },
+        { t: 'F                    Faction standings' },
+        { t: 'O                    Settings' },
+        { t: 'P                    Quick save' },
+        { t: '?                    This help screen' },
+        { t: 'Escape               Close current menu / go back' },
+        { t: '' },
+        { h: 'COMBAT', c: COLORS.BRIGHT_YELLOW },
+        { t: '1, 2, 3              Use ability in slot 1/2/3' },
+        { t: 'Arrow Keys           Select target or action' },
+        { t: 'Enter                Confirm attack / action' },
+      ],
+      // 1: Overworld
+      [
+        { h: 'THE COLONY', c: COLORS.BRIGHT_CYAN },
+        { t: 'The colony spans an immense derelict structure' },
+        { t: 'left by the Builders. New sectors generate as' },
+        { t: 'you explore deeper into the unknown reaches.' },
+        { t: '' },
+        { h: 'TERRAIN TYPES', c: COLORS.BRIGHT_YELLOW },
+        { t: '. Deck Plate  Walkable corridor plating' },
+        { t: 't Overgrowth  Bio-reclaimed zone, higher encounter rate' },
+        { t: 'T Dense Growth Thick overgrowth, harder to traverse' },
+        { t: '. Dry Sector  Depressurized area, low atmosphere' },
+        { t: '~ Coolant Bog Leaking coolant pools, dangerous' },
+        { t: '~ Coolant Lake Impassable flooded section' },
+        { t: '\u2248 Deep Coolant Impassable flooded depths' },
+        { t: '^ Bulkhead    Impassable reinforced wall' },
+        { t: '\u25b2 Sealed Hull  Impassable outer hull plating' },
+        { t: '= Conduit     Connects colony settlements' },
+        { t: '' },
+        { h: 'NAVIGATION', c: COLORS.BRIGHT_YELLOW },
+        { t: 'Walk in any direction — the colony has no known edge.' },
+        { t: 'New sectors load seamlessly as you move.' },
+        { t: 'Press M to view your explored map at any time.' },
+        { t: 'Settlements appear as special symbols on the map.' },
+        { t: 'Conduits connect nearby habitats and outposts.' },
+      ],
+      // 2: Locations
+      [
+        { h: 'LOCATION TYPES', c: COLORS.BRIGHT_CYAN },
+        { t: '' },
+        { t: '\u00b7 Outpost     Small colony hab with basic traders' },
+        { t: 'o Habitat     Larger settlement, more services' },
+        { t: '* Hub         Major colony center with guilds & markets' },
+        { t: '\u00a4 Garrison    Fortified sector with barracks' },
+        { t: '\u2020 Medbay      Healing station, cures, augments' },
+        { t: '\u2126 Sealed Zone Dangerous, multi-room derelict sector' },
+        { t: '! Spire       Vertical sealed zone with many levels' },
+        { t: '\u00a7 Wreckage    Crumbling Builder remains, salvage & data' },
+        { t: '\u00b0 Camp        Temporary survivor outpost' },
+        { t: '' },
+        { h: 'INSIDE SETTLEMENTS', c: COLORS.BRIGHT_YELLOW },
+        { t: 'Walk up to a colonist and press T to talk.' },
+        { t: 'Enter compartments with E at the hatch (+).' },
+        { t: 'Traders: buy/sell gear, haggle for prices.' },
+        { t: 'Cantinas: rest, hear rumors, recruit crew.' },
+        { t: 'Medbays: heal, cure ailments, receive stims.' },
+        { t: 'Press Escape to leave a settlement.' },
+        { t: '' },
+        { h: 'SEALED ZONES & SPIRES', c: COLORS.BRIGHT_YELLOW },
+        { t: 'Explore chambers, fight hostiles, find salvage.' },
+        { t: 'Spires have multiple levels — find the lift.' },
+        { t: 'Wreckage holds Builder data logs and caches.' },
+      ],
+      // 3: Combat
+      [
+        { h: 'COMBAT SYSTEM', c: COLORS.BRIGHT_RED },
+        { t: 'Combat is turn-based. You and the hostile take' },
+        { t: 'turns choosing actions.' },
+        { t: '' },
+        { h: 'ACTIONS', c: COLORS.BRIGHT_YELLOW },
+        { t: 'Attack         Basic melee/ranged strike' },
+        { t: 'Abilities 1-3  Special skills (cost MP)' },
+        { t: 'Use Item       Consume a stim-pack or charge cell' },
+        { t: 'Flee           Attempt to disengage (DEX check)' },
+        { t: '' },
+        { h: 'STATS & DAMAGE', c: COLORS.BRIGHT_YELLOW },
+        { t: 'STR  Melee damage and carry capacity' },
+        { t: 'DEX  Hit chance, dodge, flee success' },
+        { t: 'CON  Max HP and toxin resistance' },
+        { t: 'INT  Tech power and max MP' },
+        { t: 'WIS  Tech resistance and perception' },
+        { t: 'CHA  Trader prices, dialogue options, persuasion' },
+        { t: '' },
+        { t: 'Damage = Attack Power - Target Defense' },
+        { t: 'Critical hits deal double damage (DEX-based).' },
+        { t: '' },
+        { h: 'ENCOUNTERS', c: COLORS.BRIGHT_YELLOW },
+        { t: 'Hostile encounters occur while traversing sectors.' },
+        { t: 'Rate increases in dark cycles and during breaches.' },
+        { t: 'Sealed zones have fixed hostile placements.' },
+      ],
+      // 4: Systems
+      [
+        { h: 'CYCLE & LIGHTING', c: COLORS.BRIGHT_CYAN },
+        { t: 'Time advances as you move (0.5h per step) and' },
+        { t: 'when you rest (R = 8 hours). The HUD shows the' },
+        { t: 'colony lighting cycle and clock.' },
+        { t: 'Dark cycle: higher encounter rate, traders close.' },
+        { t: '' },
+        { h: 'ATMOSPHERE', c: COLORS.BRIGHT_CYAN },
+        { t: 'Conditions change by sector: coolant leaks, static' },
+        { t: 'storms, pressure drops, fog. Affects visibility' },
+        { t: 'in sealed zones and encounter rates.' },
+        { t: '' },
+        { h: 'FACTIONS (F)', c: COLORS.BRIGHT_CYAN },
+        { t: 'Eight factions track your reputation. Clearing' },
+        { t: 'hostiles improves guard/trader standing.' },
+        { t: 'Standings: Hostile < Unfriendly < Neutral' },
+        { t: '           < Friendly < Allied' },
+        { t: '' },
+        { h: 'MISSIONS (Q)', c: COLORS.BRIGHT_CYAN },
+        { t: 'Accept missions from colonists. Track objectives' },
+        { t: 'and rewards in the mission log. Some missions are' },
+        { t: 'generated from colony events (salvage maps, etc).' },
+        { t: '' },
+        { h: 'COLONY EVENTS', c: COLORS.BRIGHT_CYAN },
+        { t: 'Festivals, plagues, creature breaches, power' },
+        { t: 'failures, supply convoys, and raider incursions' },
+        { t: 'occur over time. Events affect prices and more.' },
+      ],
+      // 5: Tips / About
+      [
+        { h: 'GETTING STARTED', c: COLORS.BRIGHT_GREEN },
+        { t: 'You begin in an outpost. Talk to colonists for' },
+        { t: 'missions and visit traders to gear up before' },
+        { t: 'venturing into the uncharted sectors.' },
+        { t: '' },
+        { h: 'SURVIVAL TIPS', c: COLORS.BRIGHT_GREEN },
+        { t: '- Save often with P. There is no auto-revive.' },
+        { t: '- Rest (R) to recover HP and MP between fights.' },
+        { t: '- Carry stim-packs for emergencies.' },
+        { t: '- Check your character sheet (C) after leveling.' },
+        { t: '- Equip better gear from your inventory (I, E).' },
+        { t: '' },
+        { h: 'EXPLORATION', c: COLORS.BRIGHT_GREEN },
+        { t: '- Follow conduits to find nearby settlements.' },
+        { t: '- The colony is vast — explore in any direction.' },
+        { t: '- Discovered locations are marked on the map (M).' },
+        { t: '- Sealed zones and spires have the best salvage.' },
+        { t: '- Wreckage contains Builder data and hidden caches.' },
+        { t: '' },
+        { h: 'ECONOMY', c: COLORS.BRIGHT_GREEN },
+        { t: '- Haggle (H) at traders for better prices.' },
+        { t: '- Festival events reduce trader prices.' },
+        { t: '- High CHA gives better deals and more options.' },
+        { t: '- Sell salvage you don\'t need to fund upgrades.' },
+        { t: '' },
+        { h: 'THE COLONY', c: COLORS.BRIGHT_GREEN },
+        { t: 'Generations ago, the Builders vanished, leaving' },
+        { t: 'behind an immense orbital structure. You are one' },
+        { t: 'of the Deckborn — descendants of the original' },
+        { t: 'settlers who now survive among the ruins of a' },
+        { t: 'civilization they barely understand.' },
+      ],
     ];
 
-    for (let i = 0; i < lines.length; i++) {
-      r.drawString(px + 3, py + 2 + i, lines[i][0].padEnd(15) + lines[i][1], COLORS.WHITE);
+    const page = pages[tab] || pages[0];
+    const scroll = this.helpScroll || 0;
+    const visibleLines = page.slice(scroll, scroll + contentH);
+
+    for (let i = 0; i < visibleLines.length; i++) {
+      const line = visibleLines[i];
+      if (line.h) {
+        r.drawString(px + 2, contentY + i, line.h, line.c || COLORS.BRIGHT_WHITE);
+      } else if (line.t !== undefined) {
+        r.drawString(px + 2, contentY + i, line.t.substring(0, w), COLORS.WHITE);
+      }
     }
 
-    r.drawString(px + 2, py + panelH - 1, '[Esc] Close', COLORS.BRIGHT_BLACK);
+    // Scroll indicators
+    if (scroll > 0) {
+      r.drawString(px + panelW - 4, contentY, ' \u25b2 ', COLORS.BRIGHT_YELLOW);
+    }
+    if (scroll + contentH < page.length) {
+      r.drawString(px + panelW - 4, contentY + contentH - 1, ' \u25bc ', COLORS.BRIGHT_YELLOW);
+    }
+
+    r.drawString(px + 2, py + panelH - 1,
+      '[1-6] Tab  [\u2190\u2192] Tab  [\u2191\u2193] Scroll  [Esc] Close', COLORS.BRIGHT_BLACK);
   }
 
   // ─── SETTINGS ───
@@ -932,7 +1160,7 @@ export class UIManager {
     const spinner = ['|', '/', '-', '\\'][Math.floor(t) % 4];
 
     // Title
-    const title = '═══ ASCIIQUEST ═══';
+    const title = '═══ DECKBORN ═══';
     r.drawString(Math.floor((cols - title.length) / 2), 2, title, COLORS.BRIGHT_YELLOW);
 
     // Progress bar area
@@ -954,7 +1182,7 @@ export class UIManager {
     }
 
     // Footer
-    r.drawString(2, rows - 2, 'Initializing world systems...', COLORS.BRIGHT_BLACK);
+    r.drawString(2, rows - 2, 'Initializing colony systems...', COLORS.BRIGHT_BLACK);
   }
 
   // ─── UTILITIES ───

@@ -176,18 +176,18 @@ class Game {
     const steps = [
       // Step 0: Initialize seed
       () => {
-        log('Seeding random number generator...', COLORS.BRIGHT_CYAN);
+        log('Initializing colony seed matrix...', COLORS.BRIGHT_CYAN);
         log(`  Seed: ${Date.now()}`, COLORS.WHITE);
         this.seed = Date.now();
         this.rng = new SeededRNG(this.seed);
-        flush('Initializing...');
+        flush('Booting systems...');
       },
       // Step 1: Generate terrain
       () => {
-        log('Initializing infinite chunk-based terrain...', COLORS.BRIGHT_CYAN);
-        log('  Perlin noise heightmap + moisture (6 octaves)', COLORS.WHITE);
-        log('  Chunk size: 32x32 tiles, generated on demand', COLORS.WHITE);
-        flush('Generating terrain...');
+        log('Mapping colony deck layout...', COLORS.BRIGHT_CYAN);
+        log('  Scanning structural grid + environmental layers', COLORS.WHITE);
+        log('  Sector size: 32x32 plates, loaded on approach', COLORS.WHITE);
+        flush('Mapping decks...');
       },
       // Step 2: Create ChunkManager and generate initial chunks
       () => {
@@ -195,14 +195,14 @@ class Game {
         // Generate initial 5x5 chunks around origin
         this.overworld.ensureChunksAround(16, 16);
         const loadedLocs = this.overworld.getLoadedLocations();
-        log(`  Initial chunks loaded: ${this.overworld.chunks.size}`, COLORS.WHITE);
-        log(`  ${loadedLocs.length} locations discovered nearby`, COLORS.BRIGHT_YELLOW);
-        log('  Infinite world ready — no boundaries', COLORS.WHITE);
-        flush('Generating terrain...');
+        log(`  Sectors loaded: ${this.overworld.chunks.size}`, COLORS.WHITE);
+        log(`  ${loadedLocs.length} settlements detected nearby`, COLORS.BRIGHT_YELLOW);
+        log('  Colony extends beyond mapped regions', COLORS.WHITE);
+        flush('Mapping decks...');
       },
       // Step 3: Populate locations
       () => {
-        log('Populating locations...', COLORS.BRIGHT_CYAN);
+        log('Cataloging settlements and structures...', COLORS.BRIGHT_CYAN);
         const typeCounts = {};
         for (const loc of this.overworld.getLoadedLocations()) {
           typeCounts[loc.type] = (typeCounts[loc.type] || 0) + 1;
@@ -210,11 +210,11 @@ class Game {
         for (const [type, count] of Object.entries(typeCounts)) {
           log(`  ${type}: ${count}`, COLORS.WHITE);
         }
-        flush('Populating world...');
+        flush('Populating colony...');
       },
       // Step 4: Initialize faction system
       () => {
-        log('Establishing faction hierarchies...', COLORS.BRIGHT_CYAN);
+        log('Establishing faction networks...', COLORS.BRIGHT_CYAN);
         const factions = Array.from(this.factionSystem._factions.values());
         for (const f of factions) {
           log(`  ${f.name} — standing: neutral`, COLORS.WHITE);
@@ -223,35 +223,35 @@ class Game {
       },
       // Step 5: Generate world events
       () => {
-        log('Scheduling world events...', COLORS.BRIGHT_CYAN);
+        log('Scheduling colony events...', COLORS.BRIGHT_CYAN);
         this.eventSystem.generateWorldEvents(this.overworld);
-        log('  Festivals, plagues, and monster outbreaks queued', COLORS.WHITE);
-        log('  Eclipse and caravan schedules computed', COLORS.WHITE);
+        log('  Founders\' Days, contaminations, and breach swarms queued', COLORS.WHITE);
+        log('  Blackout and salvage convoy schedules computed', COLORS.WHITE);
         flush('Scheduling events...');
       },
       // Step 6: Generate lore
       () => {
-        log('Writing world history...', COLORS.BRIGHT_CYAN);
+        log('Compiling colony archives...', COLORS.BRIGHT_CYAN);
         const factionNames = Array.from(this.factionSystem._factions.values()).map(f => f.name);
         const locationNames = this.overworld.getLoadedLocations().map(l => l.name);
         this.worldLore = this.loreGen.generateWorldHistory(this.rng, factionNames, locationNames);
-        log('  Ancient conflicts documented', COLORS.WHITE);
-        log('  NPC backstory templates generated', COLORS.WHITE);
-        log('  Dungeon lore inscriptions prepared', COLORS.WHITE);
-        flush('Generating lore...');
+        log('  Builder-era records recovered', COLORS.WHITE);
+        log('  Personnel dossiers compiled', COLORS.WHITE);
+        log('  Sector inscriptions cataloged', COLORS.WHITE);
+        flush('Loading archives...');
       },
       // Step 7: Initialize weather
       () => {
-        log('Initializing weather simulation...', COLORS.BRIGHT_CYAN);
-        log(`  Starting conditions: ${this.weatherSystem.current || 'clear'}`, COLORS.WHITE);
-        log('  Biome-specific weather tables loaded', COLORS.WHITE);
-        flush('Simulating weather...');
+        log('Initializing environmental systems...', COLORS.BRIGHT_CYAN);
+        log(`  Atmospheric status: ${this.weatherSystem.current || 'stable'}`, COLORS.WHITE);
+        log('  Sector-specific climate tables loaded', COLORS.WHITE);
+        flush('Calibrating atmosphere...');
       },
       // Step 8: Create player
       () => {
-        const race = this.charGenState.race || 'human';
-        const pClass = this.charGenState.playerClass || 'warrior';
-        const name = this.charGenState.name || 'Adventurer';
+        const race = this.charGenState.race || 'deckborn';
+        const pClass = this.charGenState.playerClass || 'sentinel';
+        const name = this.charGenState.name || 'Colonist';
         this.player = new Player(name, race, pClass);
         log('Creating player character...', COLORS.BRIGHT_CYAN);
         log(`  Name: ${this.player.name}`, COLORS.BRIGHT_WHITE);
@@ -301,8 +301,8 @@ class Game {
           } else {
             this.setState('OVERWORLD');
           }
-          this.ui.addMessage('Welcome to ASCIIQUEST!', COLORS.BRIGHT_YELLOW);
-          this.ui.addMessage(`${this.player.name} the ${this.player.race} ${this.player.playerClass} begins their journey.`, COLORS.BRIGHT_CYAN);
+          this.ui.addMessage('Welcome to DECKBORN!', COLORS.BRIGHT_YELLOW);
+          this.ui.addMessage(`${this.player.name} the ${this.player.race} ${this.player.playerClass} steps onto the deck.`, COLORS.BRIGHT_CYAN);
           this.ui.addMessage('Press ? for help.', COLORS.BRIGHT_BLACK);
         }, 400);
       },
@@ -320,7 +320,7 @@ class Game {
   enterLocation(location) {
     const locId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
     const locRng = new SeededRNG(this.seed + locId * 1000);
-    this.currentSettlement = this.settlementGen.generate(locRng, location.type, location.population || 10, 'plains');
+    this.currentSettlement = this.settlementGen.generate(locRng, location.type, location.population || 10, 'deckplate');
     this.currentSettlement.name = location.name;
     this.currentSettlement.locationData = location;
 
@@ -328,7 +328,7 @@ class Game {
     this.npcs = [];
     if (this.currentSettlement.npcSlots) {
       for (const slot of this.currentSettlement.npcSlots) {
-        const race = locRng.random(['human', 'human', 'human', 'elf', 'dwarf', 'halfling']);
+        const race = locRng.random(['deckborn', 'deckborn', 'deckborn', 'archborn', 'boneborn', 'crawler']);
         const npc = this.npcGen.generate(locRng, slot.role, race, { location: location.name });
         npc.position = { x: slot.position.x, y: slot.position.y };
         this.npcs.push(npc);
@@ -358,7 +358,7 @@ class Game {
   enterTower(location) {
     const towerId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
     const towerRng = new SeededRNG(this.seed + towerId * 4000);
-    const purpose = towerRng.random(['wizard', 'dark', 'military']);
+    const purpose = towerRng.random(['research', 'corrupted', 'garrison']);
     const floors = towerRng.nextInt(5, 10);
     this.currentTower = this.towerGen.generate(towerRng, floors, purpose);
     this.currentFloor = 0;
@@ -368,7 +368,7 @@ class Game {
     this.enemies = [];
     if (this.currentDungeon.entities) {
       for (const ent of this.currentDungeon.entities) {
-        const creature = this.creatureGen.generate(towerRng, 'dungeon', this.currentFloor + 1, this.player.stats.level);
+        const creature = this.creatureGen.generate(towerRng, 'derelict', this.currentFloor + 1, this.player.stats.level);
         creature.position = { x: ent.x, y: ent.y };
         this.enemies.push(creature);
       }
@@ -396,7 +396,7 @@ class Game {
 
     this.gameContext.currentLocationName = (location.name || 'Tower') + ` (Floor ${this.currentFloor + 1})`;
     this.setState('DUNGEON');
-    this.ui.addMessage(`You enter the tower...`, COLORS.BRIGHT_MAGENTA);
+    this.ui.addMessage(`You enter the spire...`, COLORS.BRIGHT_MAGENTA);
   }
 
   enterRuin(location) {
@@ -411,7 +411,7 @@ class Game {
     this.enemies = [];
     const enemyCount = ruinRng.nextInt(3, 8);
     for (let i = 0; i < enemyCount; i++) {
-      const creature = this.creatureGen.generate(ruinRng, 'crypt', 1, this.player.stats.level);
+      const creature = this.creatureGen.generate(ruinRng, 'sealed_sector', 1, this.player.stats.level);
       // Find walkable tile
       for (let attempts = 0; attempts < 50; attempts++) {
         const ex = ruinRng.nextInt(1, ruin.width - 2);
@@ -452,7 +452,7 @@ class Game {
 
     this.gameContext.currentLocationName = location.name || 'Ruins';
     this.setState('DUNGEON');
-    this.ui.addMessage(`You explore the ancient ruins...`, COLORS.BRIGHT_YELLOW);
+    this.ui.addMessage(`You explore the derelict structure...`, COLORS.BRIGHT_YELLOW);
   }
 
   enterDungeon(location) {
@@ -464,7 +464,7 @@ class Game {
 
     // Spawn enemies using CreatureGenerator
     this.enemies = [];
-    const biome = this.gameContext.currentLocation?.biome || 'dungeon';
+    const biome = this.gameContext.currentLocation?.biome || 'derelict';
     if (dungeon.entitySpots) {
       for (const spot of dungeon.entitySpots) {
         if (spot.type === 'enemy') {
@@ -499,7 +499,7 @@ class Game {
 
     this.gameContext.currentLocationName = (location.name || 'Dungeon') + ` (Floor ${this.currentFloor + 1})`;
     this.setState('DUNGEON');
-    this.ui.addMessage('You descend into the dungeon...', COLORS.BRIGHT_RED);
+    this.ui.addMessage('You descend into the derelict sector...', COLORS.BRIGHT_RED);
   }
 
   // ─── INPUT HANDLING ───
@@ -517,7 +517,7 @@ class Game {
       case 'CHARACTER': return this.handleGenericClose(key);
       case 'QUEST_LOG': return this.handleGenericClose(key);
       case 'MAP': return this.handleGenericClose(key);
-      case 'HELP': return this.handleGenericClose(key);
+      case 'HELP': return this.handleHelpInput(key);
       case 'FACTION': return this.handleGenericClose(key);
       case 'SETTINGS': return this.handleSettingsInput(key);
       case 'GAME_OVER': return this.handleGameOverInput(key);
@@ -568,7 +568,7 @@ class Game {
         return;
       }
       if (key.toLowerCase() === 'r' && this.charGenState.name.length === 0) {
-        const nameObj = this.nameGen.generate(this.rng, this.charGenState.race || 'human');
+        const nameObj = this.nameGen.generate(this.rng, this.charGenState.race || 'deckborn');
         this.charGenState.name = nameObj.first;
         return;
       }
@@ -592,8 +592,8 @@ class Game {
       return;
     }
 
-    const races = ['human', 'elf', 'dwarf', 'orc', 'halfling'];
-    const classes = ['warrior', 'mage', 'rogue', 'ranger'];
+    const races = ['deckborn', 'archborn', 'boneborn', 'voidtouched', 'crawler'];
+    const classes = ['sentinel', 'technomancer', 'scavenger', 'pathfinder'];
     const items = step === 'race' ? races : classes;
 
     const result = this.ui.handleMenuInput(key, items.length);
@@ -719,7 +719,7 @@ class Game {
         this.player.position.y = this.gameContext.currentLocation.y;
       }
       this.setState('OVERWORLD');
-      this.ui.addMessage('You escape the dungeon.', COLORS.WHITE);
+      this.ui.addMessage('You escape the derelict sector.', COLORS.WHITE);
       return;
     }
 
@@ -775,7 +775,7 @@ class Game {
               if (this.currentDungeon.entities) {
                 const floorRng = new SeededRNG(this.seed + this.currentFloor * 7000);
                 for (const ent of this.currentDungeon.entities) {
-                  const creature = this.creatureGen.generate(floorRng, 'dungeon', this.currentFloor + 1, this.player.stats.level);
+                  const creature = this.creatureGen.generate(floorRng, 'derelict', this.currentFloor + 1, this.player.stats.level);
                   creature.position = { x: ent.x, y: ent.y };
                   this.enemies.push(creature);
                 }
@@ -798,7 +798,7 @@ class Game {
             } else {
               // Top of tower — nothing more
               this.currentFloor = this.currentTower.length - 1;
-              this.ui.addMessage('You have reached the top of the tower!', COLORS.BRIGHT_YELLOW);
+              this.ui.addMessage('You have reached the top of the spire!', COLORS.BRIGHT_YELLOW);
             }
           } else {
             // Regular dungeon: descend
@@ -811,7 +811,7 @@ class Game {
               this.player.position.y = room.y + Math.floor(room.h / 2);
             }
             // Spawn creatures for new floor
-            const biome = this.gameContext.currentLocation?.biome || 'dungeon';
+            const biome = this.gameContext.currentLocation?.biome || 'derelict';
             this.enemies = [];
             if (this.currentDungeon.entitySpots) {
               for (const spot of this.currentDungeon.entitySpots) {
@@ -898,9 +898,9 @@ class Game {
       if (this.player.gold >= cost) {
         this.player.gold -= cost;
         this.player.heal(this.player.stats.maxHp);
-        this.ui.addMessage('The priest heals your wounds.', COLORS.BRIGHT_GREEN);
+        this.ui.addMessage('The acolyte mends your wounds.', COLORS.BRIGHT_GREEN);
       } else {
-        this.ui.addMessage('You don\'t have enough gold for healing.', COLORS.BRIGHT_RED);
+        this.ui.addMessage('You don\'t have enough credits for treatment.', COLORS.BRIGHT_RED);
       }
       return;
     }
@@ -912,9 +912,9 @@ class Game {
         this.player.heal(this.player.stats.maxHp);
         this.player.stats.mana = this.player.stats.maxMana;
         this.timeSystem.advance(8);
-        this.ui.addMessage('You rest at the inn. Fully restored!', COLORS.BRIGHT_GREEN);
+        this.ui.addMessage('You rest at the bunk. Fully restored!', COLORS.BRIGHT_GREEN);
       } else {
-        this.ui.addMessage('You can\'t afford a room.', COLORS.BRIGHT_RED);
+        this.ui.addMessage('You can\'t afford a bunk.', COLORS.BRIGHT_RED);
       }
       this.activeNPC = null;
       this.setState(this.prevState || 'LOCATION');
@@ -932,7 +932,7 @@ class Game {
     }
 
     if (option.action === 'teach') {
-      this.ui.addMessage('The scholar shares some knowledge. +10 XP.', COLORS.BRIGHT_CYAN);
+      this.ui.addMessage('The archivist shares recovered data. +10 XP.', COLORS.BRIGHT_CYAN);
       this.player.addXP(10);
       return;
     }
@@ -1008,7 +1008,7 @@ class Game {
       if (this.activeNPC && this.activeNPC.faction) {
         const faction = this.activeNPC.faction;
         // Find a rival faction
-        const factionIds = ['TOWN_GUARD', 'MERCHANTS_GUILD', 'TEMPLE_ORDER', 'THIEVES_GUILD', 'NOBILITY'];
+        const factionIds = ['COLONY_MILITIA', 'SALVAGE_GUILD', 'ORDER_OF_BUILDERS', 'TUNNEL_RUNNERS', 'THE_COUNCIL'];
         const rivalId = this.rng.random(factionIds);
         const rivalFaction = this.factionSystem._factions.get(rivalId);
         const rivalName = rivalFaction ? rivalFaction.name : 'the other factions';
@@ -1222,12 +1222,12 @@ class Game {
           if (deadEnemy.faction) {
             this.factionSystem.modifyPlayerStanding(deadEnemy.faction, -5);
             // Killing monsters/bandits boosts town guard and merchants
-            if (deadEnemy.faction === 'MONSTER_HORDE' || deadEnemy.faction === 'BANDITS') {
-              this.factionSystem.modifyPlayerStanding('TOWN_GUARD', 2);
-              this.factionSystem.modifyPlayerStanding('MERCHANTS_GUILD', 1);
+            if (deadEnemy.faction === 'FERAL_SWARM' || deadEnemy.faction === 'SCRAP_RAIDERS') {
+              this.factionSystem.modifyPlayerStanding('COLONY_MILITIA', 2);
+              this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 1);
             }
-            if (deadEnemy.faction === 'UNDEAD') {
-              this.factionSystem.modifyPlayerStanding('TEMPLE_ORDER', 3);
+            if (deadEnemy.faction === 'CORRUPTED') {
+              this.factionSystem.modifyPlayerStanding('ORDER_OF_BUILDERS', 3);
             }
           }
 
@@ -1339,6 +1339,29 @@ class Game {
     }
   }
 
+  handleHelpInput(key) {
+    const tabCount = 6;
+    const tab = this.ui.helpTab || 0;
+    if (key === 'Escape') {
+      this.ui.helpTab = 0;
+      this.ui.helpScroll = 0;
+      this.setState(this.prevState || 'OVERWORLD');
+    } else if (key === 'ArrowRight' || key === 'd' || key === 'D') {
+      this.ui.helpTab = (tab + 1) % tabCount;
+      this.ui.helpScroll = 0;
+    } else if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
+      this.ui.helpTab = (tab - 1 + tabCount) % tabCount;
+      this.ui.helpScroll = 0;
+    } else if (key === 'ArrowDown' || key === 's') {
+      this.ui.helpScroll = (this.ui.helpScroll || 0) + 1;
+    } else if (key === 'ArrowUp' || key === 'w') {
+      this.ui.helpScroll = Math.max(0, (this.ui.helpScroll || 0) - 1);
+    } else if (key >= '1' && key <= '6') {
+      this.ui.helpTab = parseInt(key) - 1;
+      this.ui.helpScroll = 0;
+    }
+  }
+
   handleSettingsInput(key) {
     if (key === 'Escape') {
       this._saveSettings();
@@ -1424,12 +1447,12 @@ class Game {
     const baseEncounterRate = 0.03 * this.activeEffects.encounterRateMultiplier;
     const nightBonus = this.timeSystem.isDaytime() ? 1.0 : 1.5;
     if (this.rng.chance(baseEncounterRate * nightBonus)) {
-      const tileBiome = tile.biome || 'forest';
+      const tileBiome = tile.biome || 'overgrowth';
       const enemy = this.creatureGen.generate(this.rng, tileBiome, 1, this.player.stats.level);
       enemy.position = { x: nx, y: ny };
 
       // Undead strength boost during eclipse
-      if (enemy.faction === 'UNDEAD') {
+      if (enemy.faction === 'CORRUPTED') {
         enemy.stats.attack = Math.round(enemy.stats.attack * this.activeEffects.undeadStrengthMultiplier);
         enemy.stats.hp = Math.round(enemy.stats.hp * this.activeEffects.undeadStrengthMultiplier);
         enemy.stats.maxHp = enemy.stats.hp;
@@ -1449,7 +1472,7 @@ class Game {
     }
 
     // Update weather
-    const biome = tile.biome || 'grassland';
+    const biome = tile.biome || 'deckplate';
     this.weatherSystem.update(biome);
 
     // Tick status effects
@@ -1463,38 +1486,38 @@ class Game {
    */
   applyEventEffects(event) {
     switch (event.type) {
-      case 'FESTIVAL':
+      case 'FOUNDERS_DAY':
         this.activeEffects.shopPriceMultiplier = event.data.priceModifier || 0.7;
-        this.ui.addMessage('Festival prices! Shops are offering discounts.', COLORS.BRIGHT_GREEN);
+        this.ui.addMessage('Founders\' Day! Traders are offering discounts.', COLORS.BRIGHT_GREEN);
         break;
-      case 'PLAGUE':
+      case 'CONTAMINATION':
         this.activeEffects.potionPriceMultiplier = event.data.healingItemDemand || 3.0;
-        this.ui.addMessage('Healing supplies are in high demand!', COLORS.BRIGHT_RED);
+        this.ui.addMessage('Medi-stims are in high demand — contamination spreading!', COLORS.BRIGHT_RED);
         break;
-      case 'MONSTER_OUTBREAK':
+      case 'BREACH_SWARM':
         this.activeEffects.encounterRateMultiplier = 2.0;
-        this.ui.addMessage('Monsters are more aggressive than usual!', COLORS.BRIGHT_RED);
+        this.ui.addMessage('Creatures pouring through a hull breach!', COLORS.BRIGHT_RED);
         break;
-      case 'ECLIPSE':
+      case 'BLACKOUT':
         this.activeEffects.undeadStrengthMultiplier = event.data.undeadStrengthBonus || 1.5;
-        this.ui.addMessage('The undead grow stronger in the darkness!', COLORS.BRIGHT_MAGENTA);
+        this.ui.addMessage('The corrupted grow bolder in the blackout!', COLORS.BRIGHT_MAGENTA);
         break;
-      case 'CARAVAN_ARRIVES':
-        this.ui.addMessage(`${event.data.merchantName} has rare goods for sale!`, COLORS.BRIGHT_GREEN);
+      case 'SALVAGE_CONVOY':
+        this.ui.addMessage(`${event.data.merchantName} has rare salvage for trade!`, COLORS.BRIGHT_GREEN);
         break;
-      case 'BANDIT_RAID':
-        this.factionSystem.modifyPlayerStanding('BANDITS', -10);
-        this.ui.addMessage('Defend the settlement from bandits!', COLORS.BRIGHT_RED);
+      case 'RAIDER_INCURSION':
+        this.factionSystem.modifyPlayerStanding('SCRAP_RAIDERS', -10);
+        this.ui.addMessage('Scrap raiders are attacking the settlement!', COLORS.BRIGHT_RED);
         break;
-      case 'TREASURE_MAP':
+      case 'SCHEMATIC_FOUND':
         // Auto-generate a quest
         const mapQuest = {
-          id: 'treasure_' + Date.now(),
-          title: `Treasure at ${event.data.location}`,
-          description: `Follow the treasure map to ${event.data.location} and find the hidden cache.`,
+          id: 'schematic_' + Date.now(),
+          title: `Schematic Cache at ${event.data.location}`,
+          description: `Follow the Builder schematic to ${event.data.location} and recover the hidden cache.`,
           type: 'FETCH',
           status: 'active',
-          objectives: [{ type: 'explore', target: event.data.location, current: 0, required: 1, description: `Find the treasure at ${event.data.location}` }],
+          objectives: [{ type: 'explore', target: event.data.location, current: 0, required: 1, description: `Recover the cache at ${event.data.location}` }],
           rewards: { gold: event.data.treasureTier === 'major' ? 200 : event.data.treasureTier === 'moderate' ? 100 : 50, xp: 50 },
         };
         this.questSystem._activeQuests.set(mapQuest.id, mapQuest);
@@ -1892,7 +1915,7 @@ class Game {
     } else if (item.type === 'scroll') {
       const effect = item.effect || {};
       if (effect.damage) {
-        this.ui.addMessage(`The scroll erupts with ${effect.type || 'magical'} energy!`, COLORS.BRIGHT_MAGENTA);
+        this.ui.addMessage(`The charge erupts with ${effect.type || 'electrical'} energy!`, COLORS.BRIGHT_MAGENTA);
       } else {
         this.ui.addMessage(`Used ${item.name}.`, COLORS.BRIGHT_CYAN);
       }
@@ -1904,7 +1927,7 @@ class Game {
 
   _loadSettings() {
     try {
-      const raw = localStorage.getItem('asciiquest_settings');
+      const raw = localStorage.getItem('deckborn_settings');
       if (raw) {
         const saved = JSON.parse(raw);
         Object.assign(this.settings, saved);
@@ -1917,7 +1940,7 @@ class Game {
 
   _saveSettings() {
     try {
-      localStorage.setItem('asciiquest_settings', JSON.stringify(this.settings));
+      localStorage.setItem('deckborn_settings', JSON.stringify(this.settings));
     } catch (e) { /* ignore */ }
     // Apply settings immediately
     this.renderer.enableCRT = this.settings.crtEffects;
@@ -1929,7 +1952,7 @@ class Game {
   saveGame(slot = 1) {
     try {
       const saveData = {
-        version: 3,
+        version: 4,
         seed: this.seed,
         exploredChunks: [...this.overworld.exploredChunks],
         player: {
@@ -1999,9 +2022,9 @@ class Game {
         }));
       }
 
-      localStorage.setItem(`asciiquest_save_${slot}`, JSON.stringify(saveData));
+      localStorage.setItem(`deckborn_save_${slot}`, JSON.stringify(saveData));
       // Also keep backwards-compatible key
-      localStorage.setItem('asciiquest_save', JSON.stringify(saveData));
+      localStorage.setItem('deckborn_save', JSON.stringify(saveData));
       this.ui.addMessage('Game saved.', COLORS.BRIGHT_GREEN);
       return true;
     } catch (e) {
@@ -2054,8 +2077,8 @@ class Game {
   loadGame(slot = 1) {
     try {
       // Try slot-based first, then fallback to legacy key
-      let data = localStorage.getItem(`asciiquest_save_${slot}`);
-      if (!data) data = localStorage.getItem('asciiquest_save');
+      let data = localStorage.getItem(`deckborn_save_${slot}`);
+      if (!data) data = localStorage.getItem('deckborn_save');
       if (!data) return false;
 
       const save = JSON.parse(data);
@@ -2149,7 +2172,7 @@ class Game {
         break;
 
       case 'LOADING':
-        this.ui.drawLoading('Generating world...');
+        this.ui.drawLoading('Generating colony...');
         break;
 
       case 'OVERWORLD':
@@ -2201,7 +2224,7 @@ class Game {
         break;
 
       case 'GAME_OVER':
-        this.ui.drawGameOver(this.player, 'Slain in battle.');
+        this.ui.drawGameOver(this.player, 'Lost to the colony.');
         break;
 
       case 'FACTION':
@@ -2220,10 +2243,7 @@ class Game {
     this.renderer.endFrame();
     this.renderer.postProcess();
 
-    // Day/night tint (only in game states)
-    if (this.state === 'OVERWORLD' || this.state === 'LOCATION' || this.state === 'DUNGEON') {
-      this.renderer.applyDayNightTint(this.timeSystem.getTimeOfDay());
-    }
+    // Day/night tint disabled — cycle shown via HUD indicator only
 
     // Flash overlay
     this.renderer.applyFlash();

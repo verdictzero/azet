@@ -352,7 +352,7 @@ export class Renderer {
   /**
    * Return an animated color for special tile types.
    * @param {string} baseColor - the tile's static fg color
-   * @param {string} tileType - WATER, DEEP_WATER, LAVA, FIREPLACE, etc.
+   * @param {string} tileType - SHALLOW_POOL, COOLANT_LAKE, LAVA, FIREPLACE, etc.
    * @returns {string} the current animated color
    */
   getAnimatedColor(baseColor, tileType) {
@@ -360,12 +360,12 @@ export class Renderer {
     const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
 
     switch (tileType) {
-      case 'WATER':
-      case 'SHALLOW_WATER': {
+      case 'SHALLOW_POOL':
+      case 'WATER': {
         const blues = ['#0055AA', '#0066BB', '#0044AA'];
         return blues[Math.floor(t) % blues.length];
       }
-      case 'DEEP_WATER': {
+      case 'COOLANT_LAKE': {
         const deeps = ['#000088', '#000066', '#001199'];
         return deeps[Math.floor(t) % deeps.length];
       }
