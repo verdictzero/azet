@@ -35,7 +35,7 @@ export class UIManager {
     const mp = `MP:${player.stats.mana}/${player.stats.maxMana}`;
     const lv = `Lv:${player.stats.level}`;
     const gold = `$${player.gold}`;
-    const loc = gameState.currentLocationName || 'Uncharted Sector';
+    const loc = gameState.currentLocationName || 'Uncharted Wilds';
 
     r.drawString(1, 0, loc, COLORS.BRIGHT_WHITE, COLORS.BLUE);
 
@@ -209,13 +209,13 @@ export class UIManager {
 
     const title = [
       '╔═══════════════════════════════════════════════╗',
-      '║ ██████╗ ███████╗ ██████╗██╗  ██╗██████╗  ║',
-      '║ ██╔══██╗██╔════╝██╔════╝██║ ██╔╝██╔══██╗ ║',
-      '║ ██║  ██║█████╗  ██║     █████╔╝ ██████╔╝ ║',
-      '║ ██║  ██║██╔══╝  ██║     ██╔═██╗ ██╔══██╗ ║',
-      '║ ██████╔╝███████╗╚██████╗██║  ██╗██████╔╝ ║',
-      '║ ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═════╝  ║',
-      '║            B O R N                          ║',
+      '║  █████╗ ███████╗██╗  ██╗███████╗███╗   ██╗║',
+      '║ ██╔══██╗██╔════╝██║  ██║██╔════╝████╗  ██║║',
+      '║ ███████║███████╗███████║█████╗  ██╔██╗ ██║║',
+      '║ ██╔══██║╚════██║██╔══██║██╔══╝  ██║╚██╗██║║',
+      '║ ██║  ██║███████║██║  ██║███████╗██║ ╚████║║',
+      '║ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝║',
+      '║            G A T E                          ║',
       '╚═══════════════════════════════════════════════╝'
     ];
 
@@ -228,7 +228,7 @@ export class UIManager {
       r.drawString(startX, startY + i, title[i], colors[i % colors.length]);
     }
 
-    const subtitle = '~ Beneath the Arch of the Builders ~';
+    const subtitle = '~ In the Ruins of the Makers ~';
     r.drawString(Math.floor((cols - subtitle.length) / 2), startY + title.length + 1,
       subtitle, COLORS.BRIGHT_BLACK);
 
@@ -264,13 +264,13 @@ export class UIManager {
 
     if (step === 'race') {
       r.drawString(4, 3, 'Choose your race:', COLORS.BRIGHT_WHITE);
-      const races = ['Deckborn', 'Archborn', 'Boneborn', 'Voidtouched', 'Crawler'];
+      const races = ['Human', 'Elf', 'Dwarf', 'Orc', 'Halfling'];
       const descs = [
-        'Balanced settlers of the main habitat decks',
-        'Upper-tier dwellers with keen senses and sharp minds',
-        'Stout hull workers from the lower decks',
-        'Radiation-hardened outcasts from the outer edge',
-        'Nimble duct-dwellers who know every maintenance shaft'
+        'Adaptable and resilient folk of the settled lands',
+        'Long-lived keepers of old knowledge from the high places',
+        'Stout miners and craftsmen of the deep halls',
+        'Hardy outcasts from the blighted wastes, marked by old corruption',
+        'Nimble tunnel-folk who know every hidden passage'
       ];
       for (let i = 0; i < races.length; i++) {
         const sel = i === this.selectedIndex;
@@ -280,12 +280,12 @@ export class UIManager {
       }
     } else if (step === 'class') {
       r.drawString(4, 3, 'Choose your class:', COLORS.BRIGHT_WHITE);
-      const classes = ['Sentinel', 'Technomancer', 'Scavenger', 'Pathfinder'];
+      const classes = ['Warden', 'Arcanist', 'Rogue', 'Ranger'];
       const descs = [
-        'Armored defenders of the colony corridors',
-        'Wielders of recovered Builder technology',
-        'Resourceful survivors who strip the old sectors',
-        'Scouts who map the unknown reaches of the colony'
+        'Armored protectors of the settled roads',
+        'Wielders of recovered ancient magic',
+        'Cunning survivors who pick the old ruins clean',
+        'Scouts who map the wilderness beyond the walls'
       ];
       for (let i = 0; i < classes.length; i++) {
         const sel = i === this.selectedIndex;
@@ -303,7 +303,7 @@ export class UIManager {
       r.drawString(6, 5, `Name:  ${charGenState.name}`, COLORS.BRIGHT_CYAN);
       r.drawString(6, 6, `Race:  ${charGenState.race}`, COLORS.BRIGHT_CYAN);
       r.drawString(6, 7, `Class: ${charGenState.playerClass}`, COLORS.BRIGHT_CYAN);
-      r.drawString(6, 9, '[Enter] Begin Expedition    [Esc] Start Over', COLORS.BRIGHT_YELLOW);
+      r.drawString(6, 9, '[Enter] Begin Adventure    [Esc] Start Over', COLORS.BRIGHT_YELLOW);
     }
   }
 
@@ -904,15 +904,15 @@ export class UIManager {
         { t: '' },
         { h: 'INTERACTION', c: COLORS.BRIGHT_YELLOW },
         { t: 'Enter / Space        Confirm selection / interact' },
-        { t: 'E                    Enter sector, sealed zone, or use terminal' },
-        { t: 'T                    Talk to nearby colonist' },
+        { t: 'E                    Enter dungeon, ruins, or building' },
+        { t: 'T                    Talk to nearby person' },
         { t: 'G                    Pick up item on the ground' },
         { t: '' },
         { h: 'MENUS', c: COLORS.BRIGHT_YELLOW },
         { t: 'I                    Open inventory' },
         { t: 'C                    Character sheet & stats' },
-        { t: 'Q                    Mission log' },
-        { t: 'M                    Colony map (explored sectors)' },
+        { t: 'Q                    Quest log' },
+        { t: 'M                    World map (explored areas)' },
         { t: 'F                    Faction standings' },
         { t: 'O                    Settings' },
         { t: 'P                    Quick save' },
@@ -926,147 +926,147 @@ export class UIManager {
       ],
       // 1: Overworld
       [
-        { h: 'THE COLONY', c: COLORS.BRIGHT_CYAN },
-        { t: 'The colony spans an immense derelict structure' },
-        { t: 'left by the Builders. New sectors generate as' },
-        { t: 'you explore deeper into the unknown reaches.' },
+        { h: 'THE WORLD', c: COLORS.BRIGHT_CYAN },
+        { t: 'The realm is vast, built upon the ruins of a' },
+        { t: 'fallen civilization left by the Makers. New' },
+        { t: 'lands generate as you explore the unknown wilds.' },
         { t: '' },
         { h: 'TERRAIN TYPES', c: COLORS.BRIGHT_YELLOW },
-        { t: '. Deck Plate  Walkable corridor plating' },
-        { t: 't Overgrowth  Bio-reclaimed zone, higher encounter rate' },
-        { t: 'T Dense Growth Thick overgrowth, harder to traverse' },
-        { t: '. Dry Sector  Depressurized area, low atmosphere' },
-        { t: '~ Coolant Bog Leaking coolant pools, dangerous' },
-        { t: '~ Coolant Lake Impassable flooded section' },
-        { t: '\u2248 Deep Coolant Impassable flooded depths' },
-        { t: '^ Bulkhead    Impassable reinforced wall' },
-        { t: '\u25b2 Sealed Hull  Impassable outer hull plating' },
-        { t: '= Conduit     Connects colony settlements' },
+        { t: '. Grassland   Open fields and meadows' },
+        { t: 't Forest      Wooded area, higher encounter rate' },
+        { t: 'T Deep Forest Thick woodland, harder to traverse' },
+        { t: '. Barren Waste Scorched wasteland, few resources' },
+        { t: '~ Mire        Marshy ground, dangerous footing' },
+        { t: '~ Shallows    Shallow water, passable but slow' },
+        { t: '\u2248 Deep Lake   Impassable deep water' },
+        { t: '^ Mountain    Impassable rocky peaks' },
+        { t: '\u25b2 High Peak   Impassable mountain summit' },
+        { t: '= Road        Connects settlements' },
         { t: '' },
         { h: 'NAVIGATION', c: COLORS.BRIGHT_YELLOW },
-        { t: 'Walk in any direction — the colony has no known edge.' },
-        { t: 'New sectors load seamlessly as you move.' },
+        { t: 'Walk in any direction — the world has no edge.' },
+        { t: 'New lands generate seamlessly as you move.' },
         { t: 'Press M to view your explored map at any time.' },
         { t: 'Settlements appear as special symbols on the map.' },
-        { t: 'Conduits connect nearby habitats and outposts.' },
+        { t: 'Roads connect nearby towns and outposts.' },
       ],
       // 2: Locations
       [
         { h: 'LOCATION TYPES', c: COLORS.BRIGHT_CYAN },
         { t: '' },
-        { t: '\u00b7 Outpost     Small colony hab with basic traders' },
-        { t: 'o Habitat     Larger settlement, more services' },
-        { t: '* Hub         Major colony center with guilds & markets' },
-        { t: '\u00a4 Garrison    Fortified sector with barracks' },
-        { t: '\u2020 Medbay      Healing station, cures, augments' },
-        { t: '\u2126 Sealed Zone Dangerous, multi-room derelict sector' },
-        { t: '! Spire       Vertical sealed zone with many levels' },
-        { t: '\u00a7 Wreckage    Crumbling Builder remains, salvage & data' },
-        { t: '\u00b0 Camp        Temporary survivor outpost' },
+        { t: '\u00b7 Village     Small hamlet with basic traders' },
+        { t: 'o Town        Larger settlement, more services' },
+        { t: '* City        Major center with guilds & markets' },
+        { t: '\u00a4 Castle      Fortified stronghold with garrison' },
+        { t: '\u2020 Temple      Healing shrine, blessings, cures' },
+        { t: '\u2126 Dungeon     Dangerous, multi-room underground' },
+        { t: '! Tower       Vertical dungeon with many levels' },
+        { t: '\u00a7 Ruins       Crumbling ancient remains, treasure & lore' },
+        { t: '\u00b0 Camp        Temporary wayfarer outpost' },
         { t: '' },
         { h: 'INSIDE SETTLEMENTS', c: COLORS.BRIGHT_YELLOW },
-        { t: 'Walk up to a colonist and press T to talk.' },
-        { t: 'Enter compartments with E at the hatch (+).' },
-        { t: 'Traders: buy/sell gear, haggle for prices.' },
-        { t: 'Cantinas: rest, hear rumors, recruit crew.' },
-        { t: 'Medbays: heal, cure ailments, receive stims.' },
+        { t: 'Walk up to a person and press T to talk.' },
+        { t: 'Enter buildings with E at the door (+).' },
+        { t: 'Merchants: buy/sell gear, haggle for prices.' },
+        { t: 'Taverns: rest, hear rumors, find companions.' },
+        { t: 'Temples: heal, cure ailments, receive blessings.' },
         { t: 'Press Escape to leave a settlement.' },
         { t: '' },
-        { h: 'SEALED ZONES & SPIRES', c: COLORS.BRIGHT_YELLOW },
-        { t: 'Explore chambers, fight hostiles, find salvage.' },
-        { t: 'Spires have multiple levels — find the lift.' },
-        { t: 'Wreckage holds Builder data logs and caches.' },
+        { h: 'DUNGEONS & TOWERS', c: COLORS.BRIGHT_YELLOW },
+        { t: 'Explore chambers, fight monsters, find treasure.' },
+        { t: 'Towers have multiple levels — find the stairs.' },
+        { t: 'Ruins hold ancient lore and hidden vaults.' },
       ],
       // 3: Combat
       [
         { h: 'COMBAT SYSTEM', c: COLORS.BRIGHT_RED },
-        { t: 'Combat is turn-based. You and the hostile take' },
+        { t: 'Combat is turn-based. You and the enemy take' },
         { t: 'turns choosing actions.' },
         { t: '' },
         { h: 'ACTIONS', c: COLORS.BRIGHT_YELLOW },
         { t: 'Attack         Basic melee/ranged strike' },
         { t: 'Abilities 1-3  Special skills (cost MP)' },
-        { t: 'Use Item       Consume a stim-pack or charge cell' },
+        { t: 'Use Item       Consume a potion or scroll' },
         { t: 'Flee           Attempt to disengage (DEX check)' },
         { t: '' },
         { h: 'STATS & DAMAGE', c: COLORS.BRIGHT_YELLOW },
         { t: 'STR  Melee damage and carry capacity' },
         { t: 'DEX  Hit chance, dodge, flee success' },
-        { t: 'CON  Max HP and toxin resistance' },
-        { t: 'INT  Tech power and max MP' },
-        { t: 'WIS  Tech resistance and perception' },
-        { t: 'CHA  Trader prices, dialogue options, persuasion' },
+        { t: 'CON  Max HP and poison resistance' },
+        { t: 'INT  Arcane power and max MP' },
+        { t: 'WIS  Magic resistance and perception' },
+        { t: 'CHA  Merchant prices, dialogue options, persuasion' },
         { t: '' },
         { t: 'Damage = Attack Power - Target Defense' },
         { t: 'Critical hits deal double damage (DEX-based).' },
         { t: '' },
         { h: 'ENCOUNTERS', c: COLORS.BRIGHT_YELLOW },
-        { t: 'Hostile encounters occur while traversing sectors.' },
-        { t: 'Rate increases in dark cycles and during breaches.' },
-        { t: 'Sealed zones have fixed hostile placements.' },
+        { t: 'Hostile encounters occur while exploring the wilds.' },
+        { t: 'Rate increases at night and in dangerous areas.' },
+        { t: 'Dungeons have fixed enemy placements.' },
       ],
       // 4: Systems
       [
-        { h: 'CYCLE & LIGHTING', c: COLORS.BRIGHT_CYAN },
+        { h: 'DAY & NIGHT', c: COLORS.BRIGHT_CYAN },
         { t: 'Time advances as you move (0.5h per step) and' },
         { t: 'when you rest (R = 8 hours). The HUD shows the' },
-        { t: 'colony lighting cycle and clock.' },
-        { t: 'Dark cycle: higher encounter rate, traders close.' },
+        { t: 'time of day and sun/moon cycle.' },
+        { t: 'Night: higher encounter rate, shops close.' },
         { t: '' },
-        { h: 'ATMOSPHERE', c: COLORS.BRIGHT_CYAN },
-        { t: 'Conditions change by sector: coolant leaks, static' },
-        { t: 'storms, pressure drops, fog. Affects visibility' },
-        { t: 'in sealed zones and encounter rates.' },
+        { h: 'WEATHER', c: COLORS.BRIGHT_CYAN },
+        { t: 'Conditions change by region: rain, snow, storms,' },
+        { t: 'fog, sandstorms. Affects visibility in dungeons' },
+        { t: 'and encounter rates.' },
         { t: '' },
         { h: 'FACTIONS (F)', c: COLORS.BRIGHT_CYAN },
         { t: 'Eight factions track your reputation. Clearing' },
-        { t: 'hostiles improves guard/trader standing.' },
+        { t: 'monsters improves guard and merchant standing.' },
         { t: 'Standings: Hostile < Unfriendly < Neutral' },
         { t: '           < Friendly < Allied' },
         { t: '' },
-        { h: 'MISSIONS (Q)', c: COLORS.BRIGHT_CYAN },
-        { t: 'Accept missions from colonists. Track objectives' },
-        { t: 'and rewards in the mission log. Some missions are' },
-        { t: 'generated from colony events (salvage maps, etc).' },
+        { h: 'QUESTS (Q)', c: COLORS.BRIGHT_CYAN },
+        { t: 'Accept quests from townsfolk. Track objectives' },
+        { t: 'and rewards in the quest log. Some quests are' },
+        { t: 'generated from world events (treasure maps, etc).' },
         { t: '' },
-        { h: 'COLONY EVENTS', c: COLORS.BRIGHT_CYAN },
-        { t: 'Festivals, plagues, creature breaches, power' },
-        { t: 'failures, supply convoys, and raider incursions' },
-        { t: 'occur over time. Events affect prices and more.' },
+        { h: 'WORLD EVENTS', c: COLORS.BRIGHT_CYAN },
+        { t: 'Festivals, plagues, monster incursions, magical' },
+        { t: 'darkness, caravans, and bandit raids occur over' },
+        { t: 'time. Events affect prices and more.' },
       ],
       // 5: Tips / About
       [
         { h: 'GETTING STARTED', c: COLORS.BRIGHT_GREEN },
-        { t: 'You begin in an outpost. Talk to colonists for' },
-        { t: 'missions and visit traders to gear up before' },
-        { t: 'venturing into the uncharted sectors.' },
+        { t: 'You begin in a village. Talk to the townsfolk for' },
+        { t: 'quests and visit merchants to gear up before' },
+        { t: 'venturing into the uncharted wilds.' },
         { t: '' },
         { h: 'SURVIVAL TIPS', c: COLORS.BRIGHT_GREEN },
-        { t: '- Save often with P. There is no auto-revive.' },
+        { t: '- Save often with P. There is no resurrection.' },
         { t: '- Rest (R) to recover HP and MP between fights.' },
-        { t: '- Carry stim-packs for emergencies.' },
+        { t: '- Carry healing potions for emergencies.' },
         { t: '- Check your character sheet (C) after leveling.' },
         { t: '- Equip better gear from your inventory (I, E).' },
         { t: '' },
         { h: 'EXPLORATION', c: COLORS.BRIGHT_GREEN },
-        { t: '- Follow conduits to find nearby settlements.' },
-        { t: '- The colony is vast — explore in any direction.' },
+        { t: '- Follow roads to find nearby settlements.' },
+        { t: '- The world is vast — explore in any direction.' },
         { t: '- Discovered locations are marked on the map (M).' },
-        { t: '- Sealed zones and spires have the best salvage.' },
-        { t: '- Wreckage contains Builder data and hidden caches.' },
+        { t: '- Dungeons and towers have the best treasure.' },
+        { t: '- Ruins contain ancient lore and hidden vaults.' },
         { t: '' },
         { h: 'ECONOMY', c: COLORS.BRIGHT_GREEN },
-        { t: '- Haggle (H) at traders for better prices.' },
-        { t: '- Festival events reduce trader prices.' },
+        { t: '- Haggle (H) at merchants for better prices.' },
+        { t: '- Festival events reduce merchant prices.' },
         { t: '- High CHA gives better deals and more options.' },
-        { t: '- Sell salvage you don\'t need to fund upgrades.' },
+        { t: '- Sell loot you don\'t need to fund upgrades.' },
         { t: '' },
-        { h: 'THE COLONY', c: COLORS.BRIGHT_GREEN },
-        { t: 'Generations ago, the Builders vanished, leaving' },
-        { t: 'behind an immense orbital structure. You are one' },
-        { t: 'of the Deckborn — descendants of the original' },
-        { t: 'settlers who now survive among the ruins of a' },
-        { t: 'civilization they barely understand.' },
+        { h: 'THE WORLD', c: COLORS.BRIGHT_GREEN },
+        { t: 'Generations ago, the Makers vanished, leaving' },
+        { t: 'behind vast ruins and forgotten knowledge. You' },
+        { t: 'are a wanderer in a world built upon the bones' },
+        { t: 'of a civilization no one remembers, seeking' },
+        { t: 'fortune in the ruins of the old world.' },
       ],
     ];
 
@@ -1160,7 +1160,7 @@ export class UIManager {
     const spinner = ['|', '/', '-', '\\'][Math.floor(t) % 4];
 
     // Title
-    const title = '═══ DECKBORN ═══';
+    const title = '═══ ASHENGATE ═══';
     r.drawString(Math.floor((cols - title.length) / 2), 2, title, COLORS.BRIGHT_YELLOW);
 
     // Progress bar area
@@ -1182,7 +1182,7 @@ export class UIManager {
     }
 
     // Footer
-    r.drawString(2, rows - 2, 'Initializing colony systems...', COLORS.BRIGHT_BLACK);
+    r.drawString(2, rows - 2, 'Awakening the world...', COLORS.BRIGHT_BLACK);
   }
 
   // ─── UTILITIES ───

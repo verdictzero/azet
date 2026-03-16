@@ -1,5 +1,5 @@
 // ============================================================================
-// world.js — World generation for a retro ASCII space-colony roguelike
+// world.js — World generation for ASHENGATE, a retro ASCII fantasy roguelike
 // ============================================================================
 
 import { SeededRNG, PerlinNoise, AStar, distance, floodFill } from './utils.js';
@@ -54,58 +54,57 @@ export class OverworldGenerator {
 
   _terrainFromNoise(h, m) {
     // Deep water
-    if (h < 0.2) return tile('COOLANT_LAKE', '\u2248', '#000088', '#000044', false, { biome: 'reservoir' });
-    // Shallow pool
-    if (h < 0.3) return tile('SHALLOW_POOL', '~', '#4488ff', '#000066', false, { biome: 'reservoir' });
-    // Waste marsh: high moisture + low ground
-    if (h < 0.4 && m > 0.7) return tile('WASTE_MARSH', '~', '#228844', '#112211', true, { biome: 'waste' });
-    // Scorched deck: low moisture + medium height
-    if (h >= 0.3 && h < 0.6 && m < 0.25) return tile('SCORCHED_DECK', '.', '#ddcc44', '#332200', true, { biome: 'scorched' });
-    // Deck plate
-    if (h < 0.5) return tile('DECK_PLATE', '.', '#44cc44', '#112211', true, { biome: 'deckplate' });
-    // Overgrowth
+    if (h < 0.2) return tile('DEEP_LAKE', '\u2248', '#000088', '#000044', false, { biome: 'lake' });
+    // Shallows
+    if (h < 0.3) return tile('SHALLOWS', '~', '#4488ff', '#000066', false, { biome: 'lake' });
+    // Mire: high moisture + low ground
+    if (h < 0.4 && m > 0.7) return tile('MIRE', '~', '#228844', '#112211', true, { biome: 'swamp' });
+    // Barren waste: low moisture + medium height
+    if (h >= 0.3 && h < 0.6 && m < 0.25) return tile('BARREN_WASTE', '.', '#ddcc44', '#332200', true, { biome: 'badlands' });
+    // Grassland
+    if (h < 0.5) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
+    // Forest
     if (h < 0.6) {
-      if (m > 0.55) return tile('DENSE_OVERGROWTH', 'T', '#22aa22', '#0a1a0a', true, { biome: 'overgrowth' });
-      return tile('OVERGROWTH', 't', '#116611', '#0a1a0a', true, { biome: 'overgrowth' });
+      if (m > 0.55) return tile('DEEP_FOREST', 'T', '#22aa22', '#0a1a0a', true, { biome: 'forest' });
+      return tile('FOREST', 't', '#116611', '#0a1a0a', true, { biome: 'forest' });
     }
-    // More overgrowth at medium height
+    // More forest at medium height
     if (h < 0.75) {
-      if (m > 0.45) return tile('OVERGROWTH', 't', '#116611', '#0a1a0a', true, { biome: 'overgrowth' });
-      return tile('DECK_PLATE', '.', '#44cc44', '#112211', true, { biome: 'deckplate' });
+      if (m > 0.45) return tile('FOREST', 't', '#116611', '#0a1a0a', true, { biome: 'forest' });
+      return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
     }
-    // Bulkhead
-    if (h < 0.9) return tile('BULKHEAD', '^', '#cccccc', '#333333', false, { biome: 'bulkhead' });
-    // Hull breach
-    return tile('HULL_BREACH', '\u25b2', '#ffffff', '#666688', false, { biome: 'bulkhead' });
+    // Mountain
+    if (h < 0.9) return tile('MOUNTAIN', '^', '#cccccc', '#333333', false, { biome: 'mountain' });
+    // High peak
+    return tile('HIGH_PEAK', '\u25b2', '#ffffff', '#666688', false, { biome: 'mountain' });
   }
 
   _placeLocations(rng, tiles, width, height) {
     const locationDefs = [
-      { type: 'city', min: 1, max: 2, population: [800, 2000], difficulty: 1 },      // sector hub
-      { type: 'town', min: 3, max: 4, population: [200, 600], difficulty: 2 },       // habitat cluster
-      { type: 'village', min: 6, max: 10, population: [30, 120], difficulty: 1 },    // outpost
-      { type: 'castle', min: 2, max: 3, population: [50, 200], difficulty: 4 },      // fortified bulkhead
-      { type: 'temple', min: 3, max: 5, population: [10, 50], difficulty: 3 },       // comm shrine
-      { type: 'dungeon', min: 5, max: 8, population: [0, 0], difficulty: 5 },        // collapsed conduit
-      { type: 'ruins', min: 3, max: 5, population: [0, 10], difficulty: 4 },         // derelict module
-      { type: 'tower', min: 1, max: 3, population: [5, 20], difficulty: 5 },         // signal pylon
-      { type: 'camp', min: 2, max: 4, population: [10, 40], difficulty: 2 },         // scavenger camp
+      { type: 'city', min: 1, max: 2, population: [800, 2000], difficulty: 1 },      // walled city
+      { type: 'town', min: 3, max: 4, population: [200, 600], difficulty: 2 },       // market town
+      { type: 'village', min: 6, max: 10, population: [30, 120], difficulty: 1 },    // hamlet
+      { type: 'castle', min: 2, max: 3, population: [50, 200], difficulty: 4 },      // fortified keep
+      { type: 'temple', min: 3, max: 5, population: [10, 50], difficulty: 3 },       // holy sanctuary
+      { type: 'dungeon', min: 5, max: 8, population: [0, 0], difficulty: 5 },        // underground crypt
+      { type: 'ruins', min: 3, max: 5, population: [0, 10], difficulty: 4 },         // fallen stronghold
+      { type: 'tower', min: 1, max: 3, population: [5, 20], difficulty: 5 },         // arcane spire
+      { type: 'camp', min: 2, max: 4, population: [10, 40], difficulty: 2 },         // wanderer camp
     ];
 
     const nameBank = {
-      city: ['Ironhaven', 'Coreport', 'Gridspire', 'Hullreach'],
-      town: ['Pipeford', 'Boltwall', 'Venthollow', 'Rustfen', 'Deckrest', 'Wiregate'],
-      village: ['Sealwell', 'Coghollow', 'Axlevale', 'Weldstead', 'Strutspur', 'Fluxfield',
-                'Clampend', 'Rivethold', 'Forgepoint', 'Arcwick', 'Deckmark', 'Coredale'],
-      castle: ['Fort Bulkhead', 'Hullward Keep', 'Ironlock', 'Citadel Blackdeck'],
-      temple: ['Shrine of Signals', 'Temple of the Arc', 'Sanctum of Currents', 'Hall of Relays',
-               'Altar of the Core', 'Chapel of Sparks'],
-      dungeon: ['The Sunken Conduit', 'Crawlways of Dread', 'The Slag Pit', 'Shadow Ducts',
-                'The Hollow Shaft', 'Corroded Tunnels', 'The Iron Maw', 'Echoing Vents'],
-      ruins: ['Old Sector K', 'The Fallen Pylon', 'Duskbane Wreck', 'Shattered Module',
-              'Crumbling Annex'],
-      tower: ['Spire of Sensors', 'Antenna Peak', 'The Obsidian Pylon'],
-      camp: ['Scavenger Den', 'Trader Outpost', 'Drifter Crossing', 'Salvage Lodge'],
+      city: ['Ironhaven', 'Thorngate', 'Greymoor', 'Stonereach'],
+      town: ['Ashford', 'Ravenmark', 'Misthollow', 'Briarfen', 'Oakrest', 'Frostwatch'],
+      village: [], // generated names
+      castle: ['Fort Ironhold', 'Stormwall Keep', 'Shadowguard', 'Citadel Ashvane'],
+      temple: ['Shrine of Stars', 'Temple of the Dawn', 'Sanctum of Whispers', 'Hall of Echoes',
+               'Altar of the Flame', 'Chapel of the Moon'],
+      dungeon: ['The Sunken Crypt', 'Catacombs of Dread', 'The Slag Pit', 'Shadow Depths',
+                'The Hollow Tomb', 'Forgotten Tunnels', 'The Iron Maw', 'Echoing Caverns'],
+      ruins: ['Old Thornhold', 'The Fallen Tower', 'Duskbane Wreck', 'Shattered Keep',
+              'Crumbling Abbey'],
+      tower: ['Spire of Seeing', 'Stormwatch Peak', 'The Obsidian Tower'],
+      camp: ['Wanderer Den', 'Trader Outpost', 'Drifter Crossing', 'Pathfinder Lodge'],
     };
 
     const locations = [];
@@ -126,7 +125,7 @@ export class OverworldGenerator {
 
           // Must be on walkable, non-water, non-mountain terrain
           if (!t.walkable) continue;
-          if (t.type === 'SHALLOW_POOL' || t.type === 'COOLANT_LAKE' || t.type === 'BULKHEAD' || t.type === 'HULL_BREACH') continue;
+          if (t.type === 'SHALLOWS' || t.type === 'DEEP_LAKE' || t.type === 'MOUNTAIN' || t.type === 'HIGH_PEAK') continue;
 
           // Minimum distance from existing locations
           let tooClose = false;
@@ -209,9 +208,9 @@ export class OverworldGenerator {
         roads.push({ from: from.id, to: to.id, path });
         for (const p of path) {
           const t = tiles[p.y][p.x];
-          if (t.type === 'DECK_PLATE' || t.type === 'OVERGROWTH' || t.type === 'SCORCHED_DECK' || t.type === 'DENSE_OVERGROWTH') {
+          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'BARREN_WASTE' || t.type === 'DEEP_FOREST') {
             tiles[p.y][p.x] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
-          } else if (t.type === 'SHALLOW_POOL') {
+          } else if (t.type === 'SHALLOWS') {
             tiles[p.y][p.x] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
           }
         }
@@ -225,8 +224,8 @@ export class OverworldGenerator {
     const isWalkable = (x, y) => {
       if (x < 0 || y < 0 || x >= width || y >= height) return false;
       const t = tiles[y][x];
-      // Allow shallow pools for bridges, but discourage it; block coolant lakes and hull breaches
-      if (t.type === 'COOLANT_LAKE' || t.type === 'HULL_BREACH') return false;
+      // Allow shallows for bridges, but discourage it; block deep lakes and high peaks
+      if (t.type === 'DEEP_LAKE' || t.type === 'HIGH_PEAK') return false;
       return true;
     };
     return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
@@ -249,19 +248,19 @@ const TERRAIN_SCALE = 0.04;
 
 // Procedural name generator using syllable combination
 const NAME_PREFIXES = [
-  'Rust', 'Arc', 'Hull', 'Vent', 'Core', 'Grid', 'Pipe', 'Bolt', 'Deck', 'Wire',
-  'Seal', 'Forge', 'Iron', 'Flux', 'Cog', 'Axle', 'Weld', 'Rivet', 'Strut', 'Clamp',
+  'Ash', 'Iron', 'Thorn', 'Grey', 'Stone', 'Mist', 'Raven', 'Oak', 'Shadow', 'Frost',
+  'Ember', 'Hollow', 'Wren', 'Briar', 'Cinder', 'Drift', 'Glen', 'Moss', 'Dusk', 'Storm',
 ];
 const NAME_SUFFIXES = {
-  city: ['gate', 'hold', 'ward', 'haven', 'lock', 'span', 'reach', 'port', 'forge', 'helm'],
-  town: ['junction', 'cross', 'stead', 'well', 'mark', 'point', 'fall', 'keep', 'rest', 'watch'],
-  village: ['gate', 'hold', 'ward', 'haven', 'lock', 'span', 'reach', 'junction', 'well', 'point'],
-  castle: [' Lockdown', ' Fortress', ' Citadel', ' Stronghold', ' Bastion'],
-  temple: [' Relay', ' Sanctum', ' Beacon', ' Signal', ' Shrine'],
-  dungeon: [' Conduit', ' Crawlway', ' Shaft', ' Ducts', ' Depths', ' Maw', ' Hollow'],
-  ruins: [' Wreck', ' Remnants', ' Salvage', ' Rubble', ' Wastes'],
-  tower: [' Spire', ' Pylon', ' Antenna', ' Pillar', ' Pinnacle'],
-  camp: [' Outpost', ' Den', ' Crossing', ' Depot', ' Waypoint'],
+  city: ['gate', 'hold', 'ward', 'haven', 'crown', 'reach', 'hearth', 'throne', 'spire', 'keep'],
+  town: ['ford', 'cross', 'stead', 'well', 'mark', 'bridge', 'fall', 'moor', 'rest', 'watch'],
+  village: ['hollow', 'vale', 'glen', 'dell', 'wick', 'thatch', 'brook', 'meadow', 'burrow', 'end'],
+  castle: [' Bastion', ' Fortress', ' Citadel', ' Stronghold', ' Keep'],
+  temple: [' Sanctuary', ' Sanctum', ' Shrine', ' Chapel', ' Abbey'],
+  dungeon: [' Depths', ' Catacombs', ' Undercrypt', ' Dungeon', ' Pit', ' Abyss', ' Hollow'],
+  ruins: [' Ruins', ' Remnants', ' Wastes', ' Rubble', ' Wreckage'],
+  tower: [' Spire', ' Tower', ' Pinnacle', ' Obelisk', ' Watchtower'],
+  camp: [' Camp', ' Den', ' Crossing', ' Lodge', ' Waypost'],
 };
 
 const LOCATION_DEFS = [
@@ -363,7 +362,7 @@ export class ChunkManager {
         const t = tiles[ly][lx];
 
         if (!t.walkable) continue;
-        if (t.type === 'SHALLOW_POOL' || t.type === 'COOLANT_LAKE' || t.type === 'BULKHEAD' || t.type === 'HULL_BREACH') continue;
+        if (t.type === 'SHALLOWS' || t.type === 'DEEP_LAKE' || t.type === 'MOUNTAIN' || t.type === 'HIGH_PEAK') continue;
 
         const wx = ox + lx;
         const wy = oy + ly;
@@ -511,9 +510,9 @@ export class ChunkManager {
           const lx = ((p.x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
           const ly = ((p.y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
           const t = chunk.tiles[ly][lx];
-          if (t.type === 'DECK_PLATE' || t.type === 'OVERGROWTH' || t.type === 'SCORCHED_DECK' || t.type === 'DENSE_OVERGROWTH') {
+          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'BARREN_WASTE' || t.type === 'DEEP_FOREST') {
             chunk.tiles[ly][lx] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
-          } else if (t.type === 'SHALLOW_POOL') {
+          } else if (t.type === 'SHALLOWS') {
             chunk.tiles[ly][lx] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
           }
         }
@@ -525,7 +524,7 @@ export class ChunkManager {
     const self = this;
     const isWalkable = (x, y) => {
       const t = self.getTile(x, y);
-      if (t.type === 'COOLANT_LAKE' || t.type === 'HULL_BREACH') return false;
+      if (t.type === 'DEEP_LAKE' || t.type === 'HIGH_PEAK') return false;
       return true;
     };
     return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
@@ -542,9 +541,9 @@ export class SettlementGenerator {
     const sizes = { village: [20, 20], town: [35, 35], city: [50, 40], castle: [40, 40] };
     const [width, height] = sizes[type] || [25, 25];
 
-    // Base fill with deck plate
+    // Base fill with grassland
     const tiles = makeTileGrid(width, height, () =>
-      tile('DECK_PLATE', ',', '#44aa44', '#112211', true, { buildingId: null })
+      tile('GRASSLAND', ',', '#44aa44', '#112211', true, { buildingId: null })
     );
 
     const buildings = [];
@@ -591,9 +590,9 @@ export class SettlementGenerator {
     // Place internal buildings
     const internalDefs = [
       { type: 'barracks', name: 'Guard Post', minW: 8, minH: 6 },
-      { type: 'tavern', name: 'Mess Hall', minW: 10, minH: 8 },
-      { type: 'blacksmith', name: 'Fabrication Bay', minW: 6, minH: 5 },
-      { type: 'temple', name: 'Comm Shrine', minW: 6, minH: 6 },
+      { type: 'tavern', name: 'Great Hall', minW: 10, minH: 8 },
+      { type: 'blacksmith', name: 'Smithy', minW: 6, minH: 5 },
+      { type: 'temple', name: 'Temple', minW: 6, minH: 6 },
     ];
 
     // Place buildings in quadrants
@@ -692,9 +691,9 @@ export class SettlementGenerator {
       placed.push({ x: bestX - 1, y: bestY - 1, w: bw + 2, h: bh + 2 });
 
       const nameMap = {
-        tavern: 'Cantina', shop: 'Supply Depot', blacksmith: 'Forge Bay',
-        temple: 'Comm Shrine', house: 'Hab Unit', guild_hall: 'Ops Center',
-        barracks: 'Guard Post', market_stall: 'Trade Kiosk',
+        tavern: 'Tavern', shop: 'General Store', blacksmith: 'Smithy',
+        temple: 'Temple', house: 'Dwelling', guild_hall: 'Guild Hall',
+        barracks: 'Guard Post', market_stall: 'Market Stall',
       };
 
       buildings.push({
@@ -751,7 +750,7 @@ export class SettlementGenerator {
     let y = sy;
     while (y !== ey && y >= 0 && y < h) {
       const t = tiles[y][midX];
-      if (t.type === 'DECK_PLATE') {
+      if (t.type === 'GRASSLAND') {
         tiles[y][midX] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
       }
       y += yDir;
@@ -761,7 +760,7 @@ export class SettlementGenerator {
     let x = midX;
     while (x !== ex && x >= 0 && x < w) {
       const t = tiles[ey][x];
-      if (t.type === 'DECK_PLATE') {
+      if (t.type === 'GRASSLAND') {
         tiles[ey][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
       }
       x += xDir;
@@ -774,7 +773,7 @@ export class SettlementGenerator {
       const x = rng.nextInt(1, w - 2);
       const y = rng.nextInt(1, h - 2);
       const t = tiles[y][x];
-      if (t.type !== 'DECK_PLATE') continue;
+      if (t.type !== 'GRASSLAND') continue;
 
       // Don't place inside building footprints
       let inside = false;

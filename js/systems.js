@@ -1,5 +1,5 @@
 // ============================================================================
-// systems.js — Game systems for a retro ASCII space-colony roguelike
+// systems.js — Game systems for a retro ASCII fantasy roguelike
 // ============================================================================
 
 import { SeededRNG, distance } from './utils.js';
@@ -238,21 +238,21 @@ export class QuestSystem {
     // ---- Title templates per type ----
     this._titleTemplates = {
       FETCH: [
-        'Salvage {N} {ITEM}',
+        'Gather {N} {ITEM}',
         'Recover {ITEM} for {NPC}',
         'Critical Need: {ITEM}',
         '{NPC} Requires {ITEM}',
-        'Scavenging for {ITEM}',
+        'Foraging for {ITEM}',
         'Reclaim the {ITEM}',
         '{ITEM} Shortage',
-        'Supply Run: {ITEM}',
+        'Supply Errand: {ITEM}',
         'Stockpile {ITEM}',
         'Rare {ITEM} Needed',
         'The {ITEM} Search',
-        'A Crate of {ITEM}',
-        '{NPC}\'s {ITEM} Requisition',
+        'A Chest of {ITEM}',
+        '{NPC}\'s {ITEM} Request',
         'Procurement: {ITEM}',
-        'Deep Salvage: {ITEM}',
+        'Deep Ruins: {ITEM}',
       ],
       KILL: [
         'Neutralize the {MONSTER}',
@@ -267,13 +267,13 @@ export class QuestSystem {
         'The {LOCATION} {MONSTER} Problem',
         'Defend Against {MONSTER}',
         'No Quarter for {MONSTER}',
-        'Decontaminate {LOCATION}',
-        '{MONSTER} Threat: Responders Needed',
+        'Cleanse {LOCATION}',
+        '{MONSTER} Threat: Champions Needed',
         'Drive Back the {MONSTER}',
       ],
       ESCORT: [
         'Escort {NPC} to {LOCATION}',
-        'Guard {NPC} Through the Corridors',
+        'Guard {NPC} Through the Wilds',
         'Safe Passage for {NPC}',
         '{NPC}\'s Transit to {LOCATION}',
         'Protect {NPC}',
@@ -284,25 +284,25 @@ export class QuestSystem {
         'Guardian of {NPC}',
         'A Dangerous Transit',
         '{NPC} Needs an Escort',
-        'Security Detail Wanted',
+        'Sword Arm Wanted',
         'From Here to {LOCATION}',
-        'The Hazardous Corridor',
+        'The Perilous Road',
       ],
       INVESTIGATE: [
         'The Mystery of {SUBJECT}',
         'Investigate {SUBJECT}',
-        'Anomaly Report: {SUBJECT}',
+        'Strange Omen: {SUBJECT}',
         'Uncover the Truth of {SUBJECT}',
         'The {SUBJECT} Enigma',
-        'Diagnose the {SUBJECT} Malfunction',
+        'Unravel the {SUBJECT} Curse',
         'What Happened at {LOCATION}?',
         'The {SUBJECT} Conspiracy',
         'Secrets of {SUBJECT}',
         'The Curious Case of {SUBJECT}',
-        'Scan {SUBJECT}',
-        'The {LOCATION} Anomaly',
-        'Signals from {SUBJECT}',
-        'Readings in {LOCATION}',
+        'Divine {SUBJECT}',
+        'The {LOCATION} Haunting',
+        'Whispers of {SUBJECT}',
+        'Portents in {LOCATION}',
         'The {SUBJECT} Investigation',
       ],
       DELIVER: [
@@ -310,17 +310,18 @@ export class QuestSystem {
         'Urgent Delivery: {ITEM}',
         'A Crate for {NPC}',
         'Courier: {ITEM} to {LOCATION}',
+
         'Rush Delivery for {NPC}',
         '{NPC} Awaits {ITEM}',
-        'Priority Shipment to {LOCATION}',
+        'Priority Delivery to {LOCATION}',
         'Transport the {ITEM}',
         'Bring {ITEM} to {NPC}',
-        'Express Shipment: {ITEM}',
+        'Urgent Parcel: {ITEM}',
         'The {ITEM} Must Arrive',
         '{NPC}\'s Requisition',
         'Deliver Supplies to {LOCATION}',
         'Carry {ITEM} Safely',
-        'Parts for {NPC}',
+        'Materials for {NPC}',
       ],
       BOUNTY: [
         'Wanted: {CRIMINAL}',
@@ -344,73 +345,73 @@ export class QuestSystem {
     // ---- Description templates per type ----
     this._descTemplates = {
       FETCH: [
-        '{NPC} has asked you to salvage {N} {ITEM} from the surrounding sectors. They are essential for the colony\'s survival.',
-        'The colony supply of {ITEM} has run dangerously low. {NPC} needs {N} as soon as possible.',
+        '{NPC} has asked you to gather {N} {ITEM} from the surrounding wilds. They are essential for the realm\'s survival.',
+        'The settlement supply of {ITEM} has run dangerously low. {NPC} needs {N} as soon as possible.',
         '"I cannot continue my work without {ITEM}," says {NPC}. "Please bring me {N} of them."',
-        'A shortage of {ITEM} threatens the colony. {NPC} is offering a reward for {N} delivered promptly.',
-        '{NPC} is preparing for a critical repair and requires {N} {ITEM}. Search the sealed sectors carefully.',
-        'The medbay needs {ITEM} urgently. {NPC} has posted a requisition for {N} to be recovered.',
-        'Scans show that {ITEM} can be found in the derelict sectors. {NPC} needs {N} for their project.',
-        'Colony defense preparations demand resources. {NPC} has placed an order for {N} {ITEM}.',
-        '{NPC} is prototyping a new system that requires {N} {ITEM}. Help them source the components.',
-        'The Salvage Guild has put out a call for {N} {ITEM}. {NPC} will pay handsomely for your trouble.',
+        'A shortage of {ITEM} threatens the realm. {NPC} is offering a reward for {N} delivered promptly.',
+        '{NPC} is preparing a critical ritual and requires {N} {ITEM}. Search the forbidden ruins carefully.',
+        'The healers need {ITEM} urgently. {NPC} has posted a requisition for {N} to be recovered.',
+        'Scouts report that {ITEM} can be found in the ancient ruins. {NPC} needs {N} for their project.',
+        'Realm defense preparations demand resources. {NPC} has placed an order for {N} {ITEM}.',
+        '{NPC} is crafting a new enchantment that requires {N} {ITEM}. Help them source the materials.',
+        'The Guild of Coinwrights has put out a call for {N} {ITEM}. {NPC} will pay handsomely for your trouble.',
       ],
       KILL: [
-        'A dangerous {MONSTER} has been menacing workers near {LOCATION}. {NPC} is offering a reward for its elimination.',
-        '{LOCATION} has become overrun with {MONSTER}. The colonists are desperate for someone to clear them out.',
-        '"That wretched {MONSTER} destroyed our equipment," {NPC} growls. "I want it destroyed."',
-        'Sensors indicate a {MONSTER} nest near {LOCATION}. Clear it before the creatures multiply further.',
-        'The militia is stretched thin. {NPC} needs a capable operative to deal with the {MONSTER} threat at {LOCATION}.',
-        'Supply runners refuse to transit through {LOCATION} due to {MONSTER} attacks. {NPC} wants the route secured.',
+        'A dangerous {MONSTER} has been menacing folk near {LOCATION}. {NPC} is offering a reward for its elimination.',
+        '{LOCATION} has become overrun with {MONSTER}. The townsfolk are desperate for someone to clear them out.',
+        '"That wretched {MONSTER} destroyed our stores," {NPC} growls. "I want it destroyed."',
+        'Rangers report a {MONSTER} nest near {LOCATION}. Clear it before the creatures multiply further.',
+        'The guard is stretched thin. {NPC} needs a capable adventurer to deal with the {MONSTER} threat at {LOCATION}.',
+        'Caravans refuse to pass through {LOCATION} due to {MONSTER} attacks. {NPC} wants the route secured.',
         'A particularly vicious {MONSTER} has claimed {LOCATION} as its territory. End the threat permanently.',
         '{NPC} has received reports of {MONSTER} activity. Investigate {LOCATION} and eliminate any threats.',
-        'The {MONSTER} grows bolder each cycle, venturing closer to the habitation ring. {NPC} offers credits for proof of the kill.',
+        'The {MONSTER} grows bolder each moon, venturing closer to the settlement walls. {NPC} offers coin for proof of the kill.',
         'Workers refuse to enter {LOCATION} since the {MONSTER} appeared. {NPC} implores you to help.',
       ],
       ESCORT: [
-        '{NPC} must travel to {LOCATION} but fears the dangers of the corridors. Serve as their protector.',
-        'Raiders have been ambushing people in the passages to {LOCATION}. {NPC} needs a bodyguard.',
-        '"I carry critical components that must reach {LOCATION} intact," says {NPC}. "Will you guard me?"',
-        '{NPC} has important business at {LOCATION} and cannot afford to be waylaid by hostiles.',
+        '{NPC} must travel to {LOCATION} but fears the dangers of the road. Serve as their protector.',
+        'Bandits have been ambushing travelers on the way to {LOCATION}. {NPC} needs a bodyguard.',
+        '"I carry precious relics that must reach {LOCATION} intact," says {NPC}. "Will you guard me?"',
+        '{NPC} has important business at {LOCATION} and cannot afford to be waylaid by brigands.',
         'The route to {LOCATION} is hazardous. {NPC} is willing to pay well for safe escort.',
         'An envoy named {NPC} must arrive at {LOCATION} unharmed. Your combat skills are needed.',
         '{NPC}, a senior archivist, must reach {LOCATION} to deliver vital research. Protect them.',
-        'The supply convoy to {LOCATION} departs soon. {NPC} seeks a capable guard for the transit.',
-        '"My team waits for me in {LOCATION}," {NPC} says anxiously. "I just need someone to walk with me."',
-        '{NPC} has been tasked with delivering prototype tech to {LOCATION}. Many would kill for such hardware.',
+        'The supply caravan to {LOCATION} departs soon. {NPC} seeks a capable guard for the journey.',
+        '"My companions wait for me in {LOCATION}," {NPC} says anxiously. "I just need someone to walk with me."',
+        '{NPC} has been tasked with delivering enchanted artifacts to {LOCATION}. Many would kill for such treasures.',
       ],
       INVESTIGATE: [
-        'Strange readings have been detected near {LOCATION}. {NPC} wants someone to investigate {SUBJECT}.',
+        'Strange omens have been observed near {LOCATION}. {NPC} wants someone to investigate {SUBJECT}.',
         'People have been going missing, and {NPC} suspects it has something to do with {SUBJECT}.',
         '"Something is not right about {SUBJECT}," {NPC} whispers. "Look into it, but be discreet."',
-        'Rumors of {SUBJECT} have spread through the hab blocks. {NPC} wants the truth uncovered.',
+        'Rumors of {SUBJECT} have spread through the quarters. {NPC} wants the truth uncovered.',
         '{NPC} has noticed disturbing patterns related to {SUBJECT}. Find out what is really going on.',
-        'The Council speaks of {SUBJECT} in hushed tones. {NPC} believes there is more to the story.',
-        'Builder archives reference {SUBJECT}, and {NPC} believes the answer lies somewhere in {LOCATION}.',
-        'Systems have been malfunctioning since {SUBJECT} began. {NPC} seeks answers.',
-        '"I found this strange data fragment related to {SUBJECT}," {NPC} says. "What does it mean?"',
-        'The mystery of {SUBJECT} has baffled engineers for cycles. {NPC} thinks you can solve it.',
+        'The Silent Court speaks of {SUBJECT} in hushed tones. {NPC} believes there is more to the story.',
+        'Ancient archives reference {SUBJECT}, and {NPC} believes the answer lies somewhere in {LOCATION}.',
+        'The wards have been failing since {SUBJECT} began. {NPC} seeks answers.',
+        '"I found this strange rune fragment related to {SUBJECT}," {NPC} says. "What does it mean?"',
+        'The mystery of {SUBJECT} has baffled scholars for ages. {NPC} thinks you can solve it.',
       ],
       DELIVER: [
         '{NPC} needs {ITEM} delivered to a contact in {LOCATION}. Time is of the essence.',
-        'This {ITEM} must reach {LOCATION} before the next cycle. {NPC} is counting on you.',
+        'This {ITEM} must reach {LOCATION} before the next moon. {NPC} is counting on you.',
         '"Handle the {ITEM} with care," {NPC} warns. "It is irreplaceable and must reach {LOCATION}."',
         'A critical shipment of {ITEM} needs to reach {NPC_DEST} in {LOCATION}. Deliver it safely.',
         '{NPC} has prepared the {ITEM} for transport. Take it to {LOCATION} without delay.',
-        'The {ITEM} contains data vital to the colony\'s defense. {NPC} needs it delivered to {LOCATION}.',
+        'The {ITEM} contains lore vital to the realm\'s defense. {NPC} needs it delivered to {LOCATION}.',
         '"My colleague in {LOCATION} has been waiting for this {ITEM}," says {NPC}. "Please hurry."',
-        'A rare {ITEM} has been recovered by {NPC}. It must be brought to {LOCATION} for analysis.',
+        'A rare {ITEM} has been recovered by {NPC}. It must be brought to {LOCATION} for study.',
         'Deliver this sealed {ITEM} to the contact in {LOCATION}. {NPC} says you must not open it.',
-        'The med-tech in {LOCATION} needs this {ITEM} urgently. {NPC} is offering good credits for swift delivery.',
+        'The healer in {LOCATION} needs this {ITEM} urgently. {NPC} is offering good coin for swift delivery.',
       ],
       BOUNTY: [
         '{CRIMINAL} has been spotted near {LOCATION}. {NPC} is offering a bounty for their capture.',
         'The notorious {CRIMINAL} has evaded justice for too long. {NPC} wants them brought in.',
-        '"That scavenger {CRIMINAL} raided our supply cache," {NPC} seethes. "Bring me their head."',
-        '{CRIMINAL} is wanted for crimes against the colony. {NPC} has posted a generous bounty.',
+        '"That rogue {CRIMINAL} raided our supply cache," {NPC} seethes. "Bring me their head."',
+        '{CRIMINAL} is wanted for crimes against the realm. {NPC} has posted a generous bounty.',
         'Track {CRIMINAL} to their hideout near {LOCATION} and bring them to justice.',
         'The fugitive {CRIMINAL} has a price on their head. {NPC} will pay double if taken alive.',
-        '{CRIMINAL} has been terrorizing the outer sectors. {NPC} needs a skilled hunter to end the threat.',
+        '{CRIMINAL} has been terrorizing the outer provinces. {NPC} needs a skilled hunter to end the threat.',
         'Witnesses last saw {CRIMINAL} fleeing toward {LOCATION}. {NPC} wants them found.',
         'The crimes of {CRIMINAL} have gone unpunished. {NPC} seeks a bounty hunter worthy of the task.',
         '{NPC} mutters darkly about {CRIMINAL}. "Find them. Make them pay for what they did."',
@@ -419,48 +420,48 @@ export class QuestSystem {
 
     // ---- Name pools for template substitution ----
     this._itemNames = [
-      'Data Cores', 'Reactor Parts', 'Builder Relics', 'Circuit Boards',
-      'Coolant Canisters', 'Nano-Fiber Mesh', 'Plasma Cells',
-      'Signal Amplifiers', 'Cryo-Gel Packs', 'Memory Wafers',
-      'Bio-Filter Cartridges', 'Power Couplings', 'Optical Cables', 'Scrap Alloy',
-      'Thermal Regulators', 'Void Shards', 'Synthetic Enzymes',
+      'Ancient Tomes', 'Altar Stones', 'Maker Relics', 'Runestones',
+      'Healing Salves', 'Mithril Thread', 'Arcane Crystals',
+      'Scrying Orbs', 'Frost Elixirs', 'Memory Shards',
+      'Purification Herbs', 'Enchanted Bindings', 'Silver Wire', 'Iron Ingots',
+      'Warding Sigils', 'Void Shards', 'Alchemical Reagents',
     ];
 
     this._monsterNames = [
-      'Feral Hounds', 'Corroded Drones', 'Scrap Raiders', 'Tunnel Rats',
-      'Mutant Crawlers', 'Corrupted Sentinels', 'Glitch Wraiths', 'Acid Spitters',
-      'Vent Stalkers', 'Rogue Mechs', 'Swarm Beetles', 'Haywire Turrets',
-      'Spore Colonies', 'Void Leeches', 'Hull Borers', 'Shock Elementals',
+      'Dire Wolves', 'Skeletal Knights', 'Ashen Reavers', 'Cave Rats',
+      'Giant Spiders', 'Fallen Wardens', 'Barrow Wraiths', 'Venom Drakes',
+      'Shadow Stalkers', 'Iron Golems', 'Swarm Beetles', 'Cursed Sentries',
+      'Blight Molds', 'Void Leeches', 'Stone Borers', 'Storm Elementals',
     ];
 
     this._locationNames = [
-      'Sealed Sector 7', 'the Maintenance Tunnels', 'the Collapsed Wing',
-      'Lower Deck 9', 'the Abandoned Reactor', 'the Flooded Sublevel',
-      'the Northern Airlock', 'the Ventilation Shafts', 'Cargo Bay 12',
-      'the Forgotten Labs', 'the Upper Gantry', 'the Scrap Yards',
-      'the Deep Corridors', 'the Hydroponics Ward', 'the Outer Hull Breach',
+      'the Sealed Tombs', 'the Undercroft Tunnels', 'the Collapsed Tower',
+      'the Lower Quarter', 'the Abandoned Altar', 'the Flooded Crypts',
+      'the Northern Gate', 'the Winding Catacombs', 'the Old Storehouse',
+      'the Forgotten Archives', 'the High Ramparts', 'the Scrapheap Warrens',
+      'the Deep Passages', 'the Herbalist Quarter', 'the Outer Wall Breach',
     ];
 
     this._subjectNames = [
-      'the Disappearances', 'the Flickering Lights', 'the Contaminated Well',
-      'the Whispering Vents', 'the Builder Prophecy', 'the Missing Shipment',
-      'the Poisoned Recycler', 'the Sealed Bulkhead', 'the Sensor Ghosts',
-      'the Power Surges', 'the Failing Crops', 'the Lost Survey Team',
+      'the Disappearances', 'the Flickering Torches', 'the Poisoned Well',
+      'the Whispering Stones', 'the Maker Prophecy', 'the Missing Caravan',
+      'the Cursed Fountain', 'the Sealed Crypt', 'the Phantom Sightings',
+      'the Wild Magic Surges', 'the Failing Harvests', 'the Lost Expedition',
     ];
 
     this._criminalNames = [
       'Red Fang', 'the Shadow', 'Blackthorn', 'Iron Mask',
       'Scarface Morel', 'the Viper', 'One-Eye Grask',
       'Silvertongue', 'the Butcher', 'Rustjaw Kade',
-      'Nightclaw', 'the Phantom of Deck 9', 'Mad Helga',
-      'Grimblade', 'the Signal Thief',
+      'Nightclaw', 'the Phantom of the Keep', 'Mad Helga',
+      'Grimblade', 'the Rune Thief',
     ];
 
     this._npcNames = [
-      'Elder Tobin', 'Medic Mira', 'Fabricator Havel',
+      'Elder Tobin', 'Healer Mira', 'Smithmaster Havel',
       'Captain Rhea', 'Quartermaster Loris', 'Archivist Endrin',
-      'Hydroponics Tech Giles', 'Builder Adept Yara', 'Trader Kael',
-      'Scout Theron', 'Chemist Voss', 'Militia Sergeant Bram',
+      'Herbalist Giles', 'Maker Adept Yara', 'Trader Kael',
+      'Scout Theron', 'Alchemist Voss', 'Guard Sergeant Bram',
     ];
   }
 
@@ -526,8 +527,8 @@ export class QuestSystem {
     const successConsequences = [
       `${npcName} will speak highly of you to others.`,
       'Your reputation with the local faction improves.',
-      'Word of your deeds spreads throughout the colony.',
-      'The grateful colonists offer you supplies.',
+      'Word of your deeds spreads throughout the realm.',
+      'The grateful townsfolk offer you supplies.',
       `${npcName} promises to remember this favor.`,
     ];
     const failureConsequences = [
@@ -535,7 +536,7 @@ export class QuestSystem {
       'Your reputation may suffer slightly.',
       'The situation worsens without intervention.',
       'Others may question your reliability.',
-      `${npcName} will seek another operative for the task.`,
+      `${npcName} will seek another adventurer for the task.`,
     ];
 
     const quest = {
@@ -734,7 +735,7 @@ export class ShopSystem {
       armory: ['weapon', 'armor', 'shield', 'helmet'],
       chemist: ['potion', 'scroll', 'reagent', 'elixir'],
       general: ['weapon', 'armor', 'potion', 'scroll', 'tool', 'food', 'torch'],
-      tech_vendor: ['ring', 'amulet', 'gem', 'enchanted_accessory'],
+      enchanter: ['ring', 'amulet', 'gem', 'enchanted_accessory'],
     };
   }
 
@@ -859,60 +860,60 @@ export class FactionSystem {
     this._playerStanding = new Map();
 
     // Initialize default factions
-    this._initFaction('COLONY_MILITIA', { name: 'Colony Militia', color: '#5555FF' });
-    this._initFaction('SALVAGE_GUILD', { name: 'Salvage Guild', color: '#FFAA00' });
-    this._initFaction('ORDER_OF_BUILDERS', { name: 'Order of Builders', color: '#FFFFFF' });
-    this._initFaction('TUNNEL_RUNNERS', { name: 'Tunnel Runners', color: '#AA00AA' });
-    this._initFaction('FERAL_SWARM', { name: 'Feral Swarm', color: '#FF0000' });
-    this._initFaction('CORRUPTED', { name: 'Corrupted', color: '#555555' });
-    this._initFaction('SCRAP_RAIDERS', { name: 'Scrap Raiders', color: '#AA5500' });
-    this._initFaction('THE_COUNCIL', { name: 'The Council', color: '#FFFF55' });
+    this._initFaction('IRON_WARD', { name: 'The Iron Ward', color: '#5555FF' });
+    this._initFaction('GUILD_OF_COINWRIGHTS', { name: 'Guild of Coinwrights', color: '#FFAA00' });
+    this._initFaction('ORDER_OF_THE_TOME', { name: 'Order of the Tome', color: '#FFFFFF' });
+    this._initFaction('THE_UNDERGUILD', { name: 'The Underguild', color: '#AA00AA' });
+    this._initFaction('BLIGHT_HORDE', { name: 'The Blight Horde', color: '#FF0000' });
+    this._initFaction('THE_HOLLOW', { name: 'The Hollow', color: '#555555' });
+    this._initFaction('ASHEN_REAVERS', { name: 'The Ashen Reavers', color: '#AA5500' });
+    this._initFaction('THE_SILENT_COURT', { name: 'The Silent Court', color: '#FFFF55' });
 
     // Default inter-faction relations
-    this._setDefaultRelation('COLONY_MILITIA', 'SALVAGE_GUILD', 70);
-    this._setDefaultRelation('COLONY_MILITIA', 'ORDER_OF_BUILDERS', 60);
-    this._setDefaultRelation('COLONY_MILITIA', 'THE_COUNCIL', 65);
-    this._setDefaultRelation('COLONY_MILITIA', 'TUNNEL_RUNNERS', -60);
-    this._setDefaultRelation('COLONY_MILITIA', 'SCRAP_RAIDERS', -90);
-    this._setDefaultRelation('COLONY_MILITIA', 'FERAL_SWARM', -100);
-    this._setDefaultRelation('COLONY_MILITIA', 'CORRUPTED', -100);
+    this._setDefaultRelation('IRON_WARD', 'GUILD_OF_COINWRIGHTS', 70);
+    this._setDefaultRelation('IRON_WARD', 'ORDER_OF_THE_TOME', 60);
+    this._setDefaultRelation('IRON_WARD', 'THE_SILENT_COURT', 65);
+    this._setDefaultRelation('IRON_WARD', 'THE_UNDERGUILD', -60);
+    this._setDefaultRelation('IRON_WARD', 'ASHEN_REAVERS', -90);
+    this._setDefaultRelation('IRON_WARD', 'BLIGHT_HORDE', -100);
+    this._setDefaultRelation('IRON_WARD', 'THE_HOLLOW', -100);
 
-    this._setDefaultRelation('SALVAGE_GUILD', 'ORDER_OF_BUILDERS', 40);
-    this._setDefaultRelation('SALVAGE_GUILD', 'THE_COUNCIL', 50);
-    this._setDefaultRelation('SALVAGE_GUILD', 'TUNNEL_RUNNERS', -40);
-    this._setDefaultRelation('SALVAGE_GUILD', 'SCRAP_RAIDERS', -80);
-    this._setDefaultRelation('SALVAGE_GUILD', 'FERAL_SWARM', -90);
-    this._setDefaultRelation('SALVAGE_GUILD', 'CORRUPTED', -80);
+    this._setDefaultRelation('GUILD_OF_COINWRIGHTS', 'ORDER_OF_THE_TOME', 40);
+    this._setDefaultRelation('GUILD_OF_COINWRIGHTS', 'THE_SILENT_COURT', 50);
+    this._setDefaultRelation('GUILD_OF_COINWRIGHTS', 'THE_UNDERGUILD', -40);
+    this._setDefaultRelation('GUILD_OF_COINWRIGHTS', 'ASHEN_REAVERS', -80);
+    this._setDefaultRelation('GUILD_OF_COINWRIGHTS', 'BLIGHT_HORDE', -90);
+    this._setDefaultRelation('GUILD_OF_COINWRIGHTS', 'THE_HOLLOW', -80);
 
-    this._setDefaultRelation('ORDER_OF_BUILDERS', 'THE_COUNCIL', 30);
-    this._setDefaultRelation('ORDER_OF_BUILDERS', 'TUNNEL_RUNNERS', -30);
-    this._setDefaultRelation('ORDER_OF_BUILDERS', 'SCRAP_RAIDERS', -50);
-    this._setDefaultRelation('ORDER_OF_BUILDERS', 'FERAL_SWARM', -70);
-    this._setDefaultRelation('ORDER_OF_BUILDERS', 'CORRUPTED', -100);
+    this._setDefaultRelation('ORDER_OF_THE_TOME', 'THE_SILENT_COURT', 30);
+    this._setDefaultRelation('ORDER_OF_THE_TOME', 'THE_UNDERGUILD', -30);
+    this._setDefaultRelation('ORDER_OF_THE_TOME', 'ASHEN_REAVERS', -50);
+    this._setDefaultRelation('ORDER_OF_THE_TOME', 'BLIGHT_HORDE', -70);
+    this._setDefaultRelation('ORDER_OF_THE_TOME', 'THE_HOLLOW', -100);
 
-    this._setDefaultRelation('THE_COUNCIL', 'TUNNEL_RUNNERS', -50);
-    this._setDefaultRelation('THE_COUNCIL', 'SCRAP_RAIDERS', -70);
-    this._setDefaultRelation('THE_COUNCIL', 'FERAL_SWARM', -80);
-    this._setDefaultRelation('THE_COUNCIL', 'CORRUPTED', -90);
+    this._setDefaultRelation('THE_SILENT_COURT', 'THE_UNDERGUILD', -50);
+    this._setDefaultRelation('THE_SILENT_COURT', 'ASHEN_REAVERS', -70);
+    this._setDefaultRelation('THE_SILENT_COURT', 'BLIGHT_HORDE', -80);
+    this._setDefaultRelation('THE_SILENT_COURT', 'THE_HOLLOW', -90);
 
-    this._setDefaultRelation('TUNNEL_RUNNERS', 'SCRAP_RAIDERS', 20);
-    this._setDefaultRelation('TUNNEL_RUNNERS', 'FERAL_SWARM', -60);
-    this._setDefaultRelation('TUNNEL_RUNNERS', 'CORRUPTED', -70);
+    this._setDefaultRelation('THE_UNDERGUILD', 'ASHEN_REAVERS', 20);
+    this._setDefaultRelation('THE_UNDERGUILD', 'BLIGHT_HORDE', -60);
+    this._setDefaultRelation('THE_UNDERGUILD', 'THE_HOLLOW', -70);
 
-    this._setDefaultRelation('SCRAP_RAIDERS', 'FERAL_SWARM', -50);
-    this._setDefaultRelation('SCRAP_RAIDERS', 'CORRUPTED', -60);
+    this._setDefaultRelation('ASHEN_REAVERS', 'BLIGHT_HORDE', -50);
+    this._setDefaultRelation('ASHEN_REAVERS', 'THE_HOLLOW', -60);
 
-    this._setDefaultRelation('FERAL_SWARM', 'CORRUPTED', -30);
+    this._setDefaultRelation('BLIGHT_HORDE', 'THE_HOLLOW', -30);
 
-    // Default player standings (neutral with most, hostile with ferals/corrupted)
-    this._playerStanding.set('COLONY_MILITIA', 10);
-    this._playerStanding.set('SALVAGE_GUILD', 0);
-    this._playerStanding.set('ORDER_OF_BUILDERS', 5);
-    this._playerStanding.set('TUNNEL_RUNNERS', 0);
-    this._playerStanding.set('FERAL_SWARM', -80);
-    this._playerStanding.set('CORRUPTED', -100);
-    this._playerStanding.set('SCRAP_RAIDERS', -40);
-    this._playerStanding.set('THE_COUNCIL', 0);
+    // Default player standings (neutral with most, hostile with blight/hollow)
+    this._playerStanding.set('IRON_WARD', 10);
+    this._playerStanding.set('GUILD_OF_COINWRIGHTS', 0);
+    this._playerStanding.set('ORDER_OF_THE_TOME', 5);
+    this._playerStanding.set('THE_UNDERGUILD', 0);
+    this._playerStanding.set('BLIGHT_HORDE', -80);
+    this._playerStanding.set('THE_HOLLOW', -100);
+    this._playerStanding.set('ASHEN_REAVERS', -40);
+    this._playerStanding.set('THE_SILENT_COURT', 0);
   }
 
   _initFaction(id, data) {
@@ -1078,74 +1079,74 @@ export class EventSystem {
     this.scheduledEvents = [];
 
     this._eventTypes = [
-      'SALVAGE_CONVOY',
-      'BREACH_SWARM',
-      'FOUNDERS_DAY',
-      'RAIDER_INCURSION',
-      'CONTAMINATION',
-      'BLACKOUT',
-      'SCHEMATIC_FOUND',
+      'CARAVAN_ARRIVAL',
+      'MONSTER_INCURSION',
+      'HARVEST_FESTIVAL',
+      'BANDIT_RAID',
+      'PLAGUE_OUTBREAK',
+      'MAGICAL_DARKNESS',
+      'TREASURE_MAP_FOUND',
     ];
 
     this._eventDayRanges = {
-      SALVAGE_CONVOY: [3, 5],
-      BREACH_SWARM: [7, 10],
-      FOUNDERS_DAY: [5, 8],
-      RAIDER_INCURSION: [10, 15],
-      CONTAMINATION: [15, 20],
-      BLACKOUT: [12, 18],
-      SCHEMATIC_FOUND: [8, 12],
+      CARAVAN_ARRIVAL: [3, 5],
+      MONSTER_INCURSION: [7, 10],
+      HARVEST_FESTIVAL: [5, 8],
+      BANDIT_RAID: [10, 15],
+      PLAGUE_OUTBREAK: [15, 20],
+      MAGICAL_DARKNESS: [12, 18],
+      TREASURE_MAP_FOUND: [8, 12],
     };
 
     this._eventDescriptions = {
-      SALVAGE_CONVOY: [
-        'A salvage team rolls into the colony, their haulers loaded with recovered tech from the outer ruins. They set up shop in the trade hub, offering rare components not normally available.',
-        'Lights flash in the cargo bay as a salvage convoy docks. Scavengers from the eastern sectors have arrived, bringing recovered circuitry, alloy plating, and strange Builder artifacts.',
-        'The hiss of airlock seals announces the arrival of the Deep Recovery Company. Their containers overflow with reclaimed hardware.',
-        'A weathered convoy leader guides her haulers through the main gate. "Fresh salvage!" she calls. "Weapons, med-kits, and Builder relics from beyond the sealed zones!"',
-        'Reports indicate a large salvage convoy has docked at the outer platform. Word spreads quickly, and eager traders crowd the newly opened stalls.',
+      CARAVAN_ARRIVAL: [
+        'A merchant caravan rolls into the settlement, their wagons loaded with recovered treasures from the outer ruins. They set up shop in the market square, offering rare goods not normally available.',
+        'Horns sound at the gate as a trade caravan arrives. Merchants from the eastern provinces have come, bringing fine weapons, enchanted cloth, and strange ancient artifacts.',
+        'The creak of wagon wheels announces the arrival of the Far Wanderers Trading Company. Their crates overflow with exotic wares.',
+        'A weathered caravan leader guides her wagons through the main gate. "Fresh goods!" she calls. "Weapons, potions, and Maker relics from beyond the forbidden ruins!"',
+        'Reports indicate a large trade caravan has arrived at the outer market. Word spreads quickly, and eager buyers crowd the newly opened stalls.',
       ],
-      BREACH_SWARM: [
-        'Alarms blare across the colony: creatures are breaching from sealed sectors in unprecedented numbers. The militia is overwhelmed and calling for aid.',
-        'The walls shudder as something stirs beneath the lower decks. Feral creatures pour through breached bulkheads, threatening habitation blocks and workers alike.',
-        'Scouts return with grim news: a nest has erupted in the sealed sectors, and the surrounding corridors teem with hostile creatures. Transit has become perilous.',
-        'Shrieks echo through the ventilation as swarms of creatures breach from below. The Colony Militia has sounded the alarm across all sectors.',
-        'A toxic mist seeps from the deep corridors, and with it come creatures that should have stayed sealed away. The breach must be contained.',
+      MONSTER_INCURSION: [
+        'War horns blare across the settlement: creatures are pouring from the sealed tombs in unprecedented numbers. The guard is overwhelmed and calling for aid.',
+        'The walls shudder as something stirs beneath the lower quarter. Fell creatures pour through broken wards, threatening the townsfolk and workers alike.',
+        'Scouts return with grim news: a nest has erupted in the forbidden ruins, and the surrounding passages teem with hostile creatures. Travel has become perilous.',
+        'Shrieks echo through the streets as swarms of creatures breach from below. The Iron Ward has sounded the alarm across all districts.',
+        'A foul mist seeps from the deep passages, and with it come creatures that should have stayed sealed away. The breach must be contained.',
       ],
-      FOUNDERS_DAY: [
-        'The annual Founders Day celebration begins! Colorful lights line every corridor, traders slash their prices, and the smell of hydroponic feast-rations fills the air.',
-        'Today marks the Festival of the Builders, a celebration held once a generation. The colonists are in high spirits, and traders offer generous discounts.',
-        'Music and laughter fill the habitation ring as the Founders Day celebration gets underway. Vendors compete for customers with special festival pricing.',
-        'The Luminary Festival has arrived! Glow-strips shine in every viewport, children play in the commons, and shopkeepers offer holiday bargains.',
-        'A traveling troupe of performers has arrived, transforming the central hub into a spectacle of wonders. The festive mood has traders offering deals to attract the crowds.',
+      HARVEST_FESTIVAL: [
+        'The annual Harvest Festival begins! Colorful banners line every street, traders slash their prices, and the smell of roasted meats and fresh bread fills the air.',
+        'Today marks the Festival of the Makers, a celebration held once a generation. The townsfolk are in high spirits, and traders offer generous discounts.',
+        'Music and laughter fill the market square as the Harvest Festival gets underway. Vendors compete for customers with special festival pricing.',
+        'The Luminary Festival has arrived! Lanterns shine in every window, children play in the commons, and shopkeepers offer holiday bargains.',
+        'A traveling troupe of performers has arrived, transforming the town square into a spectacle of wonders. The festive mood has traders offering deals to attract the crowds.',
       ],
-      RAIDER_INCURSION: [
-        'Smoke rises from the eastern airlock. Scrap raiders have ambushed a supply convoy, and now they threaten the colony itself. The militia captain calls for volunteers.',
-        'A breathless runner stumbles through the bulkhead: raiders have breached an outer hab module. Without immediate help, the settlers will be overrun.',
-        'Under cover of a power brownout, raiders have seized the supply corridor, cutting off trade routes. Prices soar as supplies dwindle.',
-        'The notorious Red Fang crew has been spotted near the perimeter. They hit a supply convoy at first shift and show no signs of pulling back.',
-        'Raider scouts have been detected scanning colony defenses. An attack seems imminent. The militia prepares for the worst.',
+      BANDIT_RAID: [
+        'Smoke rises from the eastern gate. Bandits have ambushed a supply caravan, and now they threaten the settlement itself. The guard captain calls for volunteers.',
+        'A breathless runner stumbles through the gate: raiders have breached the outer quarter. Without immediate help, the settlers will be overrun.',
+        'Under cover of a moonless night, bandits have seized the trade road, cutting off supply routes. Prices soar as supplies dwindle.',
+        'The notorious Red Fang crew has been spotted near the perimeter. They hit a supply caravan at dawn and show no signs of pulling back.',
+        'Bandit scouts have been detected watching the settlement defenses. An attack seems imminent. The guard prepares for the worst.',
       ],
-      CONTAMINATION: [
-        'A systems failure in the air recycler spreads toxic particles through the settlement. The afflicted develop respiratory distress and skin lesions. Medics are overwhelmed, and medical supplies are worth their weight in alloy.',
-        'Vermin have been seen in unusual numbers near the water recycler, and contamination has spread. Several colonists have fallen ill, and the medbay staff work tirelessly.',
-        'A salvage haul from the outer sectors carried more than parts: a chemical contaminant now spreads through the ventilation. Bulkheads are sealed to prevent further exposure.',
-        'The water recycler has malfunctioned. Those who drank from the taps have fallen gravely ill. Chemists demand premium prices for purification compounds.',
-        'Whispers of contamination spread faster than the toxin itself. Traders hoard medical supplies, and prices for antidotes and filter packs triple overnight.',
+      PLAGUE_OUTBREAK: [
+        'A foul sickness spreads through the settlement. The afflicted develop fever, chills, and dark welts. Healers are overwhelmed, and medicinal herbs are worth their weight in gold.',
+        'Vermin have been seen in unusual numbers near the well, and sickness has spread. Several townsfolk have fallen ill, and the healers work tirelessly.',
+        'A relic recovered from the outer ruins carried more than dust: a magical plague now spreads through the quarter. Wards are raised to prevent further exposure.',
+        'The well has been tainted by dark magic. Those who drank from it have fallen gravely ill. Alchemists demand premium prices for purification draughts.',
+        'Whispers of plague spread faster than the sickness itself. Traders hoard healing supplies, and prices for antidotes and curative potions triple overnight.',
       ],
-      BLACKOUT: [
-        'The lights flicker and die as the main power grid fails. Emergency lighting casts red shadows across the corridors. In the darkness, the Corrupted grow restless and bold.',
-        'Engineers predicted the grid strain, but none foresaw total failure. As darkness blankets the colony, hostile creatures emerge from the deep sectors, emboldened by the blackout.',
-        'A cascade failure ripples through the power grid. Temperatures drop. Systems go silent. And from the sealed corridors, the Corrupted begin to stir.',
-        'The Great Blackout has begun. Old colonists say the boundary between safe and sealed zones weakens during power failures. The emergency klaxons sound in warning.',
-        'Darkness falls across every deck. Only emergency strips remain. The Corrupted, empowered by the blackout, surge from their sealed sectors with terrible purpose.',
+      MAGICAL_DARKNESS: [
+        'The torches flicker and die as a wave of magical darkness sweeps the land. Faint glimmers are all that remain. In the darkness, the Hollow grow restless and bold.',
+        'Scholars predicted the arcane convergence, but none foresaw total darkness. As shadow blankets the realm, hostile creatures emerge from the deep places, emboldened by the gloom.',
+        'A cascade of failed wards ripples through the settlement. Temperatures drop. Hearth-fires gutter and die. And from the sealed tombs, the Hollow begin to stir.',
+        'The Great Darkness has begun. Old folk say the boundary between the living world and the sealed crypts weakens during such events. The warning bells sound.',
+        'Darkness falls across every quarter. Only enchanted lights remain. The Hollow, empowered by the darkness, surge from their sealed tombs with terrible purpose.',
       ],
-      SCHEMATIC_FOUND: [
-        'While searching through a derelict storage locker, you discover a sealed data chip — a Builder schematic! The encoded plans indicate a cache of technology hidden somewhere in the sealed sectors.',
-        'A dying scavenger presses a data chip into your hands. "Find it," they gasp. "Before they do." The schematic reveals the location of a hidden Builder cache.',
-        'You notice strange markings etched into a maintenance panel. Following the pattern, you piece together coordinates from a Builder schematic.',
-        'An old terminal in the archives contains a corrupted file — a Builder schematic with coordinates marking a spot in the lower decks. Fortune favors the bold.',
-        'A fellow scavenger bets a Builder schematic in a card game and loses. The data, now yours, encodes a path to a forgotten tech cache deep in the ruins.',
+      TREASURE_MAP_FOUND: [
+        'While searching through an old chest, you discover a sealed scroll — a treasure map! The faded markings indicate a cache of riches hidden somewhere in the forbidden ruins.',
+        'A dying rogue presses a weathered parchment into your hands. "Find it," they gasp. "Before they do." The map reveals the location of a hidden ancient vault.',
+        'You notice strange markings etched into a crumbling wall. Following the pattern, you piece together directions from an ancient treasure map.',
+        'An old tome in the archives contains a hidden page — a treasure map with landmarks pointing to a spot in the lower quarter. Fortune favors the bold.',
+        'A fellow rogue bets a treasure map in a card game and loses. The parchment, now yours, traces a path to a forgotten vault deep in the ruins.',
       ],
     };
   }
@@ -1195,67 +1196,67 @@ export class EventSystem {
 
   _buildEventData(type, worldData) {
     switch (type) {
-      case 'SALVAGE_CONVOY':
+      case 'CARAVAN_ARRIVAL':
         return {
           merchantName: this._rng.random([
-            'Salvager Jorin', 'Convoy Leader Sela', 'Trader Vex',
-            'The Deep Recovery Company', 'Scavenger Orli',
+            'Merchant Jorin', 'Caravan Leader Sela', 'Trader Vex',
+            'The Far Wanderers Trading Company', 'Peddler Orli',
           ]),
           specialItems: true,
           duration: this._rng.nextInt(2, 4),
         };
 
-      case 'BREACH_SWARM':
+      case 'MONSTER_INCURSION':
         return {
           monsterType: this._rng.random([
-            'Feral Hounds', 'Swarm Beetles', 'Corroded Drones', 'Tunnel Rats', 'Mutant Crawlers',
+            'Dire Wolves', 'Swarm Beetles', 'Skeletal Knights', 'Cave Rats', 'Giant Spiders',
           ]),
           intensity: this._rng.random(['moderate', 'severe', 'critical']),
-          region: worldData?.region || 'the surrounding sectors',
+          region: worldData?.region || 'the surrounding wilds',
           duration: this._rng.nextInt(3, 6),
         };
 
-      case 'FOUNDERS_DAY':
+      case 'HARVEST_FESTIVAL':
         return {
           festivalName: this._rng.random([
-            'Founders Day', 'Festival of the Builders', 'Arrival Day',
+            'Harvest Festival', 'Festival of the Makers', 'Founding Day',
             'Luminary Festival', 'Reclamation Day',
           ]),
           priceModifier: 0.7 + this._rng.next() * 0.15,
           duration: this._rng.nextInt(2, 3),
         };
 
-      case 'RAIDER_INCURSION':
+      case 'BANDIT_RAID':
         return {
           banditLeader: this._rng.random([
             'Red Fang', 'Blackthorn', 'Iron Mask', 'the Viper', 'Grimblade',
           ]),
-          targetLocation: worldData?.settlement || 'the colony',
+          targetLocation: worldData?.settlement || 'the settlement',
           severity: this._rng.random(['minor', 'major', 'devastating']),
         };
 
-      case 'CONTAMINATION':
+      case 'PLAGUE_OUTBREAK':
         return {
           diseaseName: this._rng.random([
-            'Recycler Toxicosis', 'Blacklung Syndrome', 'the Wasting', 'Vent Sickness',
-            'Cryo-Burn Fever',
+            'the Grey Rot', 'Blacklung Plague', 'the Wasting', 'Crypt Fever',
+            'the Shivering Sickness',
           ]),
           healingItemDemand: 3.0,
           duration: this._rng.nextInt(4, 8),
         };
 
-      case 'BLACKOUT':
+      case 'MAGICAL_DARKNESS':
         return {
           duration: this._rng.nextInt(1, 3),
           undeadStrengthBonus: 1.5 + this._rng.next() * 0.5,
           darknessLevel: this._rng.random(['partial', 'total']),
         };
 
-      case 'SCHEMATIC_FOUND':
+      case 'TREASURE_MAP_FOUND':
         return {
           location: this._rng.random([
-            'the Abandoned Reactor', 'Lower Deck Storage', 'beneath the Old Gantry',
-            'the Sealed Lab', 'the Forgotten Server Room',
+            'the Abandoned Altar', 'the Lower Quarter Vaults', 'beneath the Old Ramparts',
+            'the Sealed Crypt', 'the Forgotten Archives',
           ]),
           treasureTier: this._rng.random(['minor', 'moderate', 'major']),
         };

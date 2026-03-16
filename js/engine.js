@@ -352,7 +352,7 @@ export class Renderer {
   /**
    * Return an animated color for special tile types.
    * @param {string} baseColor - the tile's static fg color
-   * @param {string} tileType - SHALLOW_POOL, COOLANT_LAKE, LAVA, FIREPLACE, etc.
+   * @param {string} tileType - SHALLOWS, DEEP_LAKE, LAVA, FIREPLACE, etc.
    * @returns {string} the current animated color
    */
   getAnimatedColor(baseColor, tileType) {
@@ -360,12 +360,12 @@ export class Renderer {
     const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
 
     switch (tileType) {
-      case 'SHALLOW_POOL':
+      case 'SHALLOWS':
       case 'WATER': {
         const blues = ['#0055AA', '#0066BB', '#0044AA'];
         return blues[Math.floor(t) % blues.length];
       }
-      case 'COOLANT_LAKE': {
+      case 'DEEP_LAKE': {
         const deeps = ['#000088', '#000066', '#001199'];
         return deeps[Math.floor(t) % deeps.length];
       }
@@ -677,6 +677,13 @@ export class InputManager {
     this.isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
     this._enableTouch = true;
 
+    // Text input mode (for mobile keyboard)
+    this._textInputMode = false;
+    this._textInput = document.getElementById('mobile-text-input');
+    this._textInputPrevValue = '';
+    this._onTextInput = this._onTextInput.bind(this);
+    this._onTextInputKeyDown = this._onTextInputKeyDown.bind(this);
+
     // Bind event listeners
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -690,6 +697,9 @@ export class InputManager {
   // ── Keyboard events ────────────────────────
 
   _onKeyDown(e) {
+    // In text input mode, let the hidden input handle character keys
+    if (this._textInputMode && e.key.length === 1) return;
+
     // Prevent default for game keys so the page doesn't scroll
     const gameKeys = [
       'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
@@ -783,6 +793,52 @@ export class InputManager {
     }
   }
   get enableTouch() { return this._enableTouch; }
+
+  // ── Text input mode (mobile keyboard) ─────
+
+  enterTextInputMode() {
+    this._textInputMode = true;
+    if (this._textInput) {
+      this._textInput.value = '';
+      this._textInputPrevValue = '';
+      this._textInput.addEventListener('input', this._onTextInput);
+      this._textInput.addEventListener('keydown', this._onTextInputKeyDown);
+      // Delay focus slightly for Android compatibility
+      setTimeout(() => { if (this._textInput) this._textInput.focus(); }, 100);
+    }
+  }
+
+  exitTextInputMode() {
+    this._textInputMode = false;
+    if (this._textInput) {
+      this._textInput.removeEventListener('input', this._onTextInput);
+      this._textInput.removeEventListener('keydown', this._onTextInputKeyDown);
+      this._textInput.blur();
+      this._textInput.value = '';
+    }
+  }
+
+  _onTextInput() {
+    if (!this._textInput) return;
+    const cur = this._textInput.value;
+    const prev = this._textInputPrevValue;
+    if (cur.length > prev.length) {
+      // New character(s) typed
+      const newChar = cur.charAt(cur.length - 1);
+      this.lastAction = newChar;
+    } else if (cur.length < prev.length) {
+      // Deletion (backspace)
+      this.lastAction = 'Backspace';
+    }
+    this._textInputPrevValue = cur;
+  }
+
+  _onTextInputKeyDown(e) {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      this.lastAction = e.key;
+    }
+  }
 
   // ── Per-frame queries ──────────────────────
 
