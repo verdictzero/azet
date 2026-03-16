@@ -1,5 +1,5 @@
 // ============================================================================
-// entities.js — Entity/NPC system for a retro ASCII roguelike game
+// entities.js — Entity/NPC system for ASHENGATE, a fantasy roguelike
 // ============================================================================
 
 import { SeededRNG, distance, manhattanDist } from './utils.js';
@@ -16,7 +16,7 @@ function nextId(prefix = 'ent') {
 const NAME_POOLS = {
   human: {
     male: [
-      'Aldric', 'Marcus', 'Thorin', 'Cedric', 'Gareth', 'Roland', 'Edmund',
+      'Aldric', 'Marcus', 'Kael', 'Cedric', 'Gareth', 'Roland', 'Edmund',
       'Aldwin', 'Brant', 'Conrad', 'Darian', 'Edwin', 'Falric', 'Godwin',
       'Harald', 'Ivan', 'Jareth', 'Kelvin', 'Leoric', 'Malcolm', 'Neville',
       'Oswald', 'Percival', 'Quinton', 'Roderick', 'Sigmund', 'Tristan',
@@ -30,10 +30,10 @@ const NAME_POOLS = {
       'Thalia', 'Ursula', 'Vivienne', 'Winifred', 'Yseult',
     ],
     last: [
-      'Ironforge', 'Blackwood', 'Stormwind', 'Ashford', 'Thornwall',
-      'Greymane', 'Brightmore', 'Dunhaven', 'Fairweather', 'Goleli',
-      'Hawkridge', 'Kingsmill', 'Langley', 'Moorfield', 'Northcott',
-      'Oakenshield', 'Ravenscar', 'Silverlock', 'Whitmore', 'Yarwood',
+      'Ashford', 'Ironwood', 'Thornwall', 'Greymoor', 'Stonebridge',
+      'Misthollow', 'Oakhart', 'Shadowmere', 'Frostborn', 'Emberglow',
+      'Ravencroft', 'Briarstone', 'Driftwood', 'Glenward', 'Moorfield',
+      'Brookshire', 'Aldenmere', 'Holloway', 'Wrenfield', 'Hearthstone',
     ],
   },
   elf: {
@@ -50,10 +50,10 @@ const NAME_POOLS = {
       'Raina', 'Yavanna',
     ],
     last: [
-      'Moonwhisper', 'Starfall', 'Silverleaf', 'Dawnweaver', 'Nightbloom',
-      'Sunfire', 'Windrunner', 'Dewdancer', 'Mistwalker', 'Thornblossom',
-      'Greenvale', 'Brightwater', 'Shadowmere', 'Goldentree', 'Crystalbrook',
-      'Silentglade', 'Swiftarrow', 'Moonshadow', 'Starbreeze', 'Leafwhirl',
+      'Starweaver', 'Moonveil', 'Dawnwhisper', 'Silverleaf', 'Nightbloom',
+      'Crystalsong', 'Windwalker', 'Dewmantle', 'Lightbinder', 'Thornmere',
+      'Mistwhisper', 'Sunweaver', 'Twilightmere', 'Fernshade', 'Glimmerstone',
+      'Petalwind', 'Archlight', 'Dreamthorn', 'Silkenshade', 'Eventide',
     ],
   },
   dwarf: {
@@ -68,10 +68,10 @@ const NAME_POOLS = {
       'Magna', 'Riva', 'Sif', 'Thyra', 'Ulfhild', 'Yrsa',
     ],
     last: [
-      'Ironbeard', 'Forgemaster', 'Stonehammer', 'Deepdelve', 'Goldvein',
-      'Copperbolt', 'Anviltop', 'Granitepick', 'Runecarver', 'Blazeforge',
-      'Steelhand', 'Thunderaxe', 'Orebreaker', 'Gemcutter', 'Coalheap',
-      'Ironpick', 'Hammerfall', 'Mithrilbeard', 'Darkmine', 'Boulderback',
+      'Ironforge', 'Stonehammer', 'Deepdelve', 'Coalhand', 'Anvilborn',
+      'Copperbeard', 'Forgeheart', 'Goldvein', 'Hammerfall', 'Rockstead',
+      'Shalebreaker', 'Tinderfoot', 'Gritspur', 'Brassmantle', 'Grudgebane',
+      'Orekeeper', 'Mithrilsong', 'Slagworth', 'Cragborn', 'Dusthewn',
     ],
   },
   orc: {
@@ -86,9 +86,9 @@ const NAME_POOLS = {
       'Breka',
     ],
     last: [
-      'Skullcrusher', 'Bloodfang', 'Bonegnaw', 'Deathgrip', 'Fleshrender',
-      'Goreblade', 'Hellscream', 'Ironfist', 'Jawbreaker', 'Mauler',
-      'Rageclaw', 'Spinebreaker', 'Warfang', 'Doomhowl', 'Blacktusk',
+      'Ashfang', 'Bloodthorn', 'Ironclaw', 'Stormhide', 'Bonecrusher',
+      'Grimjaw', 'Duskbane', 'Ravenmaw', 'Goreclaw', 'Skulltaker',
+      'Firebrand', 'Dreadmaw', 'Nightstalker', 'Thunderhide', 'Warscar',
     ],
   },
   halfling: {
@@ -103,28 +103,28 @@ const NAME_POOLS = {
       'Daffodil', 'Clover', 'Ivy', 'Poppy',
     ],
     last: [
-      'Goodbarrel', 'Underhill', 'Proudfoot', 'Baggins', 'Took',
-      'Brandybuck', 'Gamgee', 'Hornblower', 'Burrows', 'Chubb',
-      'Greenhand', 'Longbottom', 'Sackville', 'Rumble', 'Hayward',
+      'Underhill', 'Lightfoot', 'Goodbarrow', 'Thornberry', 'Mossgather',
+      'Bramblewood', 'Hearthwick', 'Smallburrow', 'Copperkettle', 'Widdershins',
+      'Thistledown', 'Meadowlark', 'Pebblebrook', 'Willowmere', 'Hazelhurst',
     ],
   },
 };
 
 const NICKNAMES = [
-  'the Brave', 'the Bold', 'Shadowblade', 'Truthseeker', 'the Wise',
-  'Ironwill', 'Stormbringer', 'the Wanderer', 'Flameheart', 'the Swift',
-  'Dawnbringer', 'the Silent', 'Dragonslayer', 'the Merciful', 'Nightstalker',
-  'the Just', 'Oathkeeper', 'the Unyielding', 'Grimjaw', 'Thornheart',
+  'the Steadfast', 'the Bold', 'Shadowwalker', 'Truthseeker', 'the Wise',
+  'Ironwill', 'Stormcaller', 'the Drifter', 'Lionheart', 'the Swift',
+  'Dawnbringer', 'the Silent', 'Wallbreaker', 'the Merciful', 'Darkstalker',
+  'the Just', 'Oathkeeper', 'the Unyielding', 'Grimjaw', 'Steelheart',
 ];
 
 const PLACE_PREFIXES = [
-  'Thorn', 'Iron', 'Shadow', 'Storm', 'Oak', 'Raven', 'Wolf', 'Stone',
-  'Silver', 'Black', 'White', 'Frost', 'Dark', 'Golden', 'Ember',
+  'Ash', 'Iron', 'Thorn', 'Grey', 'Stone', 'Mist', 'Oak', 'Shadow',
+  'Ember', 'Drift', 'Raven', 'Wren', 'Frost', 'Briar', 'Moss',
 ];
 
 const PLACE_SUFFIXES = [
-  'brook', 'hold', 'vale', 'haven', 'fall', 'gate', 'ford', 'wick',
-  'keep', 'mere', 'ridge', 'dale', 'watch', 'crest', 'hollow',
+  'hold', 'gate', 'vale', 'haven', 'ford', 'ward', 'moor', 'keep',
+  'well', 'glen', 'wick', 'dell', 'watch', 'bridge', 'hollow',
 ];
 
 export class NameGenerator {
@@ -190,41 +190,41 @@ const ROLE_COLORS = {
 };
 
 const ROLE_TITLES = {
-  merchant:   ['Traveling Merchant', 'Street Vendor', 'Master Trader', 'Peddler', 'Shopkeeper'],
-  blacksmith: ['Master Blacksmith', 'Apprentice Smith', 'Armorer', 'Weapon Smith', 'Tinker'],
-  barkeep:    ['Innkeeper', 'Barkeep', 'Tavern Owner', 'Bartender', 'Publican'],
-  priest:     ['High Priest', 'Acolyte', 'Temple Warden', 'Healer', 'Cleric'],
-  guard:      ['Town Guard', 'Gate Watchman', 'Patrol Captain', 'Militia Guard', 'Sentry'],
-  noble:      ['Lord', 'Lady', 'Baron', 'Baroness', 'Count'],
-  farmer:     ['Farmer', 'Farmhand', 'Shepherd', 'Miller', 'Grower'],
-  miner:      ['Miner', 'Tunnel Foreman', 'Ore Prospector', 'Stone Mason', 'Excavator'],
-  hunter:     ['Ranger', 'Trapper', 'Big Game Hunter', 'Forester', 'Tracker'],
-  scholar:    ['Scholar', 'Sage', 'Archivist', 'Lorekeeper', 'Historian'],
-  beggar:     ['Beggar', 'Street Urchin', 'Vagabond', 'Drifter', 'Pauper'],
-  child:      ['Child', 'Street Kid', 'Orphan', 'Young One', 'Little One'],
+  merchant:   ['Merchant', 'Goods Dealer', 'Supply Trader', 'Traveling Peddler', 'Market Keeper'],
+  blacksmith: ['Blacksmith', 'Armorer', 'Blade Smith', 'Ironworker', 'Forge Master'],
+  barkeep:    ['Innkeeper', 'Tavern Keeper', 'Brew Master', 'Ale Warden', 'Host'],
+  priest:     ['Acolyte', 'Shrine Keeper', 'Healer', 'Cleric', 'Temple Warden'],
+  guard:      ['Town Guard', 'Gate Watchman', 'Patrol Captain', 'Sentry', 'Ward Keeper'],
+  noble:      ['Lord', 'Steward', 'Council Elder', 'Magistrate', 'Castellan'],
+  farmer:     ['Farmer', 'Field Tender', 'Herbalist', 'Orchardist', 'Beekeeper'],
+  miner:      ['Miner', 'Tunnel Foreman', 'Ore Prospector', 'Stone Cutter', 'Deep Delver'],
+  hunter:     ['Hunter', 'Trapper', 'Scout', 'Game Warden', 'Woodsman'],
+  scholar:    ['Scholar', 'Lorekeeper', 'Sage', 'Chronicler', 'Archivist'],
+  beggar:     ['Beggar', 'Vagabond', 'Drifter', 'Wanderer', 'Wretch'],
+  child:      ['Child', 'Urchin', 'Young One', 'Little One', 'Apprentice'],
 };
 
 const SECRET_TEMPLATES = [
-  'is secretly a former assassin',
-  'was once nobility before being disgraced',
-  'knows the location of a hidden treasure',
-  'is wanted in another province',
-  'worships a forbidden deity',
-  'has an illegitimate child in another town',
-  'poisoned the previous guild master',
-  'can see glimpses of the future in dreams',
+  'is secretly a former assassin for a rival lord',
+  'was once a council member before being disgraced',
+  'knows the location of a hidden ancient vault',
+  'is wanted in another province for theft',
+  'worships a forbidden idol from the old world',
+  'has a child hidden in a neighboring settlement',
+  'poisoned the previous town steward',
+  'can interpret ancient runes that appear in dreams',
   'stole their identity from a dead traveler',
   'is a spy for a rival faction',
-  'owes a massive debt to a crime lord',
-  'accidentally caused a fire that burned down a village',
-  'possesses a forbidden artifact hidden in their home',
-  'was raised by a monster in the wilds',
-  'knows a secret passage beneath the town',
-  'made a pact with a demon long ago',
-  'is descended from an ancient royal bloodline',
-  'witnessed a murder and never spoke of it',
-  'has a twin sibling no one knows about',
-  'can speak an ancient dead language',
+  'owes a massive debt to the Guild of Coinwrights',
+  'accidentally started the fire that burned an entire quarter',
+  'possesses a forbidden grimoire hidden beneath their bed',
+  'was raised by outlaws in the deep forest',
+  'knows a secret passage beneath the settlement',
+  'made a pact with a dark spirit long ago',
+  'is descended from one of the ancient noble bloodlines',
+  'witnessed a murder in the woods and never spoke of it',
+  'has a twin sibling in another province no one knows about',
+  'can read the ancient runic script',
 ];
 
 const ROLE_SCHEDULES = {
@@ -362,9 +362,8 @@ const ROLE_SCHEDULES = {
 };
 
 const NPC_FACTIONS = [
-  'Town Council', 'Merchants Guild', 'Thieves Guild', 'Temple of Light',
-  'Rangers Order', 'Miners Union', 'Farmers Collective', 'Noble Court',
-  'Adventurers League', 'None',
+  'The Iron Ward', 'Guild of Coinwrights', 'The Underguild', 'Order of the Tome',
+  'The Iron Ward', 'Free Merchants', 'The Silent Court', 'None',
 ];
 
 export class NPCGenerator {
@@ -397,9 +396,9 @@ export class NPCGenerator {
 
     // Faction
     let faction = rng.random(NPC_FACTIONS);
-    if (role === 'merchant' || role === 'blacksmith') faction = 'Merchants Guild';
-    if (role === 'guard' || role === 'knight') faction = 'Town Council';
-    if (role === 'priest') faction = 'Temple of Light';
+    if (role === 'merchant' || role === 'blacksmith') faction = 'Guild of Coinwrights';
+    if (role === 'guard' || role === 'knight') faction = 'The Iron Ward';
+    if (role === 'priest') faction = 'Order of the Tome';
 
     // Secrets (1-2)
     const shuffledSecrets = rng.shuffle(SECRET_TEMPLATES);
@@ -463,83 +462,83 @@ export class NPCGenerator {
 
 const GREETINGS = {
   friendly: [
-    'Hail, friend! Welcome back.',
-    'Good to see you! How goes the adventure?',
+    'By the Makers, good to see you again!',
+    'Stars guide you! How goes the journey?',
     'Ah, my favorite visitor returns!',
-    'Well met, companion! What can I do for you today?',
-    'A pleasure, as always! Come in, come in.',
+    'Well met, friend! What can I do for you today?',
+    'May fortune favor you! Come in, come in.',
     'You look well! The road has treated you kindly.',
     'Welcome, welcome! I was hoping you would stop by.',
-    'By the gods, it is good to see a friendly face!',
-    'Ho there! Pull up a seat and rest your bones.',
-    'The hero returns! What news do you bring?',
+    'The old gods watch over us! Good to see a friendly face.',
+    'Ho there! Pull up a chair and rest your legs.',
+    'The wanderer returns! What news from the roads?',
   ],
   neutral: [
-    'What brings you here?',
+    'What brings you to these parts?',
     'State your business.',
     "I don't believe we've met.",
     'Can I help you with something?',
     'Yes? What do you need?',
-    'Hmm. You look like an adventurer.',
-    'Another traveler. What do you want?',
-    "If you're looking for trouble, look elsewhere.",
+    'Hmm. You look like a wanderer.',
+    'Another drifter. What do you want?',
+    "If you're looking for trouble, try the old ruins.",
     'Speak up, I have not got all day.',
     'Well? Spit it out.',
   ],
   hostile: [
     'Stay back!',
     'Not you again...',
-    'I thought I told you to leave!',
-    "Get out of my sight before I call the guards!",
-    "You've got some nerve showing your face here.",
+    'I thought I told you to leave this place!',
+    "Get out of my sight before I call the guard!",
+    "You've got some nerve showing your face around here.",
   ],
 };
 
 const RUMOR_TEMPLATES = [
-  'They say {LOCATION} is cursed by an ancient evil...',
-  'I heard {NPC_NAME} used to be a {PROFESSION} before settling here.',
-  'Strange lights have been seen near the old ruins at night.',
-  'The mine has been closed ever since the cave-in. Some say it was no accident.',
-  'A merchant was found dead on the road last week. Bandits, they say.',
-  "There's talk of war brewing in the eastern kingdoms.",
-  "The blacksmith's apprentice vanished three nights ago. Nobody's talking about it.",
-  'They say a dragon was spotted flying over the mountains.',
-  "The well water has tasted strange lately. Some folk won't drink it.",
-  'An old hermit in the forest supposedly knows the cure for any ailment.',
-  'I overheard the guards talking about something in the dungeon below the keep.',
-  "The temple's been collecting more donations than usual. Wonder what for.",
-  'A strange traveler was asking questions about the old king last week.',
-  "They say there's treasure buried beneath {LOCATION}, if you dare to look.",
-  'The harvest has been poor. Some blame witchcraft, others blame the weather.',
-  'I saw a ship with black sails anchored in the bay at midnight.',
-  "The noble's daughter has been secretly meeting someone outside the walls.",
-  'An earthquake opened a fissure near the old cemetery. Best stay away.',
-  "Word is, the thieves' guild is recruiting. Not that I'd know anything about that.",
-  'Some say the forest is growing... expanding toward the village each year.',
+  'They say {LOCATION} has been sealed since the last plague...',
+  'I heard {NPC_NAME} used to be a {PROFESSION} before settling in these parts.',
+  'The lanterns on the old road have been flickering for weeks. Nobody knows why.',
+  'The old mines have been sealed ever since the collapse. Some say it was no accident.',
+  'A traveler was found dead near the outer walls last fortnight. Bandits, they say.',
+  "There's talk of dark omens spreading through the eastern provinces.",
+  "The blacksmith's apprentice vanished three moons ago. Nobody's talking about it.",
+  'They say strange sounds were heard coming from beneath the old ruins.',
+  "The well water has tasted strange lately. Some folk won't drink from it.",
+  'An old hermit in the forest supposedly knows ancient healing arts.',
+  'I overheard the guard talking about something sealed in the catacombs.',
+  "The temple has been collecting more offerings than usual. Wonder what for.",
+  'A strange drifter was asking questions about the ancient kingdom last moon.',
+  "They say there's Maker treasure buried beneath {LOCATION}, if you dare to look.",
+  'The harvest has been poor. Some blame the drought, others blame a curse.',
+  'I saw a hooded figure enter the ruins at midnight.',
+  "The lord's daughter has been secretly meeting someone beyond the walls.",
+  'A tremor opened a fissure near the old barrow. Best stay away.',
+  "Word is, the Underguild is recruiting. Not that I'd know anything about that.",
+  'Some say the forest is spreading... creeping closer to the settlement each season.',
 ];
 
 const TOPIC_DIALOGUE = {
   self: [
-    "I've been living here for as long as I can remember.",
+    "I've been living in these parts for as long as I can remember.",
     'My work keeps me busy, but I cannot complain.',
-    "I used to travel, but those days are behind me now.",
+    "I used to wander the wilds, but those days are behind me now.",
     "There's not much to tell, really. I'm just a simple {ROLE}.",
-    'I learned my trade from my father, and he from his.',
+    'I learned my trade from my parent, and they from theirs.',
     "Name's {FIRST}. {TITLE} is what they call me around here.",
   ],
   location: [
     "This place has seen better days, but it's home.",
-    'The town was founded generations ago by settlers from the east.',
+    'The settlement was founded generations ago by the first settlers.',
     "Watch yourself around here. Not everyone's as friendly as me.",
     "We're a small community, but we look out for each other.",
-    'The land around here is rich, if you know how to work it.',
+    'The fields around here are productive, if you know how to work them.',
     'Travelers pass through here on their way to the capital.',
   ],
   faction: [
     'The {FACTION} keeps things running around here, for better or worse.',
     "I'm loyal to the {FACTION}, and they've done right by me.",
     'Between you and me, the {FACTION} has too much power.',
-    'Without the {FACTION}, this place would fall apart.',
+    'Without the {FACTION}, this settlement would fall apart.',
     'The {FACTION}? I stay out of politics, friend.',
   ],
   quest: [
@@ -623,7 +622,7 @@ export class DialogueSystem {
 
     if (npc.role === 'barkeep') {
       options.push({
-        text: 'I need a room for the night.',
+        text: 'I need a bunk for the night.',
         action: 'rest',
         consequence: null,
       });
@@ -631,8 +630,37 @@ export class DialogueSystem {
 
     if (npc.role === 'guard' && playerRep >= 10) {
       options.push({
-        text: 'Any trouble in the area?',
+        text: 'Any trouble in the sector?',
         action: 'bounty',
+        consequence: null,
+      });
+    }
+
+    // Secret revelation at high rep
+    if (playerRep > 50 && npc.secrets && npc.secrets.length > 0) {
+      options.push({
+        text: 'You can trust me... tell me something secret.',
+        action: 'secret',
+        consequence: null,
+        hint: 'High reputation required',
+      });
+    }
+
+    // Ask about their backstory
+    if (playerRep >= 10) {
+      options.push({
+        text: 'Tell me about yourself.',
+        action: 'backstory',
+        consequence: null,
+      });
+    }
+
+    // Quest turn-in (checked dynamically in main.js)
+    // Faction gossip at moderate rep
+    if (playerRep >= 0 && npc.faction && npc.faction !== 'None') {
+      options.push({
+        text: `What about the ${npc.faction}?`,
+        action: 'factionGossip',
         consequence: null,
       });
     }
@@ -646,6 +674,35 @@ export class DialogueSystem {
     return options;
   }
 
+  /**
+   * Get current schedule activity for an NPC at the given hour.
+   */
+  getScheduleActivity(npc, hour) {
+    if (!npc.schedule || npc.schedule.length === 0) return null;
+    let current = npc.schedule[0];
+    for (const entry of npc.schedule) {
+      if (hour >= entry.hour) {
+        current = entry;
+      }
+    }
+    return current;
+  }
+
+  /**
+   * Generate a schedule-aware greeting modifier.
+   */
+  getScheduleGreeting(npc, hour) {
+    const activity = this.getScheduleActivity(npc, hour);
+    if (!activity) return '';
+    if (activity.action === 'sleeping') {
+      return '*yawn* You woke me up... ';
+    }
+    if (activity.action.includes('eating') || activity.action.includes('lunch') || activity.action.includes('dinner') || activity.action.includes('breakfast')) {
+      return '*chewing* Sorry, in the middle of a meal. ';
+    }
+    return '';
+  }
+
   generateRumor(rng, worldContext = null) {
     let template = rng.random(RUMOR_TEMPLATES);
 
@@ -654,10 +711,10 @@ export class DialogueSystem {
       : 'the old ruins';
     const npcName = worldContext && worldContext.npcNames
       ? rng.random(worldContext.npcNames)
-      : 'Old Tom';
+      : 'Old Kael';
     const profession = rng.random([
-      'soldier', 'thief', 'wizard', 'noble', 'pirate', 'monk', 'assassin',
-      'knight', 'merchant prince', 'gladiator',
+      'soldier', 'rogue', 'arcanist', 'lord', 'smuggler', 'ranger', 'herbalist',
+      'warden', 'merchant', 'cave explorer',
     ]);
 
     template = template.replace('{LOCATION}', location);
@@ -696,135 +753,135 @@ export class DialogueSystem {
 // ============================================================================
 
 const WORLD_HISTORY_TEMPLATES = [
-  'The kingdom fell to {ENEMY} {YEARS} years ago, and the land has never fully recovered.',
-  'A great plague swept through {REGION}, killing nearly half the population.',
-  'The alliance between {FACTION1} and {FACTION2} was forged in blood during the Battle of {LOCATION}.',
-  'Long ago, a powerful wizard sealed an ancient evil beneath {LOCATION}, but the seals are weakening.',
-  '{FACTION1} and {FACTION2} fought a bitter war over control of the mines, leaving scars on the land.',
-  'The old king vanished mysteriously {YEARS} years ago. Some say he still walks the earth.',
-  'A comet streaked across the sky {YEARS} years ago, heralding an age of turmoil and change.',
-  'The great library of {LOCATION} burned in a fire set by zealots who feared forbidden knowledge.',
-  'The dwarven tunnels beneath the mountains were sealed after something was unearthed in the deep.',
-  'A great flood reshaped the coastline {YEARS} years ago, swallowing entire villages beneath the waves.',
-  'The elves retreated from the world after the betrayal at {LOCATION}, and few have been seen since.',
-  'An order of knights once protected the realm, but they were disbanded under accusations of treason.',
-  'The crown jewels were stolen {YEARS} years ago and never recovered. Some say they hold great power.',
-  'A volcanic eruption buried the ancient city of {LOCATION} under ash and stone.',
+  'The realm was overrun by {ENEMY} {YEARS} years ago, and the land has never fully recovered.',
+  'A terrible plague swept through {REGION}, killing nearly half the population.',
+  'The alliance between {FACTION1} and {FACTION2} was forged in desperation during the Siege of {LOCATION}.',
+  'Long ago, a Maker archmage sealed a dark power beneath {LOCATION}, but the wards are weakening.',
+  '{FACTION1} and {FACTION2} fought a bitter war over control of the throne, leaving scars across the land.',
+  'The old king vanished mysteriously {YEARS} years ago. Some say he still wanders the wilds.',
+  'A dark star appeared in the sky {YEARS} years ago, heralding an age of turmoil and change.',
+  'The great library of {LOCATION} was burned by zealots who feared forbidden ancient knowledge.',
+  'The deep mines were sealed after something was unearthed in the depths below.',
+  'A catastrophic earthquake reshaped the coastlands {YEARS} years ago, swallowing entire villages.',
+  'The elves retreated to the highlands after the betrayal at {LOCATION}, and few have been seen since.',
+  'An order of wardens once protected the realm, but they were disbanded under accusations of conspiracy.',
+  'The ancient grimoires were stolen {YEARS} years ago and never recovered. Some say they hold great power.',
+  'A volcanic eruption buried the old quarter of {LOCATION} under ash and rubble.',
   'The treaty that ended the Border Wars is said to have been signed in the blood of both kings.',
-  'Legends speak of a hero who slew a dragon at {LOCATION}, but scholars debate whether it truly happened.',
-  'A sect of dark cultists nearly opened a portal to the abyss before they were stopped by {FACTION1}.',
-  'The trade routes were established {YEARS} years ago, bringing prosperity but also new dangers.',
+  'Legends speak of a hero who sealed the First Darkness at {LOCATION}, but scholars debate whether it truly happened.',
+  'A cult of rogue arcanists nearly awakened a dormant ancient weapon before they were stopped by {FACTION1}.',
+  'The trade roads were established {YEARS} years ago, bringing prosperity but also new dangers.',
 ];
 
 const ARTIFACT_TEMPLATES = [
-  'This blade was forged by {SMITH} in the fires of Mount {MOUNTAIN}.',
+  'This relic was forged by {SMITH} in the deep foundries of Mount {MOUNTAIN}.',
   'Legend says it grants {POWER} to its wielder, but at a terrible cost.',
   'It was last seen in the hands of {HERO}, who carried it into the final battle.',
-  'The runes etched along its surface glow faintly in the presence of evil.',
-  'Crafted from star-metal that fell from the heavens {YEARS} years ago.',
-  'It is said to be one of seven artifacts created to hold back the darkness.',
-  'The enchantment was laid upon it by {SMITH}, the last of the great enchanters.',
+  'The runes etched along its surface glow faintly in the presence of ancient magic.',
+  'Crafted from enchanted ore recovered from the old ruins {YEARS} years ago.',
+  'It is said to be one of seven artifacts created by the Makers to protect the realm.',
+  'The enchantment was laid into it by {SMITH}, the last of the great Maker artificers.',
   'Those who carry it long enough begin to hear whispers from another age.',
   'It was believed destroyed during the fall of {LOCATION}, yet here it remains.',
-  'The gem set in its hilt is said to contain the soul of a trapped demon.',
-  'Warriors have fought and died for centuries over possession of this relic.',
-  'It was a gift from the elven queen to a mortal champion, ages past.',
-  'Scholars believe it predates the current age by thousands of years.',
+  'The gemstone set in its crown is said to contain a trapped spirit.',
+  'Warriors have fought and died for generations over possession of this relic.',
+  'It was a gift from the elven council to a human champion, ages past.',
+  'Scholars believe it predates the founding of the realm by thousands of years.',
   'Its true power can only be unlocked when brought to {LOCATION}.',
-  'The inscription reads: "May this weapon serve the just and smite the wicked."',
+  'The inscription reads: "May this blade serve the just and shield the innocent."',
   'It hums with a strange energy, as though it has a will of its own.',
-  'According to legend, it cannot be destroyed by any mortal means.',
+  'According to legend, it cannot be destroyed by any known means.',
 ];
 
 const LOCATION_TEMPLATES = [
   'Built as a {PURPOSE}, it has served the realm for {YEARS} years.',
-  'The ruins here date back to the First Age, when giants walked the earth.',
-  'This place was once a thriving hub of trade, before the roads shifted.',
-  'The locals avoid this area after dark, whispering of ghosts and worse.',
-  'A great battle was fought here {YEARS} years ago, and the land still bears the scars.',
-  'It was constructed by dwarven architects, renowned for their mastery of stone.',
-  'The well at its center is said to grant visions to those who drink from it.',
-  'Travelers have reported strange sounds emanating from deep underground.',
+  'The remains here date back to the Age of Makers, when the world was first shaped.',
+  'This place was once a thriving trade hub, before the roads fell into ruin.',
+  'The locals avoid this place after dark, whispering of ghosts and worse.',
+  'A fierce battle was fought here {YEARS} years ago, and the walls still bear the scars.',
+  'It was constructed by Maker artisans, renowned for their mastery of stone and enchantment.',
+  'The spring at its center is said to grant clarity to those who drink from it.',
+  'Travelers have reported strange sounds emanating from deep below the foundations.',
   'Once the seat of a powerful lord, it fell into disrepair after the uprising.',
   'The forest around it is unnaturally dense, as if the trees themselves guard a secret.',
-  'Built atop an ancient burial site, it has always had a dark reputation.',
-  'The walls bear faded murals depicting scenes from a forgotten mythology.',
+  'Built atop a sealed barrow, it has always had a dark reputation.',
+  'The walls bear faded carvings depicting a forgotten age.',
   'It served as a refuge during the Last War, sheltering hundreds of survivors.',
   'The architecture suggests elven influence, though no elves live here now.',
-  'A natural hot spring beneath the foundation keeps the stone warm even in winter.',
-  'According to legend, a powerful artifact lies hidden somewhere within.',
-  'The stained glass windows depict the rise and fall of a civilization long gone.',
-  'It was abandoned after a mysterious illness swept through its inhabitants.',
+  'A hot spring beneath the foundation keeps the stone warm even in winter.',
+  'According to legend, a powerful ancient artifact lies hidden somewhere within.',
+  'The murals depict the rise and fall of a civilization long gone.',
+  'It was abandoned after a mysterious sickness swept through its inhabitants.',
 ];
 
 const NPC_BACKSTORY_TEMPLATES = [
-  'I used to be a {PROFESSION} before I settled down here.',
-  'My family was from {PLACE}, but we had to flee when the wars came.',
+  'I used to be a {PROFESSION} before I settled in these parts.',
+  'My family was from {PLACE}, but we had to flee when the war came.',
   'I lost everything in the great fire and had to start over from nothing.',
-  'My father taught me this trade, and his father before him.',
+  'My parent taught me this trade, and their parent before them.',
   'I came here seeking fortune, but found something more valuable: peace.',
-  'I served in the militia during the Border Wars. Saw things I wish I could forget.',
-  'I was an orphan, raised by the priests at the temple.',
-  'I traveled the world for ten years before settling in this quiet corner.',
+  'I served in the guard during the Border Wars. Saw things I wish I could forget.',
+  'I was an orphan, raised by the monks at the old temple.',
+  'I traveled the outer provinces for ten years before settling in this quiet corner.',
   "There's a reason I left my old life behind, and I'd rather not speak of it.",
   'I was apprenticed to a master craftsman who taught me everything I know.',
   'My mother was a healer, and she passed her knowledge on to me.',
-  'I made my fortune in the gem trade, but lost it all to bad luck and worse friends.',
-  'I ran away from home as a child and never looked back.',
-  'I once served a noble house, but they fell from grace and I had to find my own way.',
+  'I made my fortune in the trade roads, but lost it all to bad luck and worse partners.',
+  'I ran from my homeland as a child and never looked back.',
+  'I once served a lord, but they fell from grace and I had to find my own way.',
   'I found this place by accident and decided it was as good as anywhere to stay.',
-  'I was shipwrecked on the coast and wandered inland until I found civilization.',
+  'I survived a bandit ambush and wandered the wilds until I found civilization.',
   'My family has lived here for seven generations. This land is in my blood.',
   'I came here to escape a blood feud. So far, no one has found me.',
   'I won this establishment in a game of cards. Best hand I ever played.',
-  'I was once a scholar, but the politics of the academy drove me away.',
+  'I was once a scholar, but the politics of the council drove me away.',
 ];
 
 const LORE_ENEMIES = [
-  'the Dark Horde', 'an undead army', 'the Orc Clans', 'a dragon',
-  'a demonic incursion', 'the Shadow King', 'barbarian raiders',
-  'a powerful lich', 'the Crimson Legion',
+  'a goblin horde', 'the risen dead', 'marauding bandits', 'a dark sorcerer',
+  'wyrmspawn', 'the Shadow Cult', 'forest reavers',
+  'an ancient curse awakened', 'the Crimson Brotherhood',
 ];
 
 const LORE_REGIONS = [
-  'the Northlands', 'the Eastern Reach', 'the Heartlands', 'the Southern Coast',
-  'the Western Marches', 'the Ironfoot Mountains', 'the Whisperwood',
+  'the Highland Reaches', 'the Heartlands', 'the Deep Hollows', 'the Outer Wastes',
+  'the Old Roads', 'the Ember Peaks', 'the Whispering Woods',
 ];
 
 const LORE_POWERS = [
-  'immense strength', 'the gift of foresight', 'invisibility', 'fire resistance',
-  'the ability to speak with the dead', 'enhanced speed', 'magical shielding',
-  'dominion over beasts', 'immunity to poison',
+  'immense strength', 'the gift of foresight', 'invisibility', 'resistance to poison',
+  'the ability to speak with the dead', 'lightning reflexes', 'an unbreakable ward',
+  'dominion over beasts', 'immunity to flame',
 ];
 
 const LORE_SMITHS = [
-  'Durin the Elder', 'Master Aelindor', 'the Blind Forgemaster', 'Queen Isolde',
-  'Thargrim Steelhand', 'the ancient dwarves', 'an unnamed elven smith',
+  'Master Smith Durin', 'the Archmage Aelindor', 'the Blind Forgemaster', 'Queen Isolde',
+  'Thargrim Steelhand', 'the ancient Makers', 'an unnamed elven artisan',
 ];
 
 const LORE_HEROES = [
-  'King Aldric the Bold', 'the Champion of Dawn', 'Selene the Wanderer',
-  'Sir Roderick Ashford', 'the last Paladin', 'the legendary Thorin Stonehammer',
+  'King Aldric the Bold', 'the Champion of the Dawn', 'Selene the Wanderer',
+  'Commander Roderick Ashford', 'the last Warden', 'the legendary Thorin Ironforge',
 ];
 
 const LORE_MOUNTAINS = [
-  'Erebus', 'Ashfall', 'Thunderpeak', 'Dragonspire', 'Ironcrags', 'Frostholm',
+  'Erebus', 'Ashfall', 'Thunderpeak', 'Dragon Spire', 'Ironholme', 'Frosthold',
 ];
 
 const LORE_PURPOSES = [
-  'fortress', 'temple', 'trading post', 'mining outpost', 'watch tower',
-  'monastery', 'prison', 'royal retreat', 'sanctuary', 'library',
+  'border fortress', 'holy shrine', 'trade depot', 'mining outpost', 'watch tower',
+  "wizard's study", 'prison', "lord's hall", 'healing house', 'great library',
 ];
 
 const LORE_PROFESSIONS = [
-  'soldier', 'sailor', 'thief', 'scholar', 'merchant', 'gladiator',
-  'monk', 'ranger', 'bard', 'knight', 'pirate', "wizard's apprentice",
+  'soldier', 'cave explorer', 'rogue', 'lorekeeper', 'merchant', 'pit fighter',
+  'temple acolyte', 'ranger', 'herbalist', 'warden', 'smuggler', "arcanist's apprentice",
 ];
 
 const LORE_PLACES = [
-  'the capital city', 'a small fishing village', 'the northern frontier',
-  'across the sea', 'the elven forests', 'the dwarven holds', 'a faraway kingdom',
-  'the borderlands', 'the desert oasis', 'the mountain passes',
+  'the capital city', 'a small farming village', 'the frontier beyond the wall',
+  'across the sea', 'the elven highlands', 'the dwarven holds', 'a distant province',
+  'the border marches', 'the scorched badlands', 'the mountain passes',
 ];
 
 export class LoreGenerator {
@@ -846,14 +903,14 @@ export class LoreGenerator {
       text = text.replace('{FACTION1}', rng.random(factionNames));
       text = text.replace('{FACTION2}', rng.random(factionNames));
     } else {
-      text = text.replace('{FACTION1}', 'the Old Guard');
-      text = text.replace('{FACTION2}', 'the Northern Alliance');
+      text = text.replace('{FACTION1}', 'the Iron Ward');
+      text = text.replace('{FACTION2}', 'the Underguild');
     }
 
     if (locationNames && locationNames.length > 0) {
       text = text.replace(/{LOCATION}/g, rng.random(locationNames));
     } else {
-      text = text.replace(/{LOCATION}/g, 'the ancient ruins');
+      text = text.replace(/{LOCATION}/g, 'the old ruins');
     }
 
     return text;
@@ -900,60 +957,60 @@ export class LoreGenerator {
 // ============================================================================
 
 const CLASS_COLORS = {
-  warrior: '#dd4444',
-  mage:    '#6666ee',
-  rogue:   '#aaaa22',
-  ranger:  '#44aa44',
+  warden:   '#dd4444',
+  arcanist: '#6666ee',
+  rogue:    '#aaaa22',
+  ranger:   '#44aa44',
 };
 
 const CLASS_BASE_STATS = {
-  warrior: { str: 16, dex: 10, con: 14, int: 8,  wis: 10, cha: 10 },
-  mage:    { str: 8,  dex: 10, con: 10, int: 16, wis: 14, cha: 10 },
-  rogue:   { str: 10, dex: 16, con: 10, int: 10, wis: 8,  cha: 14 },
-  ranger:  { str: 12, dex: 14, con: 12, int: 10, wis: 12, cha: 10 },
+  warden:   { str: 16, dex: 10, con: 14, int: 8,  wis: 10, cha: 10 },
+  arcanist: { str: 8,  dex: 10, con: 10, int: 16, wis: 14, cha: 10 },
+  rogue:    { str: 10, dex: 16, con: 10, int: 10, wis: 8,  cha: 14 },
+  ranger:   { str: 12, dex: 14, con: 12, int: 10, wis: 12, cha: 10 },
 };
 
 const CLASS_ABILITIES = {
-  warrior: [
-    { name: 'Power Strike', manaCost: 5, damage: 8, type: 'melee', description: 'A devastating melee blow.' },
-    { name: 'Shield Bash', manaCost: 3, damage: 4, type: 'melee', description: 'Stun an enemy with your shield.' },
+  warden: [
+    { name: 'Shield Bash', manaCost: 5, damage: 8, type: 'melee', description: 'A devastating shield strike that staggers the foe.' },
+    { name: 'Iron Stance', manaCost: 3, damage: 4, type: 'melee', description: 'Brace behind your shield and stun an enemy.' },
   ],
-  mage: [
-    { name: 'Fireball', manaCost: 8, damage: 12, type: 'ranged', description: 'Hurl a ball of fire at your foes.' },
-    { name: 'Frost Nova', manaCost: 6, damage: 6, type: 'aoe', description: 'Freeze nearby enemies.' },
-    { name: 'Arcane Shield', manaCost: 4, damage: 0, type: 'buff', description: 'Create a magical barrier.' },
+  arcanist: [
+    { name: 'Arcane Bolt', manaCost: 8, damage: 12, type: 'ranged', description: 'Unleash a crackling bolt of arcane energy at your foes.' },
+    { name: 'Frost Wave', manaCost: 6, damage: 6, type: 'aoe', description: 'Flash-freeze nearby enemies.' },
+    { name: 'Mana Shield', manaCost: 4, damage: 0, type: 'buff', description: 'Project a shimmering magical shield.' },
   ],
   rogue: [
-    { name: 'Backstab', manaCost: 5, damage: 14, type: 'melee', description: 'Strike from the shadows for massive damage.' },
-    { name: 'Smoke Bomb', manaCost: 4, damage: 0, type: 'utility', description: 'Vanish in a cloud of smoke.' },
+    { name: 'Ambush Strike', manaCost: 5, damage: 14, type: 'melee', description: 'Strike from the shadows for massive damage.' },
+    { name: 'Smoke Bomb', manaCost: 4, damage: 0, type: 'utility', description: 'Hurl a smoke bomb and vanish into darkness.' },
   ],
   ranger: [
     { name: 'Aimed Shot', manaCost: 5, damage: 10, type: 'ranged', description: 'A carefully aimed arrow.' },
-    { name: 'Trap', manaCost: 3, damage: 6, type: 'utility', description: 'Set a trap for unsuspecting enemies.' },
-    { name: "Nature's Mend", manaCost: 6, damage: 0, type: 'heal', description: 'Call upon nature to heal wounds.' },
+    { name: 'Volley', manaCost: 3, damage: 6, type: 'utility', description: 'Fire a spread of arrows at multiple targets.' },
+    { name: 'Herbal Mend', manaCost: 6, damage: 0, type: 'heal', description: 'Mend wounds with gathered herbs and poultices.' },
   ],
 };
 
 const CLASS_STARTING_GEAR = {
-  warrior: {
-    mainHand: { id: 'start_sword', name: 'Worn Longsword', type: 'weapon', subtype: 'sword', char: '/', color: '#aaaaaa', rarity: 'common', value: 10, stats: { attack: 4 }, description: 'A battered but serviceable longsword.' },
-    chest: { id: 'start_chain', name: 'Rusty Chainmail', type: 'armor', subtype: 'chestplate', char: '[', color: '#888888', rarity: 'common', value: 15, stats: { defense: 3 }, description: 'Old chainmail with a few missing links.' },
+  warden: {
+    mainHand: { id: 'start_sword', name: 'Battered Iron Sword', type: 'weapon', subtype: 'sword', char: '/', color: '#aaaaaa', rarity: 'common', value: 10, stats: { attack: 4 }, description: 'A worn but serviceable iron blade.' },
+    chest: { id: 'start_chain', name: 'Worn Chain Vest', type: 'armor', subtype: 'chestplate', char: '[', color: '#888888', rarity: 'common', value: 15, stats: { defense: 3 }, description: 'A vest of interlocking iron rings, battered but sturdy.' },
   },
-  mage: {
-    mainHand: { id: 'start_staff', name: 'Gnarled Staff', type: 'weapon', subtype: 'staff', char: '~', color: '#8866aa', rarity: 'common', value: 8, stats: { attack: 2, mana: 10 }, description: 'A twisted wooden staff that hums with faint magic.' },
+  arcanist: {
+    mainHand: { id: 'start_staff', name: 'Gnarled Oak Staff', type: 'weapon', subtype: 'staff', char: '~', color: '#8866aa', rarity: 'common', value: 8, stats: { attack: 2, mana: 10 }, description: 'A twisted oak staff that hums faintly with arcane energy.' },
   },
   rogue: {
-    mainHand: { id: 'start_dagger', name: 'Chipped Dagger', type: 'weapon', subtype: 'dagger', char: '-', color: '#aaaaaa', rarity: 'common', value: 6, stats: { attack: 3 }, description: 'A small but sharp dagger.' },
-    chest: { id: 'start_leather', name: 'Worn Leather Armor', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 10, stats: { defense: 1 }, description: 'Cracked leather armor offering modest protection.' },
+    mainHand: { id: 'start_dagger', name: 'Keen Dagger', type: 'weapon', subtype: 'dagger', char: '-', color: '#aaaaaa', rarity: 'common', value: 6, stats: { attack: 3 }, description: 'A slim dagger honed to a wicked edge.' },
+    chest: { id: 'start_leather', name: 'Leather Jacket', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 10, stats: { defense: 1 }, description: 'A supple leather jacket favored by those who keep to the shadows.' },
   },
   ranger: {
-    mainHand: { id: 'start_bow', name: 'Short Bow', type: 'weapon', subtype: 'bow', char: '}', color: '#aa8844', rarity: 'common', value: 8, stats: { attack: 3 }, description: 'A simple but reliable short bow.' },
-    chest: { id: 'start_hide', name: 'Hide Tunic', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 8, stats: { defense: 2 }, description: 'A sturdy tunic made from animal hides.' },
+    mainHand: { id: 'start_bow', name: 'Shortbow', type: 'weapon', subtype: 'bow', char: '}', color: '#aa8844', rarity: 'common', value: 8, stats: { attack: 3 }, description: 'A compact bow carved from yew, reliable at close range.' },
+    chest: { id: 'start_hide', name: 'Padded Vest', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 8, stats: { defense: 2 }, description: 'A sturdy vest layered with quilted padding.' },
   },
 };
 
 export class Player {
-  constructor(name, race = 'human', playerClass = 'warrior') {
+  constructor(name, race = 'human', playerClass = 'warden') {
     this.name = name;
     this.race = race;
     this.playerClass = playerClass;
@@ -961,7 +1018,7 @@ export class Player {
     this.color = CLASS_COLORS[playerClass] || '#ffffff';
     this.position = { x: 0, y: 0 };
 
-    const base = CLASS_BASE_STATS[playerClass] || CLASS_BASE_STATS.warrior;
+    const base = CLASS_BASE_STATS[playerClass] || CLASS_BASE_STATS.warden;
     this.stats = {
       hp: 20 + base.con,
       maxHp: 20 + base.con,
@@ -1132,39 +1189,39 @@ const ARMOR_SUBTYPES = {
 };
 
 const ITEM_PREFIXES = [
-  { name: 'Rusty',     statMul: 0.7 },
-  { name: 'Iron',      statMul: 1.0 },
-  { name: 'Steel',     statMul: 1.2 },
-  { name: 'Blessed',   statMul: 1.3 },
-  { name: 'Cursed',    statMul: 1.1 },
-  { name: 'Flaming',   statMul: 1.4 },
-  { name: 'Frost',     statMul: 1.4 },
-  { name: 'Keen',      statMul: 1.3 },
-  { name: 'Brutal',    statMul: 1.5 },
-  { name: 'Radiant',   statMul: 1.6 },
-  { name: 'Shadow',    statMul: 1.5 },
-  { name: 'Ancient',   statMul: 1.7 },
-  { name: 'Gilded',    statMul: 1.3 },
-  { name: 'Volcanic',  statMul: 1.8 },
-  { name: 'Celestial', statMul: 2.0 },
+  { name: 'Rusted',          statMul: 0.7 },
+  { name: 'Tempered',        statMul: 1.0 },
+  { name: 'Reinforced',      statMul: 1.2 },
+  { name: 'Reclaimed',       statMul: 1.3 },
+  { name: 'Crude',           statMul: 1.1 },
+  { name: 'Fire-Forged',     statMul: 1.4 },
+  { name: 'Hammered',        statMul: 1.4 },
+  { name: 'Polished',        statMul: 1.3 },
+  { name: 'Enchanted',       statMul: 1.5 },
+  { name: 'Ancient',         statMul: 1.6 },
+  { name: 'Shadow-Touched',  statMul: 1.5 },
+  { name: 'Masterwork',      statMul: 1.7 },
+  { name: 'Plated',          statMul: 1.3 },
+  { name: 'Rune-Tempered',   statMul: 1.8 },
+  { name: 'Hallowed',        statMul: 2.0 },
 ];
 
 const ITEM_SUFFIXES = [
-  { name: 'of Might',       bonus: { str: 2 } },
-  { name: 'of Speed',       bonus: { dex: 2 } },
-  { name: 'of Wisdom',      bonus: { wis: 2 } },
-  { name: 'of the Bear',    bonus: { con: 3 } },
-  { name: 'of Flames',      bonus: { attack: 3 } },
-  { name: 'of Frost',       bonus: { defense: 2 } },
-  { name: 'of the Eagle',   bonus: { dex: 3 } },
-  { name: 'of the Ox',      bonus: { str: 3 } },
-  { name: 'of Intellect',   bonus: { int: 2 } },
-  { name: 'of Vitality',    bonus: { hp: 10 } },
-  { name: 'of the Wolf',    bonus: { attack: 2 } },
-  { name: 'of Warding',     bonus: { defense: 3 } },
-  { name: 'of the Ages',    bonus: { wis: 3, int: 2 } },
-  { name: 'of Slaying',     bonus: { attack: 5 } },
-  { name: 'of the Phoenix', bonus: { hp: 15, str: 1 } },
+  { name: 'of Might',         bonus: { str: 2 } },
+  { name: 'of Swiftness',     bonus: { dex: 2 } },
+  { name: 'of the Ancients',  bonus: { wis: 2 } },
+  { name: 'of Endurance',     bonus: { con: 3 } },
+  { name: 'of Fury',          bonus: { attack: 3 } },
+  { name: 'of Warding',       bonus: { defense: 2 } },
+  { name: 'of Grace',         bonus: { dex: 3 } },
+  { name: 'of the Void',      bonus: { str: 3 } },
+  { name: 'of Insight',       bonus: { int: 2 } },
+  { name: 'of Vitality',      bonus: { hp: 10 } },
+  { name: 'of the Forge',     bonus: { attack: 2 } },
+  { name: 'of the Rampart',   bonus: { defense: 3 } },
+  { name: 'of Lore',          bonus: { wis: 3, int: 2 } },
+  { name: 'of Rending',       bonus: { attack: 5 } },
+  { name: 'of the Inferno',   bonus: { hp: 15, str: 1 } },
 ];
 
 const RARITY_MULTIPLIERS = {
@@ -1184,51 +1241,76 @@ const RARITY_COLORS = {
 };
 
 const POTION_BASES = [
-  { name: 'Healing Potion',  subtype: 'healing',  color: '#ff4444', effect: { heal: 20 },              value: 15, description: 'A vial of crimson liquid that restores health.' },
-  { name: 'Mana Potion',     subtype: 'mana',     color: '#4444ff', effect: { mana: 20 },              value: 15, description: 'A vial of glowing blue liquid that restores mana.' },
-  { name: 'Strength Potion', subtype: 'strength', color: '#ff8800', effect: { str: 3, duration: 50 },  value: 25, description: 'An orange brew that temporarily boosts strength.' },
-  { name: 'Poison Vial',     subtype: 'poison',   color: '#44ff44', effect: { damage: 15 },            value: 20, description: 'A sickly green liquid. Probably not for drinking.' },
+  { name: 'Healing Potion',     subtype: 'healing',  color: '#ff4444', effect: { heal: 20 },              value: 15, description: 'A ruby-red potion that mends wounds.' },
+  { name: 'Mana Elixir',        subtype: 'mana',     color: '#4444ff', effect: { mana: 20 },              value: 15, description: 'A shimmering blue elixir that restores magical energy.' },
+  { name: 'Strength Draught',   subtype: 'strength', color: '#ff8800', effect: { str: 3, duration: 50 },  value: 25, description: 'An amber draught that temporarily boosts strength.' },
+  { name: 'Venom Flask',        subtype: 'poison',   color: '#44ff44', effect: { damage: 15 },            value: 20, description: 'A sickly green flask of concentrated poison.' },
+  { name: 'Herbal Tonic',       subtype: 'healing',  color: '#ff6666', effect: { heal: 15 },              value: 12, description: 'A flask of soothing herbal remedy.' },
+  { name: 'Healing Salve',      subtype: 'healing',  color: '#ffaaaa', effect: { heal: 25 },              value: 20, description: 'A thick paste infused with restorative herbs.' },
 ];
 
 const SCROLL_BASES = [
-  { name: 'Scroll of Fireball',    effect: 'fireball',  damage: 20, value: 30, description: 'Unleash a burst of flame upon reading.' },
-  { name: 'Scroll of Teleport',    effect: 'teleport',  damage: 0,  value: 40, description: 'Instantly relocate to a random position on the map.' },
-  { name: 'Scroll of Identify',    effect: 'identify',  damage: 0,  value: 20, description: 'Reveals the true nature of an item.' },
-  { name: 'Scroll of Enchantment', effect: 'enchant',   damage: 0,  value: 50, description: 'Enhance an item with magical properties.' },
-  { name: 'Scroll of Mapping',     effect: 'map',       damage: 0,  value: 25, description: 'Reveals the layout of the current floor.' },
-  { name: 'Scroll of Lightning',   effect: 'lightning', damage: 25, value: 35, description: 'A bolt of lightning strikes the nearest enemy.' },
+  { name: 'Scroll of Fireball',       effect: 'fireball',  damage: 20, value: 30, description: 'Unleash a burst of flame upon your enemies.' },
+  { name: 'Scroll of Teleportation',  effect: 'teleport',  damage: 0,  value: 40, description: 'Instantly teleport to a random location on this floor.' },
+  { name: 'Scroll of Identification', effect: 'identify',  damage: 0,  value: 20, description: 'Reveals the true properties of a piece of equipment.' },
+  { name: 'Scroll of Enchantment',    effect: 'enchant',   damage: 0,  value: 50, description: 'Enhance an item with magical properties.' },
+  { name: 'Scroll of Revelation',     effect: 'map',       damage: 0,  value: 25, description: 'Reveals the layout of the current level.' },
+  { name: 'Scroll of Lightning',      effect: 'lightning', damage: 25, value: 35, description: 'A bolt of lightning strikes the nearest enemy.' },
 ];
 
 const FOOD_BASES = [
-  { name: 'Bread Loaf',      heal: 5,  value: 3,  description: 'A simple loaf of bread. Filling enough.' },
-  { name: 'Cheese Wheel',    heal: 8,  value: 5,  description: 'A hearty wedge of aged cheese.' },
-  { name: 'Dried Meat',      heal: 10, value: 6,  description: 'Salted and preserved strips of meat.' },
-  { name: 'Elven Waybread',  heal: 20, value: 15, description: 'Light and nourishing. A single bite sustains for a day.' },
-  { name: 'Mushroom Stew',   heal: 12, value: 8,  description: 'A warm bowl of earthy mushroom stew.' },
+  { name: 'Hardtack',         heal: 5,  value: 3,  description: 'A dense, dry biscuit. Filling enough.' },
+  { name: 'Salted Meat',      heal: 8,  value: 5,  description: 'A hearty strip of cured meat.' },
+  { name: 'Dried Mushrooms',  heal: 10, value: 6,  description: 'Preserved strips of cave-grown mushroom.' },
+  { name: 'Elven Bread',      heal: 20, value: 15, description: 'Light and nourishing. A single piece sustains for a day.' },
+  { name: 'Gruel',            heal: 12, value: 8,  description: 'A bowl of thick porridge. Tasteless but filling.' },
+  { name: 'Wild Berry',       heal: 8,  value: 6,  description: 'A plump berry gathered from the forest.' },
 ];
 
 const MATERIAL_BASES = [
-  { name: 'Iron Ore',       value: 5,  description: 'A chunk of raw iron ore.' },
-  { name: 'Gold Nugget',    value: 25, description: 'A gleaming nugget of gold.' },
-  { name: 'Gemstone',       value: 40, description: 'An uncut gemstone with potential.' },
-  { name: 'Dragon Scale',   value: 80, description: 'A scale from a mighty dragon. Very rare.' },
-  { name: 'Mithril Shard',  value: 60, description: 'A fragment of the legendary mithril metal.' },
-  { name: 'Leather Hide',   value: 8,  description: 'A cured animal hide, ready for crafting.' },
-  { name: 'Enchanted Dust', value: 30, description: 'Sparkling dust infused with magical energy.' },
-  { name: 'Bone Fragment',  value: 3,  description: 'A bleached piece of bone. Might be useful.' },
+  { name: 'Iron Scraps',           value: 5,  description: 'A chunk of salvageable scrap iron.' },
+  { name: 'Copper Ingot',          value: 25, description: 'A bar of refined copper.' },
+  { name: 'Fire Crystal',          value: 40, description: 'A glowing crystal infused with elemental fire. Highly valuable.' },
+  { name: 'Enchanted Rune Plate',  value: 80, description: 'A plate inscribed with ancient runes. Very rare.' },
+  { name: 'Ancient Alloy Shard',   value: 60, description: 'A piece of metal from the Maker era, impossibly strong.' },
+  { name: 'Silken Cord',           value: 8,  description: 'A length of magically strengthened silk.' },
 ];
 
 const ARTIFACT_BASES = [
-  { name: 'Crown of the Forgotten King', stats: { int: 5, wis: 5, cha: 5 },  description: 'A crown worn by a king whose name has been lost to time.' },
-  { name: 'Orb of Eternal Night',        stats: { int: 8, attack: 5 },       description: 'A sphere of pure darkness that pulses with malevolent energy.' },
-  { name: 'Blade of the First Dawn',     stats: { attack: 12, str: 4 },      description: 'A radiant sword said to have been forged at the dawn of creation.' },
-  { name: 'Amulet of the Void',          stats: { defense: 6, wis: 6 },      description: 'An amulet that seems to absorb light around it.' },
-  { name: 'Ring of the Undying',         stats: { hp: 30, con: 5 },           description: 'A ring that pulses with life force, warding off death itself.' },
-  { name: 'Gauntlets of the Titan',      stats: { str: 8, attack: 4 },       description: 'Massive gauntlets that grant the strength of a giant.' },
+  { name: 'Crown of the Forgotten King',      stats: { int: 5, wis: 5, cha: 5 },  description: 'A circlet worn by a king whose name has been lost to history.' },
+  { name: 'Blade of the First Dawn',          stats: { attack: 12, str: 4 },      description: 'A radiant blade said to have been forged at the beginning of the world.' },
+  { name: 'Gauntlets of the Giant',           stats: { str: 8, attack: 4 },       description: 'Massive gauntlets imbued with giant strength.' },
+  { name: 'Amulet of the Makers',             stats: { defense: 6, wis: 6 },      description: 'An amulet that pulses with ancient magic, warding off dark forces.' },
+  { name: 'Ring of the Sealed Tomb',          stats: { hp: 30, con: 5 },           description: 'A ring recovered from a sealed crypt, pulsing with restorative power.' },
 ];
 
 export class ItemGenerator {
-  generate(rng, type = 'weapon', rarity = 'common', depth = 1) {
+  // Roll a rarity using weighted probabilities, influenced by depth
+  rollRarity(rng, depth = 1) {
+    const depthBonus = Math.min(depth * 0.02, 0.15); // deeper = slightly better loot
+    return rng.weighted([
+      { value: 'common',    weight: Math.max(0.1, 0.50 - depthBonus) },
+      { value: 'uncommon',  weight: 0.28 },
+      { value: 'rare',      weight: 0.14 + depthBonus * 0.5 },
+      { value: 'epic',      weight: 0.06 + depthBonus * 0.3 },
+      { value: 'legendary', weight: 0.02 + depthBonus * 0.2 },
+    ]);
+  }
+
+  // Roll a stat value using gaussian distribution (bell curve centered on base)
+  rollStat(rng, base, spread = 0.2) {
+    const raw = rng.gaussian(base, base * spread);
+    return Math.max(1, Math.round(raw));
+  }
+
+  generate(rng, typeOrOpts = 'weapon', rarity = 'common', depth = 1) {
+    // Accept either positional args or an options object
+    let type = typeOrOpts;
+    if (typeOrOpts && typeof typeOrOpts === 'object') {
+      type = typeOrOpts.type || 'weapon';
+      rarity = typeOrOpts.rarity || 'common';
+      depth = typeOrOpts.depth || typeOrOpts.level || 1;
+    }
     const rarityMul = RARITY_MULTIPLIERS[rarity] || RARITY_MULTIPLIERS.common;
     const depthScale = 1 + depth * 0.1;
 
@@ -1257,7 +1339,7 @@ export class ItemGenerator {
     const stats = {};
 
     const baseAttack = Math.round(subtype.baseDmg * rarityMul.stat * depthScale);
-    stats.attack = baseAttack;
+    stats.attack = this.rollStat(rng, baseAttack);
 
     if (rarity !== 'common') {
       if (rng.chance(0.7)) {
@@ -1302,7 +1384,7 @@ export class ItemGenerator {
     const stats = {};
 
     const baseDef = Math.round(subtype.baseDef * rarityMul.stat * depthScale);
-    stats.defense = baseDef;
+    stats.defense = this.rollStat(rng, baseDef);
 
     if (rarity !== 'common') {
       if (rng.chance(0.7)) {
@@ -1457,5 +1539,119 @@ export class ItemGenerator {
       stats: scaledStats,
       description: art.description,
     };
+  }
+}
+
+// ============================================================================
+// CreatureGenerator — Biome-specific enemy generation with abilities
+// ============================================================================
+
+const CREATURE_TABLES = {
+  forest: [
+    { name: 'Feral Hound', char: 'w', color: '#888888', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15 },
+    { name: 'Vine Crawler', char: 'S', color: '#448844', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'poison' },
+    { name: 'Treant', char: 'T', color: '#226622', behavior: 'patrol', hp: 30, attack: 6, defense: 5, xpBase: 40, ability: 'rootGrab' },
+    { name: 'Bandit', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'RAIDERS' },
+    { name: 'Wild Boar', char: 'b', color: '#886644', behavior: 'coward', hp: 14, attack: 4, defense: 3, xpBase: 12 },
+    { name: 'Glow Moth', char: 'f', color: '#44FF44', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 8 },
+  ],
+  underground: [
+    { name: 'Cave Bat', char: 'b', color: '#886688', behavior: 'aggressive', hp: 8, attack: 3, defense: 1, xpBase: 10 },
+    { name: 'Gel Mass', char: 's', color: '#44AA44', behavior: 'patrol', hp: 20, attack: 2, defense: 4, xpBase: 15, ability: 'acidSplash' },
+    { name: 'Cave Troll', char: 'T', color: '#668866', behavior: 'aggressive', hp: 35, attack: 8, defense: 4, xpBase: 50, ability: 'regenerate' },
+    { name: 'Dungeon Rat', char: 'k', color: '#AA6644', behavior: 'coward', hp: 8, attack: 3, defense: 2, xpBase: 8 },
+    { name: 'Stone Golem', char: 'G', color: '#888888', behavior: 'patrol', hp: 40, attack: 6, defense: 8, xpBase: 45 },
+  ],
+  haunted: [
+    { name: 'Skeletal Warrior', char: 's', color: '#CCCCCC', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'UNDEAD' },
+    { name: 'Wraith', char: 'W', color: '#8888FF', behavior: 'aggressive', hp: 18, attack: 7, defense: 1, xpBase: 35, ability: 'lifeDrain', faction: 'UNDEAD' },
+    { name: 'Shambling Corpse', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'UNDEAD' },
+    { name: 'Lich', char: 'L', color: '#AA00FF', behavior: 'aggressive', hp: 50, attack: 12, defense: 5, xpBase: 100, ability: 'necroBolt', isBoss: true, faction: 'UNDEAD' },
+    { name: 'Phantom', char: 'g', color: '#AAAAFF', behavior: 'ambush', hp: 10, attack: 5, defense: 0, xpBase: 20, ability: 'phaseThrough', faction: 'UNDEAD' },
+  ],
+  swamp: [
+    { name: 'Swamp Hag', char: 'H', color: '#448844', behavior: 'ambush', hp: 22, attack: 6, defense: 3, xpBase: 30, ability: 'curse' },
+    { name: 'Bog Lurker', char: 'L', color: '#446644', behavior: 'ambush', hp: 25, attack: 5, defense: 5, xpBase: 25 },
+    { name: 'Toxic Toad', char: 't', color: '#66AA44', behavior: 'coward', hp: 8, attack: 2, defense: 2, xpBase: 8, ability: 'poison' },
+    { name: 'Swamp Wisp', char: '*', color: '#88FFFF', behavior: 'coward', hp: 5, attack: 3, defense: 0, xpBase: 12 },
+  ],
+  badlands: [
+    { name: 'Sand Scorpion', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 16, attack: 6, defense: 4, xpBase: 22, ability: 'poison' },
+    { name: 'Iron Revenant', char: 'M', color: '#AAAA88', behavior: 'patrol', hp: 28, attack: 5, defense: 6, xpBase: 35, ability: 'curse', faction: 'UNDEAD' },
+    { name: 'Sandworm', char: 'W', color: '#CCAA66', behavior: 'ambush', hp: 40, attack: 10, defense: 3, xpBase: 55 },
+    { name: 'Desert Shade', char: 'd', color: '#CCAA88', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15 },
+  ],
+  mountain: [
+    { name: 'Mountain Lion', char: 'l', color: '#CCAA66', behavior: 'aggressive', hp: 18, attack: 6, defense: 3, xpBase: 25 },
+    { name: 'Harpy', char: 'h', color: '#AA88CC', behavior: 'aggressive', hp: 14, attack: 5, defense: 2, xpBase: 20, ability: 'screech' },
+    { name: 'Stone Titan', char: 'G', color: '#888888', behavior: 'patrol', hp: 50, attack: 10, defense: 8, xpBase: 60, isBoss: true },
+    { name: 'Mountain Spider', char: 'W', color: '#448844', behavior: 'aggressive', hp: 30, attack: 8, defense: 4, xpBase: 45 },
+  ],
+  ruins: [
+    { name: 'Feral Peasant', char: 'g', color: '#55AA55', behavior: 'coward', hp: 10, attack: 3, defense: 2, xpBase: 10 },
+    { name: 'Skeletal Warrior', char: 's', color: '#CCCCCC', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'UNDEAD' },
+    { name: 'Dungeon Rat', char: 'r', color: '#886644', behavior: 'coward', hp: 5, attack: 2, defense: 1, xpBase: 5 },
+    { name: 'Venomous Spider', char: 'S', color: '#448844', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'poison' },
+    { name: 'Bandit', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'RAIDERS' },
+    { name: 'Bandit Captain', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'RAIDERS' },
+    { name: 'Mimic', char: '!', color: '#FFDD44', behavior: 'ambush', hp: 22, attack: 6, defense: 4, xpBase: 35 },
+  ],
+};
+
+const ABILITY_EFFECTS = {
+  poison:      { name: 'Venom', damage: 3, duration: 3, type: 'dot', description: 'Injects burning venom for 3 turns.' },
+  lifeDrain:   { name: 'Life Drain', damage: 5, heal: 5, type: 'drain', description: 'Drains the life force of the target.' },
+  fireball:    { name: 'Fire Bolt', damage: 8, type: 'magic', description: 'Hurls a bolt of searing flame.' },
+  necroBolt:   { name: 'Death Bolt', damage: 10, type: 'magic', description: 'A bolt of necrotic energy.' },
+  acidSplash:  { name: 'Acid Splash', damage: 4, armorReduce: 1, type: 'debuff', description: 'Corrodes armor with caustic slime.' },
+  rootGrab:    { name: 'Vine Snare', damage: 2, stun: true, type: 'control', description: 'Grasping vines hold the target in place.' },
+  curse:       { name: 'Hex', damage: 0, attackReduce: 2, type: 'debuff', description: 'A dark hex weakens the target.' },
+  screech:     { name: 'Banshee Wail', damage: 0, defenseReduce: 2, type: 'debuff', description: 'A piercing wail that shatters resolve.' },
+  regenerate:  { name: 'Regeneration', damage: 0, healSelf: 5, type: 'heal', description: 'Slowly regenerates health.' },
+  phaseThrough:{ name: 'Ethereal Step', damage: 0, type: 'utility', description: 'Can pass through solid walls.' },
+};
+
+export class CreatureGenerator {
+  generate(rng, biome = 'ruins', depth = 1, playerLevel = 1) {
+    const table = CREATURE_TABLES[biome] || CREATURE_TABLES.ruins;
+    const template = rng.random(table);
+    const depthScale = 1 + depth * 0.15;
+    const levelScale = 1 + (playerLevel - 1) * 0.1;
+    const scale = depthScale * levelScale;
+
+    const hp = Math.round(template.hp * scale);
+    const creature = {
+      id: nextId('creature'),
+      name: template.name,
+      char: template.char,
+      color: template.color,
+      position: { x: 0, y: 0 },
+      behavior: template.behavior,
+      stats: {
+        hp,
+        maxHp: hp,
+        attack: Math.round(template.attack * scale),
+        defense: Math.round(template.defense * scale),
+        level: Math.max(1, Math.floor(depth + playerLevel * 0.5)),
+      },
+      faction: template.faction || 'HOSTILE_FAUNA',
+      isBoss: template.isBoss || false,
+      isElite: rng.chance(0.1),
+      xpBase: Math.round(template.xpBase * scale),
+      ability: template.ability ? { ...ABILITY_EFFECTS[template.ability] } : null,
+      getAttackPower() { return this.stats.attack; },
+      getDefense() { return this.stats.defense; },
+    };
+
+    // Elite boost
+    if (creature.isElite && !creature.isBoss) {
+      creature.name = 'Elite ' + creature.name;
+      creature.stats.hp = Math.round(creature.stats.hp * 1.5);
+      creature.stats.maxHp = creature.stats.hp;
+      creature.stats.attack = Math.round(creature.stats.attack * 1.3);
+      creature.xpBase = Math.round(creature.xpBase * 2);
+    }
+
+    return creature;
   }
 }
