@@ -126,6 +126,10 @@ class Game {
     this.prevState = this.state;
     this.state = newState;
     this.ui.resetSelection();
+    // Update touch UI to match new state
+    if (this.input) {
+      this.input.setTouchLayout(newState);
+    }
   }
 
   // Start a screen fade transition. Fades out, runs callback, fades in.

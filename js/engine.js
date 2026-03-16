@@ -867,13 +867,23 @@ export class InputManager {
     }
 
     this._touchDiv = touchDiv;
+    this._dpad = touchDiv ? touchDiv.querySelector('.dpad') : null;
+    this._actionArea = document.getElementById('touch-action-area');
+    this._currentLayout = null;
 
     // Haptic helper — short vibration on button press
-    const haptic = () => {
+    this._haptic = () => {
       if (navigator.vibrate) navigator.vibrate(12);
     };
 
     // D-pad direction buttons
+    this._initDpad();
+
+    // Set default exploration layout
+    this.setTouchLayout('MENU');
+  }
+
+  _initDpad() {
     const dirButtons = document.querySelectorAll('[data-dir]');
     dirButtons.forEach((btn) => {
       const dir = btn.getAttribute('data-dir');
@@ -881,7 +891,7 @@ export class InputManager {
       const activate = (e) => {
         e.preventDefault();
         btn.classList.add('pressed');
-        haptic();
+        this._haptic();
         switch (dir) {
           case 'up':    this._keysDown.add('ArrowUp');    this.lastAction = 'ArrowUp';    break;
           case 'down':  this._keysDown.add('ArrowDown');  this.lastAction = 'ArrowDown';  break;
@@ -908,38 +918,175 @@ export class InputManager {
       btn.addEventListener('mousedown', activate);
       btn.addEventListener('mouseup', deactivate);
     });
+  }
 
-    // Action buttons — map to the key values that handleInput expects
-    const actionKeyMap = {
-      interact: 'Enter',
-      inventory: 'i',
-      map: 'm',
-      character: 'c',
-      quest: 'q',
-      menu: 'Escape',
+  /**
+   * Build a touch action button element and wire its events.
+   */
+  _createActionBtn(label, keyValue, cssClass) {
+    const btn = document.createElement('button');
+    btn.className = 'action-btn' + (cssClass ? ' ' + cssClass : '');
+    btn.textContent = label;
+
+    const fire = (e) => {
+      e.preventDefault();
+      btn.classList.add('pressed');
+      this._haptic();
+      this.lastAction = keyValue;
+    };
+    const release = () => {
+      btn.classList.remove('pressed');
     };
 
-    const actionButtons = document.querySelectorAll('[data-action]');
-    actionButtons.forEach((btn) => {
-      const action = btn.getAttribute('data-action');
+    btn.addEventListener('touchstart', fire, { passive: false });
+    btn.addEventListener('touchend', release, { passive: false });
+    btn.addEventListener('touchcancel', release, { passive: false });
+    btn.addEventListener('mousedown', fire);
+    btn.addEventListener('mouseup', release);
+    return btn;
+  }
 
-      const fire = (e) => {
-        e.preventDefault();
-        btn.classList.add('pressed');
-        haptic();
-        this.lastAction = actionKeyMap[action] || action;
-      };
+  /**
+   * Context-sensitive button layout definitions per game state.
+   * Each entry: { label, key, css? }
+   *   css: 'act' (yellow primary), 'ability' (magenta), 'danger' (red), 'back' (dim green), or '' (default cyan)
+   */
+  static TOUCH_LAYOUTS = {
+    // ── Exploration states ──
+    MENU:        { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'SEL',  key: 'Enter', css: 'act' },
+      ] },
+    CHAR_CREATE: { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'SEL',  key: 'Enter', css: 'act' },
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    OVERWORLD:   { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'ACT',  key: 'Enter', css: 'act' },
+        { label: 'INV',  key: 'i',     css: '' },
+        { label: 'MAP',  key: 'm',     css: '' },
+        { label: 'CHR',  key: 'c',     css: '' },
+        { label: 'QST',  key: 'q',     css: '' },
+        { label: 'REST', key: 'r',     css: 'back' },
+      ] },
+    LOCATION:    { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'ACT',  key: 'Enter', css: 'act' },
+        { label: 'INV',  key: 'i',     css: '' },
+        { label: 'MAP',  key: 'm',     css: '' },
+        { label: 'CHR',  key: 'c',     css: '' },
+        { label: 'QST',  key: 'q',     css: '' },
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    DUNGEON:     { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'GET',  key: 'g',     css: 'act' },
+        { label: 'INV',  key: 'i',     css: '' },
+        { label: 'STR\u2193', key: '>', css: '' },
+        { label: 'CHR',  key: 'c',     css: '' },
+        { label: 'QST',  key: 'q',     css: '' },
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
 
-      const release = (e) => {
-        btn.classList.remove('pressed');
-      };
+    // ── Combat ──
+    COMBAT:      { showDpad: false, gridClass: 'layout-2x3',
+      buttons: [
+        { label: 'ATK',  key: 'a',     css: 'act' },
+        { label: 'FLEE', key: 'f',     css: 'danger' },
+        { label: 'AB1',  key: '1',     css: 'ability' },
+        { label: 'AB2',  key: '2',     css: 'ability' },
+        { label: 'AB3',  key: '3',     css: 'ability' },
+      ] },
 
-      btn.addEventListener('touchstart', fire, { passive: false });
-      btn.addEventListener('touchend', release, { passive: false });
-      btn.addEventListener('touchcancel', release, { passive: false });
-      btn.addEventListener('mousedown', fire);
-      btn.addEventListener('mouseup', release);
-    });
+    // ── Menus / overlays ──
+    DIALOGUE:    { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'SEL',  key: 'Enter', css: 'act' },
+        { label: 'A',    key: 'a',     css: '' },
+        { label: 'B',    key: 'b',     css: '' },
+        { label: 'C',    key: 'c',     css: '' },
+        { label: 'D',    key: 'd',     css: '' },
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    SHOP:        { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'SEL',  key: 'Enter', css: 'act' },
+        { label: 'BUY',  key: 'b',     css: '' },
+        { label: 'SELL', key: 's',     css: '' },
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    INVENTORY:   { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'USE',  key: 'Enter', css: 'act' },
+        { label: 'DROP', key: 'd',     css: 'danger' },
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    CHARACTER:   { showDpad: false, gridClass: 'layout-1col',
+      buttons: [
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    QUEST_LOG:   { showDpad: false, gridClass: 'layout-1col',
+      buttons: [
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    MAP:         { showDpad: false, gridClass: 'layout-1col',
+      buttons: [
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    FACTION:     { showDpad: false, gridClass: 'layout-1col',
+      buttons: [
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    HELP:        { showDpad: true, gridClass: '',
+      buttons: [
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    SETTINGS:    { showDpad: false, gridClass: 'layout-2x3',
+      buttons: [
+        { label: '1',    key: '1',     css: '' },
+        { label: '2',    key: '2',     css: '' },
+        { label: '3',    key: '3',     css: '' },
+        { label: '4',    key: '4',     css: '' },
+        { label: 'ESC',  key: 'Escape', css: 'back' },
+      ] },
+    GAME_OVER:   { showDpad: false, gridClass: 'layout-1col',
+      buttons: [
+        { label: 'OK',   key: 'Enter', css: 'act' },
+      ] },
+  };
+
+  /**
+   * Switch the touch action buttons to match the current game state.
+   * @param {string} state - the game state name (e.g. 'COMBAT', 'OVERWORLD')
+   */
+  setTouchLayout(state) {
+    if (!this._actionArea) return;
+    if (state === this._currentLayout) return;
+    this._currentLayout = state;
+
+    const layout = InputManager.TOUCH_LAYOUTS[state] || InputManager.TOUCH_LAYOUTS.OVERWORLD;
+
+    // Show/hide D-pad
+    if (this._dpad) {
+      if (layout.showDpad) {
+        this._dpad.classList.remove('hidden');
+      } else {
+        this._dpad.classList.add('hidden');
+      }
+    }
+
+    // Clear old buttons
+    this._actionArea.innerHTML = '';
+
+    // Set grid class
+    this._actionArea.className = 'action-buttons' + (layout.gridClass ? ' ' + layout.gridClass : '');
+
+    // Create new buttons
+    for (const def of layout.buttons) {
+      this._actionArea.appendChild(this._createActionBtn(def.label, def.key, def.css));
+    }
   }
 
   set enableTouch(val) {

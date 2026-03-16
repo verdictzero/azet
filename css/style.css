@@ -53,13 +53,14 @@ html, body {
   pointer-events: none;
 }
 
-/* D-pad */
+/* D-pad — on the RIGHT for right-hand play */
 .dpad {
   display: grid;
   grid-template-columns: repeat(3, clamp(52px, 14vw, 68px));
   grid-template-rows: repeat(3, clamp(52px, 14vw, 68px));
   gap: 4px;
   pointer-events: auto;
+  order: 2;
 }
 
 .dpad-btn {
@@ -90,13 +91,29 @@ html, body {
 .dpad-btn.right { grid-column: 3; grid-row: 2; }
 .dpad-btn.down { grid-column: 2; grid-row: 3; }
 
-/* Action buttons — 3x2 grid on right side */
+/* Hide D-pad when not needed (e.g. combat) */
+.dpad.hidden { display: none; }
+
+/* Action buttons — on the LEFT, dynamic grid */
 .action-buttons {
   display: grid;
   grid-template-columns: repeat(3, clamp(52px, 14vw, 68px));
   grid-template-rows: repeat(2, clamp(46px, 11vw, 58px));
   gap: 4px;
   pointer-events: auto;
+  order: 1;
+}
+
+/* When combat/tall layout, use 2-col 3-row */
+.action-buttons.layout-2x3 {
+  grid-template-columns: repeat(2, clamp(60px, 16vw, 78px));
+  grid-template-rows: repeat(3, clamp(46px, 11vw, 58px));
+}
+
+/* Single column for minimal layouts */
+.action-buttons.layout-1col {
+  grid-template-columns: repeat(1, clamp(68px, 18vw, 88px));
+  grid-template-rows: repeat(2, clamp(46px, 11vw, 58px));
 }
 
 .action-btn {
@@ -124,7 +141,7 @@ html, body {
   transform: scale(0.93);
 }
 
-/* Primary action (ACT) gets highlight treatment */
+/* Primary action (ACT/ATK) — yellow highlight */
 .action-btn.act {
   background: rgba(255, 255, 85, 0.2);
   border-color: rgba(255, 255, 85, 0.5);
@@ -133,6 +150,39 @@ html, body {
 .action-btn.act:active, .action-btn.act.pressed {
   background: rgba(255, 255, 85, 0.45);
   border-color: rgba(255, 255, 85, 0.85);
+}
+
+/* Combat ability buttons — magenta/purple */
+.action-btn.ability {
+  background: rgba(170, 0, 170, 0.25);
+  border-color: rgba(255, 85, 255, 0.45);
+  color: rgba(255, 85, 255, 0.9);
+}
+.action-btn.ability:active, .action-btn.ability.pressed {
+  background: rgba(255, 85, 255, 0.4);
+  border-color: rgba(255, 85, 255, 0.8);
+}
+
+/* Flee / danger buttons — red */
+.action-btn.danger {
+  background: rgba(170, 0, 0, 0.25);
+  border-color: rgba(255, 85, 85, 0.45);
+  color: rgba(255, 85, 85, 0.9);
+}
+.action-btn.danger:active, .action-btn.danger.pressed {
+  background: rgba(255, 85, 85, 0.4);
+  border-color: rgba(255, 85, 85, 0.8);
+}
+
+/* Back/close buttons — dim green */
+.action-btn.back {
+  background: rgba(0, 100, 0, 0.2);
+  border-color: rgba(0, 200, 0, 0.35);
+  color: rgba(0, 200, 0, 0.75);
+}
+.action-btn.back:active, .action-btn.back.pressed {
+  background: rgba(0, 200, 0, 0.35);
+  border-color: rgba(0, 200, 0, 0.7);
 }
 
 /* Landscape: tighten up for wider screens */
@@ -146,5 +196,9 @@ html, body {
     grid-template-columns: repeat(3, 52px);
     grid-template-rows: repeat(2, 40px);
     gap: 3px;
+  }
+  .action-buttons.layout-2x3 {
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(2, 40px);
   }
 }
