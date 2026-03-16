@@ -272,7 +272,6 @@ export class UIManager {
     r.drawString(Math.floor((cols - footer.length) / 2), rows - 3, footer, COLORS.BRIGHT_BLACK);
 
     // Animated scanline effect text
-    const t = Date.now() / 1000;
     const flicker = Math.sin(t * 3) > 0.5 ? COLORS.BRIGHT_GREEN : COLORS.GREEN;
     r.drawString(Math.floor((cols - 10) / 2), rows - 5, '>> PLAY <<', flicker);
   }
