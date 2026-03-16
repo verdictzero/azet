@@ -26,6 +26,8 @@ html, body {
   display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  margin: 0 auto;
+  border-radius: 6px;
 }
 
 /* Touch Controls */
@@ -54,8 +56,8 @@ html, body {
 
 .dpad {
   display: grid;
-  grid-template-columns: 72px 72px 72px;
-  grid-template-rows: 72px 72px 72px;
+  grid-template-columns: repeat(3, min(72px, 18vw));
+  grid-template-rows: repeat(3, min(72px, 18vw));
   gap: 3px;
   pointer-events: auto;
 }
@@ -86,8 +88,8 @@ html, body {
 
 .action-buttons {
   display: grid;
-  grid-template-columns: 72px 72px;
-  grid-template-rows: 50px 50px;
+  grid-template-columns: repeat(2, min(72px, 18vw));
+  grid-template-rows: repeat(2, min(50px, 12vw));
   gap: 4px;
   pointer-events: auto;
 }

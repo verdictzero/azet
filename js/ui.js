@@ -1,4 +1,21 @@
-import { COLORS } from './engine.js';
+import { COLORS, LAYOUT, wordWrap } from './engine.js';
+
+// ─── Unicode Icon Constants ───
+const ICONS = {
+  hp: '\u2665',         // ♥
+  mp: '\u2726',         // ✦
+  level: '\u2605',      // ★
+  gold: '\u269C',       // ⚜
+  sword: '\u2694',      // ⚔
+  shield: '\u26E8',     // ⛨
+  skull: '\u2620',      // ☠
+  check: '\u2713',      // ✓
+  cross: '\u2717',      // ✗
+  diamond: '\u25C6',    // ◆
+  circle: '\u25CF',     // ●
+  selected: '\u25B8',   // ▸
+  unselected: '\u25B9', // ▹
+};
 
 export class UIManager {
   constructor(renderer) {
@@ -28,107 +45,126 @@ export class UIManager {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
+    const bc = COLORS.BRIGHT_BLACK; // border color
 
-    // Top bar
-    r.fillRect(0, 0, cols, 1, ' ', COLORS.BLACK, COLORS.BLUE);
-    const hp = `HP:${player.stats.hp}/${player.stats.maxHp}`;
-    const mp = `MP:${player.stats.mana}/${player.stats.maxMana}`;
-    const lv = `Lv:${player.stats.level}`;
-    const gold = `$${player.gold}`;
+    // ── Outer frame ──
+    // Top border
+    r.drawChar(0, 0, '\u2554', bc);                    // ╔
+    r.drawChar(cols - 1, 0, '\u2557', bc);              // ╗
+    for (let x = 1; x < cols - 1; x++) r.drawChar(x, 0, '\u2550', bc); // ═
+    // Bottom border
+    r.drawChar(0, rows - 1, '\u255A', bc);              // ╚
+    r.drawChar(cols - 1, rows - 1, '\u255D', bc);       // ╝
+    for (let x = 1; x < cols - 1; x++) r.drawChar(x, rows - 1, '\u2550', bc);
+    // Left/right sides
+    for (let y = 1; y < rows - 1; y++) {
+      r.drawChar(0, y, '\u2551', bc);                   // ║
+      r.drawChar(cols - 1, y, '\u2551', bc);
+    }
+
+    // ── Top info bar (row 1, inside border) ──
+    const topY = 1;
+    r.fillRect(1, topY, cols - 2, 1, ' ', COLORS.BLACK, COLORS.BLUE);
     const loc = gameState.currentLocationName || 'Uncharted Wilds';
+    r.drawString(2, topY, loc, COLORS.BRIGHT_WHITE, COLORS.BLUE);
 
-    r.drawString(1, 0, loc, COLORS.BRIGHT_WHITE, COLORS.BLUE);
-
-    // Weather indicator on top bar
+    // Weather indicator
     if (weatherSystem && weatherSystem.current !== 'clear') {
       const weatherIcons = { rain: '♒', snow: '❄', storm: '⚡', fog: '≈', sandstorm: '≈', cloudy: '☁' };
       const wIcon = weatherIcons[weatherSystem.current] || '';
-      r.drawString(loc.length + 3, 0, wIcon, COLORS.BRIGHT_CYAN, COLORS.BLUE);
+      r.drawString(loc.length + 4, topY, wIcon, COLORS.BRIGHT_CYAN, COLORS.BLUE);
     }
 
-    // Clock + solar/lunar cycle indicator
+    // Clock + solar/lunar cycle
     if (timeSystem) {
       const h = timeSystem.hour;
       const hh = String(Math.floor(h)).padStart(2, '0');
       const mm = String(Math.floor((h % 1) * 60)).padStart(2, '0');
       const clock = `D${timeSystem.day} ${hh}:${mm}`;
-
-      // Lunar phase from day (29.5-day cycle)
       const lunarPhase = (timeSystem.day % 30) / 30;
       const lunarChars = ['●', '◗', '◑', '◖', '○', '◗', '◑', '◖'];
       const moonChar = lunarChars[Math.floor(lunarPhase * 8) % 8];
 
-      // Solar cycle bar: 6 chars showing sun position through the day
-      // Sun rises ~6, sets ~20. Map hour to a position in the bar.
       const barW = 8;
       const sunPos = Math.floor((h / 24) * barW);
       let cycleBar = '';
       let cycleColors = [];
       for (let i = 0; i < barW; i++) {
         if (i === sunPos && h >= 5 && h < 20) {
-          cycleBar += '☀';
-          cycleColors.push(COLORS.BRIGHT_YELLOW);
+          cycleBar += '☀'; cycleColors.push(COLORS.BRIGHT_YELLOW);
         } else if (i === sunPos && (h < 5 || h >= 20)) {
-          cycleBar += '☾';
-          cycleColors.push(COLORS.BRIGHT_CYAN);
+          cycleBar += '☾'; cycleColors.push(COLORS.BRIGHT_CYAN);
         } else if (i >= Math.floor((5 / 24) * barW) && i <= Math.floor((20 / 24) * barW)) {
-          cycleBar += '─';
-          cycleColors.push(COLORS.BRIGHT_BLACK);
+          cycleBar += '─'; cycleColors.push(COLORS.BRIGHT_BLACK);
         } else {
-          cycleBar += '─';
-          cycleColors.push(COLORS.BLUE);
+          cycleBar += '─'; cycleColors.push(COLORS.BLUE);
         }
       }
 
-      // Draw from right: [moon] [cycle bar] [clock]
       const rightStr = `${moonChar} ${clock}`;
-      const rightX = cols - rightStr.length - 1;
-      r.drawString(rightX, 0, rightStr,
+      const rightX = cols - rightStr.length - 2;
+      r.drawString(rightX, topY, rightStr,
         h >= 20 || h < 5 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_YELLOW, COLORS.BLUE);
-
-      // Draw cycle bar character by character for individual colors
       const barX = rightX - barW - 1;
       for (let i = 0; i < barW; i++) {
-        r.drawChar(barX + i, 0, cycleBar[i], cycleColors[i], COLORS.BLUE);
+        r.drawChar(barX + i, topY, cycleBar[i], cycleColors[i], COLORS.BLUE);
       }
     }
 
-    // Bottom stats bar
-    const barY = rows - 7;
-    r.fillRect(0, barY, cols, 1, ' ', COLORS.BLACK, COLORS.BLACK);
-    r.drawString(1, barY, hp, player.stats.hp < player.stats.maxHp * 0.3 ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN);
-    r.drawString(hp.length + 2, barY, mp, COLORS.BRIGHT_CYAN);
-    r.drawString(hp.length + mp.length + 3, barY, lv, COLORS.BRIGHT_YELLOW);
-    r.drawString(hp.length + mp.length + lv.length + 4, barY, gold, COLORS.BRIGHT_YELLOW);
+    // ── Separator after top bar ──
+    r.drawSeparator(0, LAYOUT.VIEWPORT_TOP - 1, cols, bc);
 
-    // Status effects bar
+    // ── Separator before stats bar ──
+    const statsY = rows - LAYOUT.HUD_BOTTOM;
+    r.drawSeparator(0, statsY, cols, bc);
+
+    // ── Stats bar (with Unicode icons) ──
+    const statRow = statsY + 1;
+    r.fillRect(1, statRow, cols - 2, 1, ' ', COLORS.BLACK, COLORS.BLACK);
+
+    const hp = `${ICONS.hp} HP:${player.stats.hp}/${player.stats.maxHp}`;
+    const mp = `${ICONS.mp} MP:${player.stats.mana}/${player.stats.maxMana}`;
+    const lv = `${ICONS.level} Lv:${player.stats.level}`;
+    const gold = `${ICONS.gold} ${player.gold}g`;
+
+    r.drawString(2, statRow, hp, player.stats.hp < player.stats.maxHp * 0.3 ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN);
+    let sx = hp.length + 3;
+    r.drawString(sx, statRow, mp, COLORS.BRIGHT_CYAN);
+    sx += mp.length + 1;
+    r.drawString(sx, statRow, lv, COLORS.BRIGHT_YELLOW);
+    sx += lv.length + 1;
+    r.drawString(sx, statRow, gold, COLORS.BRIGHT_YELLOW);
+    sx += gold.length + 1;
+
+    // Status effects
     if (statusEffects && statusEffects.length > 0) {
-      let sx = hp.length + mp.length + lv.length + gold.length + 6;
       for (const effect of statusEffects) {
         const effectColors = {
-          poisoned: COLORS.GREEN,
-          weakened: COLORS.YELLOW,
-          exposed: COLORS.RED,
-          rooted: COLORS.GREEN,
-          shielded: COLORS.BRIGHT_CYAN,
+          poisoned: COLORS.GREEN, weakened: COLORS.YELLOW, exposed: COLORS.RED,
+          rooted: COLORS.GREEN, shielded: COLORS.BRIGHT_CYAN,
         };
         const color = effectColors[effect.name] || COLORS.BRIGHT_BLACK;
         const tag = `[${effect.name.toUpperCase()}:${effect.duration}]`;
         if (sx + tag.length < cols - 25) {
-          r.drawString(sx, barY, tag, color);
+          r.drawString(sx, statRow, tag, color);
           sx += tag.length + 1;
         }
       }
     }
 
     // HP bar
-    const barWidth = 20;
-    const hpFill = Math.round((player.stats.hp / player.stats.maxHp) * barWidth);
-    const hpBar = '█'.repeat(hpFill) + '░'.repeat(barWidth - hpFill);
-    r.drawString(cols - barWidth - 2, barY, '[' + hpBar + ']',
-      player.stats.hp < player.stats.maxHp * 0.3 ? COLORS.RED : COLORS.GREEN);
+    const barWidth = Math.min(20, cols - sx - 4);
+    if (barWidth > 4) {
+      const hpFill = Math.round((player.stats.hp / player.stats.maxHp) * barWidth);
+      const hpBar = '█'.repeat(hpFill) + '░'.repeat(barWidth - hpFill);
+      r.drawString(cols - barWidth - 3, statRow, '[' + hpBar + ']',
+        player.stats.hp < player.stats.maxHp * 0.3 ? COLORS.RED : COLORS.GREEN);
+    }
 
-    // Message log
+    // ── Separator between stats and message log ──
+    r.drawSeparator(0, statRow + 1, cols, bc);
+
+    // ── Message log ──
     this.drawMessageLog(rows);
   }
 
@@ -141,8 +177,8 @@ export class UIManager {
     const r = renderer;
     const mapW = 14;
     const mapH = 10;
-    const startX = r.cols - mapW - 2;
-    const startY = 1;
+    const startX = r.cols - mapW - 3;
+    const startY = LAYOUT.VIEWPORT_TOP;
 
     r.drawBox(startX, startY, mapW + 2, mapH + 2, COLORS.BRIGHT_BLACK, COLORS.BLACK, ' MAP ');
 
@@ -184,20 +220,24 @@ export class UIManager {
   drawMessageLog(rows) {
     const r = this.renderer;
     const cols = r.cols;
-    const logY = rows - 6;
-    const logH = 6;
+    const logH = LAYOUT.MSG_LOG;
+    const logY = rows - LAYOUT.MSG_LOG - LAYOUT.BOTTOM_BORDER;
+    const maxWidth = cols - 4; // inside border + 1 char padding each side
 
-    r.fillRect(0, logY, cols, logH, ' ', COLORS.BLACK, COLORS.BLACK);
+    r.fillRect(1, logY, cols - 2, logH, ' ', COLORS.BLACK, COLORS.BLACK);
 
+    let lineY = logY;
     const start = this.messageScroll;
-    const end = Math.min(start + logH, this.messageLog.length);
-
-    for (let i = start; i < end; i++) {
+    for (let i = start; i < this.messageLog.length; i++) {
+      if (lineY >= logY + logH) break;
       const msg = this.messageLog[i];
-      const y = logY + (i - start);
-      const text = msg.text.length > cols - 2 ? msg.text.substring(0, cols - 3) + '…' : msg.text;
-      const alpha = i === 0 ? COLORS.BRIGHT_WHITE : (i < 3 ? msg.color : COLORS.BRIGHT_BLACK);
-      r.drawString(1, y, text, i === 0 ? msg.color : alpha);
+      const wrapped = wordWrap(msg.text, maxWidth);
+      const color = i === 0 ? msg.color : (i < 3 ? msg.color : COLORS.BRIGHT_BLACK);
+      for (const line of wrapped) {
+        if (lineY >= logY + logH) break;
+        r.drawString(2, lineY, line, color);
+        lineY++;
+      }
     }
   }
 
@@ -354,7 +394,7 @@ export class UIManager {
       dialogueState.reputation >= 0 ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED);
 
     // Dialogue text with word wrap
-    const textLines = this.wordWrap(dialogueState.text, panelW - 4);
+    const textLines = wordWrap(dialogueState.text, panelW - 4);
     for (let i = 0; i < textLines.length && i < 6; i++) {
       r.drawString(px + 2, py + 2 + i, '"' + textLines[i] + '"', COLORS.BRIGHT_WHITE);
     }
@@ -850,42 +890,48 @@ export class UIManager {
 
   // ─── LOCATION VIEW ───
 
-  drawLocationOverview(settlement, npcs, player) {
+  drawLocationOverview(settlement, npcs, player, camera) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
+    const viewLeft = 1;
+    const viewTop = LAYOUT.VIEWPORT_TOP;
+    const viewW = cols - 2;
+    const viewH = rows - LAYOUT.HUD_TOTAL;
 
-    r.drawBox(0, 0, cols, 2, COLORS.BRIGHT_BLACK, COLORS.BLACK);
-    r.drawString(2, 0, ' ' + (settlement.name || 'Settlement') + ' ', COLORS.BRIGHT_YELLOW);
-
-    // Draw settlement map tiles
+    // Draw settlement map tiles with camera
     if (settlement.tiles) {
-      const offsetX = Math.max(0, Math.floor((cols - settlement.tiles[0].length) / 2));
-      const offsetY = 2;
-      for (let y = 0; y < settlement.tiles.length && y + offsetY < rows - 7; y++) {
-        for (let x = 0; x < settlement.tiles[0].length && x + offsetX < cols; x++) {
-          const tile = settlement.tiles[y][x];
-          r.drawChar(x + offsetX, y + offsetY, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+      const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - viewW) / 2));
+      const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - viewH) / 2));
+
+      for (let sy = 0; sy < viewH; sy++) {
+        for (let sx = 0; sx < viewW; sx++) {
+          const wx = camX + sx;
+          const wy = camY + sy;
+          if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
+            const tile = settlement.tiles[wy][wx];
+            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+          }
         }
       }
 
       // Draw NPCs
       if (npcs) {
         for (const npc of npcs) {
-          const sx = npc.position.x + offsetX;
-          const sy = npc.position.y + offsetY;
-          if (sx >= 0 && sx < cols && sy >= 2 && sy < rows - 7) {
-            r.drawChar(sx, sy, npc.char, npc.color || COLORS.BRIGHT_CYAN);
+          const sx = npc.position.x - camX;
+          const sy = npc.position.y - camY;
+          if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+            r.drawChar(viewLeft + sx, viewTop + sy, npc.char, npc.color || COLORS.BRIGHT_CYAN);
           }
         }
       }
 
       // Draw player
       if (player) {
-        const px = player.position.x + offsetX;
-        const py = player.position.y + offsetY;
-        if (px >= 0 && px < cols && py >= 2 && py < rows - 7) {
-          r.drawChar(px, py, '@', COLORS.BRIGHT_YELLOW);
+        const px = player.position.x - camX;
+        const py = player.position.y - camY;
+        if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
+          r.drawChar(viewLeft + px, viewTop + py, '@', COLORS.BRIGHT_YELLOW);
         }
       }
     }
@@ -1127,8 +1173,8 @@ export class UIManager {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
-    const panelW = Math.min(cols - 4, 45);
-    const panelH = 14;
+    const panelW = Math.min(cols - 4, 50);
+    const panelH = settings.crtEffects ? 22 : 14;
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
@@ -1141,12 +1187,34 @@ export class UIManager {
       { key: '4', label: 'Auto-Save Interval', value: `${settings.autoSaveInterval} turns`, color: COLORS.BRIGHT_YELLOW },
     ];
 
+    let curY = py + 3;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      const y = py + 3 + i * 2;
-      r.drawString(px + 3, y, `[${item.key}]`, COLORS.BRIGHT_WHITE);
-      r.drawString(px + 7, y, item.label, COLORS.WHITE);
-      r.drawString(px + panelW - item.value.length - 3, y, item.value, item.color);
+      r.drawString(px + 3, curY, `[${item.key}]`, COLORS.BRIGHT_WHITE);
+      r.drawString(px + 7, curY, item.label, COLORS.WHITE);
+      r.drawString(px + panelW - item.value.length - 3, curY, item.value, item.color);
+      curY += 2;
+    }
+
+    // CRT sub-options when CRT is enabled
+    if (settings.crtEffects) {
+      r.drawString(px + 2, curY, '─'.repeat(panelW - 4), COLORS.BRIGHT_BLACK);
+      curY += 1;
+      r.drawString(px + 3, curY, 'CRT Sub-Options:', COLORS.BRIGHT_CYAN);
+      curY += 1;
+
+      const subItems = [
+        { key: '5', label: 'Phosphor Glow', value: settings.crtGlow !== false ? 'ON' : 'OFF', color: settings.crtGlow !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+        { key: '6', label: 'Scanlines', value: settings.crtScanlines !== false ? 'ON' : 'OFF', color: settings.crtScanlines !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+        { key: '7', label: 'Chromatic Aberr.', value: settings.crtAberration !== false ? 'ON' : 'OFF', color: settings.crtAberration !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+      ];
+
+      for (const item of subItems) {
+        r.drawString(px + 5, curY, `[${item.key}]`, COLORS.WHITE);
+        r.drawString(px + 9, curY, item.label, COLORS.BRIGHT_BLACK);
+        r.drawString(px + panelW - item.value.length - 3, curY, item.value, item.color);
+        curY += 1;
+      }
     }
 
     r.drawString(px + 2, py + panelH - 2, 'Press key to toggle  [Esc] Close', COLORS.BRIGHT_BLACK);
@@ -1164,7 +1232,7 @@ export class UIManager {
     const py = Math.floor((rows - panelH) / 2);
 
     r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_RED, COLORS.BLACK);
-    const lines = this.wordWrap(message, panelW - 4);
+    const lines = wordWrap(message, panelW - 4);
     for (let i = 0; i < lines.length; i++) {
       r.drawString(px + 2, py + 2 + i, lines[i], COLORS.BRIGHT_WHITE);
     }
@@ -1212,23 +1280,6 @@ export class UIManager {
   }
 
   // ─── UTILITIES ───
-
-  wordWrap(text, maxWidth) {
-    const words = text.split(' ');
-    const lines = [];
-    let current = '';
-
-    for (const word of words) {
-      if (current.length + word.length + 1 <= maxWidth) {
-        current += (current ? ' ' : '') + word;
-      } else {
-        if (current) lines.push(current);
-        current = word;
-      }
-    }
-    if (current) lines.push(current);
-    return lines.length ? lines : [''];
-  }
 
   handleMenuInput(key, itemCount) {
     if (key === 'ArrowUp' || key === 'w') {
