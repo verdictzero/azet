@@ -1,4 +1,4 @@
-import { COLORS, Renderer, Camera, InputManager, ParticleSystem } from './engine.js';
+import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator } from './entities.js';
@@ -14,7 +14,8 @@ class Game {
     this.canvas = document.getElementById('game-canvas');
     this.renderer = new Renderer(this.canvas);
     this.input = new InputManager();
-    this.camera = new Camera(this.renderer.cols, this.renderer.rows - 7);
+    this.camera = new Camera(this.renderer.cols - 2, this.renderer.rows - LAYOUT.HUD_TOTAL);
+    this.locationCamera = null;
     this.ui = new UIManager(this.renderer);
 
     // Game state
@@ -23,6 +24,9 @@ class Game {
     // Settings (persisted to localStorage)
     this.settings = {
       crtEffects: false,
+      crtGlow: true,
+      crtScanlines: true,
+      crtAberration: true,
       fontSize: 16,
       touchControls: true,
       autoSaveInterval: 100, // turns
@@ -108,8 +112,12 @@ class Game {
 
   handleResize() {
     this.renderer.resize();
-    this.camera.viewportCols = this.renderer.cols;
-    this.camera.viewportRows = this.renderer.rows - 7;
+    this.camera.viewportCols = this.renderer.cols - 2;
+    this.camera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    if (this.locationCamera) {
+      this.locationCamera.viewportCols = this.renderer.cols - 2;
+      this.locationCamera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    }
   }
 
   // ─── STATE MANAGEMENT ───
@@ -335,9 +343,20 @@ class Game {
       }
     }
 
-    // Place player at entrance
-    this.player.position.x = Math.floor((this.currentSettlement.tiles[0] || []).length / 2);
-    this.player.position.y = (this.currentSettlement.tiles || []).length - 2;
+    // Place player at entrance (at the core area, offset if outskirts exist)
+    const coreOff = this.currentSettlement.coreOffset || { x: 0, y: 0 };
+    const coreW = (this.currentSettlement.tiles[0] || []).length - coreOff.x * 2;
+    this.player.position.x = coreOff.x + Math.floor(coreW / 2);
+    this.player.position.y = (this.currentSettlement.tiles || []).length - coreOff.y - 2;
+
+    // Create location camera
+    this.locationCamera = new Camera(
+      this.renderer.cols - 2,
+      this.renderer.rows - LAYOUT.HUD_TOTAL
+    );
+    this.locationCamera.follow(this.player);
+    this.locationCamera.x = this.locationCamera.targetX;
+    this.locationCamera.y = this.locationCamera.targetY;
 
     this.gameContext.currentLocationName = location.name;
     this.gameContext.currentLocation = location;
@@ -1392,6 +1411,12 @@ class Game {
       this.settings.autoSaveInterval = intervals[(idx + 1) % intervals.length];
       this._saveSettings();
     }
+    // CRT sub-options
+    if (this.settings.crtEffects) {
+      if (key === '5') { this.settings.crtGlow = !this.settings.crtGlow; this._saveSettings(); }
+      if (key === '6') { this.settings.crtScanlines = !this.settings.crtScanlines; this._saveSettings(); }
+      if (key === '7') { this.settings.crtAberration = !this.settings.crtAberration; this._saveSettings(); }
+    }
   }
 
   handleGameOverInput(key) {
@@ -1938,7 +1963,10 @@ class Game {
       }
     } catch (e) { /* ignore */ }
     // Apply loaded settings to renderer/input (may be called before they exist in constructor)
-    if (this.renderer) this.renderer.enableCRT = this.settings.crtEffects;
+    if (this.renderer) {
+      this.renderer.enableCRT = this.settings.crtEffects;
+      this.renderer.crtOptions = this.settings;
+    }
     if (this.input) this.input.enableTouch = this.settings.touchControls;
   }
 
@@ -1948,6 +1976,7 @@ class Game {
     } catch (e) { /* ignore */ }
     // Apply settings immediately
     this.renderer.enableCRT = this.settings.crtEffects;
+    this.renderer.crtOptions = this.settings;
     this.input.enableTouch = this.settings.touchControls;
   }
 
@@ -2185,7 +2214,8 @@ class Game {
         break;
 
       case 'LOCATION':
-        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player);
+        if (this.locationCamera) { this.locationCamera.follow(this.player); this.locationCamera.update(); }
+        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera);
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
         break;
 
@@ -2198,7 +2228,7 @@ class Game {
       case 'DIALOGUE':
         // Render background
         if (this.currentSettlement) {
-          this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player);
+          this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera);
         }
         if (this.ui.dialogueState) this.ui.drawDialogue(this.ui.dialogueState);
         break;
@@ -2258,57 +2288,56 @@ class Game {
 
     const r = this.renderer;
     this.camera.update();
-    const cols = r.cols;
-    const rows = r.rows - 7; // Leave room for HUD
+    const viewLeft = 1;
+    const viewTop = LAYOUT.VIEWPORT_TOP;
+    const viewW = r.cols - 2;
+    const viewH = r.rows - LAYOUT.HUD_TOTAL;
 
-    for (let sy = 0; sy < rows; sy++) {
-      for (let sx = 0; sx < cols; sx++) {
+    for (let sy = 0; sy < viewH; sy++) {
+      for (let sx = 0; sx < viewW; sx++) {
         const wx = Math.floor(this.camera.x) + sx;
         const wy = Math.floor(this.camera.y) + sy;
 
         const tile = this.overworld.getTile(wx, wy);
 
-        // Fog of war (simple: darken tiles far from player)
+        // Fog of war
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
-        // Animated color for water/lava/fire tiles
         const fg = r.getAnimatedColor(tile.fg, tile.type);
         if (dist > 30) {
-          r.drawChar(sx, sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
+          r.drawChar(viewLeft + sx, viewTop + sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
         } else {
-          r.drawChar(sx, sy, tile.char, fg, tile.bg || COLORS.BLACK);
+          r.drawChar(viewLeft + sx, viewTop + sy, tile.char, fg, tile.bg || COLORS.BLACK);
         }
       }
     }
 
     // Draw locations
-    {
-      for (const loc of this.overworld.getLoadedLocations()) {
-        const sx = loc.x - Math.floor(this.camera.x);
-        const sy = loc.y - Math.floor(this.camera.y);
-        if (sx >= 0 && sx < cols && sy >= 0 && sy < rows) {
-          const ch = loc.type === 'city' ? '▣' : loc.type === 'town' ? '□' :
-            loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
-              loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
-                loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
-          r.drawChar(sx, sy, ch, COLORS.BRIGHT_WHITE);
-        }
+    for (const loc of this.overworld.getLoadedLocations()) {
+      const sx = loc.x - Math.floor(this.camera.x);
+      const sy = loc.y - Math.floor(this.camera.y);
+      if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+        const ch = loc.type === 'city' ? '▣' : loc.type === 'town' ? '□' :
+          loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
+            loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
+              loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
+        r.drawChar(viewLeft + sx, viewTop + sy, ch, COLORS.BRIGHT_WHITE);
       }
     }
 
     // Draw player
     const px = this.player.position.x - Math.floor(this.camera.x);
     const py = this.player.position.y - Math.floor(this.camera.y);
-    if (px >= 0 && px < cols && py >= 0 && py < rows) {
-      r.drawChar(px, py, '@', COLORS.BRIGHT_YELLOW);
+    if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
+      r.drawChar(viewLeft + px, viewTop + py, '@', COLORS.BRIGHT_YELLOW);
     }
 
-    // Render weather particles on overworld
+    // Render weather particles
     const weatherEffect = this.weatherSystem.getVisualEffect();
     if (weatherEffect) {
-      for (let sy = 0; sy < rows; sy++) {
-        for (let sx = 0; sx < cols; sx++) {
+      for (let sy = 0; sy < viewH; sy++) {
+        for (let sx = 0; sx < viewW; sx++) {
           if (Math.random() < weatherEffect.density) {
-            r.drawChar(sx, sy, weatherEffect.char, weatherEffect.fg);
+            r.drawChar(viewLeft + sx, viewTop + sy, weatherEffect.char, weatherEffect.fg);
           }
         }
       }
@@ -2323,12 +2352,14 @@ class Game {
     if (!this.currentDungeon || !this.currentDungeon.tiles) return;
 
     const r = this.renderer;
-    const cols = r.cols;
-    const rows = r.rows - 7;
+    const viewLeft = 1;
+    const viewTop = LAYOUT.VIEWPORT_TOP;
+    const viewW = r.cols - 2;
+    const viewH = r.rows - LAYOUT.HUD_TOTAL;
 
     // Center on player
-    const offsetX = this.player.position.x - Math.floor(cols / 2);
-    const offsetY = this.player.position.y - Math.floor(rows / 2);
+    const offsetX = this.player.position.x - Math.floor(viewW / 2);
+    const offsetY = this.player.position.y - Math.floor(viewH / 2);
 
     // FOV - bresenham raycasting for accurate visible tiles
     const visible = new Set();
@@ -2337,7 +2368,6 @@ class Game {
     const viewDist = Math.max(4, Math.round(10 * weatherMod * nightMod));
     const px = this.player.position.x;
     const py = this.player.position.y;
-    // Cast rays to perimeter points using bresenhamLine
     const perimeter = new Set();
     for (let dx = -viewDist; dx <= viewDist; dx++) {
       perimeter.add(`${px + dx},${py - viewDist}`);
@@ -2354,14 +2384,14 @@ class Game {
         visible.add(`${pt.x},${pt.y}`);
         if (pt.x !== px || pt.y !== py) {
           if (this.currentDungeon.tiles[pt.y]?.[pt.x] && !this.currentDungeon.tiles[pt.y][pt.x].walkable) {
-            break; // Wall blocks LOS
+            break;
           }
         }
       }
     }
 
-    for (let sy = 0; sy < rows; sy++) {
-      for (let sx = 0; sx < cols; sx++) {
+    for (let sy = 0; sy < viewH; sy++) {
+      for (let sx = 0; sx < viewW; sx++) {
         const wx = offsetX + sx;
         const wy = offsetY + sy;
 
@@ -2372,12 +2402,12 @@ class Game {
 
           if (isVisible) {
             const animFg = r.getAnimatedColor(tile.fg, tile.type);
-            r.drawChar(sx, sy, tile.char, animFg, tile.bg || COLORS.BLACK);
+            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, animFg, tile.bg || COLORS.BLACK);
           } else {
-            r.drawChar(sx, sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
+            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
           }
         } else {
-          r.drawChar(sx, sy, ' ', COLORS.BLACK, COLORS.BLACK);
+          r.drawChar(viewLeft + sx, viewTop + sy, ' ', COLORS.BLACK, COLORS.BLACK);
         }
       }
     }
@@ -2387,8 +2417,8 @@ class Game {
       if (item.position && visible.has(`${item.position.x},${item.position.y}`)) {
         const sx = item.position.x - offsetX;
         const sy = item.position.y - offsetY;
-        if (sx >= 0 && sx < cols && sy >= 0 && sy < rows) {
-          r.drawChar(sx, sy, item.char || '!', item.color || COLORS.BRIGHT_YELLOW);
+        if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+          r.drawChar(viewLeft + sx, viewTop + sy, item.char || '!', item.color || COLORS.BRIGHT_YELLOW);
         }
       }
     }
@@ -2398,15 +2428,15 @@ class Game {
       if (visible.has(`${enemy.position.x},${enemy.position.y}`)) {
         const sx = enemy.position.x - offsetX;
         const sy = enemy.position.y - offsetY;
-        if (sx >= 0 && sx < cols && sy >= 0 && sy < rows) {
-          r.drawChar(sx, sy, enemy.char, enemy.color || COLORS.BRIGHT_RED);
+        if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+          r.drawChar(viewLeft + sx, viewTop + sy, enemy.char, enemy.color || COLORS.BRIGHT_RED);
         }
       }
     }
 
     // Draw player
-    const playerScreenX = Math.floor(cols / 2);
-    const playerScreenY = Math.floor(rows / 2);
+    const playerScreenX = viewLeft + Math.floor(viewW / 2);
+    const playerScreenY = viewTop + Math.floor(viewH / 2);
     r.drawChar(playerScreenX, playerScreenY, '@', COLORS.BRIGHT_YELLOW);
 
     // Render particles in dungeon

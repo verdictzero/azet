@@ -538,11 +538,21 @@ export class ChunkManager {
 export class SettlementGenerator {
 
   generate(rng, type, population, biome) {
-    const sizes = { village: [20, 20], town: [35, 35], city: [50, 40], castle: [40, 40] };
-    const [width, height] = sizes[type] || [25, 25];
+    const coreSizes = { village: [20, 20], town: [35, 35], city: [50, 40], castle: [40, 40] };
+    const [coreW, coreH] = coreSizes[type] || [25, 25];
 
-    // Base fill with grassland
-    const tiles = makeTileGrid(width, height, () =>
+    // Add outskirts padding: 30-40 tiles around the settlement
+    const pad = type === 'city' ? 40 : type === 'town' ? 35 : type === 'castle' ? 30 : 30;
+    const width = coreW + pad * 2;
+    const height = coreH + pad * 2;
+
+    // Fill entire grid with outskirts terrain
+    const tiles = makeTileGrid(width, height, (x, y) =>
+      this._outskirtsFromBiome(rng, biome, x, y, pad, coreW, coreH, width, height)
+    );
+
+    // Now generate the core settlement inside the padded area
+    const coreTiles = makeTileGrid(coreW, coreH, () =>
       tile('GRASSLAND', ',', '#44aa44', '#112211', true, { buildingId: null })
     );
 
@@ -550,12 +560,124 @@ export class SettlementGenerator {
     const npcSlots = [];
 
     if (type === 'castle') {
-      this._generateCastle(rng, tiles, width, height, buildings, npcSlots);
+      this._generateCastle(rng, coreTiles, coreW, coreH, buildings, npcSlots);
     } else {
-      this._generateSettlement(rng, tiles, width, height, type, population, buildings, npcSlots, biome);
+      this._generateSettlement(rng, coreTiles, coreW, coreH, type, population, buildings, npcSlots, biome);
     }
 
-    return { tiles, width, height, buildings, npcSlots };
+    // Copy core tiles into the padded grid
+    for (let y = 0; y < coreH; y++) {
+      for (let x = 0; x < coreW; x++) {
+        tiles[pad + y][pad + x] = coreTiles[y][x];
+      }
+    }
+
+    // Offset building and NPC positions by pad
+    for (const b of buildings) { b.x += pad; b.y += pad; }
+    for (const s of npcSlots) { s.position.x += pad; s.position.y += pad; }
+
+    // Add roads leading from settlement edges outward
+    this._generateOutskirtRoads(rng, tiles, pad, coreW, coreH, width, height);
+
+    return { tiles, width, height, buildings, npcSlots, coreOffset: { x: pad, y: pad } };
+  }
+
+  _outskirtsFromBiome(rng, biome, x, y, pad, coreW, coreH, totalW, totalH) {
+    // Distance from nearest core edge
+    const cx = pad, cy = pad;
+    const dxLeft = cx - x, dxRight = x - (cx + coreW - 1);
+    const dyTop = cy - y, dyBot = y - (cy + coreH - 1);
+    const distX = Math.max(0, dxLeft, dxRight);
+    const distY = Math.max(0, dyTop, dyBot);
+    const dist = Math.max(distX, distY);
+
+    // Near the core: paths, fences, farms. Far out: wild terrain.
+    const r = rng.next ? rng.next() : Math.random();
+
+    if (dist <= 3) {
+      // Immediate surroundings: packed dirt / paths
+      if (r < 0.3) return tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+      return tile('GRASSLAND', ',', '#44aa44', '#112211', true, { buildingId: null });
+    }
+
+    if (dist <= 10) {
+      // Near outskirts: gardens, fences, fields
+      if (r < 0.05) return tile('FENCE', '\u2502', '#aa6622', '#112211', false, { buildingId: null }); // │
+      if (r < 0.10) return tile('WELL', '\u25CE', '#4488ff', '#112211', false, { buildingId: null }); // ◎
+      if (r < 0.20) return tile('FIELD', '\u2261', '#aaaa22', '#222211', true, { buildingId: null }); // ≡
+      if (r < 0.30) return tile('TREE', 't', '#228822', '#112211', false, { buildingId: null });
+      return tile('GRASSLAND', ',', '#55bb55', '#112211', true, { buildingId: null });
+    }
+
+    if (dist <= 20) {
+      // Mid outskirts: sparser, more trees, occasional farm buildings
+      if (r < 0.15) return tile('TREE', 't', '#228822', '#0a1a0a', false, { buildingId: null });
+      if (r < 0.20) return tile('TREE', 'T', '#116611', '#0a1a0a', false, { buildingId: null });
+      if (r < 0.22) return tile('CRATE', '\u25AA', '#886644', '#112211', false, { buildingId: null }); // ▪
+      if (r < 0.25) return tile('SIGNPOST', '\u2691', '#aa8866', '#112211', false, { buildingId: null }); // ⚑
+      return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
+    }
+
+    // Far outskirts: wild terrain based on biome
+    const biomeTerrains = {
+      grassland: () => {
+        if (r < 0.10) return tile('DEEP_FOREST', 'T', '#22aa22', '#0a1a0a', false, { buildingId: null });
+        if (r < 0.20) return tile('FOREST', 't', '#116611', '#0a1a0a', false, { buildingId: null });
+        return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
+      },
+      forest: () => {
+        if (r < 0.35) return tile('DEEP_FOREST', 'T', '#22aa22', '#0a1a0a', false, { buildingId: null });
+        if (r < 0.55) return tile('FOREST', 't', '#116611', '#0a1a0a', false, { buildingId: null });
+        return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
+      },
+      swamp: () => {
+        if (r < 0.20) return tile('MIRE', '~', '#228844', '#112211', true, { buildingId: null });
+        if (r < 0.30) return tile('TREE', 'T', '#116611', '#0a1a0a', false, { buildingId: null });
+        return tile('GRASSLAND', '.', '#33aa44', '#112211', true, { buildingId: null });
+      },
+      badlands: () => {
+        if (r < 0.10) return tile('MOUNTAIN', '^', '#cccccc', '#333333', false, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#ddcc44', '#332200', true, { buildingId: null });
+      },
+      mountain: () => {
+        if (r < 0.15) return tile('MOUNTAIN', '^', '#cccccc', '#333333', false, { buildingId: null });
+        if (r < 0.25) return tile('FOREST', 't', '#116611', '#0a1a0a', false, { buildingId: null });
+        return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
+      },
+    };
+
+    const gen = biomeTerrains[biome] || biomeTerrains.grassland;
+    return gen();
+  }
+
+  _generateOutskirtRoads(rng, tiles, pad, coreW, coreH, totalW, totalH) {
+    const cx = pad + Math.floor(coreW / 2);
+    const cy = pad + Math.floor(coreH / 2);
+
+    // Road going south from settlement
+    for (let y = pad + coreH; y < totalH - 2; y++) {
+      if (tiles[y][cx].type === 'GRASSLAND' || tiles[y][cx].type === 'FIELD') {
+        tiles[y][cx] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+      }
+    }
+    // Road going north
+    for (let y = pad - 1; y >= 2; y--) {
+      if (tiles[y][cx].type === 'GRASSLAND' || tiles[y][cx].type === 'FIELD') {
+        tiles[y][cx] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+      }
+    }
+    // Road going east
+    for (let x = pad + coreW; x < totalW - 2; x++) {
+      if (tiles[cy][x].type === 'GRASSLAND' || tiles[cy][x].type === 'FIELD') {
+        tiles[cy][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+      }
+    }
+    // Road going west
+    for (let x = pad - 1; x >= 2; x--) {
+      if (tiles[cy][x].type === 'GRASSLAND' || tiles[cy][x].type === 'FIELD') {
+        tiles[cy][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+      }
+    }
   }
 
   _generateCastle(rng, tiles, w, h, buildings, npcSlots) {
@@ -785,8 +907,10 @@ export class SettlementGenerator {
       const decor = rng.random([
         tile('TREE', 't', '#228822', '#112211', false, { buildingId: null }),
         tile('TREE', 'T', '#116611', '#112211', false, { buildingId: null }),
-        tile('FENCE', 'x', '#aa6622', '#112211', false, { buildingId: null }),
-        tile('CRATE', '\u00a4', '#886644', '#112211', false, { buildingId: null }),
+        tile('FENCE', '\u2502', '#aa6622', '#112211', false, { buildingId: null }),  // │
+        tile('CRATE', '\u25AA', '#886644', '#112211', false, { buildingId: null }),  // ▪
+        tile('WELL', '\u25CE', '#4488ff', '#112211', false, { buildingId: null }),   // ◎
+        tile('BARREL', '\u25CB', '#886644', '#112211', false, { buildingId: null }), // ○
       ]);
       tiles[y][x] = decor;
     }

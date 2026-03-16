@@ -1,5 +1,48 @@
 // engine.js - Retro ASCII roguelike rendering engine
-// ES module: exports COLORS, Renderer, Camera, InputManager
+// ES module: exports COLORS, LAYOUT, wordWrap, Renderer, Camera, InputManager
+
+// ─────────────────────────────────────────────
+// Layout Constants
+// ─────────────────────────────────────────────
+
+export const LAYOUT = {
+  TOP_BORDER: 1,
+  TOP_BAR: 1,
+  SEPARATOR: 1,
+  STATS_BAR: 1,
+  MSG_SEPARATOR: 1,
+  MSG_LOG: 5,
+  BOTTOM_BORDER: 1,
+  get VIEWPORT_TOP() { return this.TOP_BORDER + this.TOP_BAR + this.SEPARATOR; },          // 3
+  get HUD_BOTTOM() { return this.SEPARATOR + this.STATS_BAR + this.MSG_SEPARATOR + this.MSG_LOG + this.BOTTOM_BORDER; }, // 9
+  get HUD_TOTAL() { return this.VIEWPORT_TOP + this.HUD_BOTTOM; },                         // 12
+};
+
+// ─────────────────────────────────────────────
+// Word Wrap Utility
+// ─────────────────────────────────────────────
+
+export function wordWrap(text, maxWidth) {
+  if (!text || maxWidth <= 0) return [''];
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    if (word.length > maxWidth) {
+      if (current) { lines.push(current); current = ''; }
+      for (let i = 0; i < word.length; i += maxWidth) {
+        lines.push(word.slice(i, i + maxWidth));
+      }
+    } else if (current.length + word.length + 1 <= maxWidth) {
+      current += (current ? ' ' : '') + word;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [''];
+}
 
 // ─────────────────────────────────────────────
 // Color Constants (CGA-style palette)
@@ -37,7 +80,7 @@ export class Renderer {
     this.ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     this.fontSize = 16;
-    this.fontFamily = "'Courier New', Courier, monospace";
+    this.fontFamily = "'Noto Sans Mono', 'DejaVu Sans Mono', 'Courier New', Courier, monospace";
     this.cellWidth = 0;
     this.cellHeight = 0;
     this.cols = 0;
@@ -61,16 +104,15 @@ export class Renderer {
    */
   resize() {
     const w = window.innerWidth;
+    const h = window.innerHeight;
+    const isPortrait = h > w;
 
-    // Responsive breakpoints (only if no user override)
+    // Fluid font size: lerp between 10px (320px wide) and 18px (2560px wide)
     if (!this._userFontSize) {
-      if (w < 600) {
-        this.fontSize = 12;
-      } else if (w < 1024) {
-        this.fontSize = 14;
-      } else {
-        this.fontSize = 16;
-      }
+      const minW = 320, maxW = 2560, minFont = 10, maxFont = 18;
+      const t = Math.max(0, Math.min(1, (w - minW) / (maxW - minW)));
+      this.fontSize = Math.round(minFont + t * (maxFont - minFont));
+      if (isPortrait) this.fontSize = Math.max(10, this.fontSize - 1);
     }
 
     // Measure a representative character to derive cell size
@@ -79,22 +121,15 @@ export class Renderer {
     this.cellWidth = Math.ceil(metrics.width);
     this.cellHeight = Math.ceil(this.fontSize * 1.35);
 
-    // Size canvas to fill container / window, then compute grid dims
-    const targetWidth = window.innerWidth;
-    const targetHeight = window.innerHeight;
+    // Compute grid to fill window
+    this.cols = Math.floor(w / this.cellWidth);
+    this.rows = Math.floor(h / this.cellHeight);
 
-    // Clamp columns to the responsive target
-    let targetCols;
-    if (w < 600) {
-      targetCols = 40;
-    } else if (w < 1024) {
-      targetCols = 60;
-    } else {
-      targetCols = 100;
-    }
-
-    this.cols = Math.min(targetCols, Math.floor(targetWidth / this.cellWidth));
-    this.rows = Math.floor(targetHeight / this.cellHeight);
+    // Ultra-wide cap, portrait minimum
+    if (this.cols > 160) this.cols = 160;
+    if (this.cols < 30) this.cols = 30;
+    // Ensure enough rows for HUD
+    if (this.rows < LAYOUT.HUD_TOTAL + 5) this.rows = LAYOUT.HUD_TOTAL + 5;
 
     this.canvas.width = this.cols * this.cellWidth;
     this.canvas.height = this.rows * this.cellHeight;
@@ -240,6 +275,28 @@ export class Renderer {
   }
 
   /**
+   * Draw a horizontal separator spanning a box: ╠═══════╣
+   */
+  drawSeparator(col, row, w, fg = COLORS.WHITE, bg = COLORS.BLACK) {
+    this.drawChar(col, row, '\u2560', fg, bg);         // ╠
+    for (let x = 1; x < w - 1; x++) {
+      this.drawChar(col + x, row, '\u2550', fg, bg);   // ═
+    }
+    this.drawChar(col + w - 1, row, '\u2563', fg, bg); // ╣
+  }
+
+  /**
+   * Write a word-wrapped string into the buffer, returning the number of rows used.
+   */
+  drawStringWrapped(col, row, str, maxWidth, fg = COLORS.WHITE, bg = COLORS.BLACK) {
+    const lines = wordWrap(str, maxWidth);
+    for (let i = 0; i < lines.length; i++) {
+      this.drawString(col, row + i, lines[i], fg, bg);
+    }
+    return lines.length;
+  }
+
+  /**
    * Draw a box border using box-drawing characters.
    * ╔═══════╗
    * ║       ║
@@ -293,11 +350,14 @@ export class Renderer {
     this.drawBox(col, row, w, h, fg, bg);
 
     const maxLen = w - 2;
-    for (let i = 0; i < lines.length && i < h - 2; i++) {
-      const line = lines[i].length > maxLen
-        ? lines[i].slice(0, maxLen)
-        : lines[i];
-      this.drawString(col + 1, row + 1 + i, line, fg, bg);
+    let lineY = 0;
+    for (let i = 0; i < lines.length && lineY < h - 2; i++) {
+      const wrapped = wordWrap(lines[i], maxLen);
+      for (const wl of wrapped) {
+        if (lineY >= h - 2) break;
+        this.drawString(col + 1, row + 1 + lineY, wl, fg, bg);
+        lineY++;
+      }
     }
   }
 
@@ -392,26 +452,95 @@ export class Renderer {
    */
   postProcess() {
     if (!this.effectsEnabled) return;
-    this.applyScanlines();
+    const opts = this.crtOptions || {};
+    if (opts.crtGlow !== false) this.applyPhosphorGlow();
+    if (opts.crtScanlines !== false) this.applyScanlines();
+    if (opts.crtAberration !== false) this.applyChromaAberration();
     this.applyFlicker();
     this.applyVignette();
-    this.applyPhosphorDecay();
     this.applyGlitch();
   }
 
   /**
-   * Subtle horizontal scanlines every 2 pixels.
+   * Phosphor glow: bloom effect using offscreen canvas with blur.
+   */
+  applyPhosphorGlow() {
+    this._glowFrame = (this._glowFrame || 0) + 1;
+    if (this._glowFrame % 2 !== 0) return; // only every 2nd frame
+
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const scale = 0.25;
+    const sw = Math.floor(w * scale);
+    const sh = Math.floor(h * scale);
+
+    if (!this._glowCanvas) {
+      this._glowCanvas = document.createElement('canvas');
+    }
+    this._glowCanvas.width = sw;
+    this._glowCanvas.height = sh;
+
+    const gCtx = this._glowCanvas.getContext('2d');
+    gCtx.filter = 'blur(3px)';
+    gCtx.drawImage(this.canvas, 0, 0, sw, sh);
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.10;
+    ctx.drawImage(this._glowCanvas, 0, 0, w, h);
+    ctx.restore();
+
+    // Subtle green phosphor tint
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 20, 0, 0.015)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * Scanlines proportional to cell height.
    */
   applyScanlines() {
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
+    const spacing = Math.max(2, Math.floor(this.cellHeight / 3));
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-    for (let y = 0; y < h; y += 2) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+    for (let y = 0; y < h; y += spacing) {
       ctx.fillRect(0, y, w, 1);
     }
     ctx.restore();
+  }
+
+  /**
+   * Subtle chromatic aberration: shift R left, B right by 1px.
+   */
+  applyChromaAberration() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (w === 0 || h === 0) return;
+
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const src = imgData.data;
+    const shifted = ctx.createImageData(w, h);
+    const dst = shifted.data;
+    const offset = 1;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const rSrc = (y * w + Math.max(0, x - offset)) * 4;
+        const bSrc = (y * w + Math.min(w - 1, x + offset)) * 4;
+        dst[i] = src[rSrc];         // R from left
+        dst[i + 1] = src[i + 1];    // G stays
+        dst[i + 2] = src[bSrc + 2]; // B from right
+        dst[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(shifted, 0, 0);
   }
 
   /**
@@ -419,7 +548,7 @@ export class Renderer {
    */
   applyFlicker() {
     const ctx = this.ctx;
-    const variance = Math.random() * 0.015; // 0 – 1.5%
+    const variance = Math.random() * 0.012;
     ctx.save();
     ctx.fillStyle = `rgba(0, 0, 0, ${variance})`;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -448,20 +577,6 @@ export class Renderer {
   }
 
   /**
-   * Phosphor decay: subtle ghosting from previous frame.
-   */
-  applyPhosphorDecay() {
-    // Implemented via slight blend — the double-buffer already handles this
-    // by only redrawing changed cells, creating a natural persistence effect.
-    // Add a very subtle green phosphor glow:
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.fillStyle = 'rgba(0, 20, 0, 0.02)';
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.restore();
-  }
-
-  /**
    * Rare glitch: horizontal row shift triggered by damage or random chance.
    */
   applyGlitch() {
@@ -472,7 +587,6 @@ export class Renderer {
     const ch = this.cellHeight;
     const rows = this.rows;
 
-    // Shift 1-3 random rows by a few pixels
     const glitchRows = Math.floor(Math.random() * 3) + 1;
     for (let i = 0; i < glitchRows; i++) {
       const row = Math.floor(Math.random() * rows);
@@ -571,14 +685,17 @@ export class ParticleSystem {
    * Render particles to the renderer relative to camera.
    */
   render(renderer, cameraX, cameraY) {
+    const viewLeft = 1;
+    const viewTop = LAYOUT.VIEWPORT_TOP;
+    const viewW = renderer.cols - 2;
+    const viewH = renderer.rows - LAYOUT.HUD_TOTAL;
     for (const p of this.particles) {
       const sx = Math.round(p.x - cameraX);
       const sy = Math.round(p.y - cameraY);
-      if (sx >= 0 && sx < renderer.cols && sy >= 0 && sy < renderer.rows - 7) {
-        // Fade alpha by remaining life
+      if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
         const fade = p.life / p.maxLife;
         if (fade > 0.3) {
-          renderer.drawChar(sx, sy, p.char, p.fg);
+          renderer.drawChar(viewLeft + sx, viewTop + sy, p.char, p.fg);
         }
       }
     }
