@@ -663,6 +663,7 @@ class Game {
       const loc = this.overworld.getLocation(this.player.position.x, this.player.position.y);
       if (loc) {
         this.startTransition(() => {
+          this.renderer.invalidate();
           if (loc.type === 'dungeon') {
             this.enterDungeon(loc);
           } else if (loc.type === 'tower') {
@@ -696,15 +697,23 @@ class Game {
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
 
     if (key === 'Escape') {
-      // Leave location back to overworld
-      if (this.gameContext.currentLocation) {
-        this.player.position.x = this.gameContext.currentLocation.x;
-        this.player.position.y = this.gameContext.currentLocation.y;
-      }
-      this.currentSettlement = null;
-      this.npcs = [];
-      this.setState('OVERWORLD');
-      this.ui.addMessage('You leave the settlement.', COLORS.WHITE);
+      // Leave location back to overworld with transition
+      this.startTransition(() => {
+        if (this.gameContext.currentLocation) {
+          this.player.position.x = this.gameContext.currentLocation.x;
+          this.player.position.y = this.gameContext.currentLocation.y;
+        }
+        this.currentSettlement = null;
+        this.npcs = [];
+        this.gameContext.currentLocationName = 'World';
+        this.gameContext.currentLocation = null;
+        this.camera.follow(this.player);
+        this.camera.x = this.camera.targetX;
+        this.camera.y = this.camera.targetY;
+        this.renderer.invalidate();
+        this.setState('OVERWORLD');
+        this.ui.addMessage('You leave the settlement.', COLORS.WHITE);
+      });
       return;
     }
 
@@ -734,15 +743,24 @@ class Game {
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
 
     if (key === 'Escape') {
-      this.currentDungeon = null;
-      this.enemies = [];
-      this.items = [];
-      if (this.gameContext.currentLocation) {
-        this.player.position.x = this.gameContext.currentLocation.x;
-        this.player.position.y = this.gameContext.currentLocation.y;
-      }
-      this.setState('OVERWORLD');
-      this.ui.addMessage('You escape the dungeon.', COLORS.WHITE);
+      this.startTransition(() => {
+        this.currentDungeon = null;
+        this.currentTower = null;
+        this.enemies = [];
+        this.items = [];
+        if (this.gameContext.currentLocation) {
+          this.player.position.x = this.gameContext.currentLocation.x;
+          this.player.position.y = this.gameContext.currentLocation.y;
+        }
+        this.gameContext.currentLocationName = 'World';
+        this.gameContext.currentLocation = null;
+        this.camera.follow(this.player);
+        this.camera.x = this.camera.targetX;
+        this.camera.y = this.camera.targetY;
+        this.renderer.invalidate();
+        this.setState('OVERWORLD');
+        this.ui.addMessage('You escape the dungeon.', COLORS.WHITE);
+      });
       return;
     }
 
@@ -2274,10 +2292,17 @@ class Game {
         break;
     }
 
-    this.renderer.endFrame();
+    // Force full redraw when post-processing, transitions, or flash
+    // will modify the canvas after buffer snapshot — otherwise dirty
+    // tracking leaves stale post-processed pixels on unchanged cells
+    const needsFullRedraw = this.renderer.effectsEnabled
+      || this.transitionTimer > 0
+      || (this.renderer._flashAlpha && this.renderer._flashAlpha > 0);
+    this.renderer.endFrame(needsFullRedraw);
     this.renderer.postProcess();
 
-    // Day/night tint disabled — cycle shown via HUD indicator only
+    // Transition overlay (fade in/out between scenes)
+    this.renderTransition();
 
     // Flash overlay
     this.renderer.applyFlash();
@@ -2520,11 +2545,8 @@ class Game {
       this.input.consumeAction(); // discard input during transitions
     }
 
-    // Render
+    // Render (includes transition overlay and post-processing)
     this.render();
-
-    // Draw transition overlay on top of everything
-    this.renderTransition();
 
     // Auto-save periodically
     if (this.turnCount > 0 && this.turnCount % this.settings.autoSaveInterval === 0 && this.player) {
