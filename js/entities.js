@@ -1,5 +1,5 @@
 // ============================================================================
-// entities.js — Entity/NPC system for ASHENGATE, a fantasy roguelike
+// entities.js — Entity/NPC system for ASCIIQUEST, a fantasy roguelike
 // ============================================================================
 
 import { SeededRNG, distance, manhattanDist } from './utils.js';

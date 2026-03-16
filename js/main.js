@@ -301,7 +301,7 @@ class Game {
           } else {
             this.setState('OVERWORLD');
           }
-          this.ui.addMessage('Welcome to ASHENGATE!', COLORS.BRIGHT_YELLOW);
+          this.ui.addMessage('Welcome to ASCIIQUEST!', COLORS.BRIGHT_YELLOW);
           this.ui.addMessage(`${this.player.name} the ${this.player.race} ${this.player.playerClass} sets forth.`, COLORS.BRIGHT_CYAN);
           this.ui.addMessage('Press ? for help.', COLORS.BRIGHT_BLACK);
         }, 400);
@@ -1931,7 +1931,7 @@ class Game {
 
   _loadSettings() {
     try {
-      const raw = localStorage.getItem('ashengate_settings');
+      const raw = localStorage.getItem('asciiquest_settings');
       if (raw) {
         const saved = JSON.parse(raw);
         Object.assign(this.settings, saved);
@@ -1944,7 +1944,7 @@ class Game {
 
   _saveSettings() {
     try {
-      localStorage.setItem('ashengate_settings', JSON.stringify(this.settings));
+      localStorage.setItem('asciiquest_settings', JSON.stringify(this.settings));
     } catch (e) { /* ignore */ }
     // Apply settings immediately
     this.renderer.enableCRT = this.settings.crtEffects;
@@ -2026,9 +2026,9 @@ class Game {
         }));
       }
 
-      localStorage.setItem(`ashengate_save_${slot}`, JSON.stringify(saveData));
+      localStorage.setItem(`asciiquest_save_${slot}`, JSON.stringify(saveData));
       // Also keep backwards-compatible key
-      localStorage.setItem('ashengate_save', JSON.stringify(saveData));
+      localStorage.setItem('asciiquest_save', JSON.stringify(saveData));
       this.ui.addMessage('Game saved.', COLORS.BRIGHT_GREEN);
       return true;
     } catch (e) {
@@ -2081,8 +2081,8 @@ class Game {
   loadGame(slot = 1) {
     try {
       // Try slot-based first, then fallback to legacy key
-      let data = localStorage.getItem(`ashengate_save_${slot}`);
-      if (!data) data = localStorage.getItem('ashengate_save');
+      let data = localStorage.getItem(`asciiquest_save_${slot}`);
+      if (!data) data = localStorage.getItem('asciiquest_save');
       if (!data) return false;
 
       const save = JSON.parse(data);
