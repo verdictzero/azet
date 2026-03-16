@@ -106,6 +106,7 @@ export class Renderer {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const isPortrait = h > w;
+    const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
     // Fluid font size: lerp between 10px (320px wide) and 18px (2560px wide)
     if (!this._userFontSize) {
@@ -121,9 +122,13 @@ export class Renderer {
     this.cellWidth = Math.ceil(metrics.width);
     this.cellHeight = Math.ceil(this.fontSize * 1.35);
 
-    // Compute grid to fill window
+    // Reserve space for touch controls on mobile so they don't overlap the game
+    const touchReserve = isMobile ? (isPortrait ? 180 : 120) : 0;
+    const availH = h - touchReserve;
+
+    // Compute grid to fill available area
     this.cols = Math.floor(w / this.cellWidth);
-    this.rows = Math.floor(h / this.cellHeight);
+    this.rows = Math.floor(availH / this.cellHeight);
 
     // Ultra-wide cap, portrait minimum
     if (this.cols > 160) this.cols = 160;
@@ -189,13 +194,25 @@ export class Renderer {
   }
 
   /**
-   * Finish the frame: render only cells that changed since last frame.
+   * Force a full redraw on the next endFrame call.
+   * Call this after scene transitions, state changes, or anything that
+   * modifies the canvas outside the normal buffer pipeline.
    */
-  endFrame() {
+  invalidate() {
+    this.prevBuffer = [];
+  }
+
+  /**
+   * Finish the frame: render only cells that changed since last frame.
+   * When forceFullRedraw is true, skip dirty checking (needed when
+   * post-processing effects or overlays modify the canvas after
+   * prevBuffer is snapshotted).
+   */
+  endFrame(forceFullRedraw = false) {
     const ctx = this.ctx;
     const cw = this.cellWidth;
     const ch = this.cellHeight;
-    const hasPrev = this.prevBuffer.length === this.rows;
+    const hasPrev = !forceFullRedraw && this.prevBuffer.length === this.rows;
 
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     ctx.textBaseline = 'top';
@@ -204,7 +221,7 @@ export class Renderer {
       for (let c = 0; c < this.cols; c++) {
         const cell = this.buffer[r][c];
 
-        // Skip unchanged cells
+        // Skip unchanged cells (only when dirty tracking is valid)
         if (hasPrev) {
           const prev = this.prevBuffer[r][c];
           if (
@@ -232,14 +249,20 @@ export class Renderer {
     }
 
     // Snapshot current buffer into prevBuffer
-    this.prevBuffer = [];
-    for (let r = 0; r < this.rows; r++) {
-      const row = [];
-      for (let c = 0; c < this.cols; c++) {
-        const s = this.buffer[r][c];
-        row.push({ char: s.char, fg: s.fg, bg: s.bg });
+    // (skip snapshot when force-redrawing with effects, since canvas
+    //  will be modified after this call and dirty tracking would be wrong)
+    if (forceFullRedraw) {
+      this.prevBuffer = [];
+    } else {
+      this.prevBuffer = [];
+      for (let r = 0; r < this.rows; r++) {
+        const row = [];
+        for (let c = 0; c < this.cols; c++) {
+          const s = this.buffer[r][c];
+          row.push({ char: s.char, fg: s.fg, bg: s.bg });
+        }
+        this.prevBuffer.push(row);
       }
-      this.prevBuffer.push(row);
     }
   }
 
@@ -845,6 +868,11 @@ export class InputManager {
 
     this._touchDiv = touchDiv;
 
+    // Haptic helper — short vibration on button press
+    const haptic = () => {
+      if (navigator.vibrate) navigator.vibrate(12);
+    };
+
     // D-pad direction buttons
     const dirButtons = document.querySelectorAll('[data-dir]');
     dirButtons.forEach((btn) => {
@@ -852,6 +880,8 @@ export class InputManager {
 
       const activate = (e) => {
         e.preventDefault();
+        btn.classList.add('pressed');
+        haptic();
         switch (dir) {
           case 'up':    this._keysDown.add('ArrowUp');    this.lastAction = 'ArrowUp';    break;
           case 'down':  this._keysDown.add('ArrowDown');  this.lastAction = 'ArrowDown';  break;
@@ -863,6 +893,7 @@ export class InputManager {
 
       const deactivate = (e) => {
         e.preventDefault();
+        btn.classList.remove('pressed');
         switch (dir) {
           case 'up':    this._keysDown.delete('ArrowUp');    break;
           case 'down':  this._keysDown.delete('ArrowDown');  break;
@@ -873,6 +904,7 @@ export class InputManager {
 
       btn.addEventListener('touchstart', activate, { passive: false });
       btn.addEventListener('touchend', deactivate, { passive: false });
+      btn.addEventListener('touchcancel', deactivate, { passive: false });
       btn.addEventListener('mousedown', activate);
       btn.addEventListener('mouseup', deactivate);
     });
@@ -882,6 +914,8 @@ export class InputManager {
       interact: 'Enter',
       inventory: 'i',
       map: 'm',
+      character: 'c',
+      quest: 'q',
       menu: 'Escape',
     };
 
@@ -891,11 +925,20 @@ export class InputManager {
 
       const fire = (e) => {
         e.preventDefault();
+        btn.classList.add('pressed');
+        haptic();
         this.lastAction = actionKeyMap[action] || action;
       };
 
+      const release = (e) => {
+        btn.classList.remove('pressed');
+      };
+
       btn.addEventListener('touchstart', fire, { passive: false });
+      btn.addEventListener('touchend', release, { passive: false });
+      btn.addEventListener('touchcancel', release, { passive: false });
       btn.addEventListener('mousedown', fire);
+      btn.addEventListener('mouseup', release);
     });
   }
 

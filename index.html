@@ -16,19 +16,23 @@
            autocapitalize="off" spellcheck="false"
            style="position:absolute;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;">
     <div id="touch-controls" class="hidden">
-      <div class="touch-right-panel">
-        <div class="action-buttons">
-          <button class="action-btn" data-action="interact">ACT</button>
-          <button class="action-btn" data-action="inventory">INV</button>
-          <button class="action-btn" data-action="map">MAP</button>
-          <button class="action-btn" data-action="menu">MNU</button>
-        </div>
+      <div class="touch-bar">
+        <!-- D-pad on left -->
         <div class="dpad">
           <button class="dpad-btn up" data-dir="up">&#9650;</button>
           <button class="dpad-btn left" data-dir="left">&#9664;</button>
           <button class="dpad-btn center" data-dir="wait">&#9679;</button>
           <button class="dpad-btn right" data-dir="right">&#9654;</button>
           <button class="dpad-btn down" data-dir="down">&#9660;</button>
+        </div>
+        <!-- Action buttons on right -->
+        <div class="action-buttons">
+          <button class="action-btn act" data-action="interact">ACT</button>
+          <button class="action-btn" data-action="inventory">INV</button>
+          <button class="action-btn" data-action="map">MAP</button>
+          <button class="action-btn" data-action="character">CHR</button>
+          <button class="action-btn" data-action="quest">QST</button>
+          <button class="action-btn" data-action="menu">ESC</button>
         </div>
       </div>
     </div>
