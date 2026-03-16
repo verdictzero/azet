@@ -250,7 +250,7 @@ class Game {
       // Step 8: Create player
       () => {
         const race = this.charGenState.race || 'human';
-        const pClass = this.charGenState.playerClass || 'warden';
+        const pClass = this.charGenState.playerClass || 'junk_collector';
         const name = this.charGenState.name || 'Wanderer';
         this.player = new Player(name, race, pClass);
         log('Creating player character...', COLORS.BRIGHT_CYAN);
@@ -328,7 +328,7 @@ class Game {
     this.npcs = [];
     if (this.currentSettlement.npcSlots) {
       for (const slot of this.currentSettlement.npcSlots) {
-        const race = locRng.random(['human', 'human', 'human', 'elf', 'dwarf', 'halfling']);
+        const race = locRng.random(['human', 'human', 'human', 'enhanced', 'cyborg', 'human']);
         const npc = this.npcGen.generate(locRng, slot.role, race, { location: location.name });
         npc.position = { x: slot.position.x, y: slot.position.y };
         this.npcs.push(npc);
@@ -595,8 +595,8 @@ class Game {
       return;
     }
 
-    const races = ['human', 'elf', 'dwarf', 'orc', 'halfling'];
-    const classes = ['warden', 'arcanist', 'rogue', 'ranger'];
+    const races = ['human', 'enhanced', 'cyborg'];
+    const classes = ['junk_collector', 'scavenger', 'mercenary', 'engineer'];
     const items = step === 'race' ? races : classes;
 
     const result = this.ui.handleMenuInput(key, items.length);
@@ -1510,7 +1510,7 @@ class Game {
         this.ui.addMessage(`${event.data.merchantName} has rare goods for trade!`, COLORS.BRIGHT_GREEN);
         break;
       case 'RAIDER_INCURSION':
-        this.factionSystem.modifyPlayerStanding('ASHEN_REAVERS', -10);
+        this.factionSystem.modifyPlayerStanding('RUST_RAIDERS', -10);
         this.ui.addMessage('Bandits are attacking the settlement!', COLORS.BRIGHT_RED);
         break;
       case 'SCHEMATIC_FOUND':

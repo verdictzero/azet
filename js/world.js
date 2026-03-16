@@ -1,5 +1,5 @@
 // ============================================================================
-// world.js — World generation for ASCIIQUEST, a retro ASCII fantasy roguelike
+// world.js — World generation for ASCIIQUEST, a colony salvage roguelike
 // ============================================================================
 
 import { SeededRNG, PerlinNoise, AStar, distance, floodFill } from './utils.js';
@@ -81,30 +81,30 @@ export class OverworldGenerator {
 
   _placeLocations(rng, tiles, width, height) {
     const locationDefs = [
-      { type: 'city', min: 1, max: 2, population: [800, 2000], difficulty: 1 },      // walled city
-      { type: 'town', min: 3, max: 4, population: [200, 600], difficulty: 2 },       // market town
-      { type: 'village', min: 6, max: 10, population: [30, 120], difficulty: 1 },    // hamlet
-      { type: 'castle', min: 2, max: 3, population: [50, 200], difficulty: 4 },      // fortified keep
-      { type: 'temple', min: 3, max: 5, population: [10, 50], difficulty: 3 },       // holy sanctuary
-      { type: 'dungeon', min: 5, max: 8, population: [0, 0], difficulty: 5 },        // underground crypt
-      { type: 'ruins', min: 3, max: 5, population: [0, 10], difficulty: 4 },         // fallen stronghold
-      { type: 'tower', min: 1, max: 3, population: [5, 20], difficulty: 5 },         // arcane spire
-      { type: 'camp', min: 2, max: 4, population: [10, 40], difficulty: 2 },         // wanderer camp
+      { type: 'city', min: 1, max: 2, population: [800, 2000], difficulty: 1 },      // market hub
+      { type: 'town', min: 3, max: 4, population: [200, 600], difficulty: 2 },       // small habitat
+      { type: 'village', min: 6, max: 10, population: [30, 120], difficulty: 1 },    // small habitat
+      { type: 'castle', min: 2, max: 3, population: [50, 200], difficulty: 4 },      // garrison
+      { type: 'temple', min: 3, max: 5, population: [10, 50], difficulty: 3 },       // data archive
+      { type: 'dungeon', min: 5, max: 8, population: [0, 0], difficulty: 5 },        // collapsed sub-level
+      { type: 'ruins', min: 3, max: 5, population: [0, 10], difficulty: 4 },         // abandoned module
+      { type: 'tower', min: 1, max: 3, population: [5, 20], difficulty: 5 },         // signal spire
+      { type: 'camp', min: 2, max: 4, population: [10, 40], difficulty: 2 },         // scavenger camp
     ];
 
     const nameBank = {
-      city: ['Ironhaven', 'Thorngate', 'Greymoor', 'Stonereach'],
-      town: ['Ashford', 'Ravenmark', 'Misthollow', 'Briarfen', 'Oakrest', 'Frostwatch'],
+      city: ['Ironhaven Hub', 'Sector Prime', 'Greymoor Central', 'Steelreach'],
+      town: ['Ashford Junction', 'Raven Terminal', 'Misthallow Bay', 'Briar Lock', 'Deck Rest', 'Frostwatch Post'],
       village: [], // generated names
-      castle: ['Fort Ironhold', 'Stormwall Keep', 'Shadowguard', 'Citadel Ashvane'],
-      temple: ['Shrine of Stars', 'Temple of the Dawn', 'Sanctum of Whispers', 'Hall of Echoes',
-               'Altar of the Flame', 'Chapel of the Moon'],
-      dungeon: ['The Sunken Crypt', 'Catacombs of Dread', 'The Slag Pit', 'Shadow Depths',
-                'The Hollow Tomb', 'Forgotten Tunnels', 'The Iron Maw', 'Echoing Caverns'],
-      ruins: ['Old Thornhold', 'The Fallen Tower', 'Duskbane Wreck', 'Shattered Keep',
-              'Crumbling Abbey'],
-      tower: ['Spire of Seeing', 'Stormwatch Peak', 'The Obsidian Tower'],
-      camp: ['Wanderer Den', 'Trader Outpost', 'Drifter Crossing', 'Pathfinder Lodge'],
+      castle: ['Fort Ironhold', 'Stormwall Garrison', 'Shadowguard Base', 'Citadel Ashvane'],
+      temple: ['Archive of Stars', 'Data Vault of the Dawn', 'Sanctum of Whispers', 'Hall of Echoes',
+               'Core of the Flame', 'Archive of the Moon'],
+      dungeon: ['The Sunken Sub-Level', 'Catacombs of Dread', 'The Slag Pit', 'Shadow Depths',
+                'The Hollow Core', 'Forgotten Tunnels', 'The Iron Maw', 'Echoing Ducts'],
+      ruins: ['Old Thornhold Wreck', 'The Fallen Antenna', 'Duskbane Wreck', 'Shattered Module',
+              'Crumbling Bay'],
+      tower: ['Spire of Seeing', 'Stormwatch Beacon', 'The Obsidian Antenna'],
+      camp: ['Drifter Den', 'Trader Outpost', 'Scavenger Crossing', 'Pathfinder Lodge'],
     };
 
     const locations = [];
@@ -248,18 +248,18 @@ const TERRAIN_SCALE = 0.04;
 
 // Procedural name generator using syllable combination
 const NAME_PREFIXES = [
-  'Ash', 'Iron', 'Thorn', 'Grey', 'Stone', 'Mist', 'Raven', 'Oak', 'Shadow', 'Frost',
-  'Ember', 'Hollow', 'Wren', 'Briar', 'Cinder', 'Drift', 'Glen', 'Moss', 'Dusk', 'Storm',
+  'Rust', 'Iron', 'Hull', 'Grey', 'Steel', 'Vent', 'Deck', 'Arc', 'Core', 'Drift',
+  'Junk', 'Wire', 'Bolt', 'Hatch', 'Pipe', 'Flux', 'Grid', 'Silo', 'Dusk', 'Storm',
 ];
 const NAME_SUFFIXES = {
-  city: ['gate', 'hold', 'ward', 'haven', 'crown', 'reach', 'hearth', 'throne', 'spire', 'keep'],
-  town: ['ford', 'cross', 'stead', 'well', 'mark', 'bridge', 'fall', 'moor', 'rest', 'watch'],
-  village: ['hollow', 'vale', 'glen', 'dell', 'wick', 'thatch', 'brook', 'meadow', 'burrow', 'end'],
-  castle: [' Bastion', ' Fortress', ' Citadel', ' Stronghold', ' Keep'],
-  temple: [' Sanctuary', ' Sanctum', ' Shrine', ' Chapel', ' Abbey'],
-  dungeon: [' Depths', ' Catacombs', ' Undercrypt', ' Dungeon', ' Pit', ' Abyss', ' Hollow'],
-  ruins: [' Ruins', ' Remnants', ' Wastes', ' Rubble', ' Wreckage'],
-  tower: [' Spire', ' Tower', ' Pinnacle', ' Obelisk', ' Watchtower'],
+  city: ['gate', 'hold', 'ward', 'haven', 'hub', 'reach', 'core', 'central', 'spire', 'keep'],
+  town: ['lock', 'junction', 'post', 'well', 'terminal', 'bridge', 'bay', 'sector', 'rest', 'watch'],
+  village: ['stack', 'bay', 'den', 'port', 'works', 'block', 'nook', 'berth', 'crawl', 'end'],
+  castle: [' Bastion', ' Garrison', ' Citadel', ' Stronghold', ' Compound'],
+  temple: [' Archive', ' Vault', ' Shrine', ' Repository', ' Database'],
+  dungeon: [' Depths', ' Sub-Level', ' Undercrypt', ' Shaft', ' Pit', ' Abyss', ' Core'],
+  ruins: [' Wreckage', ' Remnants', ' Debris', ' Rubble', ' Scrapheap'],
+  tower: [' Spire', ' Antenna', ' Beacon', ' Relay', ' Watchtower'],
   camp: [' Camp', ' Den', ' Crossing', ' Lodge', ' Waypost'],
 };
 

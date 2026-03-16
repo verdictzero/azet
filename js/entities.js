@@ -1,5 +1,5 @@
 // ============================================================================
-// entities.js — Entity/NPC system for ASCIIQUEST, a fantasy roguelike
+// entities.js — Entity/NPC system for ASCIIQUEST, a colony salvage roguelike
 // ============================================================================
 
 import { SeededRNG, distance, manhattanDist } from './utils.js';
@@ -36,95 +36,58 @@ const NAME_POOLS = {
       'Brookshire', 'Aldenmere', 'Holloway', 'Wrenfield', 'Hearthstone',
     ],
   },
-  elf: {
+  enhanced: {
     male: [
-      'Aelindor', 'Sylvain', 'Thalion', 'Celeborn', 'Elrandir', 'Faelar',
-      'Galathil', 'Haldir', 'Ithilion', 'Lanthir', 'Maeglin', 'Noldir',
-      'Orophin', 'Pelendur', 'Quennar', 'Rhovannion', 'Silarion', 'Tauriel',
-      'Vanyar', 'Wraithion',
+      'Axion', 'Cael', 'Dex', 'Eris', 'Fen', 'Hex', 'Jace', 'Kai',
+      'Lux', 'Nyx', 'Orion', 'Pax', 'Quill', 'Riven', 'Sol',
+      'Talon', 'Vex', 'Wynd', 'Zale', 'Aether',
     ],
     female: [
-      'Lirieth', 'Arwen', 'Elowen', 'Galadriel', 'Idhriel', 'Miriel',
-      'Nimrodel', 'Silinde', 'Tindome', 'Vanesse', 'Aerith', 'Caladwen',
-      'Elanor', 'Finduilas', 'Hithlain', 'Laurelin', 'Melian', 'Nessa',
-      'Raina', 'Yavanna',
+      'Aria', 'Nova', 'Lyra', 'Selene', 'Vela', 'Zara', 'Iris',
+      'Astra', 'Cira', 'Elara', 'Freya', 'Helia', 'Juno', 'Kira',
+      'Mira', 'Naia', 'Phoebe', 'Rhea', 'Seren', 'Thea',
     ],
     last: [
-      'Starweaver', 'Moonveil', 'Dawnwhisper', 'Silverleaf', 'Nightbloom',
-      'Crystalsong', 'Windwalker', 'Dewmantle', 'Lightbinder', 'Thornmere',
-      'Mistwhisper', 'Sunweaver', 'Twilightmere', 'Fernshade', 'Glimmerstone',
-      'Petalwind', 'Archlight', 'Dreamthorn', 'Silkenshade', 'Eventide',
+      'Strand', 'Lumen', 'Helix', 'Prism', 'Voss', 'Crest', 'Flux',
+      'Gale', 'Haze', 'Drift', 'Shear', 'Bloom', 'Frost', 'Gleam',
+      'Thorn', 'Pale', 'Stark', 'Veil', 'Wynn', 'Bright',
     ],
   },
-  dwarf: {
+  cyborg: {
     male: [
-      'Thorin', 'Gimli', 'Balin', 'Durin', 'Dwalin', 'Gloin', 'Bofur',
-      'Bombur', 'Nori', 'Oin', 'Kili', 'Fili', 'Dain', 'Thror', 'Fundin',
-      'Grolin', 'Nain', 'Borin', 'Farin', 'Loni',
+      'Bolt', 'Crank', 'Gauge', 'Rivet', 'Solder', 'Arc', 'Clamp',
+      'Drill', 'Forge', 'Grind', 'Jack', 'Knox', 'Mech', 'Pike',
+      'Rust', 'Slag', 'Tank', 'Weld', 'CY-7', 'RK-12',
     ],
     female: [
-      'Disa', 'Helga', 'Bruni', 'Thora', 'Greta', 'Hilda', 'Sigrid',
-      'Brunhild', 'Dagny', 'Eira', 'Frida', 'Gudrun', 'Ingra', 'Kelda',
-      'Magna', 'Riva', 'Sif', 'Thyra', 'Ulfhild', 'Yrsa',
+      'Sparks', 'Nixie', 'Torque', 'Chrome', 'Zinc', 'Ada', 'Chip',
+      'Dynamo', 'Fuse', 'Gear', 'Iris-9', 'Jolt', 'Kev', 'Link',
+      'Magnet', 'Neon', 'Ohm', 'Pulse', 'Relay', 'Switch',
     ],
     last: [
-      'Ironforge', 'Stonehammer', 'Deepdelve', 'Coalhand', 'Anvilborn',
-      'Copperbeard', 'Forgeheart', 'Goldvein', 'Hammerfall', 'Rockstead',
-      'Shalebreaker', 'Tinderfoot', 'Gritspur', 'Brassmantle', 'Grudgebane',
-      'Orekeeper', 'Mithrilsong', 'Slagworth', 'Cragborn', 'Dusthewn',
-    ],
-  },
-  orc: {
-    male: [
-      'Grukk', 'Throg', 'Mogash', 'Uzgul', 'Brakka', 'Durgash', 'Ghorn',
-      'Kragoth', 'Lugdush', 'Muzgash', 'Nazgoth', 'Orgrim', 'Skullgar',
-      'Ugroth', 'Zargoth',
-    ],
-    female: [
-      'Gorza', 'Shagra', 'Bolgra', 'Durza', 'Gashna', 'Krella', 'Mogra',
-      'Nargha', 'Rishka', 'Sharog', 'Uglasha', 'Vorgha', 'Yazga', 'Zulka',
-      'Breka',
-    ],
-    last: [
-      'Ashfang', 'Bloodthorn', 'Ironclaw', 'Stormhide', 'Bonecrusher',
-      'Grimjaw', 'Duskbane', 'Ravenmaw', 'Goreclaw', 'Skulltaker',
-      'Firebrand', 'Dreadmaw', 'Nightstalker', 'Thunderhide', 'Warscar',
-    ],
-  },
-  halfling: {
-    male: [
-      'Pippin', 'Merry', 'Samwise', 'Frodo', 'Bilbo', 'Lotho', 'Folco',
-      'Drogo', 'Hamfast', 'Griffo', 'Bingo', 'Largo', 'Polo', 'Hugo',
-      'Cosimo',
-    ],
-    female: [
-      'Rosie', 'Daisy', 'Petunia', 'Marigold', 'Primrose', 'Lobelia',
-      'Belladonna', 'Esmeralda', 'Celandine', 'Amaranth', 'Pansy',
-      'Daffodil', 'Clover', 'Ivy', 'Poppy',
-    ],
-    last: [
-      'Underhill', 'Lightfoot', 'Goodbarrow', 'Thornberry', 'Mossgather',
-      'Bramblewood', 'Hearthwick', 'Smallburrow', 'Copperkettle', 'Widdershins',
-      'Thistledown', 'Meadowlark', 'Pebblebrook', 'Willowmere', 'Hazelhurst',
+      'Ironcore', 'Steelhand', 'Deepweld', 'Coalarm', 'Anvilborn',
+      'Copperlung', 'Forgeheart', 'Goldwire', 'Hammerlock', 'Rockstead',
+      'Shalebreak', 'Tinderfoot', 'Gritspur', 'Brassframe', 'Grudgebane',
+      'Orekeeper', 'Circuitbend', 'Slagworth', 'Cragborn', 'Dusthewn',
     ],
   },
 };
 
 const NICKNAMES = [
-  'the Steadfast', 'the Bold', 'Shadowwalker', 'Truthseeker', 'the Wise',
-  'Ironwill', 'Stormcaller', 'the Drifter', 'Lionheart', 'the Swift',
-  'Dawnbringer', 'the Silent', 'Wallbreaker', 'the Merciful', 'Darkstalker',
-  'the Just', 'Oathkeeper', 'the Unyielding', 'Grimjaw', 'Steelheart',
+  'the Reliable', 'the Bold', 'Voidwalker', 'Datakeeper', 'the Wise',
+  'Ironwill', 'Stormcaller', 'the Drifter', 'Steelnerve', 'the Swift',
+  'Deckrunner', 'the Silent', 'Wallbreaker', 'the Merciful', 'Nightcrawler',
+  'the Just', 'Oathkeeper', 'the Unyielding', 'Rustjaw', 'Circuitheart',
 ];
 
 const PLACE_PREFIXES = [
-  'Ash', 'Iron', 'Thorn', 'Grey', 'Stone', 'Mist', 'Oak', 'Shadow',
-  'Ember', 'Drift', 'Raven', 'Wren', 'Frost', 'Briar', 'Moss',
+  'Rust', 'Iron', 'Hull', 'Grey', 'Steel', 'Vent', 'Deck', 'Arc',
+  'Core', 'Drift', 'Junk', 'Wire', 'Bolt', 'Hatch', 'Pipe',
 ];
 
 const PLACE_SUFFIXES = [
-  'hold', 'gate', 'vale', 'haven', 'ford', 'ward', 'moor', 'keep',
-  'well', 'glen', 'wick', 'dell', 'watch', 'bridge', 'hollow',
+  'hold', 'gate', 'bay', 'haven', 'lock', 'ward', 'sector', 'block',
+  'well', 'den', 'works', 'port', 'watch', 'bridge', 'stack',
 ];
 
 export class NameGenerator {
@@ -190,41 +153,41 @@ const ROLE_COLORS = {
 };
 
 const ROLE_TITLES = {
-  merchant:   ['Merchant', 'Goods Dealer', 'Supply Trader', 'Traveling Peddler', 'Market Keeper'],
-  blacksmith: ['Blacksmith', 'Armorer', 'Blade Smith', 'Ironworker', 'Forge Master'],
-  barkeep:    ['Innkeeper', 'Tavern Keeper', 'Brew Master', 'Ale Warden', 'Host'],
-  priest:     ['Acolyte', 'Shrine Keeper', 'Healer', 'Cleric', 'Temple Warden'],
-  guard:      ['Town Guard', 'Gate Watchman', 'Patrol Captain', 'Sentry', 'Ward Keeper'],
-  noble:      ['Lord', 'Steward', 'Council Elder', 'Magistrate', 'Castellan'],
-  farmer:     ['Farmer', 'Field Tender', 'Herbalist', 'Orchardist', 'Beekeeper'],
-  miner:      ['Miner', 'Tunnel Foreman', 'Ore Prospector', 'Stone Cutter', 'Deep Delver'],
-  hunter:     ['Hunter', 'Trapper', 'Scout', 'Game Warden', 'Woodsman'],
-  scholar:    ['Scholar', 'Lorekeeper', 'Sage', 'Chronicler', 'Archivist'],
-  beggar:     ['Beggar', 'Vagabond', 'Drifter', 'Wanderer', 'Wretch'],
-  child:      ['Child', 'Urchin', 'Young One', 'Little One', 'Apprentice'],
+  merchant:   ['Supply Trader', 'Parts Dealer', 'Salvage Broker', 'Junk Peddler', 'Market Keeper'],
+  blacksmith: ['Fabricator', 'Armorer', 'Weld Smith', 'Metalworker', 'Forge Operator'],
+  barkeep:    ['Bar Operator', 'Canteen Keeper', 'Brew Master', 'Hydro Warden', 'Host'],
+  priest:     ['Archivist', 'Data Keeper', 'Med-Tech', 'Record Warden', 'Lore Keeper'],
+  guard:      ['Sector Guard', 'Gate Watchman', 'Patrol Captain', 'Sentry', 'Ward Keeper'],
+  noble:      ['Administrator', 'Steward', 'Council Elder', 'Magistrate', 'Sector Chief'],
+  farmer:     ['Agri-Tech', 'Field Tender', 'Hydroponist', 'Greenhouse Op', 'Soil Tech'],
+  miner:      ['Excavator', 'Tunnel Foreman', 'Ore Prospector', 'Hull Cutter', 'Deep Salvager'],
+  hunter:     ['Scout', 'Trapper', 'Recon Specialist', 'Patrol Runner', 'Zone Walker'],
+  scholar:    ['Researcher', 'Lorekeeper', 'Data Analyst', 'Chronicler', 'Archivist'],
+  beggar:     ['Drifter', 'Vagabond', 'Scrap Beggar', 'Wanderer', 'Wretch'],
+  child:      ['Youngster', 'Urchin', 'Young One', 'Little One', 'Apprentice'],
 };
 
 const SECRET_TEMPLATES = [
-  'is secretly a former assassin for a rival lord',
+  'is secretly a former operative for a rival sector chief',
   'was once a council member before being disgraced',
-  'knows the location of a hidden ancient vault',
-  'is wanted in another province for theft',
-  'worships a forbidden idol from the old world',
-  'has a child hidden in a neighboring settlement',
-  'poisoned the previous town steward',
-  'can interpret ancient runes that appear in dreams',
-  'stole their identity from a dead traveler',
+  'knows the location of a hidden pre-collapse data vault',
+  'is wanted in another sector for theft of colony supplies',
+  'worships a forbidden AI construct from the old systems',
+  'has a child hidden in a neighboring sector',
+  'sabotaged the previous sector administrator',
+  'can interpret ancient colony schematics that appear in corrupted data',
+  'stole their identity from a dead colonist',
   'is a spy for a rival faction',
-  'owes a massive debt to the Guild of Coinwrights',
-  'accidentally started the fire that burned an entire quarter',
-  'possesses a forbidden grimoire hidden beneath their bed',
-  'was raised by outlaws in the deep forest',
-  'knows a secret passage beneath the settlement',
-  'made a pact with a dark spirit long ago',
-  'is descended from one of the ancient noble bloodlines',
-  'witnessed a murder in the woods and never spoke of it',
-  'has a twin sibling in another province no one knows about',
-  'can read the ancient runic script',
+  'owes a massive debt to the Salvage Guild',
+  'accidentally caused the hull breach that depressurized an entire quarter',
+  'possesses a forbidden data core hidden beneath their bunk',
+  'was raised by scavengers in the outer hull',
+  'knows a secret maintenance tunnel beneath the sector',
+  'made a deal with a rogue AI long ago',
+  'is descended from one of the original colony founders',
+  'witnessed a murder in the maintenance tunnels and never spoke of it',
+  'has a twin sibling in another sector no one knows about',
+  'can read the ancient colony programming language',
 ];
 
 const ROLE_SCHEDULES = {
@@ -362,8 +325,8 @@ const ROLE_SCHEDULES = {
 };
 
 const NPC_FACTIONS = [
-  'The Iron Ward', 'Guild of Coinwrights', 'The Underguild', 'Order of the Tome',
-  'The Iron Ward', 'Free Merchants', 'The Silent Court', 'None',
+  'The Colony Guard', 'The Salvage Guild', 'The Syndicate', 'The Archive Keepers',
+  'The Colony Guard', 'Free Traders', 'The Colony Council', 'None',
 ];
 
 export class NPCGenerator {
@@ -396,9 +359,9 @@ export class NPCGenerator {
 
     // Faction
     let faction = rng.random(NPC_FACTIONS);
-    if (role === 'merchant' || role === 'blacksmith') faction = 'Guild of Coinwrights';
-    if (role === 'guard' || role === 'knight') faction = 'The Iron Ward';
-    if (role === 'priest') faction = 'Order of the Tome';
+    if (role === 'merchant' || role === 'blacksmith') faction = 'The Salvage Guild';
+    if (role === 'guard' || role === 'knight') faction = 'The Colony Guard';
+    if (role === 'priest') faction = 'The Archive Keepers';
 
     // Secrets (1-2)
     const shuffledSecrets = rng.shuffle(SECRET_TEMPLATES);
@@ -462,83 +425,83 @@ export class NPCGenerator {
 
 const GREETINGS = {
   friendly: [
-    'By the Makers, good to see you again!',
-    'Stars guide you! How goes the journey?',
+    'By the Founders, good to see you again!',
+    'Safe corridors! How goes the salvage?',
     'Ah, my favorite visitor returns!',
     'Well met, friend! What can I do for you today?',
-    'May fortune favor you! Come in, come in.',
-    'You look well! The road has treated you kindly.',
+    'May the hull hold! Come in, come in.',
+    'You look well! The outer decks treated you kindly.',
     'Welcome, welcome! I was hoping you would stop by.',
-    'The old gods watch over us! Good to see a friendly face.',
-    'Ho there! Pull up a chair and rest your legs.',
-    'The wanderer returns! What news from the roads?',
+    'The old systems watch over us! Good to see a friendly face.',
+    'Ho there! Pull up a crate and rest your legs.',
+    'The wanderer returns! What news from the sectors?',
   ],
   neutral: [
-    'What brings you to these parts?',
+    'What brings you to this sector?',
     'State your business.',
     "I don't believe we've met.",
     'Can I help you with something?',
     'Yes? What do you need?',
-    'Hmm. You look like a wanderer.',
-    'Another drifter. What do you want?',
-    "If you're looking for trouble, try the old ruins.",
+    'Hmm. You look like a drifter.',
+    'Another scavenger. What do you want?',
+    "If you're looking for trouble, try the collapsed levels.",
     'Speak up, I have not got all day.',
     'Well? Spit it out.',
   ],
   hostile: [
     'Stay back!',
     'Not you again...',
-    'I thought I told you to leave this place!',
+    'I thought I told you to leave this sector!',
     "Get out of my sight before I call the guard!",
     "You've got some nerve showing your face around here.",
   ],
 };
 
 const RUMOR_TEMPLATES = [
-  'They say {LOCATION} has been sealed since the last plague...',
-  'I heard {NPC_NAME} used to be a {PROFESSION} before settling in these parts.',
-  'The lanterns on the old road have been flickering for weeks. Nobody knows why.',
-  'The old mines have been sealed ever since the collapse. Some say it was no accident.',
-  'A traveler was found dead near the outer walls last fortnight. Bandits, they say.',
-  "There's talk of dark omens spreading through the eastern provinces.",
-  "The blacksmith's apprentice vanished three moons ago. Nobody's talking about it.",
-  'They say strange sounds were heard coming from beneath the old ruins.',
-  "The well water has tasted strange lately. Some folk won't drink from it.",
-  'An old hermit in the forest supposedly knows ancient healing arts.',
-  'I overheard the guard talking about something sealed in the catacombs.',
-  "The temple has been collecting more offerings than usual. Wonder what for.",
-  'A strange drifter was asking questions about the ancient kingdom last moon.',
-  "They say there's Maker treasure buried beneath {LOCATION}, if you dare to look.",
-  'The harvest has been poor. Some blame the drought, others blame a curse.',
-  'I saw a hooded figure enter the ruins at midnight.',
-  "The lord's daughter has been secretly meeting someone beyond the walls.",
-  'A tremor opened a fissure near the old barrow. Best stay away.',
-  "Word is, the Underguild is recruiting. Not that I'd know anything about that.",
-  'Some say the forest is spreading... creeping closer to the settlement each season.',
+  'They say {LOCATION} has been sealed since the last system failure...',
+  'I heard {NPC_NAME} used to be a {PROFESSION} before settling in this sector.',
+  'The lights on the old corridor have been flickering for weeks. Nobody knows why.',
+  'The deep tunnels have been sealed ever since the collapse. Some say it was no accident.',
+  'A scavenger was found dead near the outer bulkheads last cycle. Feral drones, they say.',
+  "There's talk of system malfunctions spreading through the eastern sectors.",
+  "The fabricator's apprentice vanished three cycles ago. Nobody's talking about it.",
+  'They say strange signals were detected coming from beneath the old infrastructure.',
+  "The recycled water has tasted strange lately. Some folk won't drink from the taps.",
+  'An old hermit in the lower decks supposedly knows ancient repair techniques.',
+  'I overheard the guard talking about something sealed in the sub-levels.',
+  "The archive has been collecting more data cores than usual. Wonder what for.",
+  'A strange drifter was asking questions about the original colony blueprints last cycle.',
+  "They say there's Founder tech buried beneath {LOCATION}, if you dare to look.",
+  'The harvest pods have been underproducing. Some blame the grid, others blame sabotage.',
+  'I saw a hooded figure enter the collapsed levels at curfew.',
+  "The administrator's daughter has been secretly meeting someone beyond the bulkheads.",
+  'A tremor opened a breach near the old storage bay. Best stay away.',
+  "Word is, the Syndicate is recruiting. Not that I'd know anything about that.",
+  'Some say the rust is spreading... creeping further into the habitat each cycle.',
 ];
 
 const TOPIC_DIALOGUE = {
   self: [
-    "I've been living in these parts for as long as I can remember.",
+    "I've been living in this sector for as long as I can remember.",
     'My work keeps me busy, but I cannot complain.',
-    "I used to wander the wilds, but those days are behind me now.",
+    "I used to wander the outer decks, but those days are behind me now.",
     "There's not much to tell, really. I'm just a simple {ROLE}.",
     'I learned my trade from my parent, and they from theirs.',
     "Name's {FIRST}. {TITLE} is what they call me around here.",
   ],
   location: [
-    "This place has seen better days, but it's home.",
-    'The settlement was founded generations ago by the first settlers.',
+    "This sector has seen better days, but it's home.",
+    'The settlement was founded generations ago by the first colonists.',
     "Watch yourself around here. Not everyone's as friendly as me.",
     "We're a small community, but we look out for each other.",
-    'The fields around here are productive, if you know how to work them.',
-    'Travelers pass through here on their way to the capital.',
+    'The grow-pods around here are productive, if you know how to work them.',
+    'Scavengers pass through here on their way to the core sectors.',
   ],
   faction: [
     'The {FACTION} keeps things running around here, for better or worse.',
     "I'm loyal to the {FACTION}, and they've done right by me.",
     'Between you and me, the {FACTION} has too much power.',
-    'Without the {FACTION}, this settlement would fall apart.',
+    'Without the {FACTION}, this sector would fall apart.',
     'The {FACTION}? I stay out of politics, friend.',
   ],
   quest: [
@@ -713,8 +676,8 @@ export class DialogueSystem {
       ? rng.random(worldContext.npcNames)
       : 'Old Kael';
     const profession = rng.random([
-      'soldier', 'rogue', 'arcanist', 'lord', 'smuggler', 'ranger', 'herbalist',
-      'warden', 'merchant', 'cave explorer',
+      'sector guard', 'smuggler', 'engineer', 'administrator', 'scavenger', 'scout', 'hydroponist',
+      'patrol runner', 'parts dealer', 'deep salvager',
     ]);
 
     template = template.replace('{LOCATION}', location);
@@ -753,115 +716,115 @@ export class DialogueSystem {
 // ============================================================================
 
 const WORLD_HISTORY_TEMPLATES = [
-  'The realm was overrun by {ENEMY} {YEARS} years ago, and the land has never fully recovered.',
-  'A terrible plague swept through {REGION}, killing nearly half the population.',
+  'The colony was overrun by {ENEMY} {YEARS} cycles ago, and the habitat has never fully recovered.',
+  'A terrible system failure swept through {REGION}, killing nearly half the population.',
   'The alliance between {FACTION1} and {FACTION2} was forged in desperation during the Siege of {LOCATION}.',
-  'Long ago, a Maker archmage sealed a dark power beneath {LOCATION}, but the wards are weakening.',
-  '{FACTION1} and {FACTION2} fought a bitter war over control of the throne, leaving scars across the land.',
-  'The old king vanished mysteriously {YEARS} years ago. Some say he still wanders the wilds.',
-  'A dark star appeared in the sky {YEARS} years ago, heralding an age of turmoil and change.',
-  'The great library of {LOCATION} was burned by zealots who feared forbidden ancient knowledge.',
-  'The deep mines were sealed after something was unearthed in the depths below.',
-  'A catastrophic earthquake reshaped the coastlands {YEARS} years ago, swallowing entire villages.',
-  'The elves retreated to the highlands after the betrayal at {LOCATION}, and few have been seen since.',
-  'An order of wardens once protected the realm, but they were disbanded under accusations of conspiracy.',
-  'The ancient grimoires were stolen {YEARS} years ago and never recovered. Some say they hold great power.',
-  'A volcanic eruption buried the old quarter of {LOCATION} under ash and rubble.',
-  'The treaty that ended the Border Wars is said to have been signed in the blood of both kings.',
-  'Legends speak of a hero who sealed the First Darkness at {LOCATION}, but scholars debate whether it truly happened.',
-  'A cult of rogue arcanists nearly awakened a dormant ancient weapon before they were stopped by {FACTION1}.',
-  'The trade roads were established {YEARS} years ago, bringing prosperity but also new dangers.',
+  'Long ago, a Founder engineer sealed a dangerous system beneath {LOCATION}, but the safeguards are weakening.',
+  '{FACTION1} and {FACTION2} fought a bitter war over control of the colony council, leaving scars across the habitat.',
+  'The old administrator vanished mysteriously {YEARS} cycles ago. Some say they still wander the outer decks.',
+  'A dark anomaly appeared on the sensors {YEARS} cycles ago, heralding an age of system failures and change.',
+  'The great data archive of {LOCATION} was purged by zealots who feared forbidden pre-collapse knowledge.',
+  'The deep excavation tunnels were sealed after something was unearthed in the infrastructure below.',
+  'A catastrophic hull breach reshaped the lower sectors {YEARS} cycles ago, depressurizing entire blocks.',
+  'The Enhanced retreated to the upper decks after the betrayal at {LOCATION}, and few have been seen since.',
+  'An order of colony wardens once protected the habitat, but they were disbanded under accusations of conspiracy.',
+  'The ancient data cores were stolen {YEARS} cycles ago and never recovered. Some say they hold vital colony records.',
+  'A reactor overload buried the old quarter of {LOCATION} under debris and toxic gas.',
+  'The treaty that ended the Sector Wars is said to have been negotiated at the cost of both leaders.',
+  'Legends speak of a Founder who sealed the First Breach at {LOCATION}, but scholars debate whether it truly happened.',
+  'A cult of rogue engineers nearly reactivated a dormant defense system before they were stopped by {FACTION1}.',
+  'The trade corridors were established {YEARS} cycles ago, bringing prosperity but also new dangers.',
 ];
 
 const ARTIFACT_TEMPLATES = [
-  'This relic was forged by {SMITH} in the deep foundries of Mount {MOUNTAIN}.',
-  'Legend says it grants {POWER} to its wielder, but at a terrible cost.',
-  'It was last seen in the hands of {HERO}, who carried it into the final battle.',
-  'The runes etched along its surface glow faintly in the presence of ancient magic.',
-  'Crafted from enchanted ore recovered from the old ruins {YEARS} years ago.',
-  'It is said to be one of seven artifacts created by the Makers to protect the realm.',
-  'The enchantment was laid into it by {SMITH}, the last of the great Maker artificers.',
-  'Those who carry it long enough begin to hear whispers from another age.',
+  'This device was fabricated by {SMITH} in the deep foundries of Sector {MOUNTAIN}.',
+  'Legend says it grants {POWER} to its user, but at a terrible cost.',
+  'It was last seen in the hands of {HERO}, who carried it into the final breach.',
+  'The circuitry etched along its surface glows faintly in the presence of active colony systems.',
+  'Crafted from salvaged alloy recovered from the old infrastructure {YEARS} cycles ago.',
+  'It is said to be one of seven devices created by the Founders to sustain the colony.',
+  'The programming was embedded by {SMITH}, the last of the great Founder engineers.',
+  'Those who carry it long enough begin to hear transmissions from another era.',
   'It was believed destroyed during the fall of {LOCATION}, yet here it remains.',
-  'The gemstone set in its crown is said to contain a trapped spirit.',
-  'Warriors have fought and died for generations over possession of this relic.',
-  'It was a gift from the elven council to a human champion, ages past.',
-  'Scholars believe it predates the founding of the realm by thousands of years.',
-  'Its true power can only be unlocked when brought to {LOCATION}.',
-  'The inscription reads: "May this blade serve the just and shield the innocent."',
+  'The crystal set in its housing is said to contain a trapped AI fragment.',
+  'Colonists have fought and died for generations over possession of this device.',
+  'It was a gift from the Enhanced council to a human champion, ages past.',
+  'Researchers believe it predates the founding of the colony by centuries.',
+  'Its true function can only be unlocked when brought to {LOCATION}.',
+  'The inscription reads: "May this tool serve the builders and shield the colony."',
   'It hums with a strange energy, as though it has a will of its own.',
   'According to legend, it cannot be destroyed by any known means.',
 ];
 
 const LOCATION_TEMPLATES = [
-  'Built as a {PURPOSE}, it has served the realm for {YEARS} years.',
-  'The remains here date back to the Age of Makers, when the world was first shaped.',
-  'This place was once a thriving trade hub, before the roads fell into ruin.',
-  'The locals avoid this place after dark, whispering of ghosts and worse.',
-  'A fierce battle was fought here {YEARS} years ago, and the walls still bear the scars.',
-  'It was constructed by Maker artisans, renowned for their mastery of stone and enchantment.',
-  'The spring at its center is said to grant clarity to those who drink from it.',
-  'Travelers have reported strange sounds emanating from deep below the foundations.',
-  'Once the seat of a powerful lord, it fell into disrepair after the uprising.',
-  'The forest around it is unnaturally dense, as if the trees themselves guard a secret.',
-  'Built atop a sealed barrow, it has always had a dark reputation.',
-  'The walls bear faded carvings depicting a forgotten age.',
-  'It served as a refuge during the Last War, sheltering hundreds of survivors.',
-  'The architecture suggests elven influence, though no elves live here now.',
-  'A hot spring beneath the foundation keeps the stone warm even in winter.',
-  'According to legend, a powerful ancient artifact lies hidden somewhere within.',
-  'The murals depict the rise and fall of a civilization long gone.',
-  'It was abandoned after a mysterious sickness swept through its inhabitants.',
+  'Built as a {PURPOSE}, it has served the colony for {YEARS} cycles.',
+  'The remains here date back to the Age of Founders, when the habitat was first built.',
+  'This place was once a thriving trade hub, before the corridors fell into ruin.',
+  'The locals avoid this place after lights-out, whispering of malfunctions and worse.',
+  'A fierce battle was fought here {YEARS} cycles ago, and the bulkheads still bear the scars.',
+  'It was constructed by Founder engineers, renowned for their mastery of alloy and circuitry.',
+  'The water reclaimer at its center is said to produce the purest water in the colony.',
+  'Scavengers have reported strange sounds emanating from deep below the decking.',
+  'Once the seat of a powerful administrator, it fell into disrepair after the uprising.',
+  'The corridor around it is unnaturally overgrown, as if the hydroponics have gone feral.',
+  'Built atop a sealed maintenance shaft, it has always had a dark reputation.',
+  'The walls bear faded schematics depicting a forgotten era of the colony.',
+  'It served as a refuge during the Last Breach, sheltering hundreds of survivors.',
+  'The architecture suggests Enhanced influence, though no Enhanced live here now.',
+  'A thermal vent beneath the foundation keeps the deck warm even in the cold sectors.',
+  'According to legend, a powerful Founder device lies hidden somewhere within.',
+  'The displays depict the construction and expansion of the colony over generations.',
+  'It was abandoned after a mysterious system failure swept through its inhabitants.',
 ];
 
 const NPC_BACKSTORY_TEMPLATES = [
-  'I used to be a {PROFESSION} before I settled in these parts.',
-  'My family was from {PLACE}, but we had to flee when the war came.',
-  'I lost everything in the great fire and had to start over from nothing.',
+  'I used to be a {PROFESSION} before I settled in this sector.',
+  'My family was from {PLACE}, but we had to evacuate when the breach came.',
+  'I lost everything in the great hull failure and had to start over from nothing.',
   'My parent taught me this trade, and their parent before them.',
-  'I came here seeking fortune, but found something more valuable: peace.',
-  'I served in the guard during the Border Wars. Saw things I wish I could forget.',
-  'I was an orphan, raised by the monks at the old temple.',
-  'I traveled the outer provinces for ten years before settling in this quiet corner.',
+  'I came here seeking opportunity, but found something more valuable: stability.',
+  'I served in the guard during the Sector Wars. Saw things I wish I could forget.',
+  'I was an orphan, raised by the archivists at the old data center.',
+  'I traveled the outer sectors for ten cycles before settling in this quiet corner.',
   "There's a reason I left my old life behind, and I'd rather not speak of it.",
-  'I was apprenticed to a master craftsman who taught me everything I know.',
-  'My mother was a healer, and she passed her knowledge on to me.',
-  'I made my fortune in the trade roads, but lost it all to bad luck and worse partners.',
-  'I ran from my homeland as a child and never looked back.',
-  'I once served a lord, but they fell from grace and I had to find my own way.',
-  'I found this place by accident and decided it was as good as anywhere to stay.',
-  'I survived a bandit ambush and wandered the wilds until I found civilization.',
-  'My family has lived here for seven generations. This land is in my blood.',
-  'I came here to escape a blood feud. So far, no one has found me.',
+  'I was apprenticed to a master fabricator who taught me everything I know.',
+  'My mother was a med-tech, and she passed her knowledge on to me.',
+  'I made my fortune in the trade corridors, but lost it all to bad luck and worse partners.',
+  'I ran from my home sector as a child and never looked back.',
+  'I once served an administrator, but they fell from grace and I had to find my own way.',
+  'I found this sector by accident and decided it was as good as anywhere to stay.',
+  'I survived a feral drone ambush and wandered the maintenance tunnels until I found civilization.',
+  'My family has lived here for seven generations. This sector is in my blood.',
+  'I came here to escape a feud. So far, no one has found me.',
   'I won this establishment in a game of cards. Best hand I ever played.',
-  'I was once a scholar, but the politics of the council drove me away.',
+  'I was once a researcher, but the politics of the council drove me away.',
 ];
 
 const LORE_ENEMIES = [
-  'a goblin horde', 'the risen dead', 'marauding bandits', 'a dark sorcerer',
-  'wyrmspawn', 'the Shadow Cult', 'forest reavers',
-  'an ancient curse awakened', 'the Crimson Brotherhood',
+  'a rogue drone swarm', 'reactivated defense bots', 'marauding scavengers', 'a rogue AI',
+  'mutated vermin', 'the Rust Raiders', 'hull breach survivors gone feral',
+  'an ancient defense grid awakened', 'the Syndicate enforcers',
 ];
 
 const LORE_REGIONS = [
-  'the Highland Reaches', 'the Heartlands', 'the Deep Hollows', 'the Outer Wastes',
-  'the Old Roads', 'the Ember Peaks', 'the Whispering Woods',
+  'the Upper Decks', 'the Core Sectors', 'the Deep Hollows', 'the Outer Hull',
+  'the Old Corridors', 'the Reactor District', 'the Overgrown Bays',
 ];
 
 const LORE_POWERS = [
-  'immense strength', 'the gift of foresight', 'invisibility', 'resistance to poison',
-  'the ability to speak with the dead', 'lightning reflexes', 'an unbreakable ward',
-  'dominion over beasts', 'immunity to flame',
+  'immense strength', 'predictive processing', 'optical camouflage', 'toxin resistance',
+  'the ability to interface with dead systems', 'enhanced reflexes', 'an unbreakable energy shield',
+  'control over maintenance drones', 'thermal immunity',
 ];
 
 const LORE_SMITHS = [
-  'Master Smith Durin', 'the Archmage Aelindor', 'the Blind Forgemaster', 'Queen Isolde',
-  'Thargrim Steelhand', 'the ancient Makers', 'an unnamed elven artisan',
+  'Chief Engineer Durin', 'Founder Aelindor', 'the Blind Fabricator', 'Director Isolde',
+  'Thargrim Steelhand', 'the ancient Founders', 'an unnamed Enhanced artisan',
 ];
 
 const LORE_HEROES = [
-  'King Aldric the Bold', 'the Champion of the Dawn', 'Selene the Wanderer',
-  'Commander Roderick Ashford', 'the last Warden', 'the legendary Thorin Ironforge',
+  'Administrator Aldric the Bold', 'the Champion of the Colony', 'Selene the Wanderer',
+  'Commander Roderick Ashford', 'the last Warden', 'the legendary Bolt Ironcore',
 ];
 
 const LORE_MOUNTAINS = [
@@ -869,19 +832,19 @@ const LORE_MOUNTAINS = [
 ];
 
 const LORE_PURPOSES = [
-  'border fortress', 'holy shrine', 'trade depot', 'mining outpost', 'watch tower',
-  "wizard's study", 'prison', "lord's hall", 'healing house', 'great library',
+  'sector garrison', 'data archive', 'trade depot', 'mining outpost', 'watch station',
+  "engineer's workshop", 'containment cell', "administrator's office", 'med-bay', 'server vault',
 ];
 
 const LORE_PROFESSIONS = [
-  'soldier', 'cave explorer', 'rogue', 'lorekeeper', 'merchant', 'pit fighter',
-  'temple acolyte', 'ranger', 'herbalist', 'warden', 'smuggler', "arcanist's apprentice",
+  'sector guard', 'deep salvager', 'smuggler', 'data analyst', 'parts dealer', 'pit fighter',
+  'archive assistant', 'scout', 'hydroponist', 'patrol runner', 'contraband runner', "engineer's apprentice",
 ];
 
 const LORE_PLACES = [
-  'the capital city', 'a small farming village', 'the frontier beyond the wall',
-  'across the sea', 'the elven highlands', 'the dwarven holds', 'a distant province',
-  'the border marches', 'the scorched badlands', 'the mountain passes',
+  'the central hub', 'a small agri-sector', 'the frontier beyond the outer hull',
+  'the sealed sections', 'the Enhanced quarters', 'the Cyborg workshops', 'a distant sector',
+  'the border checkpoints', 'the scorched reactor district', 'the upper deck passages',
 ];
 
 export class LoreGenerator {
@@ -903,8 +866,8 @@ export class LoreGenerator {
       text = text.replace('{FACTION1}', rng.random(factionNames));
       text = text.replace('{FACTION2}', rng.random(factionNames));
     } else {
-      text = text.replace('{FACTION1}', 'the Iron Ward');
-      text = text.replace('{FACTION2}', 'the Underguild');
+      text = text.replace('{FACTION1}', 'the Colony Guard');
+      text = text.replace('{FACTION2}', 'the Syndicate');
     }
 
     if (locationNames && locationNames.length > 0) {
@@ -957,60 +920,60 @@ export class LoreGenerator {
 // ============================================================================
 
 const CLASS_COLORS = {
-  warden:   '#dd4444',
-  arcanist: '#6666ee',
-  rogue:    '#aaaa22',
-  ranger:   '#44aa44',
+  junk_collector: '#aa8855',
+  scavenger:      '#6666ee',
+  mercenary:      '#dd4444',
+  engineer:       '#44aa44',
 };
 
 const CLASS_BASE_STATS = {
-  warden:   { str: 16, dex: 10, con: 14, int: 8,  wis: 10, cha: 10 },
-  arcanist: { str: 8,  dex: 10, con: 10, int: 16, wis: 14, cha: 10 },
-  rogue:    { str: 10, dex: 16, con: 10, int: 10, wis: 8,  cha: 14 },
-  ranger:   { str: 12, dex: 14, con: 12, int: 10, wis: 12, cha: 10 },
+  junk_collector: { str: 16, dex: 10, con: 14, int: 8,  wis: 10, cha: 10 },
+  scavenger:      { str: 8,  dex: 10, con: 10, int: 16, wis: 14, cha: 10 },
+  mercenary:      { str: 10, dex: 16, con: 10, int: 10, wis: 8,  cha: 14 },
+  engineer:       { str: 12, dex: 14, con: 12, int: 10, wis: 12, cha: 10 },
 };
 
 const CLASS_ABILITIES = {
-  warden: [
-    { name: 'Shield Bash', manaCost: 5, damage: 8, type: 'melee', description: 'A devastating shield strike that staggers the foe.' },
-    { name: 'Iron Stance', manaCost: 3, damage: 4, type: 'melee', description: 'Brace behind your shield and stun an enemy.' },
+  junk_collector: [
+    { name: 'Scrap Shield', manaCost: 5, damage: 8, type: 'melee', description: 'Raise a wall of salvaged metal to bash and block.' },
+    { name: 'Junk Toss', manaCost: 3, damage: 4, type: 'ranged', description: 'Hurl a chunk of scrap metal at a distant target.' },
   ],
-  arcanist: [
-    { name: 'Arcane Bolt', manaCost: 8, damage: 12, type: 'ranged', description: 'Unleash a crackling bolt of arcane energy at your foes.' },
-    { name: 'Frost Wave', manaCost: 6, damage: 6, type: 'aoe', description: 'Flash-freeze nearby enemies.' },
-    { name: 'Mana Shield', manaCost: 4, damage: 0, type: 'buff', description: 'Project a shimmering magical shield.' },
+  scavenger: [
+    { name: 'Stun Charge', manaCost: 8, damage: 12, type: 'ranged', description: 'Fire a charged capacitor bolt that stuns on impact.' },
+    { name: 'Smoke Screen', manaCost: 6, damage: 0, type: 'utility', description: 'Deploy a smoke canister to obscure the area.' },
+    { name: 'Adaptive Plating', manaCost: 4, damage: 0, type: 'buff', description: 'Activate salvaged armor plating for temporary defense.' },
   ],
-  rogue: [
-    { name: 'Ambush Strike', manaCost: 5, damage: 14, type: 'melee', description: 'Strike from the shadows for massive damage.' },
-    { name: 'Smoke Bomb', manaCost: 4, damage: 0, type: 'utility', description: 'Hurl a smoke bomb and vanish into darkness.' },
+  mercenary: [
+    { name: 'Power Strike', manaCost: 5, damage: 14, type: 'melee', description: 'A brutal close-range strike with maximum force.' },
+    { name: 'Suppressive Fire', manaCost: 4, damage: 6, type: 'aoe', description: 'Lay down a spread of fire to pin down enemies.' },
   ],
-  ranger: [
-    { name: 'Aimed Shot', manaCost: 5, damage: 10, type: 'ranged', description: 'A carefully aimed arrow.' },
-    { name: 'Volley', manaCost: 3, damage: 6, type: 'utility', description: 'Fire a spread of arrows at multiple targets.' },
-    { name: 'Herbal Mend', manaCost: 6, damage: 0, type: 'heal', description: 'Mend wounds with gathered herbs and poultices.' },
+  engineer: [
+    { name: 'Plasma Cutter', manaCost: 5, damage: 10, type: 'ranged', description: 'Fire a focused plasma beam that cuts through armor.' },
+    { name: 'Deploy Turret', manaCost: 3, damage: 6, type: 'utility', description: 'Set up a small automated turret to provide cover fire.' },
+    { name: 'Field Repair', manaCost: 6, damage: 0, type: 'heal', description: 'Repair damaged equipment and patch up wounds with salvaged med-tech.' },
   ],
 };
 
 const CLASS_STARTING_GEAR = {
-  warden: {
-    mainHand: { id: 'start_sword', name: 'Battered Iron Sword', type: 'weapon', subtype: 'sword', char: '/', color: '#aaaaaa', rarity: 'common', value: 10, stats: { attack: 4 }, description: 'A worn but serviceable iron blade.' },
-    chest: { id: 'start_chain', name: 'Worn Chain Vest', type: 'armor', subtype: 'chestplate', char: '[', color: '#888888', rarity: 'common', value: 15, stats: { defense: 3 }, description: 'A vest of interlocking iron rings, battered but sturdy.' },
+  junk_collector: {
+    mainHand: { id: 'start_pipe', name: 'Scrap Pipe', type: 'weapon', subtype: 'sword', char: '/', color: '#aaaaaa', rarity: 'common', value: 10, stats: { attack: 4 }, description: 'A heavy pipe ripped from a wall. Gets the job done.' },
+    chest: { id: 'start_plate', name: 'Welded Plate Vest', type: 'armor', subtype: 'chestplate', char: '[', color: '#888888', rarity: 'common', value: 15, stats: { defense: 3 }, description: 'Plates of salvaged hull metal welded into crude armor.' },
   },
-  arcanist: {
-    mainHand: { id: 'start_staff', name: 'Gnarled Oak Staff', type: 'weapon', subtype: 'staff', char: '~', color: '#8866aa', rarity: 'common', value: 8, stats: { attack: 2, mana: 10 }, description: 'A twisted oak staff that hums faintly with arcane energy.' },
+  scavenger: {
+    mainHand: { id: 'start_pistol', name: 'Salvaged Pistol', type: 'weapon', subtype: 'bow', char: '}', color: '#8866aa', rarity: 'common', value: 8, stats: { attack: 3 }, description: 'A battered sidearm rebuilt from scavenged parts.' },
+    chest: { id: 'start_jacket', name: 'Patched Jacket', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 10, stats: { defense: 1 }, description: 'A jacket covered in patches and crude repairs.' },
   },
-  rogue: {
-    mainHand: { id: 'start_dagger', name: 'Keen Dagger', type: 'weapon', subtype: 'dagger', char: '-', color: '#aaaaaa', rarity: 'common', value: 6, stats: { attack: 3 }, description: 'A slim dagger honed to a wicked edge.' },
-    chest: { id: 'start_leather', name: 'Leather Jacket', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 10, stats: { defense: 1 }, description: 'A supple leather jacket favored by those who keep to the shadows.' },
+  mercenary: {
+    mainHand: { id: 'start_blade', name: 'Combat Blade', type: 'weapon', subtype: 'dagger', char: '-', color: '#aaaaaa', rarity: 'common', value: 6, stats: { attack: 4 }, description: 'A sharp blade favored by hired guns across the colony.' },
+    chest: { id: 'start_ballistic', name: 'Ballistic Vest', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 10, stats: { defense: 2 }, description: 'A reinforced vest designed to stop small arms fire.' },
   },
-  ranger: {
-    mainHand: { id: 'start_bow', name: 'Shortbow', type: 'weapon', subtype: 'bow', char: '}', color: '#aa8844', rarity: 'common', value: 8, stats: { attack: 3 }, description: 'A compact bow carved from yew, reliable at close range.' },
-    chest: { id: 'start_hide', name: 'Padded Vest', type: 'armor', subtype: 'chestplate', char: '[', color: '#886644', rarity: 'common', value: 8, stats: { defense: 2 }, description: 'A sturdy vest layered with quilted padding.' },
+  engineer: {
+    mainHand: { id: 'start_tool', name: 'Multi-tool', type: 'weapon', subtype: 'staff', char: '~', color: '#44aa44', rarity: 'common', value: 8, stats: { attack: 2, mana: 10 }, description: 'A versatile engineering tool that doubles as a weapon in a pinch.' },
   },
 };
 
 export class Player {
-  constructor(name, race = 'human', playerClass = 'warden') {
+  constructor(name, race = 'human', playerClass = 'junk_collector') {
     this.name = name;
     this.race = race;
     this.playerClass = playerClass;
@@ -1018,7 +981,7 @@ export class Player {
     this.color = CLASS_COLORS[playerClass] || '#ffffff';
     this.position = { x: 0, y: 0 };
 
-    const base = CLASS_BASE_STATS[playerClass] || CLASS_BASE_STATS.warden;
+    const base = CLASS_BASE_STATS[playerClass] || CLASS_BASE_STATS.junk_collector;
     this.stats = {
       hp: 20 + base.con,
       maxHp: 20 + base.con,

@@ -208,59 +208,61 @@ export class UIManager {
     r.clear();
 
     const title = [
-      '    .  *  .    *    .  *    .     *  .    * ',
-      ' *    _____              _ _ _____                _   ',
-      '  .  /  _  | ___  ___  |_|_|  _  | _  _ _  ___ | |_ ',
-      '    |  _  ||_ -||  _| | | |  _  || || | -_||_ -||  _|',
-      '  * |_| |_||___||___| |_|_|__  _||___|_|___|___||_|  ',
-      '    .    *    .    *   |_____|  .    *    .    *   ',
-      '  ╔═╦═══════════════════════════════════════╦═╗',
-      '  ║~║  .:*~*:.  REALM OF RUNES  .:*~*:.   ║~║',
-      '  ╚═╩═══════════════════════════════════════╩═╝',
-      '       /\\    /\\        /\\    /\\        /\\     ',
-      '      /  \\  /  \\  ^^  /  \\  /  \\  ^^  /  \\   ',
-      '     /    \\/    \\/||\\/    \\/    \\/||\\/    \\  ',
-      '    ~~~  ~~~~~~  ~~~~  ~~~~~~  ~~~~  ~~~~~~  ~~~',
+      ' ██████  ███████  █████ ██ ██  █████  ██  ██ ██████ ███████ ██████',
+      '██   ██ ██      ██     ██ ██ ██   ██ ██  ██ ██     ██         ██',
+      '███████  █████  ██     ██ ██ ██   ██ ██  ██ ████    █████     ██',
+      '██   ██      ██ ██     ██ ██ ██  ██  ██  ██ ██         ██    ██',
+      '██   ██ ███████  █████ ██ ██  ████    ████  ██████ ███████   ██',
     ];
 
-    const startY = Math.floor(rows / 2) - 12;
-    const titleWidth = 56;
-    const startX = Math.floor((cols - titleWidth) / 2);
-
+    const titleWidth = 65;
+    const boxWidth = titleWidth + 4;
+    const startX = Math.floor((cols - boxWidth) / 2);
+    const startY = Math.floor(rows / 2) - 8;
     const t = Date.now() / 1000;
+    const compact = cols < titleWidth + 6;
+
+    if (!compact) {
+      // Draw border
+      const borderColor = Math.sin(t * 1.5) > 0 ? COLORS.BRIGHT_BLUE : COLORS.BLUE;
+      r.drawChar(startX, startY, '\u2554', borderColor);
+      r.drawChar(startX + boxWidth - 1, startY, '\u2557', borderColor);
+      r.drawChar(startX, startY + title.length + 1, '\u255A', borderColor);
+      r.drawChar(startX + boxWidth - 1, startY + title.length + 1, '\u255D', borderColor);
+      for (let x = 1; x < boxWidth - 1; x++) {
+        r.drawChar(startX + x, startY, '\u2550', borderColor);
+        r.drawChar(startX + x, startY + title.length + 1, '\u2550', borderColor);
+      }
+      for (let y = 1; y <= title.length; y++) {
+        r.drawChar(startX, startY + y, '\u2551', borderColor);
+        r.drawChar(startX + boxWidth - 1, startY + y, '\u2551', borderColor);
+      }
+    }
+
+    // Draw title with blue scanning wave
+    const artStartX = compact ? Math.floor((cols - titleWidth) / 2) : startX + 2;
+    const artStartY = compact ? startY : startY + 1;
+    const waveColors = [COLORS.BLUE, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_WHITE];
+
     for (let i = 0; i < title.length; i++) {
-      let color;
-      if (i <= 5) {
-        // Title text: shimmer through warm colors
-        const shift = Math.floor(t * 2 + i) % 6;
-        const titleColors = [COLORS.BRIGHT_MAGENTA, COLORS.BRIGHT_RED, COLORS.BRIGHT_YELLOW,
-          COLORS.BRIGHT_GREEN, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
-        color = titleColors[shift];
-      } else if (i <= 8) {
-        // Banner: golden glow
-        color = Math.sin(t * 2) > 0 ? COLORS.BRIGHT_YELLOW : COLORS.YELLOW;
-      } else {
-        // Scenery: green forest
-        color = COLORS.BRIGHT_GREEN;
-      }
-      r.drawString(startX, startY + i, title[i], color);
-    }
-
-    // Draw twinkling stars
-    const starPositions = [[4,0],[14,0],[24,0],[34,0],[44,0],[1,5],[11,5],[21,5],[31,5],[41,5]];
-    for (const [sx, sy] of starPositions) {
-      const twinkle = Math.sin(t * 3 + sx + sy * 7) > 0.3;
-      if (twinkle && startX + sx < cols) {
-        r.drawString(startX + sx, startY + sy, '*', COLORS.BRIGHT_WHITE);
+      for (let j = 0; j < title[i].length; j++) {
+        const ch = title[i][j];
+        if (ch === ' ') continue;
+        const phase = (j) * 0.15 - t * 2.5;
+        const wave = (Math.sin(phase) + 1) / 2;
+        const ci = Math.min(Math.floor(wave * waveColors.length), waveColors.length - 1);
+        r.drawChar(artStartX + j, artStartY + i, ch, waveColors[ci]);
       }
     }
 
-    const subtitle = '~ A Whimsical Dungeon Crawl in Pure ASCII ~';
-    r.drawString(Math.floor((cols - subtitle.length) / 2), startY + title.length + 1,
+    const titleBlockEnd = artStartY + title.length;
+
+    const subtitle = '[ Colony Salvage RPG ]';
+    r.drawString(Math.floor((cols - subtitle.length) / 2), titleBlockEnd + 2,
       subtitle, COLORS.BRIGHT_BLACK);
 
     const menuItems = ['[N] New Game', '[C] Continue', '[S] Settings', '[H] Help'];
-    const menuY = startY + title.length + 4;
+    const menuY = titleBlockEnd + 4;
 
     for (let i = 0; i < menuItems.length; i++) {
       const color = i === this.selectedIndex ? COLORS.BRIGHT_WHITE : COLORS.WHITE;
@@ -272,7 +274,7 @@ export class UIManager {
     r.drawString(Math.floor((cols - footer.length) / 2), rows - 3, footer, COLORS.BRIGHT_BLACK);
 
     // Animated scanline effect text
-    const flicker = Math.sin(t * 3) > 0.5 ? COLORS.BRIGHT_GREEN : COLORS.GREEN;
+    const flicker = Math.sin(t * 3) > 0.5 ? COLORS.BRIGHT_BLUE : COLORS.BLUE;
     r.drawString(Math.floor((cols - 10) / 2), rows - 5, '>> PLAY <<', flicker);
   }
 
@@ -290,13 +292,11 @@ export class UIManager {
 
     if (step === 'race') {
       r.drawString(4, 3, 'Choose your race:', COLORS.BRIGHT_WHITE);
-      const races = ['Human', 'Elf', 'Dwarf', 'Orc', 'Halfling'];
+      const races = ['Human', 'Enhanced', 'Cyborg'];
       const descs = [
-        'Adaptable and resilient folk of the settled lands',
-        'Long-lived keepers of old knowledge from the high places',
-        'Stout miners and craftsmen of the deep halls',
-        'Hardy outcasts from the blighted wastes, marked by old corruption',
-        'Nimble tunnel-folk who know every hidden passage'
+        'Baseline colonists, adaptable and resourceful',
+        'Genetically modified humans with heightened abilities',
+        'Partially mechanical beings fused with salvaged tech'
       ];
       for (let i = 0; i < races.length; i++) {
         const sel = i === this.selectedIndex;
@@ -306,12 +306,12 @@ export class UIManager {
       }
     } else if (step === 'class') {
       r.drawString(4, 3, 'Choose your class:', COLORS.BRIGHT_WHITE);
-      const classes = ['Warden', 'Arcanist', 'Rogue', 'Ranger'];
+      const classes = ['Junk Collector', 'Scavenger', 'Mercenary', 'Engineer'];
       const descs = [
-        'Armored protectors of the settled roads',
-        'Wielders of recovered ancient magic',
-        'Cunning survivors who pick the old ruins clean',
-        'Scouts who map the wilderness beyond the walls'
+        'Tank/salvager who fights with scrap weapons',
+        'Ranged tech specialist who explores deep ruins',
+        'Combat specialist, a hired gun for dangerous jobs',
+        'Support role who repairs tech and heals allies'
       ];
       for (let i = 0; i < classes.length; i++) {
         const sel = i === this.selectedIndex;
