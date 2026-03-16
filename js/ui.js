@@ -636,29 +636,56 @@ export class UIManager {
 
     r.drawBox(0, 0, cols, rows, COLORS.BRIGHT_BLACK, COLORS.BLACK, ' WORLD MAP ');
 
-    if (!overworld || !overworld.tiles) return;
+    if (!overworld) return;
 
     const mapW = cols - 4;
     const mapH = rows - 4;
-    const scaleX = overworld.tiles[0].length / mapW;
-    const scaleY = overworld.tiles.length / mapH;
+    const CHUNK_SIZE = 32;
 
-    for (let sy = 0; sy < mapH; sy++) {
-      for (let sx = 0; sx < mapW; sx++) {
-        const wx = Math.floor(sx * scaleX);
-        const wy = Math.floor(sy * scaleY);
-        if (wy < overworld.tiles.length && wx < overworld.tiles[0].length) {
-          const tile = overworld.tiles[wy][wx];
-          r.drawChar(sx + 2, sy + 2, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+    // Chunk-based overworld: compute bounding box from explored chunks
+    if (overworld.exploredChunks && overworld.exploredChunks.size > 0) {
+      let minCx = Infinity, maxCx = -Infinity, minCy = Infinity, maxCy = -Infinity;
+      for (const key of overworld.exploredChunks) {
+        const [cx, cy] = key.split(',').map(Number);
+        if (cx < minCx) minCx = cx;
+        if (cx > maxCx) maxCx = cx;
+        if (cy < minCy) minCy = cy;
+        if (cy > maxCy) maxCy = cy;
+      }
+
+      // World-coordinate bounding box (with 1-chunk padding)
+      const worldMinX = (minCx - 1) * CHUNK_SIZE;
+      const worldMaxX = (maxCx + 2) * CHUNK_SIZE;
+      const worldMinY = (minCy - 1) * CHUNK_SIZE;
+      const worldMaxY = (maxCy + 2) * CHUNK_SIZE;
+
+      const worldW = worldMaxX - worldMinX;
+      const worldH = worldMaxY - worldMinY;
+      const scaleX = worldW / mapW;
+      const scaleY = worldH / mapH;
+
+      for (let sy = 0; sy < mapH; sy++) {
+        for (let sx = 0; sx < mapW; sx++) {
+          const wx = worldMinX + Math.floor(sx * scaleX);
+          const wy = worldMinY + Math.floor(sy * scaleY);
+          const cx = Math.floor(wx / CHUNK_SIZE);
+          const cy = Math.floor(wy / CHUNK_SIZE);
+          const chunkKey = `${cx},${cy}`;
+
+          if (overworld.exploredChunks.has(chunkKey)) {
+            const tile = overworld.getTile(wx, wy);
+            r.drawChar(sx + 2, sy + 2, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+          } else {
+            r.drawChar(sx + 2, sy + 2, ' ', COLORS.BLACK, COLORS.BLACK);
+          }
         }
       }
-    }
 
-    // Draw locations
-    if (overworld.locations) {
-      for (const loc of overworld.locations) {
-        const sx = Math.floor(loc.x / scaleX) + 2;
-        const sy = Math.floor(loc.y / scaleY) + 2;
+      // Draw locations
+      const locations = overworld.getLoadedLocations ? overworld.getLoadedLocations() : [];
+      for (const loc of locations) {
+        const sx = Math.floor((loc.x - worldMinX) / scaleX) + 2;
+        const sy = Math.floor((loc.y - worldMinY) / scaleY) + 2;
         if (sx >= 2 && sx < cols - 2 && sy >= 2 && sy < rows - 2) {
           const known = !knownLocations || knownLocations.has(loc.id);
           const ch = loc.type === 'city' ? '▣' : loc.type === 'town' ? '□' :
@@ -668,14 +695,53 @@ export class UIManager {
           r.drawChar(sx, sy, ch, known ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK);
         }
       }
-    }
 
-    // Player position
-    if (player && player.position) {
-      const px = Math.floor(player.position.x / scaleX) + 2;
-      const py2 = Math.floor(player.position.y / scaleY) + 2;
-      if (px >= 2 && px < cols - 2 && py2 >= 2 && py2 < rows - 2) {
-        r.drawChar(px, py2, '@', COLORS.BRIGHT_YELLOW);
+      // Player position
+      if (player && player.position) {
+        const px = Math.floor((player.position.x - worldMinX) / scaleX) + 2;
+        const py2 = Math.floor((player.position.y - worldMinY) / scaleY) + 2;
+        if (px >= 2 && px < cols - 2 && py2 >= 2 && py2 < rows - 2) {
+          r.drawChar(px, py2, '@', COLORS.BRIGHT_YELLOW);
+        }
+      }
+    } else if (overworld.tiles) {
+      // Legacy fallback for fixed-size overworld
+      const scaleX = overworld.tiles[0].length / mapW;
+      const scaleY = overworld.tiles.length / mapH;
+      for (let sy = 0; sy < mapH; sy++) {
+        for (let sx = 0; sx < mapW; sx++) {
+          const wx = Math.floor(sx * scaleX);
+          const wy = Math.floor(sy * scaleY);
+          if (wy < overworld.tiles.length && wx < overworld.tiles[0].length) {
+            const tile = overworld.tiles[wy][wx];
+            r.drawChar(sx + 2, sy + 2, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+          }
+        }
+      }
+      if (overworld.locations) {
+        const scaleX2 = overworld.tiles[0].length / mapW;
+        const scaleY2 = overworld.tiles.length / mapH;
+        for (const loc of overworld.locations) {
+          const sx = Math.floor(loc.x / scaleX2) + 2;
+          const sy = Math.floor(loc.y / scaleY2) + 2;
+          if (sx >= 2 && sx < cols - 2 && sy >= 2 && sy < rows - 2) {
+            const known = !knownLocations || knownLocations.has(loc.id);
+            const ch = loc.type === 'city' ? '▣' : loc.type === 'town' ? '□' :
+              loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
+                loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
+                  loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
+            r.drawChar(sx, sy, ch, known ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK);
+          }
+        }
+      }
+      if (player && player.position) {
+        const scaleX3 = overworld.tiles[0].length / mapW;
+        const scaleY3 = overworld.tiles.length / mapH;
+        const px = Math.floor(player.position.x / scaleX3) + 2;
+        const py2 = Math.floor(player.position.y / scaleY3) + 2;
+        if (px >= 2 && px < cols - 2 && py2 >= 2 && py2 < rows - 2) {
+          r.drawChar(px, py2, '@', COLORS.BRIGHT_YELLOW);
+        }
       }
     }
 

@@ -241,6 +241,301 @@ export class OverworldGenerator {
 }
 
 // ============================================================================
+// ChunkManager — Infinite chunk-based overworld
+// ============================================================================
+
+const CHUNK_SIZE = 32;
+const TERRAIN_SCALE = 0.04;
+
+// Procedural name generator using syllable combination
+const NAME_PREFIXES = [
+  'Ash', 'Black', 'Bright', 'Cold', 'Dark', 'Dawn', 'Dead', 'Deep', 'Dusk',
+  'Elder', 'Ever', 'Far', 'Fell', 'Fire', 'Frost', 'Gold', 'Gray', 'Green',
+  'High', 'Hollow', 'Ice', 'Iron', 'Long', 'Mist', 'Moon', 'Moss', 'Night',
+  'North', 'Old', 'Rain', 'Red', 'Raven', 'River', 'Rock', 'Shadow', 'Silver',
+  'South', 'Star', 'Stone', 'Storm', 'Sun', 'Thorn', 'Thunder', 'White', 'Wild', 'Wind', 'Wolf',
+];
+const NAME_SUFFIXES = {
+  city: ['haven', 'gate', 'spire', 'mere', 'hold', 'keep', 'crown', 'port', 'reach', 'guard'],
+  town: ['brook', 'wall', 'hollow', 'fen', 'rest', 'cross', 'ford', 'field', 'stead', 'bury'],
+  village: ['well', 'vale', 'meadow', 'crop', 'dale', 'wick', 'dell', 'wood', 'ton', 'ham'],
+  castle: [' Keep', ' Fortress', ' Citadel', ' Stronghold', ' Bastion'],
+  temple: [' Shrine', ' Sanctum', ' Altar', ' Chapel', ' Temple'],
+  dungeon: [' Crypt', ' Cavern', ' Pit', ' Tunnels', ' Depths', ' Maw', ' Hollow'],
+  ruins: [' Ruins', ' Remnants', ' Wreck', ' Rubble', ' Wastes'],
+  tower: [' Spire', ' Tower', ' Needle', ' Pillar', ' Pinnacle'],
+  camp: [' Camp', ' Hideout', ' Crossing', ' Lodge', ' Outpost'],
+};
+
+const LOCATION_DEFS = [
+  { type: 'village', weight: 40, population: [30, 120], difficulty: 1 },
+  { type: 'town', weight: 15, population: [200, 600], difficulty: 2 },
+  { type: 'dungeon', weight: 15, population: [0, 0], difficulty: 5 },
+  { type: 'temple', weight: 8, population: [10, 50], difficulty: 3 },
+  { type: 'ruins', weight: 8, population: [0, 10], difficulty: 4 },
+  { type: 'camp', weight: 6, population: [10, 40], difficulty: 2 },
+  { type: 'castle', weight: 3, population: [50, 200], difficulty: 4 },
+  { type: 'city', weight: 3, population: [800, 2000], difficulty: 1 },
+  { type: 'tower', weight: 2, population: [5, 20], difficulty: 5 },
+];
+const TOTAL_WEIGHT = LOCATION_DEFS.reduce((s, d) => s + d.weight, 0);
+
+export class ChunkManager {
+  constructor(seed) {
+    this.seed = seed;
+    const initRng = new SeededRNG(seed);
+    this.heightNoise = new PerlinNoise(initRng);
+    this.moistureNoise = new PerlinNoise(initRng);
+    this._terrainGen = new OverworldGenerator(); // reuse _terrainFromNoise
+
+    this.chunks = new Map();       // "cx,cy" -> { tiles: [][], locations: [] }
+    this.locationMap = new Map();  // "wx,wy" -> location object
+    this.exploredChunks = new Set();
+    this._roadCache = new Set();   // "cx1,cy1|cx2,cy2" pairs already connected
+  }
+
+  _chunkKey(cx, cy) { return `${cx},${cy}`; }
+
+  _chunkRng(cx, cy) {
+    const h = (this.seed ^ (cx * 73856093) ^ (cy * 19349663)) >>> 0;
+    return new SeededRNG(h);
+  }
+
+  _generateTile(wx, wy) {
+    const h = (this.heightNoise.fbm(wx * TERRAIN_SCALE, wy * TERRAIN_SCALE, 6) + 1) / 2;
+    const m = (this.moistureNoise.fbm(wx * TERRAIN_SCALE + 100, wy * TERRAIN_SCALE + 100, 5) + 1) / 2;
+    return this._terrainGen._terrainFromNoise(h, m);
+  }
+
+  _generateChunk(cx, cy) {
+    const key = this._chunkKey(cx, cy);
+    if (this.chunks.has(key)) return this.chunks.get(key);
+
+    const ox = cx * CHUNK_SIZE;
+    const oy = cy * CHUNK_SIZE;
+    const tiles = [];
+    for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+      tiles[ly] = [];
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        tiles[ly][lx] = this._generateTile(ox + lx, oy + ly);
+      }
+    }
+
+    const locations = this._placeChunkLocations(cx, cy, tiles);
+    const chunk = { tiles, locations, cx, cy };
+    this.chunks.set(key, chunk);
+    return chunk;
+  }
+
+  _generateName(rng, type) {
+    const prefix = rng.random(NAME_PREFIXES);
+    const suffixes = NAME_SUFFIXES[type] || NAME_SUFFIXES.village;
+    const suffix = rng.random(suffixes);
+    // Some types use "Prefix Suffix" format (castle, temple, dungeon, ruins, tower, camp)
+    if (suffix.startsWith(' ')) {
+      return prefix + suffix;          // e.g. "Iron Keep"
+    }
+    return prefix + suffix;             // e.g. "Ashbrook"
+  }
+
+  _placeChunkLocations(cx, cy, tiles) {
+    const rng = this._chunkRng(cx, cy);
+    const ox = cx * CHUNK_SIZE;
+    const oy = cy * CHUNK_SIZE;
+
+    // 0-2 locations per chunk
+    const roll = rng.next();
+    const count = roll < 0.45 ? 0 : roll < 0.82 ? 1 : 2;
+
+    const locations = [];
+    const minDist = 6;
+
+    for (let i = 0; i < count; i++) {
+      // Pick a weighted random location type
+      let r = rng.next() * TOTAL_WEIGHT;
+      let def = LOCATION_DEFS[0];
+      for (const d of LOCATION_DEFS) {
+        r -= d.weight;
+        if (r <= 0) { def = d; break; }
+      }
+
+      let placed = false;
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const lx = rng.nextInt(2, CHUNK_SIZE - 3);
+        const ly = rng.nextInt(2, CHUNK_SIZE - 3);
+        const t = tiles[ly][lx];
+
+        if (!t.walkable) continue;
+        if (t.type === 'WATER' || t.type === 'DEEP_WATER' || t.type === 'MOUNTAIN' || t.type === 'SNOW_PEAK') continue;
+
+        const wx = ox + lx;
+        const wy = oy + ly;
+
+        // Check distance from other locations in this chunk
+        let tooClose = false;
+        for (const loc of locations) {
+          if (distance(wx, wy, loc.x, loc.y) < minDist) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+
+        // Check 8 neighboring chunks for minimum distance
+        for (let dx = -1; dx <= 1 && !tooClose; dx++) {
+          for (let dy = -1; dy <= 1 && !tooClose; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            const nk = this._chunkKey(cx + dx, cy + dy);
+            const neighbor = this.chunks.get(nk);
+            if (!neighbor) continue;
+            for (const nloc of neighbor.locations) {
+              if (distance(wx, wy, nloc.x, nloc.y) < minDist) { tooClose = true; break; }
+            }
+          }
+        }
+        if (tooClose) continue;
+
+        // Deterministic ID: encode chunk coords + local index
+        const id = (cx + 50000) * 100000 + (cy + 50000) * 10 + i;
+        const pop = rng.nextInt(def.population[0], def.population[1]);
+
+        const loc = {
+          id,
+          name: this._generateName(rng, def.type),
+          type: def.type,
+          x: wx, y: wy,
+          population: pop,
+          difficulty: def.difficulty + rng.nextInt(0, 2),
+        };
+        locations.push(loc);
+        this.locationMap.set(`${wx},${wy}`, loc);
+
+        // Mark tile as location
+        const charMap = {
+          city: '*', town: 'o', village: '\u00b7', castle: '\u00a4',
+          temple: '\u2020', dungeon: '\u2126', ruins: '\u00a7', tower: '!', camp: '\u00b0',
+        };
+        tiles[ly][lx] = tile('LOCATION', charMap[def.type] || '?', '#ffffff', '#442200', true,
+          { biome: t.biome, locationId: id });
+        placed = true;
+        break;
+      }
+    }
+
+    return locations;
+  }
+
+  getTile(wx, wy) {
+    const cx = Math.floor(wx / CHUNK_SIZE);
+    const cy = Math.floor(wy / CHUNK_SIZE);
+    const chunk = this._generateChunk(cx, cy);
+    const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const ly = ((wy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    return chunk.tiles[ly][lx];
+  }
+
+  getLocation(wx, wy) {
+    return this.locationMap.get(`${wx},${wy}`) || null;
+  }
+
+  getLoadedLocations() {
+    const locs = [];
+    for (const chunk of this.chunks.values()) {
+      for (const loc of chunk.locations) locs.push(loc);
+    }
+    return locs;
+  }
+
+  ensureChunksAround(wx, wy) {
+    const pcx = Math.floor(wx / CHUNK_SIZE);
+    const pcy = Math.floor(wy / CHUNK_SIZE);
+    const radius = 2; // 5x5 ring
+
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        const chunk = this._generateChunk(pcx + dx, pcy + dy);
+        this.exploredChunks.add(this._chunkKey(pcx + dx, pcy + dy));
+      }
+    }
+
+    // Evict distant chunks (Manhattan distance > 4)
+    for (const [key, chunk] of this.chunks) {
+      if (Math.abs(chunk.cx - pcx) > 4 || Math.abs(chunk.cy - pcy) > 4) {
+        this.chunks.delete(key);
+        // Remove locations from locationMap
+        for (const loc of chunk.locations) {
+          this.locationMap.delete(`${loc.x},${loc.y}`);
+        }
+      }
+    }
+
+    // Build roads between nearby loaded locations
+    this._buildLocalRoads();
+  }
+
+  _buildLocalRoads() {
+    const locs = this.getLoadedLocations();
+    const majorTypes = new Set(['city', 'town', 'castle', 'village']);
+    const connectable = locs.filter(l => majorTypes.has(l.type));
+    if (connectable.length < 2) return;
+
+    // Build MST on nearby locations (within ~40 tiles)
+    const maxRoadDist = 40;
+    const edges = [];
+    for (let i = 0; i < connectable.length; i++) {
+      for (let j = i + 1; j < connectable.length; j++) {
+        const d = distance(connectable[i].x, connectable[i].y, connectable[j].x, connectable[j].y);
+        if (d < maxRoadDist) {
+          edges.push({ i, j, d });
+        }
+      }
+    }
+    edges.sort((a, b) => a.d - b.d);
+
+    // Simple union-find for MST
+    const parent = connectable.map((_, idx) => idx);
+    const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+
+    for (const { i, j } of edges) {
+      const a = connectable[i], b = connectable[j];
+      const cacheKey = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+      if (this._roadCache.has(cacheKey)) continue;
+
+      const ri = find(i), rj = find(j);
+      if (ri === rj) continue;
+      parent[ri] = rj;
+      this._roadCache.add(cacheKey);
+
+      // Carve road using A*
+      const path = this._findPath(a.x, a.y, b.x, b.y);
+      if (path) {
+        for (const p of path) {
+          const cx = Math.floor(p.x / CHUNK_SIZE);
+          const cy = Math.floor(p.y / CHUNK_SIZE);
+          const chunk = this.chunks.get(this._chunkKey(cx, cy));
+          if (!chunk) continue;
+          const lx = ((p.x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+          const ly = ((p.y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+          const t = chunk.tiles[ly][lx];
+          if (t.type === 'GRASS' || t.type === 'FOREST' || t.type === 'DESERT' || t.type === 'DENSE_FOREST') {
+            chunk.tiles[ly][lx] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
+          } else if (t.type === 'WATER') {
+            chunk.tiles[ly][lx] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
+          }
+        }
+      }
+    }
+  }
+
+  _findPath(sx, sy, ex, ey) {
+    const self = this;
+    const isWalkable = (x, y) => {
+      const t = self.getTile(x, y);
+      if (t.type === 'DEEP_WATER' || t.type === 'SNOW_PEAK') return false;
+      return true;
+    };
+    return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
+  }
+}
+
+// ============================================================================
 // SettlementGenerator
 // ============================================================================
 

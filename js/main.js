@@ -1,6 +1,6 @@
 import { COLORS, Renderer, Camera, InputManager, ParticleSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
-import { OverworldGenerator, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator } from './world.js';
+import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem } from './systems.js';
 import { UIManager } from './ui.js';
@@ -184,33 +184,27 @@ class Game {
       },
       // Step 1: Generate terrain
       () => {
-        log('Generating overworld terrain...', COLORS.BRIGHT_CYAN);
-        log('  Running Perlin noise heightmap (4 octaves)', COLORS.WHITE);
-        log('  Computing biome distribution from elevation + moisture', COLORS.WHITE);
+        log('Initializing infinite chunk-based terrain...', COLORS.BRIGHT_CYAN);
+        log('  Perlin noise heightmap + moisture (6 octaves)', COLORS.WHITE);
+        log('  Chunk size: 32x32 tiles, generated on demand', COLORS.WHITE);
         flush('Generating terrain...');
       },
-      // Step 2: Actually generate overworld
+      // Step 2: Create ChunkManager and generate initial chunks
       () => {
-        this.overworld = this.overworldGen.generate(this.seed);
-        const biomeCounts = {};
-        for (const row of this.overworld.tiles) {
-          for (const tile of row) {
-            biomeCounts[tile.biome || tile.type] = (biomeCounts[tile.biome || tile.type] || 0) + 1;
-          }
-        }
-        const biomeList = Object.entries(biomeCounts).sort((a, b) => b[1] - a[1]);
-        for (const [biome, count] of biomeList.slice(0, 5)) {
-          log(`  ${biome}: ${count} tiles`, COLORS.BRIGHT_BLACK);
-        }
-        log(`  Map size: ${this.overworld.tiles[0].length}x${this.overworld.tiles.length}`, COLORS.WHITE);
-        log(`  ${this.overworld.locations.length} locations discovered`, COLORS.BRIGHT_YELLOW);
+        this.overworld = new ChunkManager(this.seed);
+        // Generate initial 5x5 chunks around origin
+        this.overworld.ensureChunksAround(16, 16);
+        const loadedLocs = this.overworld.getLoadedLocations();
+        log(`  Initial chunks loaded: ${this.overworld.chunks.size}`, COLORS.WHITE);
+        log(`  ${loadedLocs.length} locations discovered nearby`, COLORS.BRIGHT_YELLOW);
+        log('  Infinite world ready — no boundaries', COLORS.WHITE);
         flush('Generating terrain...');
       },
       // Step 3: Populate locations
       () => {
         log('Populating locations...', COLORS.BRIGHT_CYAN);
         const typeCounts = {};
-        for (const loc of this.overworld.locations) {
+        for (const loc of this.overworld.getLoadedLocations()) {
           typeCounts[loc.type] = (typeCounts[loc.type] || 0) + 1;
         }
         for (const [type, count] of Object.entries(typeCounts)) {
@@ -239,7 +233,7 @@ class Game {
       () => {
         log('Writing world history...', COLORS.BRIGHT_CYAN);
         const factionNames = Array.from(this.factionSystem._factions.values()).map(f => f.name);
-        const locationNames = this.overworld.locations.map(l => l.name);
+        const locationNames = this.overworld.getLoadedLocations().map(l => l.name);
         this.worldLore = this.loreGen.generateWorldHistory(this.rng, factionNames, locationNames);
         log('  Ancient conflicts documented', COLORS.WHITE);
         log('  NPC backstory templates generated', COLORS.WHITE);
@@ -268,15 +262,22 @@ class Game {
       },
       // Step 9: Place player and enter world
       () => {
-        const startLoc = this.overworld.locations.find(l => l.type === 'village') || this.overworld.locations[0];
+        const loadedLocs = this.overworld.getLoadedLocations();
+        const startLoc = loadedLocs.find(l => l.type === 'village') || loadedLocs[0];
         if (startLoc) {
           this.player.position.x = startLoc.x;
           this.player.position.y = startLoc.y;
           this.player.knownLocations = new Set([startLoc.id]);
           this.gameContext.currentLocationName = startLoc.name;
           this.gameContext.currentLocation = startLoc;
+        } else {
+          // Fallback: place near chunk center
+          this.player.position.x = 16;
+          this.player.position.y = 16;
+          this.player.knownLocations = new Set();
         }
 
+        this.overworld.ensureChunksAround(this.player.position.x, this.player.position.y);
         this.camera.follow(this.player);
         this.camera.x = this.player.position.x - Math.floor(this.renderer.cols / 2);
         this.camera.y = this.player.position.y - Math.floor(this.renderer.rows / 2);
@@ -1393,15 +1394,12 @@ class Game {
   }
 
   movePlayer(dx, dy) {
-    if (!this.overworld || !this.overworld.tiles) return;
+    if (!this.overworld) return;
 
     const nx = this.player.position.x + dx;
     const ny = this.player.position.y + dy;
 
-    if (ny < 0 || ny >= this.overworld.tiles.length) return;
-    if (nx < 0 || nx >= this.overworld.tiles[0].length) return;
-
-    const tile = this.overworld.tiles[ny][nx];
+    const tile = this.overworld.getTile(nx, ny);
     if (!tile.walkable) {
       this.ui.addMessage('You can\'t go that way.', COLORS.BRIGHT_BLACK);
       return;
@@ -1411,6 +1409,9 @@ class Game {
     this.player.position.y = ny;
     this.turnCount++;
     this.timeSystem.advance(0.5);
+
+    // Ensure surrounding chunks are loaded
+    this.overworld.ensureChunksAround(nx, ny);
 
     // Check for location
     const loc = this.overworld.getLocation(nx, ny);
@@ -1928,8 +1929,9 @@ class Game {
   saveGame(slot = 1) {
     try {
       const saveData = {
-        version: 2,
+        version: 3,
         seed: this.seed,
+        exploredChunks: [...this.overworld.exploredChunks],
         player: {
           name: this.player.name,
           race: this.player.race,
@@ -2060,8 +2062,11 @@ class Game {
       this.seed = save.seed;
       this.rng = new SeededRNG(this.seed);
 
-      // Regenerate world from seed
-      this.overworld = this.overworldGen.generate(this.seed);
+      // Regenerate world from seed using chunk manager
+      this.overworld = new ChunkManager(this.seed);
+      if (save.exploredChunks) {
+        this.overworld.exploredChunks = new Set(save.exploredChunks);
+      }
       this.eventSystem.generateWorldEvents(this.overworld);
 
       // Restore player
@@ -2117,6 +2122,10 @@ class Game {
       }
 
       this.turnCount = save.turnCount;
+
+      // Generate chunks around player position
+      this.overworld.ensureChunksAround(this.player.position.x, this.player.position.y);
+
       this.camera.follow(this.player);
       this.setState(save.state || 'OVERWORLD');
       return true;
@@ -2221,7 +2230,7 @@ class Game {
   }
 
   renderOverworld() {
-    if (!this.overworld || !this.overworld.tiles) return;
+    if (!this.overworld) return;
 
     const r = this.renderer;
     this.camera.update();
@@ -2233,28 +2242,23 @@ class Game {
         const wx = Math.floor(this.camera.x) + sx;
         const wy = Math.floor(this.camera.y) + sy;
 
-        if (wy >= 0 && wy < this.overworld.tiles.length &&
-          wx >= 0 && wx < this.overworld.tiles[0].length) {
-          const tile = this.overworld.tiles[wy][wx];
+        const tile = this.overworld.getTile(wx, wy);
 
-          // Fog of war (simple: darken tiles far from player)
-          const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
-          // Animated color for water/lava/fire tiles
-          const fg = r.getAnimatedColor(tile.fg, tile.type);
-          if (dist > 30) {
-            r.drawChar(sx, sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
-          } else {
-            r.drawChar(sx, sy, tile.char, fg, tile.bg || COLORS.BLACK);
-          }
+        // Fog of war (simple: darken tiles far from player)
+        const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
+        // Animated color for water/lava/fire tiles
+        const fg = r.getAnimatedColor(tile.fg, tile.type);
+        if (dist > 30) {
+          r.drawChar(sx, sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
         } else {
-          r.drawChar(sx, sy, ' ', COLORS.BLACK, COLORS.BLACK);
+          r.drawChar(sx, sy, tile.char, fg, tile.bg || COLORS.BLACK);
         }
       }
     }
 
     // Draw locations
-    if (this.overworld.locations) {
-      for (const loc of this.overworld.locations) {
+    {
+      for (const loc of this.overworld.getLoadedLocations()) {
         const sx = loc.x - Math.floor(this.camera.x);
         const sy = loc.y - Math.floor(this.camera.y);
         if (sx >= 0 && sx < cols && sy >= 0 && sy < rows) {
