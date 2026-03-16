@@ -208,27 +208,54 @@ export class UIManager {
     r.clear();
 
     const title = [
-      '╔═══════════════════════════════════════════════╗',
-      '║  █████╗ ███████╗██╗  ██╗███████╗███╗   ██╗║',
-      '║ ██╔══██╗██╔════╝██║  ██║██╔════╝████╗  ██║║',
-      '║ ███████║███████╗███████║█████╗  ██╔██╗ ██║║',
-      '║ ██╔══██║╚════██║██╔══██║██╔══╝  ██║╚██╗██║║',
-      '║ ██║  ██║███████║██║  ██║███████╗██║ ╚████║║',
-      '║ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝║',
-      '║            G A T E                          ║',
-      '╚═══════════════════════════════════════════════╝'
+      '    .  *  .    *    .  *    .     *  .    * ',
+      ' *    _____              _ _ _____                _   ',
+      '  .  /  _  | ___  ___  |_|_|  _  | _  _ _  ___ | |_ ',
+      '    |  _  ||_ -||  _| | | |  _  || || | -_||_ -||  _|',
+      '  * |_| |_||___||___| |_|_|__  _||___|_|___|___||_|  ',
+      '    .    *    .    *   |_____|  .    *    .    *   ',
+      '  ╔═╦═══════════════════════════════════════╦═╗',
+      '  ║~║  .:*~*:.  REALM OF RUNES  .:*~*:.   ║~║',
+      '  ╚═╩═══════════════════════════════════════╩═╝',
+      '       /\\    /\\        /\\    /\\        /\\     ',
+      '      /  \\  /  \\  ^^  /  \\  /  \\  ^^  /  \\   ',
+      '     /    \\/    \\/||\\/    \\/    \\/||\\/    \\  ',
+      '    ~~~  ~~~~~~  ~~~~  ~~~~~~  ~~~~  ~~~~~~  ~~~',
     ];
 
-    const startY = Math.floor(rows / 2) - 10;
-    const startX = Math.floor((cols - 49) / 2);
+    const startY = Math.floor(rows / 2) - 12;
+    const titleWidth = 56;
+    const startX = Math.floor((cols - titleWidth) / 2);
 
+    const t = Date.now() / 1000;
     for (let i = 0; i < title.length; i++) {
-      const colors = [COLORS.BRIGHT_RED, COLORS.BRIGHT_YELLOW, COLORS.BRIGHT_GREEN,
-        COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_MAGENTA];
-      r.drawString(startX, startY + i, title[i], colors[i % colors.length]);
+      let color;
+      if (i <= 5) {
+        // Title text: shimmer through warm colors
+        const shift = Math.floor(t * 2 + i) % 6;
+        const titleColors = [COLORS.BRIGHT_MAGENTA, COLORS.BRIGHT_RED, COLORS.BRIGHT_YELLOW,
+          COLORS.BRIGHT_GREEN, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
+        color = titleColors[shift];
+      } else if (i <= 8) {
+        // Banner: golden glow
+        color = Math.sin(t * 2) > 0 ? COLORS.BRIGHT_YELLOW : COLORS.YELLOW;
+      } else {
+        // Scenery: green forest
+        color = COLORS.BRIGHT_GREEN;
+      }
+      r.drawString(startX, startY + i, title[i], color);
     }
 
-    const subtitle = '~ In the Ruins of the Makers ~';
+    // Draw twinkling stars
+    const starPositions = [[4,0],[14,0],[24,0],[34,0],[44,0],[1,5],[11,5],[21,5],[31,5],[41,5]];
+    for (const [sx, sy] of starPositions) {
+      const twinkle = Math.sin(t * 3 + sx + sy * 7) > 0.3;
+      if (twinkle && startX + sx < cols) {
+        r.drawString(startX + sx, startY + sy, '*', COLORS.BRIGHT_WHITE);
+      }
+    }
+
+    const subtitle = '~ A Whimsical Dungeon Crawl in Pure ASCII ~';
     r.drawString(Math.floor((cols - subtitle.length) / 2), startY + title.length + 1,
       subtitle, COLORS.BRIGHT_BLACK);
 
@@ -1160,7 +1187,7 @@ export class UIManager {
     const spinner = ['|', '/', '-', '\\'][Math.floor(t) % 4];
 
     // Title
-    const title = '═══ ASHENGATE ═══';
+    const title = '═══ ASCIIQUEST ═══';
     r.drawString(Math.floor((cols - title.length) / 2), 2, title, COLORS.BRIGHT_YELLOW);
 
     // Progress bar area

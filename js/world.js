@@ -1,5 +1,5 @@
 // ============================================================================
-// world.js — World generation for ASHENGATE, a retro ASCII fantasy roguelike
+// world.js — World generation for ASCIIQUEST, a retro ASCII fantasy roguelike
 // ============================================================================
 
 import { SeededRNG, PerlinNoise, AStar, distance, floodFill } from './utils.js';
