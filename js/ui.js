@@ -755,15 +755,15 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 55);
-    const panelH = Math.min(rows - 4, 22);
+    const panelH = Math.min(rows - 4, 28);
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Factions ');
 
     let y = py + 2;
-    const factionIds = ['COLONY_MILITIA', 'SALVAGE_GUILD', 'ORDER_OF_BUILDERS', 'TUNNEL_RUNNERS',
-      'THE_COUNCIL', 'SCRAP_RAIDERS', 'FERAL_SWARM', 'CORRUPTED'];
+    const factionIds = ['COLONY_GUARD', 'SALVAGE_GUILD', 'ARCHIVE_KEEPERS', 'COLONY_COUNCIL',
+      'SYNDICATE', 'RUST_RAIDERS', 'MALFUNCTIONING', 'MUTANT', 'ALIEN', 'ASSIMILATED'];
 
     for (const id of factionIds) {
       if (y >= py + panelH - 4) break;

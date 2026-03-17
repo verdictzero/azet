@@ -865,6 +865,10 @@ export class FactionSystem {
     this._initFaction('THE_VOID', { name: 'The Void', color: '#555555' });
     this._initFaction('RUST_RAIDERS', { name: 'The Rust Raiders', color: '#AA5500' });
     this._initFaction('COLONY_COUNCIL', { name: 'The Colony Council', color: '#FFFF55' });
+    this._initFaction('MALFUNCTIONING', { name: 'Malfunctioning Systems', color: '#AAAAAA' });
+    this._initFaction('MUTANT', { name: 'Mutated Organisms', color: '#44CC44' });
+    this._initFaction('ALIEN', { name: 'Alien Infiltrators', color: '#AA44FF' });
+    this._initFaction('ASSIMILATED', { name: 'The Assimilated', color: '#FF4444' });
 
     // Default inter-faction relations
     this._setDefaultRelation('COLONY_GUARD', 'SALVAGE_GUILD', 70);
@@ -902,6 +906,20 @@ export class FactionSystem {
 
     this._setDefaultRelation('FERAL_SWARM', 'THE_VOID', -30);
 
+    // Enemy faction relations with friendly factions
+    for (const enemy of ['MALFUNCTIONING', 'MUTANT', 'ALIEN', 'ASSIMILATED']) {
+      for (const friendly of ['COLONY_GUARD', 'SALVAGE_GUILD', 'ARCHIVE_KEEPERS', 'COLONY_COUNCIL']) {
+        this._setDefaultRelation(enemy, friendly, -80);
+      }
+    }
+    // Enemy factions hostile to each other
+    this._setDefaultRelation('MALFUNCTIONING', 'MUTANT', -30);
+    this._setDefaultRelation('MALFUNCTIONING', 'ALIEN', -60);
+    this._setDefaultRelation('MALFUNCTIONING', 'ASSIMILATED', -90);
+    this._setDefaultRelation('MUTANT', 'ALIEN', -50);
+    this._setDefaultRelation('MUTANT', 'ASSIMILATED', -70);
+    this._setDefaultRelation('ALIEN', 'ASSIMILATED', -40);
+
     // Default player standings (neutral with most, hostile with swarm/void)
     this._playerStanding.set('COLONY_GUARD', 10);
     this._playerStanding.set('SALVAGE_GUILD', 0);
@@ -911,6 +929,10 @@ export class FactionSystem {
     this._playerStanding.set('THE_VOID', -100);
     this._playerStanding.set('RUST_RAIDERS', -40);
     this._playerStanding.set('COLONY_COUNCIL', 0);
+    this._playerStanding.set('MALFUNCTIONING', -20);
+    this._playerStanding.set('MUTANT', -40);
+    this._playerStanding.set('ALIEN', -60);
+    this._playerStanding.set('ASSIMILATED', -80);
   }
 
   _initFaction(id, data) {
