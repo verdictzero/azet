@@ -1343,7 +1343,7 @@ class Game {
           for (const item of loot) {
             if (item.type === 'gold') {
               this.player.gold += item.amount;
-              this.ui.addMessage(`Received ${item.amount} Gil.`, COLORS.BRIGHT_YELLOW);
+              this.ui.addMessage(`Received ${item.amount}§.`, COLORS.BRIGHT_YELLOW);
             } else {
               this.player.addItem(item);
               this.ui.addMessage(`Found ${item.name}!`, COLORS.BRIGHT_GREEN);
