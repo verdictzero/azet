@@ -369,8 +369,8 @@ export class UIManager {
         const sel = i === this.selectedIndex;
         const cursor = sel ? ICONS.cursor : ' ';
         r.drawString(px + 3, py + 7 + i * 3, cursor + ' ' + races[i],
-          sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
-        r.drawString(px + 7, py + 8 + i * 3, descs[i], COLORS.BRIGHT_BLACK, bg);
+          sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg, panelW - 4);
+        r.drawString(px + 7, py + 8 + i * 3, descs[i], COLORS.BRIGHT_BLACK, bg, panelW - 8);
       }
     } else if (step === 'class') {
       r.drawString(px + 2, py + 5, 'Choose your job:', COLORS.BRIGHT_CYAN, bg);
@@ -385,21 +385,21 @@ export class UIManager {
         const sel = i === this.selectedIndex;
         const cursor = sel ? ICONS.cursor : ' ';
         r.drawString(px + 3, py + 7 + i * 3, cursor + ' ' + classes[i],
-          sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
-        r.drawString(px + 7, py + 8 + i * 3, descs[i], COLORS.BRIGHT_BLACK, bg);
+          sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg, panelW - 4);
+        r.drawString(px + 7, py + 8 + i * 3, descs[i], COLORS.BRIGHT_BLACK, bg, panelW - 8);
       }
     } else if (step === 'name') {
       r.drawString(px + 2, py + 5, 'Enter your name:', COLORS.BRIGHT_CYAN, bg);
       const nameBox = (charGenState.name || '') + '_';
-      r.drawString(px + 4, py + 7, nameBox, COLORS.BRIGHT_WHITE, bg);
-      r.drawString(px + 4, py + 9, 'Type your name, press Enter', COLORS.BRIGHT_BLACK, bg);
-      r.drawString(px + 4, py + 10, 'Press R for a random name', COLORS.BRIGHT_BLACK, bg);
+      r.drawString(px + 4, py + 7, nameBox, COLORS.BRIGHT_WHITE, bg, panelW - 6);
+      r.drawString(px + 4, py + 9, 'Type your name, press Enter', COLORS.BRIGHT_BLACK, bg, panelW - 6);
+      r.drawString(px + 4, py + 10, 'Press R for a random name', COLORS.BRIGHT_BLACK, bg, panelW - 6);
     } else if (step === 'confirm') {
       r.drawString(px + 2, py + 5, 'Your adventurer:', COLORS.BRIGHT_CYAN, bg);
-      r.drawString(px + 4, py + 7, `Name   ${charGenState.name}`, COLORS.BRIGHT_WHITE, bg);
-      r.drawString(px + 4, py + 8, `Origin ${charGenState.race}`, COLORS.BRIGHT_WHITE, bg);
-      r.drawString(px + 4, py + 9, `Job    ${charGenState.playerClass}`, COLORS.BRIGHT_WHITE, bg);
-      r.drawString(px + 4, py + 12, 'Enter: Begin    Esc: Start Over', COLORS.BRIGHT_YELLOW, bg);
+      r.drawString(px + 4, py + 7, `Name   ${charGenState.name}`, COLORS.BRIGHT_WHITE, bg, panelW - 6);
+      r.drawString(px + 4, py + 8, `Origin ${charGenState.race}`, COLORS.BRIGHT_WHITE, bg, panelW - 6);
+      r.drawString(px + 4, py + 9, `Job    ${charGenState.playerClass}`, COLORS.BRIGHT_WHITE, bg, panelW - 6);
+      r.drawString(px + 4, py + 12, 'Enter: Begin    Esc: Start Over', COLORS.BRIGHT_YELLOW, bg, panelW - 6);
     }
   }
 
@@ -487,7 +487,7 @@ export class UIManager {
     // Shop name box (top-left)
     const nameW = Math.min(shopState.shopName.length + 4, panelW - gilBoxW - 1);
     r.drawBox(px, py, nameW, 3, COLORS.FF_BORDER, bg);
-    r.drawString(px + 2, py + 1, shopState.shopName.substring(0, nameW - 4), COLORS.BRIGHT_WHITE, bg);
+    r.drawString(px + 2, py + 1, shopState.shopName, COLORS.BRIGHT_WHITE, bg, nameW - 4);
 
     // Tab selector
     const tab = shopState.tab;
@@ -510,12 +510,11 @@ export class UIManager {
       const item = items[i];
       const sel = i === this.selectedIndex;
       const price = tab === 'buy' ? item.buyPrice : item.sellPrice;
-      const nameStr = item.name.substring(0, panelW - 20);
       const priceStr = `${price}§`;
       const cursor = sel ? ICONS.cursor : ' ';
 
-      r.drawString(px + 2, listBoxY + 1 + i, cursor + ' ' + nameStr,
-        sel ? COLORS.BRIGHT_WHITE : item.color || COLORS.WHITE, bg);
+      r.drawString(px + 2, listBoxY + 1 + i, cursor + ' ' + item.name,
+        sel ? COLORS.BRIGHT_WHITE : item.color || COLORS.WHITE, bg, panelW - priceStr.length - 4);
       r.drawString(px + panelW - priceStr.length - 2, listBoxY + 1 + i,
         priceStr, COLORS.BRIGHT_YELLOW, bg);
     }
@@ -535,10 +534,10 @@ export class UIManager {
       if (item.stats && Object.keys(item.stats).length > 0) {
         const statStr = Object.entries(item.stats)
           .map(([k, v]) => `${k}:${v > 0 ? '+' : ''}${v}`).join('  ');
-        r.drawString(px + 2, detBoxY + 1, statStr, COLORS.BRIGHT_CYAN, bg);
+        r.drawString(px + 2, detBoxY + 1, statStr, COLORS.BRIGHT_CYAN, bg, panelW - 4);
       }
       if (item.description) {
-        r.drawString(px + 2, detBoxY + 2, item.description.substring(0, panelW - 4), COLORS.WHITE, bg);
+        r.drawString(px + 2, detBoxY + 2, item.description, COLORS.WHITE, bg, panelW - 4);
       }
 
       // Equipment comparison
@@ -569,7 +568,7 @@ export class UIManager {
 
     // Command help at bottom
     r.drawString(px + 2, detBoxY + detBoxH - 1,
-      'Enter:Confirm  H:Haggle  Esc:Leave', COLORS.BRIGHT_BLACK, bg);
+      'Enter:Confirm  H:Haggle  Esc:Leave', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
   // ─── INVENTORY (FF-style Items menu) ───
@@ -623,14 +622,14 @@ export class UIManager {
 
     if (items.length > 0 && this.selectedIndex < items.length) {
       const item = items[this.selectedIndex];
-      r.drawString(px + 2, detY + 1, item.name, COLORS.BRIGHT_WHITE, bg);
+      r.drawString(px + 2, detY + 1, item.name, COLORS.BRIGHT_WHITE, bg, panelW - 4);
       if (item.description) {
-        r.drawString(px + 2, detY + 2, item.description.substring(0, panelW - 4), COLORS.WHITE, bg);
+        r.drawString(px + 2, detY + 2, item.description, COLORS.WHITE, bg, panelW - 4);
       }
       if (item.stats) {
         const statStr = Object.entries(item.stats)
           .map(([k, v]) => `${k}:${v > 0 ? '+' : ''}${v}`).join('  ');
-        r.drawString(px + 2, detY + 3, statStr, COLORS.BRIGHT_CYAN, bg);
+        r.drawString(px + 2, detY + 3, statStr, COLORS.BRIGHT_CYAN, bg, panelW - 4);
       }
     }
 
@@ -653,9 +652,9 @@ export class UIManager {
 
     // Name/Level header box
     r.drawBox(px, py, panelW, 4, COLORS.FF_BORDER, bg);
-    r.drawString(px + 2, py + 1, player.name, COLORS.BRIGHT_WHITE, bg);
-    r.drawString(px + halfW, py + 1, `Lv ${player.stats.level}`, COLORS.BRIGHT_YELLOW, bg);
-    r.drawString(px + 2, py + 2, `${player.race} ${player.playerClass}`, COLORS.BRIGHT_CYAN, bg);
+    r.drawString(px + 2, py + 1, player.name, COLORS.BRIGHT_WHITE, bg, halfW - 4);
+    r.drawString(px + halfW, py + 1, `Lv ${player.stats.level}`, COLORS.BRIGHT_YELLOW, bg, halfW - 2);
+    r.drawString(px + 2, py + 2, `${player.race} ${player.playerClass}`, COLORS.BRIGHT_CYAN, bg, halfW - 4);
 
     const s = player.stats;
     const xpStr = `EXP ${s.xp}/${s.xpToNext}`;
@@ -720,10 +719,10 @@ export class UIManager {
     const slotLabels = ['Head', 'Body', 'Arms', 'Legs', 'Feet', 'R.Hand', 'L.Hand'];
     for (let i = 0; i < slotNames.length; i++) {
       const equip = player.equipment[slotNames[i]];
-      const eqName = equip ? equip.name.substring(0, halfW - 12) : '---';
+      const eqName = equip ? equip.name : '---';
       r.drawString(px + halfW + 2, statsY + 1 + i, slotLabels[i], COLORS.BRIGHT_BLACK, bg);
       r.drawString(px + halfW + 10, statsY + 1 + i, eqName,
-        equip ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK, bg);
+        equip ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK, bg, halfW - 12);
     }
 
     // Shard display
@@ -738,7 +737,7 @@ export class UIManager {
       for (let i = 0; i < player.abilities.length && i < abH - 2; i++) {
         const ab = player.abilities[i];
         r.drawString(px + 2, abY + 1 + i,
-          `${ab.name}`, COLORS.BRIGHT_MAGENTA, bg);
+          `${ab.name}`, COLORS.BRIGHT_MAGENTA, bg, halfW - 4);
         r.drawString(px + halfW, abY + 1 + i,
           `${ab.manaCost} MP`, COLORS.BRIGHT_CYAN, bg);
       }
@@ -818,8 +817,8 @@ export class UIManager {
       const q = active[i];
       const sel = i === this.selectedIndex;
       const cursor = sel ? ICONS.cursor : ' ';
-      r.drawString(px + 2, y, cursor + ' ' + q.title.substring(0, panelW - 8),
-        sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
+      r.drawString(px + 2, y, cursor + ' ' + q.title,
+        sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg, panelW - 4);
       y++;
       for (const obj of q.objectives) {
         const progress = `${obj.current}/${obj.required}`;
@@ -834,7 +833,7 @@ export class UIManager {
     r.drawString(px + 1, y, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg); y++;
 
     for (let i = 0; i < Math.min(completed.length, 3); i++) {
-      r.drawString(px + 4, y, ICONS.check + ' ' + completed[i].title.substring(0, panelW - 10), COLORS.BRIGHT_GREEN, bg);
+      r.drawString(px + 4, y, ICONS.check + ' ' + completed[i].title, COLORS.BRIGHT_GREEN, bg, panelW - 6);
       y++;
     }
 
@@ -1005,8 +1004,7 @@ export class UIManager {
       r.drawString(cx - Math.floor(pStr.length / 2), by + 10, pStr, COLORS.WHITE, COLORS.FF_BLUE_DARK);
     }
     if (causeOfDeath) {
-      const cause = causeOfDeath.substring(0, boxW - 4);
-      r.drawString(cx - Math.floor(cause.length / 2), by + 11, cause, COLORS.BRIGHT_BLACK, COLORS.FF_BLUE_DARK);
+      r.drawString(cx - Math.floor(Math.min(causeOfDeath.length, boxW - 4) / 2), by + 11, causeOfDeath, COLORS.BRIGHT_BLACK, COLORS.FF_BLUE_DARK, boxW - 4);
     }
 
     const t = Date.now() / 600;
@@ -1407,7 +1405,7 @@ export class UIManager {
       const y = logStartY + (i - startIdx);
       if (y >= rows - 2) break;
       const color = line.color || (i === logLines.length - 1 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_BLACK);
-      r.drawString(2, y, line.text.substring(0, cols - 6), color);
+      r.drawString(2, y, line.text, color, COLORS.BLACK, cols - 6);
     }
 
     r.drawString(2, rows - 2, 'Preparing the world...', COLORS.BRIGHT_BLACK);
