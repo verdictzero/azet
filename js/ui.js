@@ -5,7 +5,7 @@ const ICONS = {
   hp: '\u2665',         // ♥
   mp: '\u2726',         // ✦
   level: '\u2605',      // ★
-  gold: 'G',            // Gil (FF currency)
+  gold: '\u00A7',       // § Shard currency symbol
   sword: '\u2694',      // ⚔
   shield: '\u26E8',     // ⛨
   skull: '\u2620',      // ☠
@@ -105,7 +105,7 @@ export class UIManager {
     const hp = `HP ${player.stats.hp}/${player.stats.maxHp}`;
     const mp = `MP ${player.stats.mana}/${player.stats.maxMana}`;
     const lv = `Lv ${player.stats.level}`;
-    const gold = `${player.gold} Gil`;
+    const gold = `${player.gold} Shards`;
 
     // HP with color-coded bar
     const hpColor = player.stats.hp < player.stats.maxHp * 0.25 ? COLORS.BRIGHT_RED :
@@ -478,8 +478,8 @@ export class UIManager {
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
-    // Gil display box (top-right, FF-style)
-    const gilStr = `${shopState.playerGold} Gil`;
+    // Shard display box (top-right, FF-style)
+    const gilStr = `${shopState.playerGold}§`;
     const gilBoxW = gilStr.length + 4;
     r.drawBox(px + panelW - gilBoxW, py, gilBoxW, 3, COLORS.FF_BORDER, bg);
     r.drawString(px + panelW - gilBoxW + 2, py + 1, gilStr, COLORS.BRIGHT_YELLOW, bg);
@@ -511,7 +511,7 @@ export class UIManager {
       const sel = i === this.selectedIndex;
       const price = tab === 'buy' ? item.buyPrice : item.sellPrice;
       const nameStr = item.name.substring(0, panelW - 20);
-      const priceStr = `${price} Gil`;
+      const priceStr = `${price}§`;
       const cursor = sel ? ICONS.cursor : ' ';
 
       r.drawString(px + 2, listBoxY + 1 + i, cursor + ' ' + nameStr,
@@ -659,7 +659,7 @@ export class UIManager {
 
     const s = player.stats;
     const xpStr = `EXP ${s.xp}/${s.xpToNext}`;
-    const gilStr = `${player.gold} Gil`;
+    const gilStr = `${player.gold}§`;
     r.drawString(px + halfW, py + 2, xpStr, COLORS.BRIGHT_GREEN, bg);
 
     // HP/MP box
@@ -726,7 +726,7 @@ export class UIManager {
         equip ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK, bg);
     }
 
-    // Gil display
+    // Shard display
     r.drawString(px + panelW - gilStr.length - 2, statsY, gilStr, COLORS.BRIGHT_YELLOW, bg);
 
     // Abilities box
