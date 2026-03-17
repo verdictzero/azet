@@ -296,8 +296,9 @@ export class Renderer {
   /**
    * Write a horizontal string into the buffer.
    */
-  drawString(col, row, str, fg = COLORS.WHITE, bg = COLORS.BLACK) {
-    for (let i = 0; i < str.length; i++) {
+  drawString(col, row, str, fg = COLORS.WHITE, bg = COLORS.BLACK, maxWidth = 0) {
+    const len = maxWidth > 0 ? Math.min(str.length, maxWidth) : str.length;
+    for (let i = 0; i < len; i++) {
       this.drawChar(col + i, row, str[i], fg, bg);
     }
   }
