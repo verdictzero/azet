@@ -365,12 +365,13 @@ export class UIManager {
         'Genetically modified humans with heightened abilities',
         'Partially mechanical beings fused with salvaged tech'
       ];
+      const maxDescW = panelW - 8;
       for (let i = 0; i < races.length; i++) {
         const sel = i === this.selectedIndex;
         const cursor = sel ? ICONS.cursor : ' ';
         r.drawString(px + 3, py + 7 + i * 3, cursor + ' ' + races[i],
           sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
-        r.drawString(px + 7, py + 8 + i * 3, descs[i], COLORS.BRIGHT_BLACK, bg);
+        r.drawString(px + 7, py + 8 + i * 3, descs[i].substring(0, maxDescW), COLORS.BRIGHT_BLACK, bg);
       }
     } else if (step === 'class') {
       r.drawString(px + 2, py + 5, 'Choose your job:', COLORS.BRIGHT_CYAN, bg);
@@ -381,12 +382,13 @@ export class UIManager {
         'Combat specialist, a hired gun for dangerous jobs',
         'Support role who repairs tech and heals allies'
       ];
+      const maxDescW2 = panelW - 8;
       for (let i = 0; i < classes.length; i++) {
         const sel = i === this.selectedIndex;
         const cursor = sel ? ICONS.cursor : ' ';
         r.drawString(px + 3, py + 7 + i * 3, cursor + ' ' + classes[i],
           sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
-        r.drawString(px + 7, py + 8 + i * 3, descs[i], COLORS.BRIGHT_BLACK, bg);
+        r.drawString(px + 7, py + 8 + i * 3, descs[i].substring(0, maxDescW2), COLORS.BRIGHT_BLACK, bg);
       }
     } else if (step === 'name') {
       r.drawString(px + 2, py + 5, 'Enter your name:', COLORS.BRIGHT_CYAN, bg);
