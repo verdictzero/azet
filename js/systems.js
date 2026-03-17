@@ -731,7 +731,7 @@ export class ShopSystem {
     this._shopItemTypes = {
       armory: ['weapon', 'armor', 'shield', 'helmet'],
       chemist: ['potion', 'scroll', 'reagent', 'elixir'],
-      general: ['weapon', 'armor', 'potion', 'scroll', 'tool', 'food', 'torch'],
+      general: ['weapon', 'armor', 'potion', 'scroll', 'food', 'torch', 'light'],
       enchanter: ['ring', 'amulet', 'gem', 'enchanted_accessory'],
     };
   }
@@ -1025,6 +1025,80 @@ export class TimeSystem {
 
   getDayPhase() {
     return this.hour / 24;
+  }
+
+  /**
+   * Get smooth day/night tint color and alpha based on current hour.
+   * Returns {color, alpha} with interpolation between keyframes.
+   */
+  getTimeTint() {
+    const h = this.hour;
+    // Keyframes: [hour, r, g, b, alpha]
+    const keys = [
+      [0,   0,   0,   34,  0.45],  // deep night
+      [4,   17,  0,   34,  0.40],  // pre-dawn
+      [5,   68,  51,  0,   0.20],  // dawn golden
+      [7,   34,  25,  0,   0.05],  // sunrise end
+      [10,  0,   0,   0,   0.00],  // morning clear
+      [14,  0,   0,   0,   0.00],  // midday clear
+      [17,  34,  17,  0,   0.08],  // afternoon warm
+      [18,  68,  34,  0,   0.15],  // dusk orange
+      [19,  51,  0,   51,  0.25],  // sunset purple
+      [20,  17,  0,   51,  0.35],  // twilight
+      [21,  0,   0,   34,  0.42],  // early night
+      [24,  0,   0,   34,  0.45],  // deep night (wraps)
+    ];
+
+    // Find bounding keyframes
+    let lo = keys[0], hi = keys[1];
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (h >= keys[i][0] && h < keys[i + 1][0]) {
+        lo = keys[i];
+        hi = keys[i + 1];
+        break;
+      }
+    }
+
+    const range = hi[0] - lo[0];
+    const t = range > 0 ? (h - lo[0]) / range : 0;
+    const r = Math.round(lo[1] + (hi[1] - lo[1]) * t);
+    const g = Math.round(lo[2] + (hi[2] - lo[2]) * t);
+    const b = Math.round(lo[3] + (hi[3] - lo[3]) * t);
+    const alpha = lo[4] + (hi[4] - lo[4]) * t;
+
+    const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+    return { color: hex, alpha };
+  }
+
+  /**
+   * Get sun/moon direction for shadow casting.
+   * Returns {dx, dy, elevation (0-1), shadowLength (multiplier)}.
+   */
+  getSunDirection() {
+    const h = this.hour;
+    // Sun rises at 6, sets at 20. Moon opposite.
+    const isDay = h >= 6 && h < 20;
+    let angle, elevation;
+
+    if (isDay) {
+      // Map 6-20 to 0-PI (sunrise east to sunset west)
+      const t = (h - 6) / 14; // 0 at sunrise, 1 at sunset
+      angle = t * Math.PI; // 0=east, PI=west
+      elevation = Math.sin(t * Math.PI); // peaks at noon
+    } else {
+      // Moon: map 20-6 (next day) to 0-PI
+      const nightH = h >= 20 ? h - 20 : h + 4;
+      const t = nightH / 10;
+      angle = t * Math.PI;
+      elevation = Math.sin(t * Math.PI) * 0.4; // moon lower
+    }
+
+    // Shadow direction is opposite the light source
+    const dx = -Math.cos(angle);
+    const dy = -0.5; // slight downward bias (isometric feel)
+    const shadowLength = elevation > 0.05 ? Math.min(6, 1.0 / elevation) : 6;
+
+    return { dx: Math.round(dx), dy: Math.round(dy), elevation, shadowLength, isDay };
   }
 }
 
@@ -1394,5 +1468,124 @@ export class WeatherSystem {
       sandstorm: 'Sand whips through the air!',
     };
     return descs[this.current] || '';
+  }
+}
+
+// ============================================================================
+// LightingSystem — Ray-traced light propagation for dungeons and overworld
+// ============================================================================
+
+export class LightingSystem {
+  constructor() {
+    this._lightMap = null;
+    this._width = 0;
+    this._height = 0;
+  }
+
+  /**
+   * Compute a light map from multiple light sources.
+   * @param {Array} sources - [{x, y, radius, r, g, b, intensity}]
+   * @param {Function} isOpaque - (x, y) => boolean, true if tile blocks light
+   * @param {number} width - map width
+   * @param {number} height - map height
+   * @returns {Float32Array[]} - 2D array [y][x] of {brightness, r, g, b}
+   */
+  compute(sources, isOpaque, width, height) {
+    this._width = width;
+    this._height = height;
+
+    // Allocate flat arrays for brightness and color channels
+    const size = width * height;
+    const bright = new Float32Array(size);
+    const cr = new Float32Array(size);
+    const cg = new Float32Array(size);
+    const cb = new Float32Array(size);
+
+    for (const src of sources) {
+      this._castLight(src, isOpaque, width, height, bright, cr, cg, cb);
+    }
+
+    // Build result
+    this._lightMap = { bright, cr, cg, cb, width, height };
+    return this._lightMap;
+  }
+
+  /**
+   * Get light value at a position.
+   */
+  getLight(x, y) {
+    if (!this._lightMap) return { brightness: 0, r: 0, g: 0, b: 0 };
+    const { bright, cr, cg, cb, width, height } = this._lightMap;
+    if (x < 0 || x >= width || y < 0 || y >= height) return { brightness: 0, r: 0, g: 0, b: 0 };
+    const idx = y * width + x;
+    return {
+      brightness: Math.min(1, bright[idx]),
+      r: Math.min(255, cr[idx]),
+      g: Math.min(255, cg[idx]),
+      b: Math.min(255, cb[idx]),
+    };
+  }
+
+  /**
+   * Cast light from a single source using Bresenham rays.
+   */
+  _castLight(src, isOpaque, w, h, bright, cr, cg, cb) {
+    const { x: sx, y: sy, radius, r, g, b, intensity } = src;
+    const rad = Math.ceil(radius);
+
+    // Cast rays to perimeter of a circle
+    const perimeter = new Set();
+    for (let dx = -rad; dx <= rad; dx++) {
+      perimeter.add(`${sx + dx},${sy - rad}`);
+      perimeter.add(`${sx + dx},${sy + rad}`);
+    }
+    for (let dy = -rad + 1; dy < rad; dy++) {
+      perimeter.add(`${sx - rad},${sy + dy}`);
+      perimeter.add(`${sx + rad},${sy + dy}`);
+    }
+
+    for (const key of perimeter) {
+      const [tx, ty] = key.split(',').map(Number);
+      const points = this._bresenham(sx, sy, tx, ty);
+
+      for (const pt of points) {
+        if (pt.x < 0 || pt.x >= w || pt.y < 0 || pt.y >= h) break;
+
+        const dist = Math.sqrt((pt.x - sx) ** 2 + (pt.y - sy) ** 2);
+        if (dist > radius) break;
+
+        // Inverse-square-ish falloff
+        const falloff = Math.max(0, 1 - (dist / radius));
+        const lightVal = falloff * falloff * intensity;
+
+        const idx = pt.y * w + pt.x;
+        bright[idx] += lightVal;
+        cr[idx] += r * lightVal;
+        cg[idx] += g * lightVal;
+        cb[idx] += b * lightVal;
+
+        // Walls block light but are themselves illuminated
+        if (pt.x !== sx || pt.y !== sy) {
+          if (isOpaque(pt.x, pt.y)) break;
+        }
+      }
+    }
+  }
+
+  _bresenham(x0, y0, x1, y1) {
+    const points = [];
+    let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+    let sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    let x = x0, y = y0;
+
+    while (true) {
+      points.push({ x, y });
+      if (x === x1 && y === y1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 < dx) { err += dx; y += sy; }
+    }
+    return points;
   }
 }

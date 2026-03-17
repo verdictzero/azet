@@ -1079,6 +1079,26 @@ export class Player {
     return mitigated;
   }
 
+  /**
+   * Check if the player has a light source (torch or lantern) in inventory or equipped.
+   * Returns {hasLight, type, radius, color} or {hasLight: false}.
+   */
+  hasLightSource() {
+    // Check equipment first
+    for (const slot of Object.values(this.equipment)) {
+      if (slot && slot.lightSource) {
+        return { hasLight: true, type: slot.lightSource.type, radius: slot.lightSource.radius, color: slot.lightSource.color, item: slot };
+      }
+    }
+    // Check inventory
+    for (const item of this.inventory) {
+      if (item.lightSource) {
+        return { hasLight: true, type: item.lightSource.type, radius: item.lightSource.radius, color: item.lightSource.color, item };
+      }
+    }
+    return { hasLight: false };
+  }
+
   addItem(item) {
     if (this.inventory.length >= 20) {
       return false;
@@ -1288,6 +1308,8 @@ export class ItemGenerator {
       case 'amulet':   return this._generateAccessory(rng, 'amulet', '"', rarity, rarityMul, depthScale);
       case 'material': return this._generateMaterial(rng);
       case 'artifact': return this._generateArtifact(rng, depthScale);
+      case 'light':    return this._generateLightSource(rng, rarity);
+      case 'torch':    return this._generateLightSource(rng, rarity);
       default:         return this._generateWeapon(rng, rarity, rarityMul, depthScale);
     }
   }
@@ -1481,6 +1503,38 @@ export class ItemGenerator {
       value: mat.value,
       stats: {},
       description: mat.description,
+    };
+  }
+
+  _generateLightSource(rng, rarity = 'common') {
+    const isLantern = rarity !== 'common' && rng.chance(0.5);
+    if (isLantern) {
+      return {
+        id: nextId('item'),
+        name: 'Jury-Rigged Lantern',
+        type: 'light',
+        subtype: 'lantern',
+        rarity: 'uncommon',
+        char: '~',
+        color: '#FFDD66',
+        value: 25,
+        stats: {},
+        lightSource: { type: 'lantern', radius: 8, color: '#FFDD66', uses: -1 },
+        description: 'A cobbled-together lantern. Provides steady light. Never runs out.',
+      };
+    }
+    return {
+      id: nextId('item'),
+      name: 'Salvaged Torch',
+      type: 'light',
+      subtype: 'torch',
+      rarity: 'common',
+      char: '~',
+      color: '#FFAA44',
+      value: 8,
+      stats: {},
+      lightSource: { type: 'torch', radius: 6, color: '#FFAA44', uses: 50 },
+      description: 'A makeshift torch. Provides light for 50 moves before burning out.',
     };
   }
 

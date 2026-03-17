@@ -418,7 +418,7 @@ export class Renderer {
   }
 
   /**
-   * Apply day/night tint based on time-of-day phase string.
+   * Apply day/night tint based on time-of-day phase string. (Legacy)
    */
   applyDayNightTint(timeOfDay) {
     switch (timeOfDay) {
@@ -431,8 +431,58 @@ export class Renderer {
       case 'evening':
         this.tintOverlay('#331100', 0.2);
         break;
-      // morning/afternoon: no tint
     }
+  }
+
+  /**
+   * Apply a tint overlay only within the gameplay viewport rectangle.
+   * Does NOT affect HUD, stats bar, or message log.
+   */
+  tintViewport(color, alpha, viewLeft, viewTop, viewW, viewH) {
+    if (alpha <= 0.005) return;
+    const ctx = this.ctx;
+    const x = viewLeft * this.cellWidth;
+    const y = viewTop * this.cellHeight;
+    const w = viewW * this.cellWidth;
+    const h = viewH * this.cellHeight;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * Darken a specific cell by blending with a color.
+   * Used for shadows.
+   */
+  darkenCell(col, row, alpha) {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
+    if (alpha <= 0) return;
+    const ctx = this.ctx;
+    const x = col * this.cellWidth;
+    const y = row * this.cellHeight;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
+    ctx.restore();
+  }
+
+  /**
+   * Apply light color tinting to a cell (for colored light sources).
+   */
+  tintCell(col, row, color, alpha) {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
+    if (alpha <= 0) return;
+    const ctx = this.ctx;
+    const x = col * this.cellWidth;
+    const y = row * this.cellHeight;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
+    ctx.restore();
   }
 
   // ── Animated color cycling ────────────────
@@ -958,6 +1008,89 @@ export class InputManager {
     }
   }
   get enableTouch() { return this._enableTouch; }
+
+  // ── Context-adaptive touch layout ──────────
+
+  /**
+   * Touch button layout configurations per game state.
+   */
+  static TOUCH_LAYOUTS = {
+    MENU:        { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'ESC', key: 'Escape' }] },
+    CHAR_CREATE: { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
+    LOADING:     { dpad: [], actions: [] },
+    OVERWORLD:   { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
+      { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
+      { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
+      { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
+    ]},
+    LOCATION:    { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
+      { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
+      { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
+      { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
+    ]},
+    DUNGEON:     { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
+      { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
+      { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
+      { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
+    ]},
+    COMBAT:      { dpad: ['up', 'down'], actions: [
+      { label: 'ATK', key: 'Enter', primary: true }, { label: 'FLEE', key: 'f' },
+      { label: 'INV', key: 'i' }, { label: 'ESC', key: 'Escape' },
+    ]},
+    DIALOGUE:    { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
+    SHOP:        { dpad: ['up', 'down'], actions: [{ label: 'BUY', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
+    INVENTORY:   { dpad: ['up', 'down'], actions: [{ label: 'USE', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
+    CHARACTER:   { dpad: ['up', 'down'], actions: [{ label: 'BACK', key: 'Escape' }] },
+    QUEST_LOG:   { dpad: ['up', 'down'], actions: [{ label: 'BACK', key: 'Escape' }] },
+    MAP:         { dpad: ['up', 'down', 'left', 'right'], actions: [{ label: 'BACK', key: 'Escape' }] },
+    HELP:        { dpad: ['up', 'down'], actions: [{ label: 'BACK', key: 'Escape' }] },
+    SETTINGS:    { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
+    GAME_OVER:   { dpad: [], actions: [{ label: 'MENU', key: 'Enter', primary: true }] },
+    FACTION:     { dpad: ['up', 'down'], actions: [{ label: 'BACK', key: 'Escape' }] },
+  };
+
+  /**
+   * Update touch control layout based on current game state.
+   */
+  updateTouchLayout(state) {
+    if (!this._touchDiv) return;
+    const layout = InputManager.TOUCH_LAYOUTS[state] || InputManager.TOUCH_LAYOUTS.OVERWORLD;
+
+    // Update D-pad buttons visibility
+    const dpadBtns = this._touchDiv.querySelectorAll('[data-dir]');
+    dpadBtns.forEach(btn => {
+      const dir = btn.getAttribute('data-dir');
+      btn.style.visibility = layout.dpad.includes(dir) ? 'visible' : 'hidden';
+    });
+
+    // Update action buttons
+    const actionContainer = this._touchDiv.querySelector('.action-buttons');
+    if (actionContainer) {
+      // Clear existing
+      actionContainer.innerHTML = '';
+      for (const act of layout.actions) {
+        const btn = document.createElement('button');
+        btn.className = 'action-btn' + (act.primary ? ' act' : '');
+        btn.setAttribute('data-action', act.key);
+        btn.textContent = act.label;
+
+        const fire = (e) => {
+          e.preventDefault();
+          btn.classList.add('pressed');
+          if (navigator.vibrate) navigator.vibrate(12);
+          this.lastAction = act.key;
+        };
+        const release = () => btn.classList.remove('pressed');
+
+        btn.addEventListener('touchstart', fire, { passive: false });
+        btn.addEventListener('touchend', release, { passive: false });
+        btn.addEventListener('touchcancel', release, { passive: false });
+        btn.addEventListener('mousedown', fire);
+        btn.addEventListener('mouseup', release);
+        actionContainer.appendChild(btn);
+      }
+    }
+  }
 
   // ── Text input mode (mobile keyboard) ─────
 
