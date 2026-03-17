@@ -801,9 +801,10 @@ const NPC_BACKSTORY_TEMPLATES = [
 ];
 
 const LORE_ENEMIES = [
-  'a rogue drone swarm', 'reactivated defense bots', 'marauding scavengers', 'a rogue AI',
-  'mutated vermin', 'the Rust Raiders', 'hull breach survivors gone feral',
-  'an ancient defense grid awakened', 'the Syndicate enforcers',
+  'a rogue drone swarm', 'malfunctioning security turrets', 'marauding scrap raiders',
+  'a corrupted maintenance AI', 'mutated hull parasites', 'alien infiltrators from the outer hull',
+  'nano-fungal growths consuming Sector 7', 'assimilated colonists from the quarantine zone',
+  'an awakened reactor guardian', 'void sentinels patrolling the breach points',
 ];
 
 const LORE_REGIONS = [
@@ -818,8 +819,8 @@ const LORE_POWERS = [
 ];
 
 const LORE_SMITHS = [
-  'Chief Engineer Durin', 'Founder Aelindor', 'the Blind Fabricator', 'Director Isolde',
-  'Thargrim Steelhand', 'the ancient Founders', 'an unnamed Enhanced artisan',
+  'Chief Engineer Durin', 'Founder Vasquez', 'the Blind Fabricator', 'Director Isolde',
+  'Kira Steelhand', 'the ancient Founders', 'an unnamed Enhanced artisan',
 ];
 
 const LORE_HEROES = [
@@ -1157,34 +1158,34 @@ const ITEM_PREFIXES = [
   { name: 'Reinforced',      statMul: 1.2 },
   { name: 'Reclaimed',       statMul: 1.3 },
   { name: 'Crude',           statMul: 1.1 },
-  { name: 'Fire-Forged',     statMul: 1.4 },
-  { name: 'Hammered',        statMul: 1.4 },
+  { name: 'Plasma-Forged',   statMul: 1.4 },
+  { name: 'Hardened',        statMul: 1.4 },
   { name: 'Polished',        statMul: 1.3 },
-  { name: 'Enchanted',       statMul: 1.5 },
-  { name: 'Ancient',         statMul: 1.6 },
-  { name: 'Shadow-Touched',  statMul: 1.5 },
+  { name: 'Nano-Enhanced',   statMul: 1.5 },
+  { name: 'Founder-Era',     statMul: 1.6 },
+  { name: 'Void-Touched',    statMul: 1.5 },
   { name: 'Masterwork',      statMul: 1.7 },
   { name: 'Plated',          statMul: 1.3 },
-  { name: 'Rune-Tempered',   statMul: 1.8 },
-  { name: 'Hallowed',        statMul: 2.0 },
+  { name: 'Alloy-Tempered',  statMul: 1.8 },
+  { name: 'Prototype',       statMul: 2.0 },
 ];
 
 const ITEM_SUFFIXES = [
-  { name: 'of Might',         bonus: { str: 2 } },
-  { name: 'of Swiftness',     bonus: { dex: 2 } },
-  { name: 'of the Ancients',  bonus: { wis: 2 } },
-  { name: 'of Endurance',     bonus: { con: 3 } },
-  { name: 'of Fury',          bonus: { attack: 3 } },
-  { name: 'of Warding',       bonus: { defense: 2 } },
-  { name: 'of Grace',         bonus: { dex: 3 } },
-  { name: 'of the Void',      bonus: { str: 3 } },
-  { name: 'of Insight',       bonus: { int: 2 } },
-  { name: 'of Vitality',      bonus: { hp: 10 } },
-  { name: 'of the Forge',     bonus: { attack: 2 } },
-  { name: 'of the Rampart',   bonus: { defense: 3 } },
-  { name: 'of Lore',          bonus: { wis: 3, int: 2 } },
-  { name: 'of Rending',       bonus: { attack: 5 } },
-  { name: 'of the Inferno',   bonus: { hp: 15, str: 1 } },
+  { name: 'of Might',           bonus: { str: 2 } },
+  { name: 'of Swiftness',       bonus: { dex: 2 } },
+  { name: 'of the Founders',    bonus: { wis: 2 } },
+  { name: 'of Endurance',       bonus: { con: 3 } },
+  { name: 'of Fury',            bonus: { attack: 3 } },
+  { name: 'of Shielding',       bonus: { defense: 2 } },
+  { name: 'of Precision',       bonus: { dex: 3 } },
+  { name: 'of the Void',        bonus: { str: 3 } },
+  { name: 'of Processing',      bonus: { int: 2 } },
+  { name: 'of Vitality',        bonus: { hp: 10 } },
+  { name: 'of the Fabricator',  bonus: { attack: 2 } },
+  { name: 'of the Bulkhead',    bonus: { defense: 3 } },
+  { name: 'of the Archive',     bonus: { wis: 3, int: 2 } },
+  { name: 'of Breaching',       bonus: { attack: 5 } },
+  { name: 'of the Reactor',     bonus: { hp: 15, str: 1 } },
 ];
 
 const RARITY_MULTIPLIERS = {
@@ -1204,29 +1205,29 @@ const RARITY_COLORS = {
 };
 
 const POTION_BASES = [
-  { name: 'Healing Potion',     subtype: 'healing',  color: '#ff4444', effect: { heal: 20 },              value: 15, description: 'A ruby-red potion that mends wounds.' },
-  { name: 'Mana Elixir',        subtype: 'mana',     color: '#4444ff', effect: { mana: 20 },              value: 15, description: 'A shimmering blue elixir that restores magical energy.' },
-  { name: 'Strength Draught',   subtype: 'strength', color: '#ff8800', effect: { str: 3, duration: 50 },  value: 25, description: 'An amber draught that temporarily boosts strength.' },
-  { name: 'Venom Flask',        subtype: 'poison',   color: '#44ff44', effect: { damage: 15 },            value: 20, description: 'A sickly green flask of concentrated poison.' },
-  { name: 'Herbal Tonic',       subtype: 'healing',  color: '#ff6666', effect: { heal: 15 },              value: 12, description: 'A flask of soothing herbal remedy.' },
-  { name: 'Healing Salve',      subtype: 'healing',  color: '#ffaaaa', effect: { heal: 25 },              value: 20, description: 'A thick paste infused with restorative herbs.' },
+  { name: 'Med-Gel Injector',    subtype: 'healing',  color: '#ff4444', effect: { heal: 20 },              value: 15, description: 'A pressurized gel capsule that accelerates tissue repair.' },
+  { name: 'Stim Cartridge',      subtype: 'mana',     color: '#4444ff', effect: { mana: 20 },              value: 15, description: 'A neural stimulant that restores focus and energy.' },
+  { name: 'Adrenal Booster',     subtype: 'strength', color: '#ff8800', effect: { str: 3, duration: 50 },  value: 25, description: 'A synthetic hormone shot that temporarily amplifies strength.' },
+  { name: 'Corrosive Vial',      subtype: 'poison',   color: '#44ff44', effect: { damage: 15 },            value: 20, description: 'A capsule of concentrated industrial solvent.' },
+  { name: 'Bio-Patch',           subtype: 'healing',  color: '#ff6666', effect: { heal: 15 },              value: 12, description: 'An adhesive patch that delivers slow-release healing agents.' },
+  { name: 'Trauma Foam',         subtype: 'healing',  color: '#ffaaaa', effect: { heal: 25 },              value: 20, description: 'Expanding medical foam that seals and heals deep wounds.' },
 ];
 
 const SCROLL_BASES = [
-  { name: 'Scroll of Fireball',       effect: 'fireball',  damage: 20, value: 30, description: 'Unleash a burst of flame upon your enemies.' },
-  { name: 'Scroll of Teleportation',  effect: 'teleport',  damage: 0,  value: 40, description: 'Instantly teleport to a random location on this floor.' },
-  { name: 'Scroll of Identification', effect: 'identify',  damage: 0,  value: 20, description: 'Reveals the true properties of a piece of equipment.' },
-  { name: 'Scroll of Enchantment',    effect: 'enchant',   damage: 0,  value: 50, description: 'Enhance an item with magical properties.' },
-  { name: 'Scroll of Revelation',     effect: 'map',       damage: 0,  value: 25, description: 'Reveals the layout of the current level.' },
-  { name: 'Scroll of Lightning',      effect: 'lightning', damage: 25, value: 35, description: 'A bolt of lightning strikes the nearest enemy.' },
+  { name: 'Thermal Grenade',         effect: 'fireball',  damage: 20, value: 30, description: 'Deploys a concentrated thermal charge on nearby targets.' },
+  { name: 'Emergency Translocator',  effect: 'teleport',  damage: 0,  value: 40, description: 'Single-use spatial displacement device. Random destination.' },
+  { name: 'Diagnostic Scanner',      effect: 'identify',  damage: 0,  value: 20, description: 'Reveals the true specifications of a piece of equipment.' },
+  { name: 'Nano-Forge Kit',          effect: 'enchant',   damage: 0,  value: 50, description: 'Nanite assembly kit that upgrades equipment properties.' },
+  { name: 'Sector Map Chip',         effect: 'map',       damage: 0,  value: 25, description: 'Data chip that reveals the layout of the current level.' },
+  { name: 'Arc Discharge',           effect: 'lightning', damage: 25, value: 35, description: 'Fires a high-voltage arc at the nearest hostile contact.' },
 ];
 
 const FOOD_BASES = [
-  { name: 'Hardtack',         heal: 5,  value: 3,  description: 'A dense, dry biscuit. Filling enough.' },
-  { name: 'Salted Meat',      heal: 8,  value: 5,  description: 'A hearty strip of cured meat.' },
-  { name: 'Dried Mushrooms',  heal: 10, value: 6,  description: 'Preserved strips of cave-grown mushroom.' },
-  { name: 'Elven Bread',      heal: 20, value: 15, description: 'Light and nourishing. A single piece sustains for a day.' },
-  { name: 'Gruel',            heal: 12, value: 8,  description: 'A bowl of thick porridge. Tasteless but filling.' },
+  { name: 'Ration Bar',        heal: 5,  value: 3,  description: 'A compressed nutrient block. Filling enough.' },
+  { name: 'Protein Strip',     heal: 8,  value: 5,  description: 'A hearty strip of vat-grown protein.' },
+  { name: 'Dried Myco-Fiber',  heal: 10, value: 6,  description: 'Preserved strips of colony-grown fungal fiber.' },
+  { name: 'Nutrient Paste',    heal: 20, value: 15, description: 'Calorie-dense bioengineered paste. A single tube sustains for a day.' },
+  { name: 'Synth Porridge',    heal: 12, value: 8,  description: 'A bowl of reconstituted grain substitute. Tasteless but filling.' },
   { name: 'Wild Berry',       heal: 8,  value: 6,  description: 'A plump berry gathered from the forest.' },
 ];
 
@@ -1510,68 +1511,90 @@ export class ItemGenerator {
 // ============================================================================
 
 const CREATURE_TABLES = {
+  // BIODOME — Overgrown agricultural sectors with rogue agri-bots and mutated crop organisms
   forest: [
-    { name: 'Feral Hound', char: 'w', color: '#888888', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15 },
-    { name: 'Vine Crawler', char: 'S', color: '#448844', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'poison' },
-    { name: 'Treant', char: 'T', color: '#226622', behavior: 'patrol', hp: 30, attack: 6, defense: 5, xpBase: 40, ability: 'rootGrab' },
-    { name: 'Bandit', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'RAIDERS' },
-    { name: 'Wild Boar', char: 'b', color: '#886644', behavior: 'coward', hp: 14, attack: 4, defense: 3, xpBase: 12 },
-    { name: 'Glow Moth', char: 'f', color: '#44FF44', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 8 },
+    { name: 'Patrol Drone', char: 'd', color: '#AAAAAA', behavior: 'patrol', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'MALFUNCTIONING' },
+    { name: 'Creeping Vine-Maw', char: 'V', color: '#44AA44', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'toxinSpray', faction: 'MUTANT' },
+    { name: 'Overgrown Harvester', char: 'H', color: '#226622', behavior: 'patrol', hp: 30, attack: 6, defense: 5, xpBase: 40, ability: 'sporeCloud', faction: 'MALFUNCTIONING' },
+    { name: 'Scavenger', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'MUTANT' },
+    { name: 'Feral Livestock', char: 'b', color: '#886644', behavior: 'coward', hp: 14, attack: 4, defense: 3, xpBase: 12, faction: 'MUTANT' },
+    { name: 'Bioluminescent Moth', char: 'f', color: '#44FF44', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 8, faction: 'MUTANT' },
   ],
+  // MAINTENANCE TUNNELS — Service corridors with malfunctioning industrial machines
   underground: [
-    { name: 'Cave Bat', char: 'b', color: '#886688', behavior: 'aggressive', hp: 8, attack: 3, defense: 1, xpBase: 10 },
-    { name: 'Gel Mass', char: 's', color: '#44AA44', behavior: 'patrol', hp: 20, attack: 2, defense: 4, xpBase: 15, ability: 'acidSplash' },
-    { name: 'Cave Troll', char: 'T', color: '#668866', behavior: 'aggressive', hp: 35, attack: 8, defense: 4, xpBase: 50, ability: 'regenerate' },
-    { name: 'Dungeon Rat', char: 'k', color: '#AA6644', behavior: 'coward', hp: 8, attack: 3, defense: 2, xpBase: 8 },
-    { name: 'Stone Golem', char: 'G', color: '#888888', behavior: 'patrol', hp: 40, attack: 6, defense: 8, xpBase: 45 },
+    { name: 'Tunnel Sensor', char: 'o', color: '#886688', behavior: 'aggressive', hp: 8, attack: 3, defense: 1, xpBase: 10, faction: 'MALFUNCTIONING' },
+    { name: 'Coolant Gel', char: 's', color: '#44AAAA', behavior: 'patrol', hp: 20, attack: 2, defense: 4, xpBase: 15, ability: 'corrosiveSpit', faction: 'MUTANT' },
+    { name: 'Loader Mech', char: 'L', color: '#668866', behavior: 'aggressive', hp: 35, attack: 8, defense: 4, xpBase: 50, ability: 'selfRepair', faction: 'MALFUNCTIONING' },
+    { name: 'Duct Rat', char: 'r', color: '#AA6644', behavior: 'coward', hp: 8, attack: 3, defense: 2, xpBase: 8, faction: 'MUTANT' },
+    { name: 'Mining Automaton', char: 'M', color: '#888888', behavior: 'patrol', hp: 40, attack: 6, defense: 8, xpBase: 45, faction: 'MALFUNCTIONING' },
   ],
+  // QUARANTINE ZONE — Sealed sectors overrun by nano-fungal assimilation
   haunted: [
-    { name: 'Skeletal Warrior', char: 's', color: '#CCCCCC', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'UNDEAD' },
-    { name: 'Wraith', char: 'W', color: '#8888FF', behavior: 'aggressive', hp: 18, attack: 7, defense: 1, xpBase: 35, ability: 'lifeDrain', faction: 'UNDEAD' },
-    { name: 'Shambling Corpse', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'UNDEAD' },
-    { name: 'Lich', char: 'L', color: '#AA00FF', behavior: 'aggressive', hp: 50, attack: 12, defense: 5, xpBase: 100, ability: 'necroBolt', isBoss: true, faction: 'UNDEAD' },
-    { name: 'Phantom', char: 'g', color: '#AAAAFF', behavior: 'ambush', hp: 10, attack: 5, defense: 0, xpBase: 20, ability: 'phaseThrough', faction: 'UNDEAD' },
+    { name: 'Assimilated Drone', char: 'd', color: '#CC4444', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'ASSIMILATED' },
+    { name: 'Nano-Wraith', char: 'W', color: '#8888FF', behavior: 'aggressive', hp: 18, attack: 7, defense: 1, xpBase: 35, ability: 'assimilate', faction: 'ASSIMILATED' },
+    { name: 'Shambling Host', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'ASSIMILATED' },
+    { name: 'Hivemind Nexus', char: 'N', color: '#AA00FF', behavior: 'aggressive', hp: 50, attack: 12, defense: 5, xpBase: 100, ability: 'thermalOverload', isBoss: true, faction: 'ASSIMILATED' },
+    { name: 'Phase Stalker', char: 'p', color: '#AAAAFF', behavior: 'ambush', hp: 10, attack: 5, defense: 0, xpBase: 20, ability: 'phaseShift', faction: 'ALIEN' },
   ],
+  // WASTE PROCESSING — Recycling sectors with toxic mutations and broken reclamation bots
   swamp: [
-    { name: 'Swamp Hag', char: 'H', color: '#448844', behavior: 'ambush', hp: 22, attack: 6, defense: 3, xpBase: 30, ability: 'curse' },
-    { name: 'Bog Lurker', char: 'L', color: '#446644', behavior: 'ambush', hp: 25, attack: 5, defense: 5, xpBase: 25 },
-    { name: 'Toxic Toad', char: 't', color: '#66AA44', behavior: 'coward', hp: 8, attack: 2, defense: 2, xpBase: 8, ability: 'poison' },
-    { name: 'Swamp Wisp', char: '*', color: '#88FFFF', behavior: 'coward', hp: 5, attack: 3, defense: 0, xpBase: 12 },
+    { name: 'Toxic Reclaimer', char: 'R', color: '#448844', behavior: 'ambush', hp: 22, attack: 6, defense: 3, xpBase: 30, ability: 'signalJam', faction: 'MALFUNCTIONING' },
+    { name: 'Sludge Crawler', char: 'C', color: '#446644', behavior: 'ambush', hp: 25, attack: 5, defense: 5, xpBase: 25, faction: 'MUTANT' },
+    { name: 'Mutant Amphibian', char: 't', color: '#66AA44', behavior: 'coward', hp: 8, attack: 2, defense: 2, xpBase: 8, ability: 'toxinSpray', faction: 'MUTANT' },
+    { name: 'Vent Gas Wisp', char: '*', color: '#88FFFF', behavior: 'coward', hp: 5, attack: 3, defense: 0, xpBase: 12, faction: 'MUTANT' },
   ],
+  // EXTERIOR HULL — Exposed outer surface where alien organisms board the colony
   badlands: [
-    { name: 'Sand Scorpion', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 16, attack: 6, defense: 4, xpBase: 22, ability: 'poison' },
-    { name: 'Iron Revenant', char: 'M', color: '#AAAA88', behavior: 'patrol', hp: 28, attack: 5, defense: 6, xpBase: 35, ability: 'curse', faction: 'UNDEAD' },
-    { name: 'Sandworm', char: 'W', color: '#CCAA66', behavior: 'ambush', hp: 40, attack: 10, defense: 3, xpBase: 55 },
-    { name: 'Desert Shade', char: 'd', color: '#CCAA88', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15 },
+    { name: 'Hull Scorpion', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 16, attack: 6, defense: 4, xpBase: 22, ability: 'toxinSpray', faction: 'ALIEN' },
+    { name: 'Void Sentinel', char: 'V', color: '#AAAA88', behavior: 'patrol', hp: 28, attack: 5, defense: 6, xpBase: 35, ability: 'signalJam', faction: 'ASSIMILATED' },
+    { name: 'Hull Borer', char: 'B', color: '#CCAA66', behavior: 'ambush', hp: 40, attack: 10, defense: 3, xpBase: 55, faction: 'ALIEN' },
+    { name: 'Radiation Shade', char: 'h', color: '#CCAA88', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15, faction: 'ALIEN' },
   ],
+  // REACTOR/INDUSTRIAL — Power generation and heavy industry sectors
   mountain: [
-    { name: 'Mountain Lion', char: 'l', color: '#CCAA66', behavior: 'aggressive', hp: 18, attack: 6, defense: 3, xpBase: 25 },
-    { name: 'Harpy', char: 'h', color: '#AA88CC', behavior: 'aggressive', hp: 14, attack: 5, defense: 2, xpBase: 20, ability: 'screech' },
-    { name: 'Stone Titan', char: 'G', color: '#888888', behavior: 'patrol', hp: 50, attack: 10, defense: 8, xpBase: 60, isBoss: true },
-    { name: 'Mountain Spider', char: 'W', color: '#448844', behavior: 'aggressive', hp: 30, attack: 8, defense: 4, xpBase: 45 },
+    { name: 'Feral Welder Bot', char: 'w', color: '#CCAA66', behavior: 'aggressive', hp: 18, attack: 6, defense: 3, xpBase: 25, faction: 'MALFUNCTIONING' },
+    { name: 'Conduit Parasite', char: 'c', color: '#AA88CC', behavior: 'aggressive', hp: 14, attack: 5, defense: 2, xpBase: 20, ability: 'empPulse', faction: 'ALIEN' },
+    { name: 'Reactor Guardian', char: 'G', color: '#FF8844', behavior: 'patrol', hp: 50, attack: 10, defense: 8, xpBase: 60, ability: 'overcharge', isBoss: true, faction: 'MALFUNCTIONING' },
+    { name: 'Thermal Creeper', char: 'T', color: '#FF4444', behavior: 'aggressive', hp: 30, attack: 8, defense: 4, xpBase: 45, ability: 'naniteInjection', faction: 'ASSIMILATED' },
   ],
+  // ABANDONED SECTORS — Derelict colony modules with mixed threats
   ruins: [
-    { name: 'Feral Peasant', char: 'g', color: '#55AA55', behavior: 'coward', hp: 10, attack: 3, defense: 2, xpBase: 10 },
-    { name: 'Skeletal Warrior', char: 's', color: '#CCCCCC', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'UNDEAD' },
-    { name: 'Dungeon Rat', char: 'r', color: '#886644', behavior: 'coward', hp: 5, attack: 2, defense: 1, xpBase: 5 },
-    { name: 'Venomous Spider', char: 'S', color: '#448844', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'poison' },
-    { name: 'Bandit', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'RAIDERS' },
-    { name: 'Bandit Captain', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'RAIDERS' },
-    { name: 'Mimic', char: '!', color: '#FFDD44', behavior: 'ambush', hp: 22, attack: 6, defense: 4, xpBase: 35 },
+    { name: 'Glitched Colonist', char: 'g', color: '#55AA55', behavior: 'coward', hp: 10, attack: 3, defense: 2, xpBase: 10, faction: 'ASSIMILATED' },
+    { name: 'Derelict Sentry', char: 's', color: '#CCCCCC', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'MALFUNCTIONING' },
+    { name: 'Duct Rat', char: 'r', color: '#886644', behavior: 'coward', hp: 5, attack: 2, defense: 1, xpBase: 5, faction: 'MUTANT' },
+    { name: 'Spore Spider', char: 'a', color: '#448844', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'toxinSpray', faction: 'MUTANT' },
+    { name: 'Scrap Raider', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12 },
+    { name: 'Raider Captain', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20 },
+    { name: 'Mimic Cache', char: '!', color: '#FFDD44', behavior: 'ambush', hp: 22, attack: 6, defense: 4, xpBase: 35, faction: 'ALIEN' },
+  ],
+  // COLONY COMMONS — Open habitation areas with low-level strays
+  grassland: [
+    { name: 'Stray Service Bot', char: 'd', color: '#AAAAAA', behavior: 'patrol', hp: 8, attack: 3, defense: 2, xpBase: 8, faction: 'MALFUNCTIONING' },
+    { name: 'Feral Colony Cat', char: 'c', color: '#AA8866', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 5, faction: 'MUTANT' },
+    { name: 'Rogue Courier Drone', char: 'q', color: '#8888CC', behavior: 'aggressive', hp: 10, attack: 4, defense: 1, xpBase: 12, faction: 'MALFUNCTIONING' },
+    { name: 'Scavenger', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 14, attack: 4, defense: 3, xpBase: 15 },
   ],
 };
 
 const ABILITY_EFFECTS = {
-  poison:      { name: 'Venom', damage: 3, duration: 3, type: 'dot', description: 'Injects burning venom for 3 turns.' },
-  lifeDrain:   { name: 'Life Drain', damage: 5, heal: 5, type: 'drain', description: 'Drains the life force of the target.' },
-  fireball:    { name: 'Fire Bolt', damage: 8, type: 'magic', description: 'Hurls a bolt of searing flame.' },
-  necroBolt:   { name: 'Death Bolt', damage: 10, type: 'magic', description: 'A bolt of necrotic energy.' },
-  acidSplash:  { name: 'Acid Splash', damage: 4, armorReduce: 1, type: 'debuff', description: 'Corrodes armor with caustic slime.' },
-  rootGrab:    { name: 'Vine Snare', damage: 2, stun: true, type: 'control', description: 'Grasping vines hold the target in place.' },
-  curse:       { name: 'Hex', damage: 0, attackReduce: 2, type: 'debuff', description: 'A dark hex weakens the target.' },
-  screech:     { name: 'Banshee Wail', damage: 0, defenseReduce: 2, type: 'debuff', description: 'A piercing wail that shatters resolve.' },
-  regenerate:  { name: 'Regeneration', damage: 0, healSelf: 5, type: 'heal', description: 'Slowly regenerates health.' },
-  phaseThrough:{ name: 'Ethereal Step', damage: 0, type: 'utility', description: 'Can pass through solid walls.' },
+  // Tier 1 — Machine abilities
+  empPulse:       { name: 'EMP Pulse', damage: 0, attackReduce: 2, type: 'debuff', description: 'Electromagnetic pulse disrupts your equipment.' },
+  overcharge:     { name: 'Overcharge', damage: 8, type: 'magic', description: 'Releases a surge of stored electrical energy.' },
+  selfRepair:     { name: 'Self-Repair', damage: 0, healSelf: 5, type: 'heal', description: 'Activates onboard repair subroutines.' },
+  // Tier 2 — Mutant abilities
+  toxinSpray:     { name: 'Toxin Spray', damage: 3, duration: 3, type: 'dot', description: 'Sprays mutagenic toxin that burns for 3 turns.' },
+  corrosiveSpit:  { name: 'Corrosive Spit', damage: 4, armorReduce: 1, defenseReduce: 2, type: 'debuff', description: 'Acid corrodes armor plating.' },
+  sporeCloud:     { name: 'Spore Cloud', damage: 2, stun: true, type: 'control', description: 'Releases disorienting spores that root you in place.' },
+  // Tier 3 — Alien abilities
+  psionicLash:    { name: 'Psionic Lash', damage: 10, type: 'magic', description: 'A wave of alien psychic force.' },
+  voidDrain:      { name: 'Void Drain', damage: 5, heal: 5, type: 'drain', description: 'Siphons life energy through an alien organ.' },
+  signalJam:      { name: 'Signal Jam', damage: 0, attackReduce: 2, defenseReduce: 2, type: 'debuff', description: 'Disrupts neural interface, weakening attack and defense.' },
+  phaseShift:     { name: 'Phase Shift', damage: 0, type: 'utility', description: 'Shifts partially out of phase with local spacetime.' },
+  // Tier 4 — Assimilated abilities (nano-fungus hybrids)
+  naniteInjection:{ name: 'Nanite Injection', damage: 4, duration: 4, type: 'dot', description: 'Injects self-replicating nanites that consume tissue for 4 turns.' },
+  thermalOverload:{ name: 'Thermal Overload', damage: 12, type: 'magic', description: 'Superheated nanite swarm detonation.' },
+  assimilate:     { name: 'Assimilate', damage: 6, heal: 6, type: 'drain', description: 'Absorbs biomass to fuel nano-organic growth.' },
+  fungalSnare:    { name: 'Fungal Snare', damage: 2, stun: true, type: 'control', description: 'Nano-fungal tendrils lock you in place.' },
 };
 
 export class CreatureGenerator {
@@ -1597,7 +1620,7 @@ export class CreatureGenerator {
         defense: Math.round(template.defense * scale),
         level: Math.max(1, Math.floor(depth + playerLevel * 0.5)),
       },
-      faction: template.faction || 'HOSTILE_FAUNA',
+      faction: template.faction || 'MALFUNCTIONING',
       isBoss: template.isBoss || false,
       isElite: rng.chance(0.1),
       xpBase: Math.round(template.xpBase * scale),

@@ -1372,13 +1372,20 @@ class Game {
           // Faction standing changes from combat
           if (deadEnemy.faction) {
             this.factionSystem.modifyPlayerStanding(deadEnemy.faction, -5);
-            // Killing monsters/bandits boosts town guard and merchants
-            if (deadEnemy.faction === 'FERAL_SWARM' || deadEnemy.faction === 'SCRAP_RAIDERS') {
-              this.factionSystem.modifyPlayerStanding('COLONY_MILITIA', 2);
+            if (deadEnemy.faction === 'MALFUNCTIONING') {
               this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 1);
             }
-            if (deadEnemy.faction === 'CORRUPTED') {
-              this.factionSystem.modifyPlayerStanding('ORDER_OF_BUILDERS', 3);
+            if (deadEnemy.faction === 'MUTANT') {
+              this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 2);
+            }
+            if (deadEnemy.faction === 'ALIEN') {
+              this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2);
+              this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 1);
+            }
+            if (deadEnemy.faction === 'ASSIMILATED') {
+              this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 3);
+              this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 2);
+              this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2);
             }
           }
 
@@ -1529,8 +1536,8 @@ class Game {
       const enemy = this.creatureGen.generate(this.rng, tileBiome, 1, this.player.stats.level);
       enemy.position = { x: nx, y: ny };
 
-      // Undead strength boost during eclipse
-      if (enemy.faction === 'CORRUPTED') {
+      // Assimilated strength boost during eclipse
+      if (enemy.faction === 'ASSIMILATED') {
         enemy.stats.attack = Math.round(enemy.stats.attack * this.activeEffects.undeadStrengthMultiplier);
         enemy.stats.hp = Math.round(enemy.stats.hp * this.activeEffects.undeadStrengthMultiplier);
         enemy.stats.maxHp = enemy.stats.hp;
