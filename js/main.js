@@ -2,7 +2,7 @@ import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem } from '
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator } from './entities.js';
-import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem } from './systems.js';
+import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem } from './systems.js';
 import { UIManager } from './ui.js';
 
 // ═══════════════════════════════════════════
@@ -62,6 +62,21 @@ class Game {
     this.eventSystem = new EventSystem(this.rng);
     this.weatherSystem = new WeatherSystem(this.rng);
     this.particles = new ParticleSystem();
+    this.lighting = new LightingSystem();
+
+    // Debug state
+    this.debug = {
+      invincible: false,
+      noClip: false,
+      revealMap: false,
+      forceTimeOfDay: null, // null = normal, or hour value
+      forceWeather: null,
+      showLightMap: false,
+      disableShadows: false,
+      disableLighting: false,
+    };
+    this._debugPanel = null;
+    this._debugVisible = false;
 
     // World data
     this.overworld = null;
@@ -126,6 +141,8 @@ class Game {
     this.prevState = this.state;
     this.state = newState;
     this.ui.resetSelection();
+    // Update touch controls layout for new state
+    this.input.updateTouchLayout(newState);
   }
 
   // Start a screen fade transition. Fades out, runs callback, fades in.
@@ -524,6 +541,11 @@ class Game {
   // ─── INPUT HANDLING ───
 
   handleInput(key) {
+    // Debug menu toggle
+    if (key === '`') {
+      this.toggleDebugPanel();
+      return;
+    }
     switch (this.state) {
       case 'MENU': return this.handleMenuInput(key);
       case 'CHAR_CREATE': return this.handleCharCreateInput(key);
@@ -652,9 +674,29 @@ class Game {
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
 
-    // Movement
-    const dir = this.getDirection(key);
+    // Movement (with night stumble penalty)
+    let dir = this.getDirection(key);
     if (dir) {
+      const isNight = !this.timeSystem.isDaytime();
+      const lightInfo = this.player.hasLightSource();
+      if (isNight && !lightInfo.hasLight && !this.debug.invincible) {
+        // 10% chance to stumble in a random direction
+        if (this.rng.chance(0.10)) {
+          const dirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
+          dir = this.rng.random(dirs);
+          this.ui.addMessage('You stumble in the darkness!', COLORS.BRIGHT_RED);
+        }
+        // Periodic warning messages
+        if (this.rng.chance(0.15)) {
+          const warns = [
+            'The darkness closes in around you...',
+            'You hear something moving nearby...',
+            'You can barely see your own hands...',
+            'An inn would be safer than this...',
+          ];
+          this.ui.addMessage(this.rng.random(warns), COLORS.BRIGHT_BLACK);
+        }
+      }
       this.movePlayer(dir.dx, dir.dy);
     }
 
@@ -947,15 +989,21 @@ class Game {
     }
 
     if (option.action === 'rest' && this.activeNPC) {
-      const cost = 5;
+      // Cost scales with settlement type
+      const locType = this.gameContext.currentLocation?.type;
+      const cost = locType === 'city' ? 10 : locType === 'town' ? 5 : 3;
       if (this.player.gold >= cost) {
         this.player.gold -= cost;
         this.player.heal(this.player.stats.maxHp);
         this.player.stats.mana = this.player.stats.maxMana;
         this.timeSystem.advance(8);
-        this.ui.addMessage('You rest at the bunk. Fully restored!', COLORS.BRIGHT_GREEN);
+        // Clear negative status effects
+        this.statusEffects = this.statusEffects.filter(e => e.beneficial);
+        this.ui.addMessage('You rest at the inn. Fully restored! Status ailments cleared.', COLORS.BRIGHT_GREEN);
+        // Auto-save
+        this.saveGame();
       } else {
-        this.ui.addMessage('You can\'t afford a bunk.', COLORS.BRIGHT_RED);
+        this.ui.addMessage(`You can't afford a bunk. (${cost} gold)`, COLORS.BRIGHT_RED);
       }
       this.activeNPC = null;
       this.setState(this.prevState || 'LOCATION');
@@ -1259,11 +1307,13 @@ class Game {
       } else {
         this.ui.addMessage('Cannot escape!', COLORS.BRIGHT_RED);
         const result = this.combat.calculateAttack(this.combatState.enemy, this.player);
-        if (result.hit) {
+        if (result.hit && !this.debug.invincible) {
           this.player.stats.hp -= result.damage;
           this.ui.addMessage(result.message, COLORS.BRIGHT_RED);
+        } else if (result.hit && this.debug.invincible) {
+          this.ui.addMessage(`[DEBUG] Blocked ${result.damage} damage`, COLORS.BRIGHT_CYAN);
         }
-        if (this.player.isDead()) {
+        if (this.player.isDead() && !this.debug.invincible) {
           this.setState('GAME_OVER');
         }
       }
@@ -1312,7 +1362,7 @@ class Game {
           }
 
           const counterResult = this.combat.calculateAttack(enemy, this.player);
-          if (counterResult.hit) {
+          if (counterResult.hit && !this.debug.invincible) {
             this.player.stats.hp -= counterResult.damage;
             this.ui.addMessage(counterResult.message, COLORS.BRIGHT_RED);
             if (this.player.isDead()) {
@@ -1528,13 +1578,25 @@ class Game {
       this.ui.addMessage(`Discovered: ${loc.name}! (Press Enter to visit)`, COLORS.BRIGHT_YELLOW);
     }
 
-    // Random encounter on overworld (modified by events and weather)
+    // Random encounter on overworld (modified by events, weather, and night/light)
     const baseEncounterRate = 0.03 * this.activeEffects.encounterRateMultiplier;
-    const nightBonus = this.timeSystem.isDaytime() ? 1.0 : 1.5;
+    const isNight = !this.timeSystem.isDaytime();
+    const lightInfo = this.player.hasLightSource();
+    let nightBonus = 1.0;
+    if (isNight) {
+      nightBonus = lightInfo.hasLight ? 1.3 : 2.0;
+    }
     if (this.rng.chance(baseEncounterRate * nightBonus)) {
       const tileBiome = tile.biome || 'forest';
       const enemy = this.creatureGen.generate(this.rng, tileBiome, 1, this.player.stats.level);
       enemy.position = { x: nx, y: ny };
+
+      // Night stat boost when player has no light
+      if (isNight && !lightInfo.hasLight) {
+        enemy.stats.attack = Math.round(enemy.stats.attack * 1.2);
+        enemy.stats.hp = Math.round(enemy.stats.hp * 1.2);
+        enemy.stats.maxHp = enemy.stats.hp;
+      }
 
       // Assimilated strength boost during eclipse
       if (enemy.faction === 'ASSIMILATED') {
@@ -1546,6 +1608,18 @@ class Game {
       this.combatState = { enemy };
       this.ui.addMessage(`${enemy.name} appeared!`, COLORS.BRIGHT_RED);
       this.setState('COMBAT');
+    }
+
+    // Consume torch uses at night
+    if (isNight && lightInfo.hasLight && lightInfo.item && lightInfo.item.lightSource.uses > 0) {
+      lightInfo.item.lightSource.uses--;
+      if (lightInfo.item.lightSource.uses <= 0) {
+        this.ui.addMessage('Your torch has burned out!', COLORS.BRIGHT_RED);
+        const idx = this.player.inventory.indexOf(lightInfo.item);
+        if (idx !== -1) this.player.inventory.splice(idx, 1);
+      } else if (lightInfo.item.lightSource.uses <= 10) {
+        this.ui.addMessage(`Your torch flickers... (${lightInfo.item.lightSource.uses} uses left)`, COLORS.BRIGHT_YELLOW);
+      }
     }
 
     // Check world events
@@ -1569,6 +1643,23 @@ class Game {
   /**
    * Apply gameplay consequences when a world event fires.
    */
+  // ─── COLOR UTILITIES ───
+
+  _hexToRGB(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return { r: 200, g: 200, b: 200 };
+    return { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) };
+  }
+
+  _dimColor(hex, brightness) {
+    if (brightness >= 1) return hex;
+    const { r, g, b } = this._hexToRGB(hex);
+    const dr = Math.round(r * brightness);
+    const dg = Math.round(g * brightness);
+    const db = Math.round(b * brightness);
+    return '#' + [dr, dg, db].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+  }
+
   applyEventEffects(event) {
     switch (event.type) {
       case 'FOUNDERS_DAY':
@@ -1784,7 +1875,7 @@ class Game {
         // Adjacent? Attack player
         if (dist <= 1.5) {
           const result = this.combat.calculateAttack(enemy, this.player);
-          if (result.hit) {
+          if (result.hit && !this.debug.invincible) {
             this.player.stats.hp -= result.damage;
             this.ui.addMessage(result.message, COLORS.BRIGHT_RED);
             this.renderer.triggerGlitch();
@@ -2333,11 +2424,62 @@ class Game {
     // Force full redraw when post-processing, transitions, or flash
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
+    const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON'].includes(this.state);
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
+      || hasTimeTint
       || (this.renderer._flashAlpha && this.renderer._flashAlpha > 0);
     this.renderer.endFrame(needsFullRedraw);
     this.renderer.postProcess();
+
+    // Day/night tint — viewport only (not HUD)
+    if (hasTimeTint) {
+      const viewLeft = 1;
+      const viewTop = LAYOUT.VIEWPORT_TOP;
+      const viewW = this.renderer.cols - 2;
+      const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+
+      // Get smooth tint from TimeSystem
+      const effectiveHour = this.debug.forceTimeOfDay != null ? this.debug.forceTimeOfDay : this.timeSystem.hour;
+      const origHour = this.timeSystem.hour;
+      this.timeSystem.hour = effectiveHour;
+      const tint = this.timeSystem.getTimeTint();
+      this.timeSystem.hour = origHour;
+      this.renderer.tintViewport(tint.color, tint.alpha, viewLeft, viewTop, viewW, viewH);
+
+      // Apply shadow darkening in overworld (post-process on canvas)
+      if (this.state === 'OVERWORLD' && this._shadowCells) {
+        for (const [key, alpha] of this._shadowCells) {
+          const [sx, sy] = key.split(',').map(Number);
+          this.renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+        }
+      }
+
+      // Apply colored light glow for player light source at night
+      if (!this.timeSystem.isDaytime()) {
+        const lightInfo = this.player?.hasLightSource();
+        if (lightInfo?.hasLight && this.state === 'OVERWORLD') {
+          const camX = Math.floor(this.camera.x);
+          const camY = Math.floor(this.camera.y);
+          const plx = this.player.position.x - camX;
+          const ply = this.player.position.y - camY;
+          const rad = lightInfo.radius;
+          for (let dy = -rad; dy <= rad; dy++) {
+            for (let dx = -rad; dx <= rad; dx++) {
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist <= rad) {
+                const falloff = (1 - dist / rad) * 0.15;
+                const cx = plx + dx;
+                const cy = ply + dy;
+                if (cx >= 0 && cx < viewW && cy >= 0 && cy < viewH) {
+                  this.renderer.tintCell(viewLeft + cx, viewTop + cy, lightInfo.color, falloff);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
 
     // Transition overlay (fade in/out between scenes)
     this.renderTransition();
@@ -2345,6 +2487,14 @@ class Game {
     // Flash overlay
     this.renderer.applyFlash();
   }
+
+  // Tile height lookup for shadow casting
+  static TILE_HEIGHTS = {
+    TREE: 2, PINE: 2, PALM: 2, CACTUS: 1,
+    WALL: 3, BUILDING: 3, TOWER: 4, CASTLE: 4,
+    MOUNTAIN: 4, HILL: 2, RUINS: 2,
+    FENCE: 1, COLUMN: 2, STATUE: 2,
+  };
 
   renderOverworld() {
     if (!this.overworld) return;
@@ -2356,6 +2506,42 @@ class Game {
     const viewW = r.cols - 2;
     const viewH = r.rows - LAYOUT.HUD_TOTAL;
 
+    const isNight = !this.timeSystem.isDaytime();
+    const lightInfo = this.player.hasLightSource();
+    const sunDir = this.timeSystem.getSunDirection();
+
+    // FOV range adjusted by night and light source
+    let viewRange = 30;
+    if (isNight) {
+      viewRange = lightInfo.hasLight ? (lightInfo.radius + 2) : 3;
+    }
+
+    // Collect shadow cells if daytime or moonlit
+    const shadowCells = new Map(); // "sx,sy" -> alpha
+    if (!this.debug.disableShadows) {
+      for (let sy = 0; sy < viewH; sy++) {
+        for (let sx = 0; sx < viewW; sx++) {
+          const wx = Math.floor(this.camera.x) + sx;
+          const wy = Math.floor(this.camera.y) + sy;
+          const tile = this.overworld.getTile(wx, wy);
+          const height = Game.TILE_HEIGHTS[tile.type] || 0;
+          if (height > 0) {
+            const len = Math.min(height, Math.round(sunDir.shadowLength * height * 0.4));
+            const shadowAlpha = sunDir.isDay ? 0.25 : 0.12;
+            for (let i = 1; i <= len; i++) {
+              const shx = sx + sunDir.dx * i;
+              const shy = sy + Math.round(sunDir.dy) * i;
+              if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
+                const key = `${shx},${shy}`;
+                const existing = shadowCells.get(key) || 0;
+                shadowCells.set(key, Math.min(0.5, existing + shadowAlpha));
+              }
+            }
+          }
+        }
+      }
+    }
+
     for (let sy = 0; sy < viewH; sy++) {
       for (let sx = 0; sx < viewW; sx++) {
         const wx = Math.floor(this.camera.x) + sx;
@@ -2366,7 +2552,7 @@ class Game {
         // Fog of war
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
         const fg = r.getAnimatedColor(tile.fg, tile.type);
-        if (dist > 30) {
+        if (dist > viewRange) {
           r.drawChar(viewLeft + sx, viewTop + sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
         } else {
           r.drawChar(viewLeft + sx, viewTop + sy, tile.char, fg, tile.bg || COLORS.BLACK);
@@ -2393,6 +2579,9 @@ class Game {
     if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
       r.drawChar(viewLeft + px, viewTop + py, '@', COLORS.BRIGHT_YELLOW);
     }
+
+    // Store shadow data for post-process tinting pass
+    this._shadowCells = shadowCells;
 
     // Render weather particles
     const weatherEffect = this.weatherSystem.getVisualEffect();
@@ -2424,30 +2613,72 @@ class Game {
     const offsetX = this.player.position.x - Math.floor(viewW / 2);
     const offsetY = this.player.position.y - Math.floor(viewH / 2);
 
-    // FOV - bresenham raycasting for accurate visible tiles
-    const visible = new Set();
-    const weatherMod = this.weatherSystem.getFOVModifier();
-    const nightMod = this.timeSystem.isDaytime() ? 1.0 : 0.7;
-    const viewDist = Math.max(4, Math.round(10 * weatherMod * nightMod));
+    const dw = this.currentDungeon.tiles[0]?.length || 0;
+    const dh = this.currentDungeon.tiles.length;
+
+    // Build light sources for LightingSystem
+    const lightSources = [];
+    const lightInfo = this.player.hasLightSource();
     const px = this.player.position.x;
     const py = this.player.position.y;
-    const perimeter = new Set();
-    for (let dx = -viewDist; dx <= viewDist; dx++) {
-      perimeter.add(`${px + dx},${py - viewDist}`);
-      perimeter.add(`${px + dx},${py + viewDist}`);
+
+    if (!this.debug.disableLighting) {
+      // Player light
+      const playerRadius = lightInfo.hasLight ? lightInfo.radius : 2;
+      const plColor = lightInfo.hasLight ? this._hexToRGB(lightInfo.color) : { r: 200, g: 200, b: 200 };
+      lightSources.push({
+        x: px, y: py,
+        radius: playerRadius,
+        r: plColor.r / 255, g: plColor.g / 255, b: plColor.b / 255,
+        intensity: lightInfo.hasLight ? 1.0 : 0.5,
+      });
+
+      // Static light sources (fireplaces, lava, etc)
+      for (let ty = Math.max(0, offsetY); ty < Math.min(dh, offsetY + viewH); ty++) {
+        for (let tx = Math.max(0, offsetX); tx < Math.min(dw, offsetX + viewW); tx++) {
+          const tile = this.currentDungeon.tiles[ty]?.[tx];
+          if (!tile) continue;
+          if (tile.type === 'FIREPLACE' || tile.type === 'CAMPFIRE') {
+            lightSources.push({ x: tx, y: ty, radius: 4, r: 1.0, g: 0.5, b: 0.15, intensity: 0.8 });
+          } else if (tile.type === 'LAVA') {
+            lightSources.push({ x: tx, y: ty, radius: 3, r: 1.0, g: 0.13, b: 0.0, intensity: 0.6 });
+          } else if (tile.type === 'TORCH_SCONCE') {
+            lightSources.push({ x: tx, y: ty, radius: 5, r: 1.0, g: 0.7, b: 0.3, intensity: 0.7 });
+          }
+        }
+      }
+
+      // Compute light map
+      const isOpaque = (x, y) => {
+        if (y < 0 || y >= dh || x < 0 || x >= dw) return true;
+        return this.currentDungeon.tiles[y]?.[x] && !this.currentDungeon.tiles[y][x].walkable;
+      };
+      this.lighting.compute(lightSources, isOpaque, dw, dh);
     }
-    for (let dy = -viewDist + 1; dy < viewDist; dy++) {
-      perimeter.add(`${px - viewDist},${py + dy}`);
-      perimeter.add(`${px + viewDist},${py + dy}`);
-    }
-    for (const pKey of perimeter) {
-      const [tx, ty] = pKey.split(',').map(Number);
-      const ray = bresenhamLine(px, py, tx, ty);
-      for (const pt of ray) {
-        visible.add(`${pt.x},${pt.y}`);
-        if (pt.x !== px || pt.y !== py) {
-          if (this.currentDungeon.tiles[pt.y]?.[pt.x] && !this.currentDungeon.tiles[pt.y][pt.x].walkable) {
-            break;
+
+    // FOV - use lighting system for visibility if active, else fallback to raycasting
+    const visible = new Set();
+    if (this.debug.disableLighting) {
+      // Legacy FOV
+      const weatherMod = this.weatherSystem.getFOVModifier();
+      const nightMod = this.timeSystem.isDaytime() ? 1.0 : 0.7;
+      const viewDist = Math.max(4, Math.round(10 * weatherMod * nightMod));
+      const perimeter = new Set();
+      for (let dx = -viewDist; dx <= viewDist; dx++) {
+        perimeter.add(`${px + dx},${py - viewDist}`);
+        perimeter.add(`${px + dx},${py + viewDist}`);
+      }
+      for (let dy = -viewDist + 1; dy < viewDist; dy++) {
+        perimeter.add(`${px - viewDist},${py + dy}`);
+        perimeter.add(`${px + viewDist},${py + dy}`);
+      }
+      for (const pKey of perimeter) {
+        const [tx, ty] = pKey.split(',').map(Number);
+        const ray = bresenhamLine(px, py, tx, ty);
+        for (const pt of ray) {
+          visible.add(`${pt.x},${pt.y}`);
+          if (pt.x !== px || pt.y !== py) {
+            if (this.currentDungeon.tiles[pt.y]?.[pt.x] && !this.currentDungeon.tiles[pt.y][pt.x].walkable) break;
           }
         }
       }
@@ -2458,16 +2689,27 @@ class Game {
         const wx = offsetX + sx;
         const wy = offsetY + sy;
 
-        if (wy >= 0 && wy < this.currentDungeon.tiles.length &&
-          wx >= 0 && wx < this.currentDungeon.tiles[0].length) {
+        if (wy >= 0 && wy < dh && wx >= 0 && wx < dw) {
           const tile = this.currentDungeon.tiles[wy][wx];
-          const isVisible = visible.has(`${wx},${wy}`);
+          let isVisible, brightness;
+
+          if (!this.debug.disableLighting) {
+            const light = this.lighting.getLight(wx, wy);
+            brightness = light.brightness;
+            isVisible = brightness > 0.02;
+          } else {
+            isVisible = visible.has(`${wx},${wy}`);
+            brightness = isVisible ? 1.0 : 0;
+          }
 
           if (isVisible) {
             const animFg = r.getAnimatedColor(tile.fg, tile.type);
-            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, animFg, tile.bg || COLORS.BLACK);
+            // Dim fg/bg based on light brightness
+            const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
+            const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
+            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, dimFg, dimBg);
           } else {
-            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
+            r.drawChar(viewLeft + sx, viewTop + sy, ' ', COLORS.BLACK, COLORS.BLACK);
           }
         } else {
           r.drawChar(viewLeft + sx, viewTop + sy, ' ', COLORS.BLACK, COLORS.BLACK);
@@ -2477,18 +2719,24 @@ class Game {
 
     // Draw items
     for (const item of this.items) {
-      if (item.position && visible.has(`${item.position.x},${item.position.y}`)) {
-        const sx = item.position.x - offsetX;
-        const sy = item.position.y - offsetY;
-        if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
-          r.drawChar(viewLeft + sx, viewTop + sy, item.char || '!', item.color || COLORS.BRIGHT_YELLOW);
+      if (item.position) {
+        const light = this.debug.disableLighting ? { brightness: visible.has(`${item.position.x},${item.position.y}`) ? 1 : 0 }
+          : this.lighting.getLight(item.position.x, item.position.y);
+        if (light.brightness > 0.02) {
+          const sx = item.position.x - offsetX;
+          const sy = item.position.y - offsetY;
+          if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+            r.drawChar(viewLeft + sx, viewTop + sy, item.char || '!', item.color || COLORS.BRIGHT_YELLOW);
+          }
         }
       }
     }
 
     // Draw enemies
     for (const enemy of this.enemies) {
-      if (visible.has(`${enemy.position.x},${enemy.position.y}`)) {
+      const light = this.debug.disableLighting ? { brightness: visible.has(`${enemy.position.x},${enemy.position.y}`) ? 1 : 0 }
+        : this.lighting.getLight(enemy.position.x, enemy.position.y);
+      if (light.brightness > 0.02) {
         const sx = enemy.position.x - offsetX;
         const sy = enemy.position.y - offsetY;
         if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
@@ -2676,6 +2924,200 @@ class Game {
     this.lastFrame = performance.now();
     this.setState('MENU');
     requestAnimationFrame((ts) => this.gameLoop(ts));
+  }
+
+  // ─── DEBUG PANEL ───
+
+  toggleDebugPanel() {
+    this._debugVisible = !this._debugVisible;
+    if (!this._debugPanel) {
+      this._initDebugPanel();
+    }
+    this._debugPanel.style.display = this._debugVisible ? 'block' : 'none';
+    if (this._debugVisible) this._refreshDebugPanel();
+  }
+
+  _initDebugPanel() {
+    const panel = document.createElement('div');
+    panel.id = 'debug-panel';
+    panel.innerHTML = `
+      <div class="debug-header">DEBUG MENU <span class="debug-close">[X]</span></div>
+      <div class="debug-section">
+        <div class="debug-title">TIME & WEATHER</div>
+        <label>Hour: <input type="range" id="dbg-hour" min="0" max="23" step="1" value="8"> <span id="dbg-hour-val">8</span></label>
+        <button id="dbg-advance-day">Advance Day</button>
+        <label>Weather: <select id="dbg-weather">
+          <option value="">Auto</option>
+          <option value="clear">Clear</option><option value="rain">Rain</option>
+          <option value="storm">Storm</option><option value="fog">Fog</option>
+          <option value="snow">Snow</option><option value="sandstorm">Sandstorm</option>
+        </select></label>
+      </div>
+      <div class="debug-section">
+        <div class="debug-title">PLAYER</div>
+        <label><input type="checkbox" id="dbg-invincible"> Invincible</label>
+        <button id="dbg-full-heal">Full Heal</button>
+        <button id="dbg-give-xp">+100 XP</button>
+        <button id="dbg-give-gold">+100 Gold</button>
+        <button id="dbg-level-up">Level Up</button>
+      </div>
+      <div class="debug-section">
+        <div class="debug-title">INVENTORY</div>
+        <button id="dbg-give-torch">Give Torch</button>
+        <button id="dbg-give-lantern">Give Lantern</button>
+        <button id="dbg-give-weapon">Give Weapon</button>
+        <button id="dbg-give-potion">Give Potion</button>
+        <button id="dbg-clear-inv">Clear Inventory</button>
+      </div>
+      <div class="debug-section">
+        <div class="debug-title">WORLD</div>
+        <button id="dbg-reveal-map">Reveal Map</button>
+        <label>Teleport X: <input type="number" id="dbg-tp-x" value="50" style="width:50px"></label>
+        <label>Y: <input type="number" id="dbg-tp-y" value="30" style="width:50px"></label>
+        <button id="dbg-teleport">Teleport</button>
+      </div>
+      <div class="debug-section">
+        <div class="debug-title">VISUAL</div>
+        <label><input type="checkbox" id="dbg-no-shadows"> Disable Shadows</label>
+        <label><input type="checkbox" id="dbg-no-lighting"> Disable Lighting</label>
+        <label><input type="checkbox" id="dbg-crt"> CRT Effects</label>
+      </div>
+      <div class="debug-section">
+        <div class="debug-title">INFO</div>
+        <div id="dbg-info" style="font-size:11px;color:#8f8;white-space:pre"></div>
+      </div>
+    `;
+    document.body.appendChild(panel);
+    this._debugPanel = panel;
+
+    // Close button
+    panel.querySelector('.debug-close').addEventListener('click', () => this.toggleDebugPanel());
+
+    // Time controls
+    const hourSlider = panel.querySelector('#dbg-hour');
+    const hourVal = panel.querySelector('#dbg-hour-val');
+    hourSlider.addEventListener('input', () => {
+      const h = parseInt(hourSlider.value);
+      hourVal.textContent = h;
+      this.timeSystem.hour = h;
+      this.debug.forceTimeOfDay = null;
+    });
+    panel.querySelector('#dbg-advance-day').addEventListener('click', () => {
+      this.timeSystem.advance(24);
+      hourSlider.value = this.timeSystem.hour;
+      hourVal.textContent = this.timeSystem.hour;
+    });
+    panel.querySelector('#dbg-weather').addEventListener('change', (e) => {
+      if (e.target.value) {
+        this.weatherSystem.current = e.target.value;
+        this.weatherSystem.intensity = 0.7;
+        this.weatherSystem.duration = 999;
+      } else {
+        this.weatherSystem.duration = 0;
+      }
+    });
+
+    // Player controls
+    panel.querySelector('#dbg-invincible').addEventListener('change', (e) => {
+      this.debug.invincible = e.target.checked;
+    });
+    panel.querySelector('#dbg-full-heal').addEventListener('click', () => {
+      if (this.player) {
+        this.player.stats.hp = this.player.stats.maxHp;
+        this.player.stats.mana = this.player.stats.maxMana;
+      }
+    });
+    panel.querySelector('#dbg-give-xp').addEventListener('click', () => {
+      if (this.player) {
+        const leveled = this.player.addXP(100);
+        if (leveled.length) this.ui.addMessage(`[DEBUG] Level up! Lv ${leveled[leveled.length - 1]}`, COLORS.BRIGHT_YELLOW);
+      }
+    });
+    panel.querySelector('#dbg-give-gold').addEventListener('click', () => {
+      if (this.player) this.player.gold += 100;
+    });
+    panel.querySelector('#dbg-level-up').addEventListener('click', () => {
+      if (this.player) {
+        const needed = this.player.stats.xpToNext - this.player.stats.xp;
+        this.player.addXP(needed);
+      }
+    });
+
+    // Inventory controls
+    panel.querySelector('#dbg-give-torch').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'light', 'common'));
+    });
+    panel.querySelector('#dbg-give-lantern').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'light', 'uncommon'));
+    });
+    panel.querySelector('#dbg-give-weapon').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'weapon', 'rare', 5));
+    });
+    panel.querySelector('#dbg-give-potion').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'potion', 'uncommon'));
+    });
+    panel.querySelector('#dbg-clear-inv').addEventListener('click', () => {
+      if (this.player) this.player.inventory = [];
+    });
+
+    // World controls
+    panel.querySelector('#dbg-reveal-map').addEventListener('click', () => {
+      if (this.overworld) {
+        for (const loc of this.overworld.getLoadedLocations()) {
+          this.player.knownLocations.add(loc.id);
+        }
+        this.debug.revealMap = true;
+      }
+    });
+    panel.querySelector('#dbg-teleport').addEventListener('click', () => {
+      if (this.player) {
+        const x = parseInt(panel.querySelector('#dbg-tp-x').value) || 0;
+        const y = parseInt(panel.querySelector('#dbg-tp-y').value) || 0;
+        this.player.position.x = x;
+        this.player.position.y = y;
+        if (this.overworld) this.overworld.ensureChunksAround(x, y);
+        this.camera.follow(this.player);
+      }
+    });
+
+    // Visual controls
+    panel.querySelector('#dbg-no-shadows').addEventListener('change', (e) => {
+      this.debug.disableShadows = e.target.checked;
+    });
+    panel.querySelector('#dbg-no-lighting').addEventListener('change', (e) => {
+      this.debug.disableLighting = e.target.checked;
+    });
+    panel.querySelector('#dbg-crt').addEventListener('change', (e) => {
+      this.renderer.enableCRT = e.target.checked;
+      this.settings.crtEffects = e.target.checked;
+    });
+
+    // Update info periodically
+    this._debugInfoInterval = setInterval(() => {
+      if (this._debugVisible) this._refreshDebugPanel();
+    }, 500);
+  }
+
+  _refreshDebugPanel() {
+    const info = this._debugPanel?.querySelector('#dbg-info');
+    if (!info) return;
+    const p = this.player;
+    const t = this.timeSystem;
+    const lines = [
+      `State: ${this.state}`,
+      `Turn: ${this.turnCount}`,
+      `Time: ${t.getTimeString()} (${t.getTimeOfDay()})`,
+      `Weather: ${this.weatherSystem.current}`,
+    ];
+    if (p) {
+      lines.push(`Pos: (${p.position.x}, ${p.position.y})`);
+      lines.push(`HP: ${p.stats.hp}/${p.stats.maxHp} MP: ${p.stats.mana}/${p.stats.maxMana}`);
+      lines.push(`Lv: ${p.stats.level} XP: ${p.stats.xp}/${p.stats.xpToNext}`);
+      lines.push(`Gold: ${p.gold} Items: ${p.inventory.length}/20`);
+      lines.push(`Light: ${p.hasLightSource().hasLight ? p.hasLightSource().type : 'none'}`);
+    }
+    lines.push(`Invincible: ${this.debug.invincible}`);
+    info.textContent = lines.join('\n');
   }
 }
 
