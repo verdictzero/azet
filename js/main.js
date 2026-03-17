@@ -1217,8 +1217,118 @@ class Game {
   handleCombatInput(key) {
     if (!this.combatState) return;
 
-    if (key === 'a' || key === 'A' || key === 'Enter') {
-      // Attack - combat system already handles damage application via resolveRound
+    // FF-style cursor navigation in command menu
+    if (!this.combatState.selectedAction) this.combatState.selectedAction = 0;
+    const actionCount = 2 + Math.min(this.player.abilities?.length || 0, 3); // Attack, Flee, + abilities
+
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      this.combatState.selectedAction = (this.combatState.selectedAction - 1 + actionCount) % actionCount;
+      return;
+    }
+    if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      this.combatState.selectedAction = (this.combatState.selectedAction + 1) % actionCount;
+      return;
+    }
+
+    // Determine selected action from cursor or direct key
+    let action = null;
+    if (key === 'Enter' || key === ' ') {
+      const sel = this.combatState.selectedAction;
+      if (sel === 0) action = 'attack';
+      else if (sel === 1) action = 'flee';
+      else action = 'ability_' + (sel - 2);
+    } else if (key === 'a' || key === 'A') {
+      action = 'attack';
+    } else if (key === 'f' || key === 'F') {
+      action = 'flee';
+    } else {
+      const abilityIdx = parseInt(key) - 1;
+      if (abilityIdx >= 0 && abilityIdx < (this.player.abilities?.length || 0)) {
+        action = 'ability_' + abilityIdx;
+      }
+    }
+
+    if (!action) return;
+
+    // Handle flee
+    if (action === 'flee') {
+      if (this.rng.chance(0.5)) {
+        this.ui.addMessage('Escaped!', COLORS.BRIGHT_YELLOW);
+        this.combatState = null;
+        this.setState(this.prevState || 'DUNGEON');
+      } else {
+        this.ui.addMessage('Cannot escape!', COLORS.BRIGHT_RED);
+        const result = this.combat.calculateAttack(this.combatState.enemy, this.player);
+        if (result.hit) {
+          this.player.stats.hp -= result.damage;
+          this.ui.addMessage(result.message, COLORS.BRIGHT_RED);
+        }
+        if (this.player.isDead()) {
+          this.setState('GAME_OVER');
+        }
+      }
+      return;
+    }
+
+    // Handle ability
+    if (action.startsWith('ability_')) {
+      const abilityIdx = parseInt(action.split('_')[1]);
+      if (abilityIdx >= 0 && abilityIdx < (this.player.abilities?.length || 0)) {
+        const ability = this.player.abilities[abilityIdx];
+        if (this.player.stats.mana >= ability.manaCost) {
+          this.player.stats.mana -= ability.manaCost;
+          const enemy = this.combatState.enemy;
+
+          if (ability.type === 'heal') {
+            const healAmount = ability.damage || 15;
+            this.player.heal(healAmount);
+            this.ui.addMessage(`${ability.name}! Restored ${healAmount} HP.`, COLORS.BRIGHT_GREEN);
+          } else if (ability.damage > 0) {
+            const damage = ability.damage + Math.floor(this.player.stats.int / 3);
+            enemy.stats.hp -= damage;
+            this.ui.addMessage(`${ability.name}! ${damage} damage to ${enemy.name}!`, COLORS.BRIGHT_MAGENTA);
+            this.renderer.flash('#FF4400', 0.3);
+            this.particles.emit(enemy.position.x, enemy.position.y, '*', COLORS.BRIGHT_MAGENTA, 5, 3, 10);
+          } else if (ability.type === 'buff') {
+            this.addStatusEffect('shielded', 5, { defenseBoost: 5 });
+            this.ui.addMessage(`${ability.name}! Defense boosted!`, COLORS.BRIGHT_CYAN);
+          } else {
+            this.ui.addMessage(`Used ${ability.name}!`, COLORS.BRIGHT_CYAN);
+          }
+
+          if (enemy.stats.hp <= 0) {
+            this.ui.addMessage(`${enemy.name} defeated!`, COLORS.BRIGHT_GREEN);
+            const xp = this.combat.calculateXPReward(enemy);
+            const leveled = this.player.addXP(xp);
+            this.ui.addMessage(`${xp} EXP gained!`, COLORS.BRIGHT_CYAN);
+            if (leveled.length > 0) {
+              this.ui.addMessage(`Level up! Lv ${leveled[leveled.length - 1]}!`, COLORS.BRIGHT_YELLOW);
+              this.renderer.flash('#FFFF00', 0.5);
+            }
+            this.enemies = this.enemies.filter(e => e !== enemy);
+            this.combatState = null;
+            this.setState(this.prevState || 'DUNGEON');
+            return;
+          }
+
+          const counterResult = this.combat.calculateAttack(enemy, this.player);
+          if (counterResult.hit) {
+            this.player.stats.hp -= counterResult.damage;
+            this.ui.addMessage(counterResult.message, COLORS.BRIGHT_RED);
+            if (this.player.isDead()) {
+              this.setState('GAME_OVER');
+              return;
+            }
+          }
+        } else {
+          this.ui.addMessage(`Not enough MP! Need ${ability.manaCost}.`, COLORS.BRIGHT_RED);
+        }
+        return;
+      }
+    }
+
+    // Handle attack (action === 'attack')
+    if (action === 'attack') {
       const result = this.combat.resolveRound(this.player, this.combatState.enemy);
       for (const msg of result.messages) {
         this.ui.addMessage(msg, COLORS.BRIGHT_RED);
@@ -1233,17 +1343,17 @@ class Game {
           for (const item of loot) {
             if (item.type === 'gold') {
               this.player.gold += item.amount;
-              this.ui.addMessage(`Found ${item.amount} gold!`, COLORS.BRIGHT_YELLOW);
+              this.ui.addMessage(`Received ${item.amount} Gil.`, COLORS.BRIGHT_YELLOW);
             } else {
               this.player.addItem(item);
               this.ui.addMessage(`Found ${item.name}!`, COLORS.BRIGHT_GREEN);
             }
           }
-          this.ui.addMessage(`Gained ${xp} XP!`, COLORS.BRIGHT_CYAN);
+          this.ui.addMessage(`${xp} EXP received.`, COLORS.BRIGHT_CYAN);
 
           // Level-up effects
           if (leveled.length > 0) {
-            this.ui.addMessage(`LEVEL UP! You are now level ${leveled[leveled.length - 1]}!`, COLORS.BRIGHT_YELLOW);
+            this.ui.addMessage(`Level up! Lv ${leveled[leveled.length - 1]}!`, COLORS.BRIGHT_YELLOW);
             this.renderer.flash('#FFFF00', 0.5);
             this.particles.emit(this.player.position.x, this.player.position.y, '*', COLORS.BRIGHT_YELLOW, 10, 4, 20);
           }
@@ -1291,85 +1401,6 @@ class Game {
         this.combatState = null;
         this.setState(this.prevState || 'DUNGEON');
         return;
-      }
-    }
-
-    // Ability usage (1, 2, 3)
-    const abilityIdx = parseInt(key) - 1;
-    if (abilityIdx >= 0 && abilityIdx < (this.player.abilities?.length || 0)) {
-      const ability = this.player.abilities[abilityIdx];
-      if (this.player.stats.mana >= ability.manaCost) {
-        this.player.stats.mana -= ability.manaCost;
-        const enemy = this.combatState.enemy;
-
-        if (ability.type === 'heal') {
-          const healAmount = ability.damage || 15;
-          this.player.heal(healAmount);
-          this.ui.addMessage(`${ability.name}! Restored ${healAmount} HP.`, COLORS.BRIGHT_GREEN);
-        } else if (ability.damage > 0) {
-          const damage = ability.damage + Math.floor(this.player.stats.int / 3);
-          enemy.stats.hp -= damage;
-          this.ui.addMessage(`${ability.name}! ${damage} damage to ${enemy.name}!`, COLORS.BRIGHT_MAGENTA);
-          this.renderer.flash('#FF4400', 0.3);
-          this.particles.emit(enemy.position.x, enemy.position.y, '*', COLORS.BRIGHT_MAGENTA, 5, 3, 10);
-        } else if (ability.type === 'buff') {
-          this.addStatusEffect('shielded', 5, { defenseBoost: 5 });
-          this.ui.addMessage(`${ability.name}! Defense boosted!`, COLORS.BRIGHT_CYAN);
-        } else {
-          this.ui.addMessage(`Used ${ability.name}!`, COLORS.BRIGHT_CYAN);
-        }
-
-        // Check if enemy died
-        if (enemy.stats.hp <= 0) {
-          this.ui.addMessage(`${enemy.name} has been defeated!`, COLORS.BRIGHT_GREEN);
-          // Reuse the combat victory code path
-          const xp = this.combat.calculateXPReward(enemy);
-          const leveled = this.player.addXP(xp);
-          this.ui.addMessage(`Gained ${xp} XP!`, COLORS.BRIGHT_CYAN);
-          if (leveled.length > 0) {
-            this.ui.addMessage(`LEVEL UP! Level ${leveled[leveled.length - 1]}!`, COLORS.BRIGHT_YELLOW);
-            this.renderer.flash('#FFFF00', 0.5);
-          }
-          this.enemies = this.enemies.filter(e => e !== enemy);
-          this.combatState = null;
-          this.setState(this.prevState || 'DUNGEON');
-          return;
-        }
-
-        // Enemy counter-attack
-        const counterResult = this.combat.calculateAttack(enemy, this.player);
-        if (counterResult.hit) {
-          this.player.stats.hp -= counterResult.damage;
-          this.ui.addMessage(counterResult.message, COLORS.BRIGHT_RED);
-          if (this.player.isDead()) {
-            this.setState('GAME_OVER');
-            return;
-          }
-        }
-      } else {
-        this.ui.addMessage(`Not enough mana! Need ${ability.manaCost} MP.`, COLORS.BRIGHT_RED);
-      }
-      return;
-    }
-
-    if (key === 'f' || key === 'F') {
-      // Flee attempt
-      if (this.rng.chance(0.5)) {
-        this.ui.addMessage('You flee from combat!', COLORS.BRIGHT_YELLOW);
-        this.combatState = null;
-        this.setState(this.prevState || 'DUNGEON');
-      } else {
-        this.ui.addMessage('Failed to flee!', COLORS.BRIGHT_RED);
-        // Enemy gets free attack
-        const result = this.combat.calculateAttack(this.combatState.enemy, this.player);
-        if (result.hit) {
-          // Combat system already calculates defense mitigation, apply raw
-          this.player.stats.hp -= result.damage;
-          this.ui.addMessage(result.message, COLORS.BRIGHT_RED);
-        }
-        if (this.player.isDead()) {
-          this.setState('GAME_OVER');
-        }
       }
     }
   }
@@ -1506,7 +1537,7 @@ class Game {
       }
 
       this.combatState = { enemy };
-      this.ui.addMessage(`A ${enemy.name} attacks!`, COLORS.BRIGHT_RED);
+      this.ui.addMessage(`${enemy.name} appeared!`, COLORS.BRIGHT_RED);
       this.setState('COMBAT');
     }
 
@@ -1649,7 +1680,7 @@ class Game {
     const enemyAt = this.enemies.find(e => e.position.x === nx && e.position.y === ny);
     if (enemyAt) {
       this.combatState = { enemy: enemyAt };
-      this.ui.addMessage(`You engage a ${enemyAt.name}!`, COLORS.BRIGHT_RED);
+      this.ui.addMessage(`${enemyAt.name} appeared!`, COLORS.BRIGHT_RED);
       this.setState('COMBAT');
       return;
     }
@@ -2476,51 +2507,129 @@ class Game {
     const cols = r.cols;
     const rows = r.rows;
     const enemy = this.combatState.enemy;
+    const bg = COLORS.FF_BLUE_DARK;
 
     r.clear();
 
-    const panelW = Math.min(cols - 4, 50);
-    const panelH = 18;
-    const px = Math.floor((cols - panelW) / 2);
-    const py = Math.floor((rows - panelH) / 2);
+    // ── FF-style battle layout ──
+    // Top half: battlefield with enemy sprite
+    // Bottom half: status + command windows
 
-    r.drawBox(px, py, panelW, panelH, COLORS.BRIGHT_RED, COLORS.BLACK, ' COMBAT ');
+    const battleH = Math.floor(rows * 0.55);
+    const statusH = rows - battleH;
 
-    // Enemy info
-    r.drawString(px + 2, py + 2, `${enemy.name}`, COLORS.BRIGHT_RED);
-    r.drawString(px + 2, py + 3, `HP: ${enemy.stats.hp}/${enemy.stats.maxHp}  Lv: ${enemy.stats.level}`, COLORS.WHITE);
+    // Battlefield area (dark background with enemy)
+    r.fillRect(0, 0, cols, battleH, ' ', COLORS.WHITE, COLORS.BLACK);
 
-    // Enemy ASCII art
-    const enemyArt = enemy.char || 'E';
-    r.drawString(px + Math.floor(panelW / 2) - 1, py + 5, enemyArt, enemy.color || COLORS.BRIGHT_RED);
-    r.drawString(px + Math.floor(panelW / 2) - 3, py + 6, '/|\\', COLORS.WHITE);
-    r.drawString(px + Math.floor(panelW / 2) - 2, py + 7, '/ \\', COLORS.WHITE);
+    // Ground line
+    const groundY = battleH - 2;
+    for (let x = 0; x < cols; x++) {
+      r.drawChar(x, groundY, '\u2500', COLORS.BRIGHT_BLACK, COLORS.BLACK); // ─
+    }
 
-    // VS
-    r.drawString(px + Math.floor(panelW / 2) - 1, py + 9, 'VS', COLORS.BRIGHT_YELLOW);
+    // Enemy sprite (left-center of battlefield)
+    const enemyX = Math.floor(cols * 0.3);
+    const enemyY = Math.floor(battleH * 0.3);
 
-    // Player info
-    r.drawString(px + 2, py + 11, `${this.player.name}`, COLORS.BRIGHT_GREEN);
-    r.drawString(px + 2, py + 12,
-      `HP: ${this.player.stats.hp}/${this.player.stats.maxHp}  MP: ${this.player.stats.mana}/${this.player.stats.maxMana}`,
-      COLORS.WHITE);
+    // Enemy name plate
+    const eName = enemy.name;
+    r.drawString(enemyX - Math.floor(eName.length / 2), enemyY - 2, eName, COLORS.BRIGHT_WHITE, COLORS.BLACK);
 
-    // Actions — show abilities
-    let actionStr = '[A]ttack  [F]lee';
-    if (this.player.abilities && this.player.abilities.length > 0) {
-      for (let i = 0; i < Math.min(this.player.abilities.length, 3); i++) {
-        const ab = this.player.abilities[i];
-        actionStr += `  [${i + 1}]${ab.name}(${ab.manaCost}mp)`;
+    // Larger enemy art
+    const eChar = enemy.char || 'E';
+    const eColor = enemy.color || COLORS.BRIGHT_RED;
+    const enemyArt = [
+      `  ${eChar}  `,
+      ' /|\\ ',
+      ' / \\ ',
+    ];
+    for (let i = 0; i < enemyArt.length; i++) {
+      r.drawString(enemyX - 2, enemyY + i, enemyArt[i], eColor, COLORS.BLACK);
+    }
+
+    // Enemy HP bar below sprite
+    const eHpW = 16;
+    const eHpX = enemyX - Math.floor(eHpW / 2);
+    const eHpFrac = enemy.stats.hp / enemy.stats.maxHp;
+    const eHpFilled = Math.round(eHpFrac * eHpW);
+    const eHpColor = eHpFrac < 0.25 ? COLORS.BRIGHT_RED : eHpFrac < 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_GREEN;
+    for (let i = 0; i < eHpW; i++) {
+      r.drawChar(eHpX + i, enemyY + 4, i < eHpFilled ? '\u2588' : '\u2591', eHpColor, COLORS.BLACK);
+    }
+    const eHpStr = `${enemy.stats.hp}/${enemy.stats.maxHp}`;
+    r.drawString(eHpX + Math.floor((eHpW - eHpStr.length) / 2), enemyY + 5, eHpStr, COLORS.WHITE, COLORS.BLACK);
+
+    // Player character (right side of battlefield)
+    const playerX = Math.floor(cols * 0.7);
+    const playerY = Math.floor(battleH * 0.4);
+    r.drawChar(playerX, playerY, '@', COLORS.BRIGHT_WHITE, COLORS.BLACK);
+    r.drawString(playerX - 1, playerY + 1, '/|\\', COLORS.BRIGHT_WHITE, COLORS.BLACK);
+    r.drawString(playerX - 1, playerY + 2, '/ \\', COLORS.BRIGHT_WHITE, COLORS.BLACK);
+
+    // ── Bottom status area (FF-style windows) ──
+
+    // Message/battle log window (left side)
+    const logW = Math.floor(cols * 0.55);
+    const logH = statusH;
+    r.drawBox(0, battleH, logW, logH, COLORS.FF_BORDER, bg);
+
+    for (let i = 0; i < Math.min(logH - 2, this.ui.messageLog.length); i++) {
+      const msg = this.ui.messageLog[i];
+      r.drawString(2, battleH + 1 + i, msg.text.substring(0, logW - 4), msg.color, bg);
+    }
+
+    // Player status window (right side)
+    const statusW = cols - logW;
+    const statusBoxH = Math.floor(statusH * 0.45);
+    r.drawBox(logW, battleH, statusW, statusBoxH, COLORS.FF_BORDER, bg);
+
+    const p = this.player;
+    r.drawString(logW + 2, battleH + 1, p.name, COLORS.BRIGHT_WHITE, bg);
+
+    // HP gauge
+    const hpFrac = p.stats.hp / p.stats.maxHp;
+    const hpColor = hpFrac < 0.25 ? COLORS.BRIGHT_RED : hpFrac < 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_WHITE;
+    r.drawString(logW + 2, battleH + 2, 'HP', COLORS.BRIGHT_WHITE, bg);
+    const sGaugeW = Math.min(10, statusW - 12);
+    for (let i = 0; i < sGaugeW; i++) {
+      r.drawChar(logW + 5 + i, battleH + 2, i < Math.round(hpFrac * sGaugeW) ? '\u2588' : '\u2591',
+        hpFrac < 0.25 ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN, bg);
+    }
+    r.drawString(logW + 6 + sGaugeW, battleH + 2, `${p.stats.hp}`, hpColor, bg);
+
+    // MP gauge
+    const mpFrac = p.stats.maxMana > 0 ? p.stats.mana / p.stats.maxMana : 0;
+    r.drawString(logW + 2, battleH + 3, 'MP', COLORS.BRIGHT_WHITE, bg);
+    for (let i = 0; i < sGaugeW; i++) {
+      r.drawChar(logW + 5 + i, battleH + 3, i < Math.round(mpFrac * sGaugeW) ? '\u2588' : '\u2591',
+        COLORS.BRIGHT_CYAN, bg);
+    }
+    r.drawString(logW + 6 + sGaugeW, battleH + 3, `${p.stats.mana}`, COLORS.BRIGHT_CYAN, bg);
+
+    // Command window (bottom-right, FF-style action menu)
+    const cmdY = battleH + statusBoxH;
+    const cmdH = statusH - statusBoxH;
+    r.drawBox(logW, cmdY, statusW, cmdH, COLORS.FF_BORDER, bg);
+
+    // Build action list
+    const actions = ['Attack', 'Flee'];
+    if (p.abilities && p.abilities.length > 0) {
+      for (let i = 0; i < Math.min(p.abilities.length, 3); i++) {
+        actions.push(`${p.abilities[i].name}`);
       }
     }
-    const maxActionLen = panelW - 4;
-    r.drawString(px + 2, py + panelH - 3, actionStr.substring(0, maxActionLen), COLORS.BRIGHT_YELLOW);
 
-    // Message log in combat
-    const logY = py + panelH;
-    for (let i = 0; i < Math.min(3, this.ui.messageLog.length); i++) {
-      const msg = this.ui.messageLog[i];
-      r.drawString(px + 1, logY + i, msg.text.substring(0, panelW - 2), msg.color);
+    const combatSel = this.combatState.selectedAction || 0;
+    for (let i = 0; i < actions.length && i < cmdH - 2; i++) {
+      const sel = i === combatSel;
+      const cursor = sel ? '\u25BA' : ' '; // ►
+      r.drawString(logW + 2, cmdY + 1 + i, cursor + ' ' + actions[i],
+        sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
+      // Show MP cost for abilities
+      if (i >= 2 && p.abilities[i - 2]) {
+        const cost = `${p.abilities[i - 2].manaCost}`;
+        r.drawString(logW + statusW - cost.length - 3, cmdY + 1 + i, cost, COLORS.BRIGHT_CYAN, bg);
+      }
     }
   }
 

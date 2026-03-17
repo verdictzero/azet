@@ -12,26 +12,23 @@ import { ItemGenerator } from './entities.js';
 export class CombatSystem {
   constructor() {
     this._hitMessages = [
-      '{attacker} strikes {defender} for {damage} damage!',
-      '{attacker} hits {defender} for {damage} damage!',
-      '{attacker} slashes {defender} for {damage} damage!',
-      '{attacker} smashes {defender} for {damage} damage!',
-      '{attacker} wounds {defender} for {damage} damage!',
+      '{attacker} attacks! {damage} damage to {defender}.',
+      '{attacker} strikes {defender}. {damage} damage.',
+      '{attacker} hits {defender} for {damage}.',
+      '{damage} damage to {defender}!',
     ];
 
     this._critMessages = [
-      '{attacker} lands a CRITICAL blow on {defender} for {damage} damage!',
-      '{attacker} devastates {defender} with a critical strike for {damage} damage!',
-      'CRITICAL HIT! {attacker} crushes {defender} for {damage} damage!',
-      '{attacker} finds an opening and critically wounds {defender} for {damage} damage!',
+      'Critical hit! {attacker} deals {damage} to {defender}!',
+      '{attacker} lands a critical blow! {damage} damage!',
+      'Critical! {damage} damage to {defender}!',
     ];
 
     this._missMessages = [
-      '{attacker} swings at {defender} but misses!',
-      '{defender} dodges {attacker}\'s attack!',
-      '{attacker}\'s attack goes wide of {defender}!',
-      '{defender} nimbly avoids {attacker}\'s blow!',
-      '{attacker} lunges at {defender} but strikes only air!',
+      '{attacker} attacks. Miss!',
+      '{defender} evades the attack.',
+      '{attacker} misses {defender}!',
+      'Miss!',
     ];
   }
 

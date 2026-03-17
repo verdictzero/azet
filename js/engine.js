@@ -50,21 +50,26 @@ export function wordWrap(text, maxWidth) {
 
 export const COLORS = Object.freeze({
   BLACK:          '#000000',
-  BLUE:           '#0000AA',
-  GREEN:          '#00AA00',
-  CYAN:           '#00AAAA',
-  RED:            '#AA0000',
-  MAGENTA:        '#AA00AA',
-  YELLOW:         '#AAAA00',
-  WHITE:          '#AAAAAA',
-  BRIGHT_BLACK:   '#555555',
-  BRIGHT_BLUE:    '#5555FF',
-  BRIGHT_GREEN:   '#55FF55',
-  BRIGHT_CYAN:    '#55FFFF',
-  BRIGHT_RED:     '#FF5555',
-  BRIGHT_MAGENTA: '#FF55FF',
-  BRIGHT_YELLOW:  '#FFFF55',
-  BRIGHT_WHITE:   '#FFFFFF',
+  BLUE:           '#10106e',
+  GREEN:          '#18a040',
+  CYAN:           '#40a0b8',
+  RED:            '#a82020',
+  MAGENTA:        '#8848a0',
+  YELLOW:         '#c09820',
+  WHITE:          '#b0a8c0',
+  BRIGHT_BLACK:   '#586078',
+  BRIGHT_BLUE:    '#4848d8',
+  BRIGHT_GREEN:   '#40d870',
+  BRIGHT_CYAN:    '#60d0e8',
+  BRIGHT_RED:     '#e04848',
+  BRIGHT_MAGENTA: '#c060d0',
+  BRIGHT_YELLOW:  '#f8e060',
+  BRIGHT_WHITE:   '#f8f0ff',
+  // FF-style UI colors
+  FF_BLUE_BG:     '#10106e',
+  FF_BLUE_DARK:   '#080840',
+  FF_BORDER:      '#b8b8e8',
+  FF_CURSOR:      '#f8f0ff',
 });
 
 // ─────────────────────────────────────────────
@@ -298,14 +303,14 @@ export class Renderer {
   }
 
   /**
-   * Draw a horizontal separator spanning a box: ╠═══════╣
+   * Draw a horizontal separator spanning a box: ├───────┤
    */
-  drawSeparator(col, row, w, fg = COLORS.WHITE, bg = COLORS.BLACK) {
-    this.drawChar(col, row, '\u2560', fg, bg);         // ╠
+  drawSeparator(col, row, w, fg = COLORS.FF_BORDER, bg = COLORS.FF_BLUE_DARK) {
+    this.drawChar(col, row, '\u251C', fg, bg);         // ├
     for (let x = 1; x < w - 1; x++) {
-      this.drawChar(col + x, row, '\u2550', fg, bg);   // ═
+      this.drawChar(col + x, row, '\u2500', fg, bg);   // ─
     }
-    this.drawChar(col + w - 1, row, '\u2563', fg, bg); // ╣
+    this.drawChar(col + w - 1, row, '\u2524', fg, bg); // ┤
   }
 
   /**
@@ -320,48 +325,48 @@ export class Renderer {
   }
 
   /**
-   * Draw a box border using box-drawing characters.
-   * ╔═══════╗
-   * ║       ║
-   * ╚═══════╝
-   * Optional title is placed inside the top border.
+   * Draw a Final Fantasy-style window with rounded corners and dark blue bg.
+   * ╭─────────╮
+   * │         │
+   * ╰─────────╯
+   * Optional title is centered in the top border.
    */
-  drawBox(col, row, w, h, fg = COLORS.WHITE, bg = COLORS.BLACK, title = null) {
+  drawBox(col, row, w, h, fg = COLORS.FF_BORDER, bg = COLORS.FF_BLUE_DARK, title = null) {
     if (w < 2 || h < 2) return;
 
-    // Corners
-    this.drawChar(col, row, '\u2554', fg, bg);             // ╔
-    this.drawChar(col + w - 1, row, '\u2557', fg, bg);     // ╗
-    this.drawChar(col, row + h - 1, '\u255A', fg, bg);     // ╚
-    this.drawChar(col + w - 1, row + h - 1, '\u255D', fg, bg); // ╝
+    const borderFg = COLORS.FF_BORDER;
+
+    // Corners — rounded FF style
+    this.drawChar(col, row, '\u256D', borderFg, bg);             // ╭
+    this.drawChar(col + w - 1, row, '\u256E', borderFg, bg);     // ╮
+    this.drawChar(col, row + h - 1, '\u2570', borderFg, bg);     // ╰
+    this.drawChar(col + w - 1, row + h - 1, '\u256F', borderFg, bg); // ╯
 
     // Top and bottom edges
     for (let x = 1; x < w - 1; x++) {
-      this.drawChar(col + x, row, '\u2550', fg, bg);           // ═
-      this.drawChar(col + x, row + h - 1, '\u2550', fg, bg);   // ═
+      this.drawChar(col + x, row, '\u2500', borderFg, bg);           // ─
+      this.drawChar(col + x, row + h - 1, '\u2500', borderFg, bg);   // ─
     }
 
     // Left and right edges
     for (let y = 1; y < h - 1; y++) {
-      this.drawChar(col, row + y, '\u2551', fg, bg);           // ║
-      this.drawChar(col + w - 1, row + y, '\u2551', fg, bg);   // ║
+      this.drawChar(col, row + y, '\u2502', borderFg, bg);           // │
+      this.drawChar(col + w - 1, row + y, '\u2502', borderFg, bg);   // │
     }
 
-    // Fill interior with bg
+    // Fill interior with dark blue bg
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         this.drawChar(col + x, row + y, ' ', fg, bg);
       }
     }
 
-    // Optional title in top border
+    // Optional title centered in top border
     if (title) {
       const maxLen = w - 4;
       const truncated = title.length > maxLen ? title.slice(0, maxLen) : title;
-      const tx = col + 2;
-      this.drawChar(col + 1, row, ' ', fg, bg);
-      this.drawString(tx, row, truncated, fg, bg);
-      this.drawChar(tx + truncated.length, row, ' ', fg, bg);
+      const tx = col + Math.floor((w - truncated.length) / 2);
+      this.drawString(tx, row, truncated, COLORS.BRIGHT_WHITE, bg);
     }
   }
 
@@ -514,9 +519,9 @@ export class Renderer {
     ctx.drawImage(this._glowCanvas, 0, 0, w, h);
     ctx.restore();
 
-    // Subtle green phosphor tint
+    // Subtle blue phosphor tint (FF-style)
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 20, 0, 0.015)';
+    ctx.fillStyle = 'rgba(0, 0, 30, 0.015)';
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
