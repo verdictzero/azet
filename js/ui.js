@@ -239,33 +239,32 @@ export class UIManager {
     r.clear();
 
     const title = [
-      ' ██████  ███████  █████ ██ ██  █████  ██  ██ ██████ ███████ ██████',
-      '██   ██ ██      ██     ██ ██ ██   ██ ██  ██ ██     ██         ██',
-      '███████  █████  ██     ██ ██ ██   ██ ██  ██ ████    █████     ██',
-      '██   ██      ██ ██     ██ ██ ██  ██  ██  ██ ██         ██    ██',
-      '██   ██ ███████  █████ ██ ██  ████    ████  ██████ ███████   ██',
+      '╔══════════════════════════════════════════════════════════════════════╗',
+      '║  █████╗ ███████╗ ██████╗██╗██╗ ██████╗ ██╗   ██╗███████╗███████╗████████╗ ║',
+      '║ ██╔══██╗██╔════╝██╔════╝██║██║██╔═══██╗██║   ██║██╔════╝██╔════╝╚══██╔══╝ ║',
+      '║ ███████║███████╗██║     ██║██║██║   ██║██║   ██║█████╗  ███████╗   ██║    ║',
+      '║ ██╔══██║╚════██║██║     ██║██║██║▄▄ ██║██║   ██║██╔══╝  ╚════██║   ██║    ║',
+      '║ ██║  ██║███████║╚██████╗██║██║╚██████╔╝╚██████╔╝███████╗███████║   ██║    ║',
+      '║ ╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝╚═╝ ╚══▀▀═╝  ╚═════╝ ╚══════╝╚══════╝   ╚═╝    ║',
+      '╚══════════════════════════════════════════════════════════════════════╝',
     ];
 
-    const titleWidth = 65;
+    const titleWidth = 72;
     const startY = Math.max(2, Math.floor(rows / 2) - 10);
     const t = Date.now() / 1000;
-    const compact = cols < titleWidth + 6;
+    const compact = cols < titleWidth + 4;
 
-    // Draw title with FF crystal shimmer (blue -> cyan -> white)
+    // Rainbow color cycling per row (original retro demoscene style)
+    const rainbowColors = [COLORS.BRIGHT_RED, COLORS.BRIGHT_YELLOW, COLORS.BRIGHT_GREEN,
+      COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_MAGENTA];
     const artStartX = Math.floor((cols - titleWidth) / 2);
     const artStartY = startY;
-    const waveColors = [COLORS.BLUE, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_WHITE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
 
     if (!compact) {
       for (let i = 0; i < title.length; i++) {
-        for (let j = 0; j < title[i].length; j++) {
-          const ch = title[i][j];
-          if (ch === ' ') continue;
-          const phase = (j + i * 3) * 0.1 - t * 1.8;
-          const wave = (Math.sin(phase) + 1) / 2;
-          const ci = Math.min(Math.floor(wave * waveColors.length), waveColors.length - 1);
-          r.drawChar(artStartX + j, artStartY + i, ch, waveColors[ci]);
-        }
+        // Shift the color index over time for an animated cycling effect
+        const ci = (i + Math.floor(t * 2)) % rainbowColors.length;
+        r.drawString(artStartX, artStartY + i, title[i], rainbowColors[ci]);
       }
     } else {
       const shortTitle = 'A S C I I Q U E S T';
@@ -273,45 +272,27 @@ export class UIManager {
       for (let j = 0; j < shortTitle.length; j++) {
         const ch = shortTitle[j];
         if (ch === ' ') continue;
-        const phase = j * 0.3 - t * 1.8;
-        const wave = (Math.sin(phase) + 1) / 2;
-        const ci = Math.min(Math.floor(wave * waveColors.length), waveColors.length - 1);
-        r.drawChar(stx + j, artStartY + 1, ch, waveColors[ci]);
+        const ci = (j + Math.floor(t * 3)) % rainbowColors.length;
+        r.drawChar(stx + j, artStartY + 1, ch, rainbowColors[ci]);
       }
     }
 
     const titleBlockEnd = compact ? artStartY + 3 : artStartY + title.length;
 
-    // Crystal emblem
-    const crystal = [
-      '    /\\    ',
-      '   /  \\   ',
-      '  / ** \\  ',
-      '  \\ ** /  ',
-      '   \\  /   ',
-      '    \\/    ',
-    ];
-    const crystalX = Math.floor((cols - 10) / 2);
-    const crystalY = titleBlockEnd + 1;
-    for (let i = 0; i < crystal.length; i++) {
-      for (let j = 0; j < crystal[i].length; j++) {
-        const ch = crystal[i][j];
-        if (ch === ' ') continue;
-        const shimmer = Math.sin(t * 2 + i * 0.5 + j * 0.3) > 0 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_BLUE;
-        r.drawChar(crystalX + j, crystalY + i, ch, ch === '*' ? COLORS.BRIGHT_WHITE : shimmer);
-      }
-    }
-
     const subtitle = '~ Colony Salvage Roguelike ~';
-    r.drawString(Math.floor((cols - subtitle.length) / 2), crystalY + crystal.length + 1,
+    r.drawString(Math.floor((cols - subtitle.length) / 2), titleBlockEnd + 1,
       subtitle, COLORS.BRIGHT_BLACK);
+
+    // Animated flickering ">> PLAY <<" text
+    const flicker = Math.sin(t * 3) > 0.5 ? COLORS.BRIGHT_GREEN : COLORS.GREEN;
+    r.drawString(Math.floor((cols - 10) / 2), titleBlockEnd + 3, '>> PLAY <<', flicker);
 
     // FF-style menu box
     const menuItems = ['New Game', 'Continue', 'Settings', 'Help'];
     const menuW = 22;
     const menuH = menuItems.length * 2 + 3;
     const menuX = Math.floor((cols - menuW) / 2);
-    const menuY = crystalY + crystal.length + 3;
+    const menuY = titleBlockEnd + 5;
 
     r.drawBox(menuX, menuY, menuW, menuH);
 
