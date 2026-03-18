@@ -869,6 +869,20 @@ export class InputManager {
     // Action queue (one action at a time)
     this.lastAction = null;
 
+    // Key repeat system — fires repeated actions when direction keys are held
+    this._repeatKey = null;           // which key is being repeated
+    this._repeatDelay = 220;          // ms before first repeat fires
+    this._repeatInterval = 90;        // ms between subsequent repeats
+    this._repeatTimer = null;         // setTimeout handle
+    this._repeatIntervalTimer = null; // setInterval handle
+
+    // Direction keys eligible for repeat
+    this._repeatableKeys = new Set([
+      'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+      'w', 'a', 's', 'd', 'W', 'A', 'S', 'D',
+      '1', '2', '3', '4', '6', '7', '8', '9',
+    ]);
+
     // Mobile detection
     this.isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
     this._enableTouch = true;
@@ -907,10 +921,48 @@ export class InputManager {
     this._keysDown.add(e.key);
     // Queue the key as a game action so the game loop can process it
     this.lastAction = e.key;
+
+    // Start key repeat for direction keys
+    if (this._repeatableKeys.has(e.key) && this._repeatKey !== e.key) {
+      this._startRepeat(e.key);
+    }
   }
 
   _onKeyUp(e) {
     this._keysDown.delete(e.key);
+    // Stop key repeat if this was the repeating key
+    if (this._repeatKey === e.key) {
+      this._stopRepeat();
+    }
+  }
+
+  // ── Key repeat helpers ──────────────────────
+
+  _startRepeat(key) {
+    this._stopRepeat();
+    this._repeatKey = key;
+    // After initial delay, start firing repeats at interval
+    this._repeatTimer = setTimeout(() => {
+      this._repeatIntervalTimer = setInterval(() => {
+        if (this._keysDown.has(key)) {
+          this.lastAction = key;
+        } else {
+          this._stopRepeat();
+        }
+      }, this._repeatInterval);
+    }, this._repeatDelay);
+  }
+
+  _stopRepeat() {
+    this._repeatKey = null;
+    if (this._repeatTimer) {
+      clearTimeout(this._repeatTimer);
+      this._repeatTimer = null;
+    }
+    if (this._repeatIntervalTimer) {
+      clearInterval(this._repeatIntervalTimer);
+      this._repeatIntervalTimer = null;
+    }
   }
 
   // ── Touch / d-pad ──────────────────────────
@@ -930,6 +982,7 @@ export class InputManager {
     };
 
     // D-pad direction buttons
+    const dirToKey = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
     const dirButtons = document.querySelectorAll('[data-dir]');
     dirButtons.forEach((btn) => {
       const dir = btn.getAttribute('data-dir');
@@ -938,23 +991,26 @@ export class InputManager {
         e.preventDefault();
         btn.classList.add('pressed');
         haptic();
-        switch (dir) {
-          case 'up':    this._keysDown.add('ArrowUp');    this.lastAction = 'ArrowUp';    break;
-          case 'down':  this._keysDown.add('ArrowDown');  this.lastAction = 'ArrowDown';  break;
-          case 'left':  this._keysDown.add('ArrowLeft');  this.lastAction = 'ArrowLeft';  break;
-          case 'right': this._keysDown.add('ArrowRight'); this.lastAction = 'ArrowRight'; break;
-          case 'wait':  this.lastAction = 'wait';         break;
+        const key = dirToKey[dir];
+        if (key) {
+          this._keysDown.add(key);
+          this.lastAction = key;
+          // Start touch repeat for held d-pad
+          this._startRepeat(key);
+        } else if (dir === 'wait') {
+          this.lastAction = 'wait';
         }
       };
 
       const deactivate = (e) => {
         e.preventDefault();
         btn.classList.remove('pressed');
-        switch (dir) {
-          case 'up':    this._keysDown.delete('ArrowUp');    break;
-          case 'down':  this._keysDown.delete('ArrowDown');  break;
-          case 'left':  this._keysDown.delete('ArrowLeft');  break;
-          case 'right': this._keysDown.delete('ArrowRight'); break;
+        const key = dirToKey[dir];
+        if (key) {
+          this._keysDown.delete(key);
+          if (this._repeatKey === key) {
+            this._stopRepeat();
+          }
         }
       };
 

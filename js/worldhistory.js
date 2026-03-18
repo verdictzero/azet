@@ -1605,10 +1605,23 @@ export class WorldHistoryGenerator {
     lines.push(`World history spans ${this.currentYear} cycles across ${this.eras.length} eras.`);
     lines.push(`${this.civilizations.length} civilizations rose (${this.civilizations.filter(c => c.isActive).length} survive).`);
     lines.push(`${this.historicalFigures.length} notable figures shaped history.`);
+    const livingFigures = this.historicalFigures.filter(f => f.isAlive);
+    if (livingFigures.length > 0) {
+      lines.push(`  ${livingFigures.length} still walk the corridors.`);
+    }
     lines.push(`${this.wars.length} wars were fought.`);
     lines.push(`${this.catastrophes.length} catastrophes struck.`);
     lines.push(`${this.artifacts.length} legendary artifacts were created.`);
+    const lostArtifacts = this.artifacts.filter(a => a.isLost);
+    if (lostArtifacts.length > 0) {
+      lines.push(`  ${lostArtifacts.length} remain lost.`);
+    }
     lines.push(`${this.religions.length} belief systems emerged.`);
+    lines.push(`${this.treaties.length} treaties and alliances forged.`);
+    if (this.regions.length > 0) {
+      lines.push(`${this.regions.length} regions mapped.`);
+    }
+    lines.push(`${this.timeline.length} total historical events recorded.`);
     return lines;
   }
 

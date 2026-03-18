@@ -1396,19 +1396,17 @@ export class UIManager {
     r.drawString(Math.floor((cols - message.length) / 2) + message.length + 2, barY,
       dots, COLORS.BRIGHT_WHITE);
 
-    // Log lines
+    // Log lines — show as many as the screen can fit, auto-scrolling
     const logStartY = 6;
-    const maxLines = Math.min(logLines.length, rows - 10);
+    const maxLines = Math.min(logLines.length, rows - logStartY - 1);
     const startIdx = Math.max(0, logLines.length - maxLines);
     for (let i = startIdx; i < logLines.length; i++) {
       const line = logLines[i];
       const y = logStartY + (i - startIdx);
-      if (y >= rows - 2) break;
+      if (y >= rows - 1) break;
       const color = line.color || (i === logLines.length - 1 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_BLACK);
-      r.drawString(2, y, line.text, color, COLORS.BLACK, cols - 6);
+      r.drawString(2, y, line.text, color, COLORS.BLACK, cols - 4);
     }
-
-    r.drawString(2, rows - 2, 'Preparing the world...', COLORS.BRIGHT_BLACK);
   }
 
   // ─── UTILITIES ───
