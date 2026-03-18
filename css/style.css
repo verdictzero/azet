@@ -139,6 +139,18 @@ html, body {
   border-color: rgba(255, 255, 85, 0.85);
 }
 
+/* Debug toggle button */
+.action-btn.dbg {
+  background: rgba(0, 170, 0, 0.2);
+  border-color: rgba(0, 255, 0, 0.4);
+  color: rgba(0, 255, 0, 0.8);
+  font-size: clamp(9px, 2.5vw, 11px);
+}
+.action-btn.dbg:active, .action-btn.dbg.pressed {
+  background: rgba(0, 255, 0, 0.4);
+  border-color: rgba(0, 255, 0, 0.8);
+}
+
 /* Landscape: tighten up for wider screens */
 @media (orientation: landscape) and (max-height: 500px) {
   .dpad {
