@@ -3,6 +3,7 @@ import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.
 import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem } from './systems.js';
+import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
 
 // ═══════════════════════════════════════════
@@ -77,6 +78,10 @@ class Game {
     };
     this._debugPanel = null;
     this._debugVisible = false;
+
+    // World history (deep procedural history engine)
+    this.worldHistoryGen = null;
+    this.worldHistory = null;
 
     // World data
     this.overworld = null;
@@ -207,7 +212,23 @@ class Game {
         this.rng = new SeededRNG(this.seed);
         flush('Awakening...');
       },
-      // Step 1: Generate terrain
+      // Step 1: Generate deep world history
+      () => {
+        log('Simulating world history...', COLORS.BRIGHT_CYAN);
+        this.worldHistoryGen = new WorldHistoryGenerator(this.seed);
+        this.worldHistory = this.worldHistoryGen.generate();
+        const summary = this.worldHistoryGen.getLoadingSummary();
+        for (const line of summary) {
+          log(`  ${line}`, COLORS.WHITE);
+        }
+        // Wire world history into all subsystems
+        this.loreGen.setWorldHistory(this.worldHistoryGen);
+        this.dialogueSys.setWorldHistory(this.worldHistoryGen);
+        this.npcGen.setWorldHistory(this.worldHistoryGen);
+        this.eventSystem.setWorldHistory(this.worldHistoryGen);
+        flush('Simulating history...');
+      },
+      // Step 1b: Generate terrain
       () => {
         log('Charting the lands...', COLORS.BRIGHT_CYAN);
         log('  Surveying terrain and natural features', COLORS.WHITE);
@@ -237,12 +258,21 @@ class Game {
         }
         flush('Populating world...');
       },
-      // Step 4: Initialize faction system
+      // Step 4: Initialize faction system enriched with world history
       () => {
         log('Establishing faction allegiances...', COLORS.BRIGHT_CYAN);
+        // Enrich factions with deep historical data
+        if (this.worldHistoryGen) {
+          this.factionSystem.enrichWithWorldHistory(this.worldHistoryGen);
+        }
         const factions = Array.from(this.factionSystem._factions.values());
         for (const f of factions) {
-          log(`  ${f.name} — standing: neutral`, COLORS.WHITE);
+          const extra = f.culturalValues ? ` (values: ${f.culturalValues.join(', ')})` : '';
+          log(`  ${f.name}${extra}`, COLORS.WHITE);
+        }
+        if (this.worldHistory && this.worldHistory.civilizations) {
+          const active = this.worldHistory.civilizations.filter(c => c.isActive);
+          log(`  ${active.length} historical civilizations survive to the present day`, COLORS.BRIGHT_YELLOW);
         }
         flush('Initializing factions...');
       },
@@ -254,15 +284,22 @@ class Game {
         log('  Trade caravans and bandit raids scheduled', COLORS.WHITE);
         flush('Weaving fate...');
       },
-      // Step 6: Generate lore
+      // Step 6: Generate lore (now powered by deep world history)
       () => {
         log('Recovering ancient lore...', COLORS.BRIGHT_CYAN);
-        const factionNames = Array.from(this.factionSystem._factions.values()).map(f => f.name);
+        const factionNames = this.factionSystem.getAllFactionNames();
         const locationNames = this.overworld.getLoadedLocations().map(l => l.name);
         this.worldLore = this.loreGen.generateWorldHistory(this.rng, factionNames, locationNames);
-        log('  Ancient chronicles recovered', COLORS.WHITE);
-        log('  Historical records compiled', COLORS.WHITE);
-        log('  Runic inscriptions cataloged', COLORS.WHITE);
+        log(`  ${this.worldLore.length} historical records compiled`, COLORS.WHITE);
+        if (this.worldHistory) {
+          log(`  ${this.worldHistory.artifacts.length} legendary artifacts cataloged`, COLORS.WHITE);
+          log(`  ${this.worldHistory.religions.length} belief systems documented`, COLORS.WHITE);
+          log(`  ${this.worldHistory.wars.length} wars recorded in the archives`, COLORS.WHITE);
+          const lostArtifacts = this.worldHistory.artifacts.filter(a => a.isLost);
+          if (lostArtifacts.length > 0) {
+            log(`  ${lostArtifacts.length} artifacts remain lost to the ages...`, COLORS.BRIGHT_YELLOW);
+          }
+        }
         flush('Loading lore...');
       },
       // Step 7: Initialize weather
@@ -379,6 +416,23 @@ class Game {
     this.gameContext.currentLocation = location;
     this.setState('LOCATION');
     this.ui.addMessage(`You arrive at ${location.name}.`, COLORS.BRIGHT_GREEN);
+
+    // World history flavor text on arrival
+    if (this.worldHistoryGen) {
+      const locHist = this.worldHistoryGen.getLocationHistory(location.name);
+      if (locHist.controllingCiv) {
+        this.ui.addMessage(`This area is claimed by ${locHist.controllingCiv.name}.`, COLORS.BRIGHT_CYAN);
+      }
+      if (locHist.artifacts.length > 0) {
+        this.ui.addMessage(`Legends say the ${locHist.artifacts[0].name} was last seen near here.`, COLORS.BRIGHT_YELLOW);
+      }
+      if (locHist.events.length > 0) {
+        const recentEvent = locHist.events[locHist.events.length - 1];
+        if (recentEvent && this.rng.chance(0.4)) {
+          this.ui.addMessage(`The locals whisper of past events here...`, COLORS.BRIGHT_BLACK);
+        }
+      }
+    }
 
     // Show weather
     if (this.weatherSystem.current !== 'clear') {
@@ -1096,8 +1150,7 @@ class Game {
     if (option.action === 'factionGossip') {
       if (this.activeNPC && this.activeNPC.faction) {
         const faction = this.activeNPC.faction;
-        // Find a rival faction
-        const factionIds = ['COLONY_MILITIA', 'SALVAGE_GUILD', 'ORDER_OF_BUILDERS', 'TUNNEL_RUNNERS', 'THE_COUNCIL'];
+        const factionIds = Array.from(this.factionSystem._factions.keys());
         const rivalId = this.rng.random(factionIds);
         const rivalFaction = this.factionSystem._factions.get(rivalId);
         const rivalName = rivalFaction ? rivalFaction.name : 'the other factions';
@@ -1113,13 +1166,143 @@ class Game {
         } else {
           gossip = `The ${faction} keeps a wary eye on ${rivalName}. Trust is earned, not given.`;
         }
+
+        // Enrich with world history context
+        if (this.worldHistoryGen && this.activeNPC.culturalBackground) {
+          const bg = this.activeNPC.culturalBackground;
+          if (bg.values && bg.values.length > 0) {
+            gossip += ` We ${bg.civilizationName} value ${bg.values[0]} above all.`;
+          }
+          if (bg.traditions && bg.traditions.length > 0) {
+            const t = this.rng.random(bg.traditions);
+            gossip += ` We still observe ${t.name}.`;
+          }
+        }
+
+        // NPC personal beliefs
+        if (this.activeNPC.personalBeliefs && this.rng.chance(0.3)) {
+          const b = this.activeNPC.personalBeliefs;
+          gossip += ` I follow ${b.religionName}. "${b.tenet}"`;
+        }
+
+        // Ancestry reference
+        if (this.activeNPC.ancestry && this.rng.chance(0.25)) {
+          const a = this.activeNPC.ancestry;
+          gossip += ` My ${a.relation} was ${a.figureName}. ${a.notableDeed || ''}`;
+        }
+
         this.ui.dialogueState.text = `"${gossip}"`;
         this.ui.dialogueState.options = [
           { text: 'I see. Anything else?', action: 'rumor' },
+          { text: 'Tell me about history.', action: 'worldHistory' },
           { text: 'Thanks.', action: 'close' },
         ];
         this.ui.resetSelection();
       }
+      return;
+    }
+
+    // ── World History dialogue actions ──
+    if (option.action === 'worldHistory') {
+      if (this.worldHistoryGen) {
+        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng);
+        this.ui.dialogueState.text = `"${snippet}"`;
+        this.ui.dialogueState.options = [
+          { text: 'Tell me about the wars.', action: 'warLore' },
+          { text: 'Tell me about lost artifacts.', action: 'artifact_lore' },
+          { text: 'Tell me about great figures.', action: 'figureLore' },
+          { text: 'Goodbye.', action: 'close' },
+        ];
+      } else {
+        this.ui.dialogueState.text = '"History is long, and records are fragmented. I know little of the old times."';
+        this.ui.dialogueState.options = [{ text: 'Goodbye.', action: 'close' }];
+      }
+      this.ui.resetSelection();
+      return;
+    }
+
+    if (option.action === 'warLore') {
+      if (this.worldHistoryGen) {
+        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'war');
+        this.ui.dialogueState.text = `"${snippet}"`;
+      } else {
+        this.ui.dialogueState.text = '"The wars of the past are best left buried."';
+      }
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more history.', action: 'worldHistory' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
+    if (option.action === 'artifact_lore') {
+      if (this.worldHistoryGen) {
+        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'artifact');
+        this.ui.dialogueState.text = `"${snippet}"`;
+      } else {
+        this.ui.dialogueState.text = '"The old relics are all lost to time."';
+      }
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more history.', action: 'worldHistory' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
+    if (option.action === 'figureLore') {
+      if (this.worldHistoryGen) {
+        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'figure');
+        this.ui.dialogueState.text = `"${snippet}"`;
+      } else {
+        this.ui.dialogueState.text = '"No great heroes have risen in recent memory."';
+      }
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more history.', action: 'worldHistory' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
+    if (option.action === 'religionLore') {
+      if (this.worldHistoryGen) {
+        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'religion');
+        this.ui.dialogueState.text = `"${snippet}"`;
+      } else {
+        this.ui.dialogueState.text = '"Faith has faded in these parts."';
+      }
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more.', action: 'worldHistory' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
+    if (option.action === 'traditionLore') {
+      if (this.worldHistoryGen) {
+        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'tradition');
+        this.ui.dialogueState.text = `"${snippet}"`;
+      } else {
+        this.ui.dialogueState.text = '"Old customs have been forgotten."';
+      }
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more.', action: 'worldHistory' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
+    if (option.action === 'religion_lore' && option._historyResponse) {
+      this.ui.dialogueState.text = `"${option._historyResponse}"`;
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more.', action: 'worldHistory' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
       return;
     }
 
