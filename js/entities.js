@@ -1309,6 +1309,7 @@ export class Player {
   }
 
   getAttackPower() {
+    if (this._debugInfiniteAttack) return 9999;
     let power = Math.floor(this.stats.str / 2);
     for (const slot of Object.values(this.equipment)) {
       if (slot && slot.stats && slot.stats.attack) {
