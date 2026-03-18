@@ -182,15 +182,20 @@ export class WorldHistoryGenerator {
   // ──────────────────────────────────────────
 
   generate(config = {}) {
+    this._onEvent = config.onEvent || null;
+    this._eventDensity = config.eventDensity || 1.0;
+
     const numEras = config.eras || this.rng.nextInt(4, 7);
     const yearsPerEra = config.yearsPerEra || this.rng.nextInt(80, 200);
     const totalYears = numEras * yearsPerEra;
 
     // Phase 1: Generate the cosmology and primordial elements
     this._generateCosmology();
+    this._emitEvent(0, 'cosmology', `The colony's belief systems take shape — ${this.religions.length} religions emerge`, 'religion');
 
     // Phase 2: Generate regions of the colony
     this._generateRegions();
+    this._emitEvent(0, 'regions', `${this.regions.length} regions surveyed and mapped`, 'territory');
 
     // Phase 3: Simulate history era by era
     for (let era = 0; era < numEras; era++) {
@@ -207,6 +212,16 @@ export class WorldHistoryGenerator {
     this.timeline.sort((a, b) => a.year - b.year);
 
     return this.getSummary();
+  }
+
+  // ──────────────────────────────────────────
+  // Event emission for verbose world gen display
+  // ──────────────────────────────────────────
+
+  _emitEvent(year, type, description, category = 'misc') {
+    if (this._onEvent) {
+      this._onEvent({ year, type, description, category });
+    }
   }
 
   // ──────────────────────────────────────────
@@ -400,33 +415,38 @@ export class WorldHistoryGenerator {
     }
 
     // Simulate year-by-year events within this era
-    const activeCivs = this.civilizations.filter(c => c.isActive);
+    let activeCivs = this.civilizations.filter(c => c.isActive);
     const stepSize = this.rng.nextInt(5, 15);
+    const d = this._eventDensity || 1.0;
+
+    this._emitEvent(startYear, 'era_start', `── ${era.name} begins (Year ${startYear}) ──`, 'era');
 
     for (let year = startYear; year < endYear; year += stepSize) {
+      activeCivs = this.civilizations.filter(c => c.isActive);
+
       // Historical figure births (proportional to active civs)
-      if (this.rng.chance(0.3)) {
+      if (this.rng.chance(0.3 * d)) {
         const civ = this.rng.random(activeCivs.length > 0 ? activeCivs : this.civilizations);
         if (civ) this._birthHistoricalFigure(year, civ);
       }
 
       // Wars
-      if (this.rng.chance(0.12) && activeCivs.length >= 2) {
+      if (this.rng.chance(0.12 * d) && activeCivs.length >= 2) {
         this._generateWar(year, activeCivs);
       }
 
       // Catastrophes
-      if (this.rng.chance(0.08)) {
+      if (this.rng.chance(0.08 * d)) {
         this._generateCatastrophe(year);
       }
 
       // Treaties / alliances
-      if (this.rng.chance(0.1) && activeCivs.length >= 2) {
+      if (this.rng.chance(0.1 * d) && activeCivs.length >= 2) {
         this._generateTreaty(year, activeCivs);
       }
 
       // Artifact creation
-      if (this.rng.chance(0.08)) {
+      if (this.rng.chance(0.08 * d)) {
         this._createArtifact(year);
       }
 
@@ -439,8 +459,131 @@ export class WorldHistoryGenerator {
       }
 
       // Religion events
-      if (this.rng.chance(0.06)) {
+      if (this.rng.chance(0.06 * d)) {
         this._generateReligiousEvent(year);
+      }
+
+      // ── New depth-scaled events ──
+
+      // Tech advancement
+      if (this.rng.chance(0.05 * d) && activeCivs.length > 0) {
+        const civ = this.rng.random(activeCivs);
+        civ.techLevel = (civ.techLevel || 1) + 1;
+        civ.population = Math.round(civ.population * 1.15);
+        civ.militaryStrength = Math.min(15, civ.militaryStrength + 1);
+        const techs = ['fusion reactors', 'neural interfaces', 'gravity plating', 'bio-synthesis vats',
+          'quantum computing arrays', 'atmospheric purifiers', 'plasma forges', 'cryo-stasis chambers',
+          'terraforming drones', 'void shielding', 'nano-fabrication', 'antimatter containment'];
+        const tech = this.rng.random(techs);
+        this.timeline.push({
+          year, type: 'tech_advancement', civId: civ.id,
+          description: `${civ.name} develops ${tech}, advancing to tech level ${civ.techLevel}.`,
+          importance: 'major',
+        });
+        this._emitEvent(year, 'tech_advancement', `${civ.name} develops ${tech}`, 'tech');
+      }
+
+      // Tech collapse
+      if (this.rng.chance(0.03 * d) && activeCivs.length > 0) {
+        const civ = this.rng.random(activeCivs);
+        if ((civ.techLevel || 1) > 1) {
+          civ.techLevel = Math.max(1, (civ.techLevel || 1) - this.rng.nextInt(1, 2));
+          civ.population = Math.round(civ.population * 0.7);
+          const causes = ['cascading system failure', 'anti-technology uprising', 'EMP cataclysm',
+            'knowledge purge by theocrats', 'corrupted data archives', 'resource depletion crisis',
+            'runaway AI malfunction', 'solar flare damage'];
+          const cause = this.rng.random(causes);
+          this.timeline.push({
+            year, type: 'tech_collapse', civId: civ.id,
+            description: `${civ.name} suffers technological regression due to ${cause}.`,
+            importance: 'major',
+          });
+          this._emitEvent(year, 'tech_collapse', `${civ.name} loses technology — ${cause}`, 'catastrophe');
+        }
+      }
+
+      // Faction schism — splits a civ into two
+      if (this.rng.chance(0.04 * d) && activeCivs.length > 0) {
+        const parent = this.rng.random(activeCivs);
+        if (parent.population > 500) {
+          const splitPop = Math.floor(parent.population * this.rng.nextFloat(0.2, 0.45));
+          parent.population -= splitPop;
+          const schismReasons = ['religious heresy', 'ideological divide', 'succession dispute',
+            'class rebellion', 'regional separatism', 'generational rift'];
+          const reason = this.rng.random(schismReasons);
+          const child = this._createCivilization(year);
+          child.population = splitPop;
+          child.events.push({ year, type: 'schism', from: parent.id, reason });
+          this.timeline.push({
+            year, type: 'faction_schism', civId: parent.id,
+            description: `${child.name} splinters from ${parent.name} due to ${reason}.`,
+            importance: 'major',
+          });
+          this._emitEvent(year, 'faction_schism', `${child.name} splinters from ${parent.name} — ${reason}`, 'war');
+        }
+      }
+
+      // Invasion from outside
+      if (this.rng.chance(0.025 * d) && activeCivs.length > 0) {
+        const target = this.rng.random(activeCivs);
+        const invaders = ['void raiders', 'rogue AI swarm', 'mutant horde', 'pirate flotilla',
+          'alien scouts', 'exiled warbands', 'bio-mechanical abominations', 'feral cyborg packs'];
+        const invader = this.rng.random(invaders);
+        const severity = this.rng.nextFloat(0.1, 0.5);
+        const casualties = Math.floor(target.population * severity);
+        target.population = Math.max(50, target.population - casualties);
+        target.militaryStrength = Math.max(1, target.militaryStrength - this.rng.nextInt(1, 3));
+        this.timeline.push({
+          year, type: 'invasion', civId: target.id,
+          description: `${invader} assault ${target.name}, causing ${casualties} casualties.`,
+          importance: 'major',
+        });
+        this._emitEvent(year, 'invasion', `${invader} assault ${target.name} — ${casualties} dead`, 'war');
+      }
+
+      // Plague / infection spread (multi-region)
+      if (this.rng.chance(0.03 * d) && activeCivs.length > 0) {
+        const plagues = ['void rot', 'neural plague', 'silicon fever', 'blood rust', 'synapse blight',
+          'creeping spore', 'marrow wilt', 'data corruption syndrome', 'hull lung', 'crystalline infection'];
+        const plague = this.rng.random(plagues);
+        const affectedCivs = this.rng.shuffle([...activeCivs]).slice(0, Math.min(activeCivs.length, this.rng.nextInt(1, 3)));
+        let totalDead = 0;
+        for (const civ of affectedCivs) {
+          const deathRate = this.rng.nextFloat(0.05, 0.3);
+          const dead = Math.floor(civ.population * deathRate);
+          civ.population = Math.max(50, civ.population - dead);
+          totalDead += dead;
+        }
+        this.timeline.push({
+          year, type: 'plague_spread',
+          description: `${plague} ravages ${affectedCivs.map(c => c.name).join(' and ')}, killing ${totalDead}.`,
+          importance: 'major',
+        });
+        this._emitEvent(year, 'plague_spread', `${plague} spreads — ${totalDead} perish across ${affectedCivs.length} civilizations`, 'catastrophe');
+      }
+
+      // Golden age / dark age modifiers
+      if (this.rng.chance(0.04 * d) && activeCivs.length > 0) {
+        const civ = this.rng.random(activeCivs);
+        if (this.rng.chance(0.5)) {
+          // Golden age
+          civ.population = Math.round(civ.population * 1.2);
+          civ.militaryStrength = Math.min(15, civ.militaryStrength + 2);
+          this.timeline.push({
+            year, type: 'golden_age', civId: civ.id,
+            description: `${civ.name} enters a golden age of prosperity and innovation.`,
+          });
+          this._emitEvent(year, 'golden_age', `${civ.name} enters a golden age`, 'treaty');
+        } else {
+          // Dark age
+          civ.population = Math.round(civ.population * 0.8);
+          civ.militaryStrength = Math.max(1, civ.militaryStrength - 2);
+          this.timeline.push({
+            year, type: 'dark_age', civId: civ.id,
+            description: `${civ.name} descends into a dark age of stagnation.`,
+          });
+          this._emitEvent(year, 'dark_age', `${civ.name} falls into a dark age`, 'catastrophe');
+        }
       }
     }
 
@@ -555,6 +698,8 @@ export class WorldHistoryGenerator {
       importance: 'major',
     });
 
+    this._emitEvent(foundedYear, 'civ_founded', `${name} is founded — ${govType.name.toLowerCase()}, pop. ${civ.population}`, 'civ');
+
     return civ;
   }
 
@@ -582,6 +727,7 @@ export class WorldHistoryGenerator {
         description: `${civ.name} collapses due to dwindling numbers and internal strife.`,
         importance: 'major',
       });
+      this._emitEvent(year, 'civ_collapsed', `${civ.name} collapses into ruin`, 'catastrophe');
     }
 
     // Territory expansion
@@ -685,6 +831,7 @@ export class WorldHistoryGenerator {
         figureId: figure.id,
         description: `${figure.fullName} is born${civ ? ` among ${civ.name}` : ''}.`,
       });
+      this._emitEvent(year, 'figure_born', `${figure.fullName} is born${civ ? ` among ${civ.name}` : ''}`, 'figure');
     }
 
     return figure;
@@ -929,6 +1076,7 @@ export class WorldHistoryGenerator {
       description: `${warName} erupts between ${aggressor.name} and ${defender.name} over ${cause}. ${intensity === 'total war' ? 'It will consume the colony.' : ''}`,
       importance: 'major',
     });
+    this._emitEvent(year, 'war_start', `${warName} — ${aggressor.name} vs ${defender.name}`, 'war');
 
     this.timeline.push({
       year: year + duration,
@@ -937,6 +1085,7 @@ export class WorldHistoryGenerator {
       description: `${warName} ends. ${winner.name} emerges victorious. ${consequences.join('. ')}.`,
       importance: 'major',
     });
+    this._emitEvent(year + duration, 'war_end', `${warName} ends — ${winner.name} victorious`, 'treaty');
 
     return war;
   }
@@ -1017,6 +1166,7 @@ export class WorldHistoryGenerator {
       description: `${name} devastates ${region ? region.name : 'the colony'}. ${totalDeaths > 0 ? `${totalDeaths} perish.` : ''} ${effects.join(' ')}`,
       importance: severity > 0.5 ? 'major' : 'minor',
     });
+    this._emitEvent(year, 'catastrophe', `${name} strikes${region ? ` ${region.name}` : ''} — ${totalDeaths} dead`, 'catastrophe');
 
     return catastrophe;
   }
@@ -1073,6 +1223,7 @@ export class WorldHistoryGenerator {
       treatyId: treaty.id,
       description: `${civA.name} and ${civB.name} sign ${treaty.name}, establishing ${treatyType.effect}.`,
     });
+    this._emitEvent(year, 'treaty', `${civA.name} and ${civB.name} sign ${treaty.name}`, 'treaty');
 
     return treaty;
   }
@@ -1161,6 +1312,7 @@ export class WorldHistoryGenerator {
       description: `${name} is created by ${artifact.creatorName}. It is crafted from ${artifact.material} and ${artifact.power}.`,
       importance: 'major',
     });
+    this._emitEvent(year, 'artifact_created', `${name} is forged by ${artifact.creatorName}`, 'artifact');
 
     return artifact;
   }
@@ -1230,6 +1382,7 @@ export class WorldHistoryGenerator {
       religionId: religion.id,
       description: event.text,
     });
+    this._emitEvent(year, 'religious_event', event.text, 'religion');
   }
 
   // ──────────────────────────────────────────

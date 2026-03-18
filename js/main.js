@@ -20,7 +20,7 @@ class Game {
     this.ui = new UIManager(this.renderer);
 
     // Game state
-    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT
+    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS
 
     // Settings (persisted to localStorage)
     this.settings = {
@@ -111,7 +111,7 @@ class Game {
     this.transitionType = 'fadeIn'; // fadeIn, fadeOut
 
     // Character creation state
-    this.charGenState = { step: 'race', race: null, playerClass: null, name: '' };
+    this.charGenState = { step: 'race', race: null, playerClass: null, name: '', historyDepth: 'medium' };
 
     // Game context for UI
     this.gameContext = {
@@ -191,6 +191,10 @@ class Game {
     this.setState('LOADING');
     this._loadLog = [];
     this._loadStep = 0;
+    this._worldGenEvents = [];
+    this._worldGenStats = { currentYear: 0, activeCivs: 0, fallenCivs: 0, wars: 0, figures: 0, artifacts: 0, catastrophes: 0, treaties: 0, totalPop: 0 };
+    this._worldGenEra = null;
+    this._worldGenPhase = 'Awakening...';
 
     const log = (text, color) => {
       this._loadLog.push({ text, color: color || COLORS.BRIGHT_GREEN });
@@ -202,147 +206,129 @@ class Game {
       this.renderer.postProcess();
     };
 
+    // History depth config from character creation
+    const depthConfigs = {
+      short:  { eras: 3, yearsPerEra: 100, eventDensity: 0.7 },
+      medium: { eras: 5, yearsPerEra: 120, eventDensity: 1.0 },
+      long:   { eras: 7, yearsPerEra: 150, eventDensity: 1.3 },
+      epic:   { eras: 11, yearsPerEra: 180, eventDensity: 1.6 },
+    };
+    const depthKey = this.charGenState.historyDepth || 'medium';
+    const depthCfg = depthConfigs[depthKey];
+
+    // ─── Verbose world gen display helpers ───
+    const addWorldGenEvent = (ev) => {
+      this._worldGenEvents.push(ev);
+      // Update live stats
+      const s = this._worldGenStats;
+      s.currentYear = ev.year || s.currentYear;
+      if (ev.type === 'civ_founded') s.activeCivs++;
+      if (ev.type === 'civ_collapsed') { s.activeCivs = Math.max(0, s.activeCivs - 1); s.fallenCivs++; }
+      if (ev.type === 'war_start') s.wars++;
+      if (ev.type === 'figure_born') s.figures++;
+      if (ev.type === 'artifact_created') s.artifacts++;
+      if (ev.type === 'catastrophe' || ev.type === 'tech_collapse' || ev.type === 'plague_spread' || ev.type === 'dark_age') s.catastrophes++;
+      if (ev.type === 'treaty' || ev.type === 'golden_age') s.treaties++;
+      if (ev.type === 'invasion') s.wars++;
+      if (ev.type === 'faction_schism') { s.activeCivs++; }
+      if (ev.type === 'era_start') this._worldGenEra = ev.description;
+    };
+
+    const flushWorldGen = (phase) => {
+      this._worldGenPhase = phase || this._worldGenPhase;
+      // Compute total pop from current civs
+      if (this.worldHistoryGen) {
+        this._worldGenStats.totalPop = this.worldHistoryGen.civilizations
+          .filter(c => c.isActive)
+          .reduce((sum, c) => sum + (c.population || 0), 0);
+        this._worldGenStats.activeCivs = this.worldHistoryGen.civilizations.filter(c => c.isActive).length;
+        this._worldGenStats.fallenCivs = this.worldHistoryGen.civilizations.filter(c => !c.isActive).length;
+      }
+      this.renderer.beginFrame();
+      this.ui.drawWorldGen(this._worldGenEvents, this._worldGenStats, this._worldGenEra, this._worldGenPhase);
+      this.renderer.endFrame();
+      this.renderer.postProcess();
+    };
+
     // Step-by-step generation with visual feedback between each step
     const steps = [
       // Step 0: Initialize seed
       () => {
-        log('Initializing world seed...', COLORS.BRIGHT_CYAN);
         this.seed = Date.now();
         this.rng = new SeededRNG(this.seed);
-        log(`  Seed: ${this.seed}`, COLORS.BRIGHT_WHITE);
-        log(`  Entropy source: system clock`, COLORS.WHITE);
-        log(`  Random number generator: SeededRNG initialized`, COLORS.WHITE);
-        log(`  Perlin noise octaves: 6 (height) / 5 (moisture)`, COLORS.WHITE);
-        flush('Awakening...');
+        addWorldGenEvent({ year: 0, type: 'init', description: `World seed: ${this.seed}`, category: 'misc' });
+        addWorldGenEvent({ year: 0, type: 'init', description: `History depth: ${depthKey} (${depthCfg.eras} eras, ~${depthCfg.eras * depthCfg.yearsPerEra} years)`, category: 'era' });
+        flushWorldGen('Awakening...');
       },
-      // Step 1: Generate cosmology
+      // Step 1: Generate world history with event streaming
       () => {
-        log('Generating cosmology and pantheon...', COLORS.BRIGHT_CYAN);
         this.worldHistoryGen = new WorldHistoryGenerator(this.seed);
-        this.worldHistory = this.worldHistoryGen.generate();
-        // Show deities
-        if (this.worldHistoryGen.religions && this.worldHistoryGen.religions.length > 0) {
-          for (const rel of this.worldHistoryGen.religions) {
-            log(`  Religion: ${rel.name}`, COLORS.WHITE);
-            if (rel.deity) {
-              log(`    Patron: ${rel.deity.fullName || rel.deity.name} — domain of ${rel.deity.domain}`, COLORS.BRIGHT_BLACK);
-            }
-          }
-        }
-        flush('Generating cosmology...');
+        this.worldHistory = this.worldHistoryGen.generate({
+          eras: depthCfg.eras,
+          yearsPerEra: depthCfg.yearsPerEra,
+          eventDensity: depthCfg.eventDensity,
+          onEvent: (ev) => addWorldGenEvent(ev),
+        });
+        flushWorldGen('History complete');
       },
-      // Step 2: Show era-by-era history
+      // Step 2: Display streaming events with animated delays
       () => {
-        log('Simulating world history...', COLORS.BRIGHT_CYAN);
-        log(`  History spans ${this.worldHistoryGen.currentYear} cycles across ${this.worldHistoryGen.eras.length} eras`, COLORS.BRIGHT_YELLOW);
-        for (const era of this.worldHistoryGen.eras) {
-          log(`  ${era.name} (Year ${era.startYear}–${era.endYear})`, COLORS.BRIGHT_WHITE);
-          if (era.dominantCiv) {
-            log(`    Dominant power: ${era.dominantCiv.name}`, COLORS.WHITE);
+        // Stream world gen events to the display one batch at a time
+        const events = this._worldGenEvents;
+        const batchSize = Math.max(3, Math.floor(events.length / 20));
+        let displayed = 0;
+        const streamBatch = () => {
+          displayed += batchSize;
+          // Recalculate stats for display
+          if (this.worldHistoryGen) {
+            this._worldGenStats.wars = this.worldHistoryGen.wars.length;
+            this._worldGenStats.figures = this.worldHistoryGen.historicalFigures.length;
+            this._worldGenStats.artifacts = this.worldHistoryGen.artifacts.length;
+            this._worldGenStats.catastrophes = this.worldHistoryGen.catastrophes.length;
+            this._worldGenStats.treaties = this.worldHistoryGen.treaties.length;
+            this._worldGenStats.currentYear = this.worldHistoryGen.currentYear;
           }
-          const eraWars = era.events.filter(e => e.type === 'war_start');
-          const eraCatas = era.events.filter(e => e.type === 'catastrophe');
-          if (eraWars.length > 0) {
-            log(`    ${eraWars.length} war${eraWars.length > 1 ? 's' : ''} fought`, COLORS.WHITE);
+          flushWorldGen('Simulating history...');
+          if (displayed < events.length) {
+            setTimeout(streamBatch, 60);
+          } else {
+            // Add summary events
+            addWorldGenEvent({ year: this.worldHistoryGen.currentYear, type: 'summary',
+              description: `═══ ${this.worldHistoryGen.currentYear} years of history simulated ═══`, category: 'era' });
+            addWorldGenEvent({ year: this.worldHistoryGen.currentYear, type: 'summary',
+              description: `${this.worldHistoryGen.civilizations.length} civilizations rose — ${this.worldHistoryGen.civilizations.filter(c=>c.isActive).length} survive`, category: 'civ' });
+            addWorldGenEvent({ year: this.worldHistoryGen.currentYear, type: 'summary',
+              description: `${this.worldHistoryGen.wars.length} wars, ${this.worldHistoryGen.artifacts.length} artifacts, ${this.worldHistoryGen.historicalFigures.length} legends`, category: 'misc' });
+            flushWorldGen('History woven');
+            setTimeout(() => runStep(3), 300);
           }
-          if (eraCatas.length > 0) {
-            log(`    ${eraCatas.length} catastrophe${eraCatas.length > 1 ? 's' : ''} struck`, COLORS.WHITE);
-          }
-        }
-        flush('Simulating history...');
+        };
+        streamBatch();
+        return 'async'; // Signal that this step manages its own continuation
       },
-      // Step 3: Show civilizations
+      // Step 3: Wire history into subsystems
       () => {
-        log('Recording civilizations...', COLORS.BRIGHT_CYAN);
-        const civs = this.worldHistoryGen.civilizations;
-        const active = civs.filter(c => c.isActive);
-        const fallen = civs.filter(c => !c.isActive);
-        log(`  ${civs.length} civilizations rose across the ages`, COLORS.WHITE);
-        for (const civ of active) {
-          const govLabel = civ.government ? ` [${civ.government}]` : '';
-          log(`  * ${civ.name}${govLabel} — pop. ${civ.population || '?'}, active`, COLORS.BRIGHT_GREEN);
-          if (civ.culturalValues && civ.culturalValues.length > 0) {
-            log(`      Values: ${civ.culturalValues.join(', ')}`, COLORS.BRIGHT_BLACK);
-          }
-        }
-        if (fallen.length > 0) {
-          log(`  ${fallen.length} civilization${fallen.length > 1 ? 's have' : ' has'} fallen to ruin`, COLORS.BRIGHT_BLACK);
-          for (const civ of fallen.slice(0, 3)) {
-            log(`    - ${civ.name} (collapsed)`, COLORS.BRIGHT_BLACK);
-          }
-          if (fallen.length > 3) {
-            log(`    ...and ${fallen.length - 3} more`, COLORS.BRIGHT_BLACK);
-          }
-        }
-        flush('Recording civilizations...');
-      },
-      // Step 4: Show notable figures & wars
-      () => {
-        log('Chronicling wars and legends...', COLORS.BRIGHT_CYAN);
-        const wars = this.worldHistoryGen.wars;
-        const figures = this.worldHistoryGen.historicalFigures;
-        const catast = this.worldHistoryGen.catastrophes;
-        log(`  ${wars.length} wars recorded in the archives`, COLORS.WHITE);
-        for (const war of wars.slice(0, 4)) {
-          log(`    ${war.name} (Year ${war.startYear})`, COLORS.WHITE);
-        }
-        if (wars.length > 4) {
-          log(`    ...and ${wars.length - 4} more conflicts`, COLORS.BRIGHT_BLACK);
-        }
-        log(`  ${figures.length} notable figures shaped history`, COLORS.WHITE);
-        const living = figures.filter(f => f.isAlive);
-        if (living.length > 0) {
-          log(`    ${living.length} still live to this day`, COLORS.BRIGHT_YELLOW);
-          for (const fig of living.slice(0, 3)) {
-            const title = fig.title ? `${fig.title} ` : '';
-            log(`    * ${title}${fig.name}`, COLORS.WHITE);
-          }
-        }
-        if (catast.length > 0) {
-          log(`  ${catast.length} catastrophe${catast.length > 1 ? 's' : ''} scarred the world`, COLORS.WHITE);
-          for (const cat of catast.slice(0, 3)) {
-            log(`    ${cat.name} (Year ${cat.year})`, COLORS.BRIGHT_BLACK);
-          }
-        }
-        // Wire world history into all subsystems
         this.loreGen.setWorldHistory(this.worldHistoryGen);
         this.dialogueSys.setWorldHistory(this.worldHistoryGen);
         this.npcGen.setWorldHistory(this.worldHistoryGen);
         this.eventSystem.setWorldHistory(this.worldHistoryGen);
-        flush('Chronicling legends...');
+
+        // Switch to standard loading display for terrain gen
+        log('History simulation complete.', COLORS.BRIGHT_CYAN);
+        log(`  ${this.worldHistoryGen.currentYear} years across ${this.worldHistoryGen.eras.length} eras`, COLORS.BRIGHT_YELLOW);
+        log(`  ${this.worldHistoryGen.civilizations.length} civilizations, ${this.worldHistoryGen.wars.length} wars`, COLORS.WHITE);
+        log(`  ${this.worldHistoryGen.artifacts.length} artifacts, ${this.worldHistoryGen.historicalFigures.length} notable figures`, COLORS.WHITE);
+        flush('Building world...');
       },
-      // Step 5: Show artifacts
-      () => {
-        log('Cataloging legendary artifacts...', COLORS.BRIGHT_CYAN);
-        const artifacts = this.worldHistoryGen.artifacts;
-        log(`  ${artifacts.length} legendary artifacts created throughout history`, COLORS.WHITE);
-        for (const art of artifacts.slice(0, 5)) {
-          const status = art.isLost ? '(LOST)' : '(known)';
-          log(`  * ${art.name} ${status}`, art.isLost ? COLORS.BRIGHT_YELLOW : COLORS.WHITE);
-          if (art.creator) {
-            log(`      Forged by ${art.creator}`, COLORS.BRIGHT_BLACK);
-          }
-        }
-        if (artifacts.length > 5) {
-          log(`  ...and ${artifacts.length - 5} more`, COLORS.BRIGHT_BLACK);
-        }
-        const lostCount = artifacts.filter(a => a.isLost).length;
-        if (lostCount > 0) {
-          log(`  ${lostCount} artifact${lostCount > 1 ? 's remain' : ' remains'} lost to the ages...`, COLORS.BRIGHT_YELLOW);
-        }
-        flush('Cataloging artifacts...');
-      },
-      // Step 6: Generate terrain and chunks
+      // Step 4: Generate terrain and chunks
       () => {
         log('Charting the lands...', COLORS.BRIGHT_CYAN);
         log('  Generating Perlin noise heightmap (scale: 0.04)', COLORS.WHITE);
         log('  Computing moisture overlay for biome distribution', COLORS.WHITE);
         log('  Chunk size: 32x32 tiles, infinite procedural world', COLORS.WHITE);
-        log('  Biomes: lakes, shallows, mires, badlands, grassland,', COLORS.WHITE);
-        log('          forests, deep forests, mountains, high peaks', COLORS.WHITE);
         flush('Charting terrain...');
       },
-      // Step 7: Create ChunkManager and generate initial chunks
+      // Step 5: Create ChunkManager and generate initial chunks
       () => {
         this.overworld = new ChunkManager(this.seed);
         this.overworld.ensureChunksAround(16, 16);
@@ -350,7 +336,6 @@ class Game {
         log(`  Initial chunks generated: ${this.overworld.chunks.size} regions`, COLORS.WHITE);
         log(`  Total tiles computed: ${this.overworld.chunks.size * 32 * 32}`, COLORS.BRIGHT_BLACK);
         log(`  ${loadedLocs.length} settlements and landmarks discovered`, COLORS.BRIGHT_YELLOW);
-        // Show each discovered location
         for (const loc of loadedLocs.slice(0, 8)) {
           const popLabel = loc.population > 0 ? ` (pop. ${loc.population})` : '';
           log(`    ${loc.type.toUpperCase()}: ${loc.name}${popLabel} at [${loc.x}, ${loc.y}]`, COLORS.WHITE);
@@ -358,10 +343,9 @@ class Game {
         if (loadedLocs.length > 8) {
           log(`    ...and ${loadedLocs.length - 8} more locations`, COLORS.BRIGHT_BLACK);
         }
-        log('  The world extends infinitely beyond the mapped lands', COLORS.WHITE);
         flush('Charting lands...');
       },
-      // Step 8: Populate locations — detailed breakdown
+      // Step 6: Populate locations
       () => {
         log('Surveying settlements and landmarks...', COLORS.BRIGHT_CYAN);
         const typeCounts = {};
@@ -381,7 +365,7 @@ class Game {
         }
         flush('Populating world...');
       },
-      // Step 9: Initialize faction system enriched with world history
+      // Step 7: Initialize faction system
       () => {
         log('Establishing faction allegiances...', COLORS.BRIGHT_CYAN);
         if (this.worldHistoryGen) {
@@ -391,62 +375,37 @@ class Game {
         for (const f of factions) {
           const extra = f.culturalValues ? ` (values: ${f.culturalValues.join(', ')})` : '';
           log(`  ${f.name}${extra}`, COLORS.WHITE);
-          if (f.description) {
-            log(`    ${f.description}`, COLORS.BRIGHT_BLACK);
-          }
-        }
-        if (this.worldHistory && this.worldHistory.civilizations) {
-          const active = this.worldHistory.civilizations.filter(c => c.isActive);
-          log(`  ${active.length} historical civilizations survive to the present day`, COLORS.BRIGHT_YELLOW);
-        }
-        // Show treaties if available
-        if (this.worldHistoryGen.treaties && this.worldHistoryGen.treaties.length > 0) {
-          log(`  ${this.worldHistoryGen.treaties.length} active treaties and alliances`, COLORS.WHITE);
         }
         flush('Initializing factions...');
       },
-      // Step 10: Generate world events
+      // Step 8: Generate world events
       () => {
         log('Weaving the threads of fate...', COLORS.BRIGHT_CYAN);
         this.eventSystem.generateWorldEvents(this.overworld);
         log('  Festivals, plagues, and monster incursions foretold', COLORS.WHITE);
         log('  Trade caravans and bandit raids scheduled', COLORS.WHITE);
-        log('  Seasonal weather patterns initialized', COLORS.WHITE);
         if (this.worldHistoryGen.culturalTraditions && this.worldHistoryGen.culturalTraditions.length > 0) {
           log(`  ${this.worldHistoryGen.culturalTraditions.length} cultural traditions persist`, COLORS.WHITE);
-          for (const trad of this.worldHistoryGen.culturalTraditions.slice(0, 3)) {
-            log(`    "${trad.name}" — ${trad.description || trad.type}`, COLORS.BRIGHT_BLACK);
-          }
         }
         flush('Weaving fate...');
       },
-      // Step 11: Generate lore
+      // Step 9: Generate lore
       () => {
         log('Recovering ancient lore...', COLORS.BRIGHT_CYAN);
         const factionNames = this.factionSystem.getAllFactionNames();
         const locationNames = this.overworld.getLoadedLocations().map(l => l.name);
         this.worldLore = this.loreGen.generateWorldHistory(this.rng, factionNames, locationNames);
         log(`  ${this.worldLore.length} historical records compiled`, COLORS.WHITE);
-        if (this.worldHistory) {
-          log(`  ${this.worldHistory.artifacts.length} legendary artifacts cataloged`, COLORS.WHITE);
-          log(`  ${this.worldHistory.religions.length} belief systems documented`, COLORS.WHITE);
-          log(`  ${this.worldHistory.wars.length} wars recorded in the archives`, COLORS.WHITE);
-          log(`  ${this.worldHistory.timeline.length} total historical events tracked`, COLORS.WHITE);
-          if (this.worldHistory.presentDay) {
-            log(`  Present day tensions: ${this.worldHistory.presentDay.tensions || 'stable'}`, COLORS.BRIGHT_BLACK);
-          }
-        }
         flush('Loading lore...');
       },
-      // Step 12: Initialize weather
+      // Step 10: Initialize weather
       () => {
         log('Reading the skies...', COLORS.BRIGHT_CYAN);
         log(`  Current weather: ${this.weatherSystem.current || 'clear'}`, COLORS.WHITE);
-        log('  Regional climate patterns established', COLORS.WHITE);
         log('  Day/night cycle active', COLORS.WHITE);
         flush('Reading skies...');
       },
-      // Step 13: Create player
+      // Step 11: Create player
       () => {
         const race = this.charGenState.race || 'human';
         const pClass = this.charGenState.playerClass || 'junk_collector';
@@ -454,15 +413,12 @@ class Game {
         this.player = new Player(name, race, pClass);
         log('Creating player character...', COLORS.BRIGHT_CYAN);
         log(`  Name: ${this.player.name}`, COLORS.BRIGHT_WHITE);
-        log(`  Race: ${race}`, COLORS.WHITE);
-        log(`  Class: ${pClass}`, COLORS.WHITE);
+        log(`  Race: ${race}  Class: ${pClass}`, COLORS.WHITE);
         log(`  HP: ${this.player.stats.maxHp}  MP: ${this.player.stats.maxMana}`, COLORS.WHITE);
         log(`  STR: ${this.player.stats.str}  DEX: ${this.player.stats.dex}  INT: ${this.player.stats.int}`, COLORS.WHITE);
-        if (this.player.stats.vit !== undefined) log(`  VIT: ${this.player.stats.vit}  LCK: ${this.player.stats.lck || 0}`, COLORS.WHITE);
-        log(`  Starting gold: ${this.player.gold || 0}`, COLORS.BRIGHT_BLACK);
         flush('Creating character...');
       },
-      // Step 14: Place player and enter world
+      // Step 12: Place player and enter world
       () => {
         const loadedLocs = this.overworld.getLoadedLocations();
         const startLoc = loadedLocs.find(l => l.type === 'village') || loadedLocs[0];
@@ -473,7 +429,6 @@ class Game {
           this.gameContext.currentLocationName = startLoc.name;
           this.gameContext.currentLocation = startLoc;
         } else {
-          // Fallback: place near chunk center
           this.player.position.x = 16;
           this.player.position.y = 16;
           this.player.knownLocations = new Set();
@@ -486,31 +441,17 @@ class Game {
         this.camera.targetX = this.camera.x;
         this.camera.targetY = this.camera.y;
 
-        log('Placing character in world...', COLORS.BRIGHT_CYAN);
-        if (startLoc) {
-          log(`  Starting location: ${startLoc.name} (${startLoc.type})`, COLORS.BRIGHT_WHITE);
-          log(`  Coordinates: [${startLoc.x}, ${startLoc.y}]`, COLORS.WHITE);
-          if (startLoc.population) {
-            log(`  Settlement population: ${startLoc.population}`, COLORS.WHITE);
-          }
-          log(`  Difficulty rating: ${startLoc.difficulty || 1}`, COLORS.BRIGHT_BLACK);
-        }
-        log(`  Camera initialized at [${this.camera.x}, ${this.camera.y}]`, COLORS.BRIGHT_BLACK);
-        log(`  Viewport: ${this.renderer.cols}x${this.renderer.rows} cells`, COLORS.BRIGHT_BLACK);
         log('', COLORS.BLACK);
-        log('==============================', COLORS.BRIGHT_YELLOW);
+        log('══════════════════════════════', COLORS.BRIGHT_YELLOW);
         log('  World generation complete!', COLORS.BRIGHT_YELLOW);
         log(`  ${this.overworld.chunks.size} regions mapped`, COLORS.WHITE);
-        log(`  ${this.worldHistoryGen.currentYear} years of history simulated`, COLORS.WHITE);
-        log(`  ${this.worldHistoryGen.civilizations.length} civilizations created`, COLORS.WHITE);
-        log(`  ${this.worldHistoryGen.historicalFigures.length} historical figures born`, COLORS.WHITE);
-        log(`  ${this.worldHistoryGen.artifacts.length} artifacts forged`, COLORS.WHITE);
-        log('==============================', COLORS.BRIGHT_YELLOW);
-        log('', COLORS.BLACK);
-        log('Entering game...', COLORS.BRIGHT_GREEN);
+        log(`  ${this.worldHistoryGen.currentYear} years of history`, COLORS.WHITE);
+        log(`  ${this.worldHistoryGen.civilizations.length} civilizations`, COLORS.WHITE);
+        log(`  ${this.worldHistoryGen.artifacts.length} artifacts`, COLORS.WHITE);
+        log('══════════════════════════════', COLORS.BRIGHT_YELLOW);
+        log('  Entering game...', COLORS.BRIGHT_GREEN);
         flush('Ready!');
 
-        // Short delay to let the user see "Ready!"
         setTimeout(() => {
           if (startLoc) {
             this.enterLocation(startLoc);
@@ -519,7 +460,7 @@ class Game {
           }
           this.ui.addMessage('Welcome to ASCIIQUEST!', COLORS.BRIGHT_YELLOW);
           this.ui.addMessage(`${this.player.name} the ${this.player.race} ${this.player.playerClass} sets forth.`, COLORS.BRIGHT_CYAN);
-          this.ui.addMessage('Press ? for help.', COLORS.BRIGHT_BLACK);
+          this.ui.addMessage('Press ? for help. Press J for quest compass.', COLORS.BRIGHT_BLACK);
         }, 400);
       },
     ];
@@ -527,7 +468,8 @@ class Game {
     // Run steps sequentially with delays between each for visual effect
     const runStep = (i) => {
       if (i >= steps.length) return;
-      steps[i]();
+      const result = steps[i]();
+      if (result === 'async') return; // Step manages its own continuation
       setTimeout(() => runStep(i + 1), 180);
     };
     setTimeout(() => runStep(0), 50);
@@ -771,6 +713,7 @@ class Game {
       case 'SETTINGS': return this.handleSettingsInput(key);
       case 'GAME_OVER': return this.handleGameOverInput(key);
       case 'COMBAT': return this.handleCombatInput(key);
+      case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
     }
   }
 
@@ -779,7 +722,7 @@ class Game {
     if (result === 'select') {
       switch (this.ui.selectedIndex) {
         case 0: // New Game
-          this.charGenState = { step: 'race', race: null, playerClass: null, name: '' };
+          this.charGenState = { step: 'race', race: null, playerClass: null, name: '', historyDepth: 'medium' };
           this.ui.resetSelection();
           this.setState('CHAR_CREATE');
           break;
@@ -806,7 +749,9 @@ class Game {
     if (step === 'name') {
       if (key === 'Enter' && this.charGenState.name.length > 0) {
         this.input.exitTextInputMode();
-        this.charGenState.step = 'confirm';
+        this.charGenState.step = 'history_depth';
+        this.ui.resetSelection();
+        this.ui.selectedIndex = 1; // Default to "Medium"
         return;
       }
       if (key === 'Backspace') {
@@ -830,6 +775,22 @@ class Game {
       return;
     }
 
+    if (step === 'history_depth') {
+      const depthOptions = ['short', 'medium', 'long', 'epic'];
+      const result = this.ui.handleMenuInput(key, depthOptions.length);
+      if (result === 'select') {
+        this.charGenState.historyDepth = depthOptions[this.ui.selectedIndex];
+        this.charGenState.step = 'confirm';
+        this.ui.resetSelection();
+      }
+      if (result === 'back') {
+        this.charGenState.step = 'name';
+        this.ui.resetSelection();
+        this.input.enterTextInputMode();
+      }
+      return;
+    }
+
     if (step === 'confirm') {
       if (key === 'Enter') {
         this.startNewGame();
@@ -837,7 +798,7 @@ class Game {
       }
       if (key === 'Escape') {
         this.input.exitTextInputMode();
-        this.charGenState = { step: 'race', race: null, playerClass: null, name: '' };
+        this.charGenState = { step: 'race', race: null, playerClass: null, name: '', historyDepth: 'medium' };
         this.ui.resetSelection();
         return;
       }
@@ -878,6 +839,7 @@ class Game {
     if (key === 'q' || key === 'Q') { this.setState('QUEST_LOG'); return; }
     if (key === 'm' || key === 'M') { this.setState('MAP'); return; }
     if (key === 'f' || key === 'F') { this.setState('FACTION'); return; }
+    if (key === 'j' || key === 'J') { this._openQuestCompass(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
@@ -942,6 +904,7 @@ class Game {
     if (key === 'q' || key === 'Q') { this.setState('QUEST_LOG'); return; }
     if (key === 'm' || key === 'M') { this.setState('MAP'); return; }
     if (key === 'f' || key === 'F') { this.setState('FACTION'); return; }
+    if (key === 'j' || key === 'J') { this._openQuestCompass(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
@@ -989,6 +952,7 @@ class Game {
     if (key === 'i' || key === 'I') { this.setState('INVENTORY'); return; }
     if (key === 'c' || key === 'C') { this.setState('CHARACTER'); return; }
     if (key === 'q' || key === 'Q') { this.setState('QUEST_LOG'); return; }
+    if (key === 'j' || key === 'J') { this._openQuestCompass(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
 
@@ -1803,6 +1767,79 @@ class Game {
     if (key === 'Escape') {
       this.setState(this.prevState || 'OVERWORLD');
     }
+  }
+
+  // ─── QUEST COMPASS ───
+
+  _openQuestCompass() {
+    const active = this.questSystem.getActiveQuests();
+    if (active.length === 0) {
+      this.ui.addMessage('No active quests. Accept a quest first.', COLORS.BRIGHT_BLACK);
+      return;
+    }
+    this._compassQuestIdx = 0;
+    this.setState('QUEST_COMPASS');
+  }
+
+  handleQuestCompassInput(key) {
+    const active = this.questSystem.getActiveQuests();
+    if (key === 'Escape') {
+      this.setState(this.prevState || 'OVERWORLD');
+      return;
+    }
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      this._compassQuestIdx = (this._compassQuestIdx - 1 + active.length) % active.length;
+      return;
+    }
+    if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      this._compassQuestIdx = (this._compassQuestIdx + 1) % active.length;
+      return;
+    }
+  }
+
+  _getQuestTargetCoords(quest) {
+    // Try to find the target location in loaded overworld locations
+    if (!this.overworld) return null;
+    const locations = this.overworld.getLoadedLocations();
+
+    // Check quest objectives for location references
+    for (const obj of (quest.objectives || [])) {
+      const desc = obj.description || '';
+      // Try to match location name from the quest
+      for (const loc of locations) {
+        if (desc.includes(loc.name) || (quest.title && quest.title.includes(loc.name)) ||
+            (quest.description && quest.description.includes(loc.name))) {
+          return { x: loc.x, y: loc.y };
+        }
+      }
+    }
+
+    // Also check quest description and title for any location mention
+    const fullText = `${quest.title || ''} ${quest.description || ''}`;
+    for (const loc of locations) {
+      if (fullText.includes(loc.name)) {
+        return { x: loc.x, y: loc.y };
+      }
+    }
+
+    // Fallback: pick a random nearby location as a hint
+    if (locations.length > 0) {
+      // Pick closest non-current location
+      const playerX = this.player.position.x;
+      const playerY = this.player.position.y;
+      let closest = null;
+      let closestDist = Infinity;
+      for (const loc of locations) {
+        const d = Math.abs(loc.x - playerX) + Math.abs(loc.y - playerY);
+        if (d > 5 && d < closestDist) { // Not the location we're standing on
+          closestDist = d;
+          closest = loc;
+        }
+      }
+      if (closest) return { x: closest.x, y: closest.y };
+    }
+
+    return null;
   }
 
   handleHelpInput(key) {
@@ -2689,7 +2726,11 @@ class Game {
         break;
 
       case 'LOADING':
-        this.ui.drawLoading('Generating world...');
+        if (this._worldGenEvents && this._worldGenEvents.length > 0) {
+          this.ui.drawWorldGen(this._worldGenEvents, this._worldGenStats || {}, this._worldGenEra, this._worldGenPhase);
+        } else {
+          this.ui.drawLoading('Generating world...');
+        }
         break;
 
       case 'OVERWORLD':
@@ -2749,6 +2790,16 @@ class Game {
         this.ui.drawFactionPanel(this.factionSystem);
         break;
 
+      case 'QUEST_COMPASS': {
+        const activeQuests = this.questSystem.getActiveQuests();
+        const idx = Math.min(this._compassQuestIdx || 0, activeQuests.length - 1);
+        const quest = activeQuests[idx] || null;
+        const playerPos = this.player ? { x: this.player.position.x, y: this.player.position.y } : { x: 0, y: 0 };
+        const targetPos = quest ? this._getQuestTargetCoords(quest) : null;
+        this.ui.drawQuestCompass(quest, playerPos, targetPos, activeQuests, idx, Date.now());
+        break;
+      }
+
       case 'COMBAT':
         this.renderCombat();
         break;
@@ -2762,9 +2813,11 @@ class Game {
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
     const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON'].includes(this.state);
+    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
       || hasTimeTint
+      || isAnimatedScreen
       || (this.renderer._flashAlpha && this.renderer._flashAlpha > 0);
     this.renderer.endFrame(needsFullRedraw);
     this.renderer.postProcess();

@@ -552,6 +552,7 @@ export class QuestSystem {
       difficulty,
       status: 'available',
       timeLimit,
+      targetLocationName: location,
       consequences: {
         success: rng.random(successConsequences),
         failure: rng.random(failureConsequences),
