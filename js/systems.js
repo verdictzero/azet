@@ -973,6 +973,100 @@ export class FactionSystem {
     const current = this.getPlayerStanding(factionId);
     this._playerStanding.set(factionId, Math.max(-100, Math.min(100, current + amount)));
   }
+
+  // Integrate world history civilizations as enriched faction data
+  enrichWithWorldHistory(worldHistory) {
+    if (!worldHistory) return;
+    this._worldHistory = worldHistory;
+
+    const civFactions = worldHistory.mapToGameFactions();
+
+    // Merge historical civilizations into game factions
+    for (const civData of civFactions) {
+      const existingIds = Array.from(this._factions.keys());
+      // Try to map to an existing faction or create a new enrichment entry
+      let matched = false;
+
+      for (const fId of existingIds) {
+        const faction = this._factions.get(fId);
+        // Simple name match
+        if (faction.name.toLowerCase().includes(civData.name.replace('The ', '').toLowerCase().split(/\s/)[0])) {
+          faction.history = civData;
+          faction.culturalValues = civData.values;
+          faction.traditions = civData.traditions;
+          faction.architectureStyle = civData.architectureStyle;
+          faction.government = civData.government;
+          faction.historicalPopulation = civData.population;
+          faction.militaryStrength = civData.militaryStrength;
+          faction.religion = civData.religion;
+          matched = true;
+          break;
+        }
+      }
+
+      // If no match, add the historical civ as extra lore data accessible via the system
+      if (!matched) {
+        const id = civData.civId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+        if (!this._factions.has(id)) {
+          this._initFaction(id, {
+            name: civData.name,
+            color: '#CCAA44',
+            isHistorical: true,
+            history: civData,
+            culturalValues: civData.values,
+            traditions: civData.traditions,
+            architectureStyle: civData.architectureStyle,
+            government: civData.government,
+            historicalPopulation: civData.population,
+            militaryStrength: civData.militaryStrength,
+            religion: civData.religion,
+          });
+          this._playerStanding.set(id, 0);
+        }
+      }
+    }
+
+    // Modify inter-faction relations based on historical wars/alliances
+    for (const civ of worldHistory.civilizations.filter(c => c.isActive)) {
+      const civKey = civ.id.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      for (const enemyId of civ.enemies) {
+        const enemyKey = enemyId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+        if (this._factions.has(civKey) && this._factions.has(enemyKey)) {
+          this._setDefaultRelation(civKey, enemyKey, -50);
+        }
+      }
+      for (const allyId of civ.allies) {
+        const allyKey = allyId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+        if (this._factions.has(civKey) && this._factions.has(allyKey)) {
+          this._setDefaultRelation(civKey, allyKey, 60);
+        }
+      }
+    }
+  }
+
+  // Get faction lore summary for UI display
+  getFactionLore(factionId) {
+    const faction = this._factions.get(factionId);
+    if (!faction) return null;
+
+    const lore = {
+      name: faction.name,
+      color: faction.color,
+      values: faction.culturalValues || [],
+      traditions: faction.traditions || [],
+      government: faction.government || null,
+      architectureStyle: faction.architectureStyle || null,
+      religion: faction.religion || null,
+      history: faction.history || null,
+    };
+
+    return lore;
+  }
+
+  // Get all faction names including historical ones
+  getAllFactionNames() {
+    return Array.from(this._factions.values()).map(f => f.name);
+  }
 }
 
 // ============================================================================
@@ -1377,7 +1471,69 @@ export class EventSystem {
     if (!templates || templates.length === 0) {
       return `An event of type ${event.type} has occurred.`;
     }
-    return this._rng.random(templates);
+    let desc = this._rng.random(templates);
+
+    // Enrich with world history context
+    if (this._worldHistory && event.data) {
+      desc = this._enrichEventDescription(desc, event);
+    }
+
+    return desc;
+  }
+
+  setWorldHistory(worldHistory) {
+    this._worldHistory = worldHistory;
+  }
+
+  _enrichEventDescription(desc, event) {
+    const wh = this._worldHistory;
+    if (!wh) return desc;
+
+    // Add historical context to the event description
+    switch (event.type) {
+      case 'HARVEST_FESTIVAL': {
+        const civs = wh.civilizations.filter(c => c.isActive);
+        if (civs.length > 0) {
+          const civ = this._rng.random(civs);
+          const tradition = civ.traditions.find(t => t.type === 'festival');
+          if (tradition) {
+            desc += ` The colonists also observe ${tradition.name} — ${tradition.description}`;
+          }
+        }
+        break;
+      }
+      case 'MONSTER_INCURSION': {
+        if (wh.catastrophes.length > 0) {
+          const cat = this._rng.random(wh.catastrophes);
+          desc += ` Elders mutter that this is reminiscent of ${cat.name} from Year ${cat.year}.`;
+        }
+        break;
+      }
+      case 'BANDIT_RAID': {
+        if (wh.wars.length > 0) {
+          const war = this._rng.random(wh.wars);
+          desc += ` The raiders are said to be remnants of forces from ${war.name}.`;
+        }
+        break;
+      }
+      case 'PLAGUE_OUTBREAK': {
+        const plagues = wh.catastrophes.filter(c => c.type === 'plague' || c.type === 'mutation_wave');
+        if (plagues.length > 0) {
+          const p = this._rng.random(plagues);
+          desc += ` Historians recall ${p.name} — this may be a resurgence.`;
+        }
+        break;
+      }
+      case 'TREASURE_MAP_FOUND': {
+        if (wh.artifacts.filter(a => a.isLost).length > 0) {
+          const art = this._rng.random(wh.artifacts.filter(a => a.isLost));
+          desc += ` Could this lead to the legendary ${art.name}? It ${art.power}...`;
+        }
+        break;
+      }
+    }
+
+    return desc;
   }
 }
 

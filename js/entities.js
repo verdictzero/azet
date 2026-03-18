@@ -332,6 +332,11 @@ const NPC_FACTIONS = [
 export class NPCGenerator {
   constructor() {
     this.nameGen = new NameGenerator();
+    this._worldHistory = null;
+  }
+
+  setWorldHistory(worldHistory) {
+    this._worldHistory = worldHistory;
   }
 
   generate(rng, role = 'farmer', race = 'human', locationContext = null) {
@@ -390,6 +395,59 @@ export class NPCGenerator {
       };
     }
 
+    // World history enrichment
+    let ancestry = null;
+    let culturalBackground = null;
+    let historicalKnowledge = [];
+    let personalBeliefs = null;
+
+    if (this._worldHistory) {
+      // Assign NPC to a historical civilization
+      const activeCivs = this._worldHistory.civilizations.filter(c => c.isActive);
+      if (activeCivs.length > 0) {
+        const civMatch = rng.random(activeCivs);
+        culturalBackground = {
+          civilizationId: civMatch.id,
+          civilizationName: civMatch.name,
+          values: civMatch.culturalValues,
+          architectureStyle: civMatch.architectureStyle,
+          traditions: civMatch.traditions.slice(0, 2),
+        };
+
+        // Ancestry: did an ancestor do something notable?
+        const civFigures = this._worldHistory.historicalFigures.filter(
+          f => f.civId === civMatch.id && !f.isAlive && f.deeds.length > 0
+        );
+        if (civFigures.length > 0 && rng.chance(0.25)) {
+          const ancestor = rng.random(civFigures);
+          ancestry = {
+            figureId: ancestor.id,
+            figureName: ancestor.fullName,
+            relation: rng.random(['ancestor', 'great-grandparent', 'distant kin', 'namesake']),
+            notableDeed: ancestor.deeds.length > 0 ? rng.random(ancestor.deeds).description : null,
+          };
+        }
+      }
+
+      // Personal beliefs from world religions
+      if (this._worldHistory.religions.length > 0 && rng.chance(0.6)) {
+        const rel = rng.random(this._worldHistory.religions);
+        personalBeliefs = {
+          religionId: rel.id,
+          religionName: rel.name,
+          tenet: rng.random(rel.tenets),
+          devotion: rng.random(['devout', 'casual', 'questioning', 'lapsed']),
+        };
+      }
+
+      // Historical knowledge — what this NPC can tell the player
+      const majorEvents = this._worldHistory.timeline.filter(e => e.importance === 'major');
+      if (majorEvents.length > 0) {
+        const known = rng.shuffle([...majorEvents]).slice(0, rng.nextInt(1, 4));
+        historicalKnowledge = known.map(e => e.description);
+      }
+    }
+
     return {
       id: nextId('npc'),
       name: { first: name.first, last: name.last, full: name.full },
@@ -415,6 +473,11 @@ export class NPCGenerator {
       shop,
       quests: [],
       dialogue: {},
+      // Deep world history data
+      ancestry,
+      culturalBackground,
+      historicalKnowledge,
+      personalBeliefs,
     };
   }
 }
@@ -514,6 +577,14 @@ const TOPIC_DIALOGUE = {
 };
 
 export class DialogueSystem {
+  constructor() {
+    this._worldHistory = null;
+  }
+
+  setWorldHistory(worldHistory) {
+    this._worldHistory = worldHistory;
+  }
+
   generateGreeting(npc, playerRep = 0) {
     let templates;
     let tone;
@@ -628,6 +699,66 @@ export class DialogueSystem {
       });
     }
 
+    // World history dialogue options (powered by deep history)
+    if (this._worldHistory && playerRep >= -10) {
+      const histCtx = this._worldHistory.getDialogueContext(npc, playerRep);
+
+      // History topic
+      options.push({
+        text: 'Tell me about the history of this world.',
+        action: 'worldHistory',
+        consequence: null,
+      });
+
+      // Artifact lore (if there are lost artifacts)
+      if (histCtx.additionalTopics) {
+        for (const topic of histCtx.additionalTopics.slice(0, 2)) {
+          options.push({
+            text: topic.text,
+            action: topic.action,
+            consequence: null,
+            _historyResponse: topic.response,
+          });
+        }
+      }
+
+      // Religion topic
+      if (playerRep >= 0) {
+        options.push({
+          text: 'What do people believe in around here?',
+          action: 'religionLore',
+          consequence: null,
+        });
+      }
+
+      // Great figures
+      if (playerRep >= 10 && npc.role === 'scholar') {
+        options.push({
+          text: 'Who were the great figures of history?',
+          action: 'figureLore',
+          consequence: null,
+        });
+      }
+
+      // Wars and catastrophes
+      if (playerRep >= 5) {
+        options.push({
+          text: 'What wars or disasters shaped this place?',
+          action: 'warLore',
+          consequence: null,
+        });
+      }
+
+      // Cultural traditions
+      if (playerRep >= 0) {
+        options.push({
+          text: 'What traditions do your people keep?',
+          action: 'traditionLore',
+          consequence: null,
+        });
+      }
+    }
+
     options.push({
       text: 'Goodbye.',
       action: 'exit',
@@ -667,6 +798,11 @@ export class DialogueSystem {
   }
 
   generateRumor(rng, worldContext = null) {
+    // Use world history for grounded rumors (50% chance if available)
+    if (this._worldHistory && rng.chance(0.5)) {
+      return this._worldHistory.generateHistoricalRumor(rng);
+    }
+
     let template = rng.random(RUMOR_TEMPLATES);
 
     const location = worldContext && worldContext.locations
@@ -849,9 +985,38 @@ const LORE_PLACES = [
 ];
 
 export class LoreGenerator {
+  constructor() {
+    this._worldHistory = null;
+  }
+
+  setWorldHistory(worldHistory) {
+    this._worldHistory = worldHistory;
+  }
+
   _fillTemplate(rng, template, factionNames, locationNames) {
     let text = template;
 
+    // If world history is available, pull names from actual history
+    if (this._worldHistory) {
+      const figures = this._worldHistory.historicalFigures || [];
+      const artifacts = this._worldHistory.artifacts || [];
+      const regions = this._worldHistory.regions || [];
+      const notableFig = figures.filter(f => f.deeds.length > 0);
+
+      if (notableFig.length > 0) {
+        const hero = rng.random(notableFig);
+        text = text.replace('{HERO}', hero.fullName);
+        text = text.replace('{SMITH}', hero.fullName);
+      }
+
+      if (regions.length > 0) {
+        text = text.replace('{REGION}', rng.random(regions).name);
+        text = text.replace('{MOUNTAIN}', rng.random(regions).name);
+        text = text.replace('{PLACE}', rng.random(regions).name);
+      }
+    }
+
+    // Fallback replacements for anything not yet substituted
     text = text.replace('{ENEMY}', rng.random(LORE_ENEMIES));
     text = text.replace('{YEARS}', String(rng.nextInt(50, 500)));
     text = text.replace('{REGION}', rng.random(LORE_REGIONS));
@@ -881,6 +1046,27 @@ export class LoreGenerator {
   }
 
   generateWorldHistory(rng, factionNames = [], locationNames = []) {
+    // If deep world history is available, build entries from actual timeline
+    if (this._worldHistory && this._worldHistory.eras && this._worldHistory.eras.length > 0) {
+      const entries = [];
+      for (const era of this._worldHistory.eras) {
+        entries.push({
+          era: era.index + 1,
+          text: era.summary,
+        });
+        // Add major events from this era
+        const majorEvents = (era.events || []).filter(e => e.importance === 'major');
+        for (const evt of majorEvents.slice(0, 3)) {
+          entries.push({
+            era: era.index + 1,
+            text: evt.description,
+          });
+        }
+      }
+      return entries;
+    }
+
+    // Fallback: template-based generation
     const count = rng.nextInt(5, 10);
     const shuffled = rng.shuffle(WORLD_HISTORY_TEMPLATES);
     const entries = [];
@@ -897,22 +1083,95 @@ export class LoreGenerator {
   }
 
   generateArtifactLore(rng, itemName = 'this artifact') {
+    // Use actual artifact history if available
+    if (this._worldHistory && this._worldHistory.artifacts.length > 0) {
+      const art = rng.random(this._worldHistory.artifacts);
+      return `${itemName}: ${art.description}`;
+    }
     const template = rng.random(ARTIFACT_TEMPLATES);
     const text = this._fillTemplate(rng, template, [], []);
     return `${itemName}: ${text}`;
   }
 
   generateLocationHistory(rng, locationName = 'this place', locationType = 'ruins') {
+    // Use actual location history if available
+    if (this._worldHistory) {
+      const locHist = this._worldHistory.getLocationHistory(locationName);
+      if (locHist.events.length > 0) {
+        const parts = [`${locationName}:`];
+        if (locHist.controllingCiv) {
+          parts.push(`Controlled by ${locHist.controllingCiv.name}.`);
+        }
+        if (locHist.region) {
+          parts.push(`Resources: ${locHist.region.resources}. Terrain: ${locHist.region.terrain}.`);
+        }
+        for (const evt of locHist.events.slice(0, 3)) {
+          parts.push(evt.description);
+        }
+        if (locHist.artifacts.length > 0) {
+          parts.push(`The legendary ${locHist.artifacts[0].name} was last seen here.`);
+        }
+        return parts.join(' ');
+      }
+    }
     const template = rng.random(LOCATION_TEMPLATES);
     const text = this._fillTemplate(rng, template, [], [locationName]);
     return `${locationName}: ${text}`;
   }
 
   generateNPCBackstory(rng, npc) {
+    const name = npc && npc.name ? npc.name.full : 'Unknown';
+
+    // Tie backstory to world history if available
+    if (this._worldHistory) {
+      const backstoryParts = [];
+      const template = rng.random(NPC_BACKSTORY_TEMPLATES);
+      backstoryParts.push(this._fillTemplate(rng, template, [], []));
+
+      // Reference a historical event the NPC or their ancestors witnessed
+      if (rng.chance(0.5) && this._worldHistory.catastrophes.length > 0) {
+        const cat = rng.random(this._worldHistory.catastrophes);
+        backstoryParts.push(`My grandparents survived ${cat.name}. They never spoke of it without trembling.`);
+      }
+
+      if (rng.chance(0.4) && this._worldHistory.wars.length > 0) {
+        const war = rng.random(this._worldHistory.wars);
+        backstoryParts.push(`The family lost everything during ${war.name}. We've been rebuilding ever since.`);
+      }
+
+      if (rng.chance(0.3) && this._worldHistory.civilizations.filter(c => c.isActive).length > 0) {
+        const civ = rng.random(this._worldHistory.civilizations.filter(c => c.isActive));
+        backstoryParts.push(`I was raised under ${civ.name}'s traditions. We value ${civ.culturalValues[0] || 'survival'} above all.`);
+      }
+
+      if (rng.chance(0.2) && this._worldHistory.religions.length > 0) {
+        const rel = rng.random(this._worldHistory.religions);
+        backstoryParts.push(`I follow ${rel.name}. "${rng.random(rel.tenets)}" — those words guide me.`);
+      }
+
+      return `${name}: "${backstoryParts.join(' ')}"`;
+    }
+
     const template = rng.random(NPC_BACKSTORY_TEMPLATES);
     const text = this._fillTemplate(rng, template, [], []);
-    const name = npc && npc.name ? npc.name.full : 'Unknown';
     return `${name}: "${text}"`;
+  }
+
+  // Generate a rumor grounded in actual world history
+  generateHistoricalRumor(rng) {
+    if (this._worldHistory) {
+      return this._worldHistory.generateHistoricalRumor(rng);
+    }
+    // Fallback to template rumor
+    return rng.random(RUMOR_TEMPLATES).replace('{LOCATION}', 'the old ruins').replace('{NPC_NAME}', 'Old Kael').replace('{PROFESSION}', 'scavenger');
+  }
+
+  // Generate a lore snippet on a specific topic from world history
+  generateLoreSnippet(rng, topic = 'general') {
+    if (this._worldHistory) {
+      return this._worldHistory.generateLoreSnippet(rng, topic);
+    }
+    return this._fillTemplate(rng, rng.random(WORLD_HISTORY_TEMPLATES), [], []);
   }
 }
 
