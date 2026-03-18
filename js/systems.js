@@ -1080,6 +1080,39 @@ export class TimeSystem {
     this.day = 1;
     this.year = 1;
     this.onDayChange = null;
+    // Real-time advancement: 1 game minute = 2 real seconds
+    // => 1 game hour = 120 real seconds = 120000 ms
+    this._hoursPerMs = 1 / 120000;
+    this._lastRealTime = null;
+    this._paused = false;
+  }
+
+  // Start real-time clock (call once when gameplay begins)
+  startRealTime() {
+    this._lastRealTime = performance.now();
+  }
+
+  // Pause/unpause real-time advancement (e.g. during menus)
+  setRealTimePaused(paused) {
+    if (!paused && this._paused) {
+      // Reset timestamp so we don't accumulate time spent paused
+      this._lastRealTime = performance.now();
+    }
+    this._paused = paused;
+  }
+
+  // Call each frame with current timestamp to advance time continuously
+  updateRealTime(now) {
+    if (this._paused) return;
+    if (this._lastRealTime === null) {
+      this._lastRealTime = now;
+      return;
+    }
+    const elapsed = now - this._lastRealTime;
+    this._lastRealTime = now;
+    if (elapsed > 0 && elapsed < 5000) { // cap at 5s to avoid jumps on tab-away
+      this.advance(elapsed * this._hoursPerMs);
+    }
   }
 
   advance(hours) {
