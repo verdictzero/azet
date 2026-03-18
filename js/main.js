@@ -3289,6 +3289,16 @@ class Game {
     const delta = timestamp - this.lastFrame;
     this.lastFrame = timestamp;
 
+    // Advance real-time clock during gameplay states
+    const gameplayStates = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'DIALOGUE', 'SHOP', 'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'COMBAT', 'QUEST_COMPASS'];
+    const isGameplay = gameplayStates.includes(this.state);
+    if (this.timeSystem) {
+      this.timeSystem.setRealTimePaused(!isGameplay);
+      if (isGameplay) {
+        this.timeSystem.updateRealTime(timestamp);
+      }
+    }
+
     // Update transitions
     this.updateTransition();
 
