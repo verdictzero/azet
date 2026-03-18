@@ -344,8 +344,8 @@ export class UIManager {
 
     const step = charGenState.step;
     // Step indicator at top
-    const steps = ['Race', 'Class', 'Name', 'Confirm'];
-    const stepIdx = step === 'race' ? 0 : step === 'class' ? 1 : step === 'name' ? 2 : 3;
+    const steps = ['Race', 'Class', 'Name', 'History', 'Confirm'];
+    const stepIdx = step === 'race' ? 0 : step === 'class' ? 1 : step === 'name' ? 2 : step === 'history_depth' ? 3 : 4;
     let stx = px + 2;
     for (let i = 0; i < steps.length; i++) {
       const active = i === stepIdx;
@@ -394,12 +394,37 @@ export class UIManager {
       r.drawString(px + 4, py + 7, nameBox, COLORS.BRIGHT_WHITE, bg, panelW - 6);
       r.drawString(px + 4, py + 9, 'Type your name, press Enter', COLORS.BRIGHT_BLACK, bg, panelW - 6);
       r.drawString(px + 4, py + 10, 'Press R for a random name', COLORS.BRIGHT_BLACK, bg, panelW - 6);
+    } else if (step === 'history_depth') {
+      r.drawString(px + 2, py + 5, 'How deep should the world\'s history be?', COLORS.BRIGHT_CYAN, bg);
+      const depths = ['Short', 'Medium', 'Long', 'Epic'];
+      const descs = [
+        'A young colony, barely settled (~200 years)',
+        'Generations of growth and conflict (~500 years)',
+        'Deep roots, ancient grudges (~1000 years)',
+        'Eons of rise and ruin (~2000+ years)',
+      ];
+      const flavors = [
+        'Quick start. Fewer factions and events.',
+        'Balanced depth. Wars, plagues, and legends.',
+        'Rich tapestry. Tech rises and falls, schisms tear nations apart.',
+        'Maximum depth. Countless civilizations, invasions, and cataclysms.',
+      ];
+      for (let i = 0; i < depths.length; i++) {
+        const sel = i === this.selectedIndex;
+        const cursor = sel ? ICONS.cursor : ' ';
+        r.drawString(px + 3, py + 7 + i * 4, cursor + ' ' + depths[i],
+          sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg, panelW - 4);
+        r.drawString(px + 7, py + 8 + i * 4, descs[i], COLORS.BRIGHT_BLACK, bg, panelW - 8);
+        r.drawString(px + 7, py + 9 + i * 4, flavors[i], COLORS.BRIGHT_BLACK, bg, panelW - 8);
+      }
     } else if (step === 'confirm') {
       r.drawString(px + 2, py + 5, 'Your adventurer:', COLORS.BRIGHT_CYAN, bg);
       r.drawString(px + 4, py + 7, `Name   ${charGenState.name}`, COLORS.BRIGHT_WHITE, bg, panelW - 6);
       r.drawString(px + 4, py + 8, `Origin ${charGenState.race}`, COLORS.BRIGHT_WHITE, bg, panelW - 6);
       r.drawString(px + 4, py + 9, `Job    ${charGenState.playerClass}`, COLORS.BRIGHT_WHITE, bg, panelW - 6);
-      r.drawString(px + 4, py + 12, 'Enter: Begin    Esc: Start Over', COLORS.BRIGHT_YELLOW, bg, panelW - 6);
+      const depthLabel = charGenState.historyDepth || 'medium';
+      r.drawString(px + 4, py + 10, `World  ${depthLabel.charAt(0).toUpperCase() + depthLabel.slice(1)} history`, COLORS.BRIGHT_WHITE, bg, panelW - 6);
+      r.drawString(px + 4, py + 13, 'Enter: Begin    Esc: Start Over', COLORS.BRIGHT_YELLOW, bg, panelW - 6);
     }
   }
 
@@ -1111,6 +1136,7 @@ export class UIManager {
         { t: 'I                    Open inventory' },
         { t: 'C                    Character sheet & stats' },
         { t: 'Q                    Quest log' },
+        { t: 'J                    Quest compass / guidance' },
         { t: 'M                    World map (explored areas)' },
         { t: 'F                    Faction standings' },
         { t: 'O                    Settings' },
@@ -1368,6 +1394,285 @@ export class UIManager {
     const optStr = options || 'Yes / No';
     r.drawString(px + Math.floor((panelW - optStr.length) / 2), py + panelH - 2,
       optStr, COLORS.BRIGHT_WHITE, bg);
+  }
+
+  // ─── WORLD GEN VERBOSE DISPLAY ───
+
+  drawWorldGen(events, stats, currentEra, phase) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.BLACK;
+    r.clear();
+
+    const t = Date.now();
+
+    // ─ Top bar: Title + current era ─
+    r.drawString(1, 0, '╔' + '═'.repeat(cols - 2) + '╗', COLORS.FF_BORDER, bg);
+    const title = ' WORLD GENESIS ';
+    r.drawString(Math.floor((cols - title.length) / 2), 0, title, COLORS.BRIGHT_YELLOW, bg);
+    r.drawString(1, 1, '║', COLORS.FF_BORDER, bg);
+    r.drawString(cols - 1, 1, '║', COLORS.FF_BORDER, bg);
+
+    if (currentEra) {
+      const eraText = currentEra;
+      r.drawString(3, 1, eraText, COLORS.BRIGHT_CYAN, bg, cols - 6);
+    } else if (phase) {
+      r.drawString(3, 1, phase, COLORS.BRIGHT_CYAN, bg, cols - 6);
+    }
+
+    r.drawString(1, 2, '╠' + '═'.repeat(cols - 2) + '╣', COLORS.FF_BORDER, bg);
+
+    // ─ Layout: left = events timeline, right = stats sidebar ─
+    const sidebarW = Math.min(28, Math.floor(cols * 0.3));
+    const timelineW = cols - sidebarW - 4;
+    const contentTop = 3;
+    const contentBottom = rows - 2;
+    const contentH = contentBottom - contentTop;
+
+    // Category → color mapping
+    const catColor = (cat) => {
+      switch (cat) {
+        case 'war': return COLORS.BRIGHT_RED;
+        case 'catastrophe': return COLORS.BRIGHT_YELLOW;
+        case 'figure': return COLORS.BRIGHT_CYAN;
+        case 'artifact': return COLORS.BRIGHT_MAGENTA;
+        case 'treaty': return COLORS.BRIGHT_GREEN;
+        case 'religion': return COLORS.WHITE;
+        case 'civ': return COLORS.BRIGHT_WHITE;
+        case 'tech': return COLORS.BRIGHT_BLUE;
+        case 'era': return COLORS.BRIGHT_YELLOW;
+        case 'territory': return COLORS.GREEN;
+        default: return COLORS.BRIGHT_BLACK;
+      }
+    };
+
+    // ─ Events timeline (left panel) ─
+    const maxVisible = contentH;
+    const startIdx = Math.max(0, events.length - maxVisible);
+    for (let i = startIdx; i < events.length; i++) {
+      const ev = events[i];
+      const y = contentTop + (i - startIdx);
+      if (y >= contentBottom) break;
+
+      // Year column
+      const yearStr = ev.year !== undefined ? String(ev.year).padStart(5, ' ') : '     ';
+      r.drawString(2, y, yearStr, COLORS.BRIGHT_BLACK, bg);
+      r.drawString(7, y, '│', COLORS.FF_BORDER, bg);
+
+      // Event text with category color
+      const maxTextW = timelineW - 8;
+      const text = ev.description.substring(0, maxTextW);
+      const color = catColor(ev.category);
+      // Fade older events
+      const age = events.length - i;
+      const finalColor = age <= 1 ? color : (age <= 3 ? color : COLORS.BRIGHT_BLACK);
+      r.drawString(9, y, text, finalColor, bg, maxTextW);
+    }
+
+    // ─ Sidebar separator ─
+    const sideX = cols - sidebarW - 1;
+    for (let y = contentTop; y < contentBottom; y++) {
+      r.drawString(sideX, y, '│', COLORS.FF_BORDER, bg);
+    }
+
+    // ─ Stats sidebar (right panel) ─
+    const sx = sideX + 2;
+    let sy = contentTop;
+    const statLine = (label, value, color = COLORS.BRIGHT_WHITE) => {
+      if (sy < contentBottom) {
+        r.drawString(sx, sy, label, COLORS.BRIGHT_BLACK, bg, sidebarW - 3);
+        r.drawString(sx, sy + 1, String(value), color, bg, sidebarW - 3);
+        sy += 3;
+      }
+    };
+
+    // Animated year counter
+    const yearDisplay = stats.currentYear || 0;
+    r.drawString(sx, sy, 'YEAR', COLORS.BRIGHT_BLACK, bg);
+    sy++;
+    r.drawString(sx, sy, String(yearDisplay), COLORS.BRIGHT_YELLOW, bg, sidebarW - 3);
+    sy += 2;
+
+    r.drawString(sx, sy, '─'.repeat(sidebarW - 3), COLORS.FF_BORDER, bg); sy++;
+
+    statLine('Civilizations', `${stats.activeCivs || 0} alive / ${stats.fallenCivs || 0} fallen`, COLORS.BRIGHT_GREEN);
+    statLine('Wars', String(stats.wars || 0), COLORS.BRIGHT_RED);
+    statLine('Figures', String(stats.figures || 0), COLORS.BRIGHT_CYAN);
+    statLine('Artifacts', String(stats.artifacts || 0), COLORS.BRIGHT_MAGENTA);
+    statLine('Catastrophes', String(stats.catastrophes || 0), COLORS.BRIGHT_YELLOW);
+    statLine('Treaties', String(stats.treaties || 0), COLORS.BRIGHT_GREEN);
+
+    if (stats.totalPop > 0) {
+      statLine('Population', stats.totalPop.toLocaleString(), COLORS.BRIGHT_WHITE);
+    }
+
+    // ─ Bottom bar ─
+    r.drawString(1, rows - 1, '╚' + '═'.repeat(cols - 2) + '╝', COLORS.FF_BORDER, bg);
+
+    // Animated loading dots
+    const dots = '.'.repeat(Math.floor(t / 400) % 4);
+    const phaseText = phase || 'Generating';
+    r.drawString(3, rows - 1, ` ${phaseText}${dots} `, COLORS.BRIGHT_CYAN, bg);
+  }
+
+  // ─── QUEST COMPASS / GUIDANCE SCREEN ───
+
+  drawQuestCompass(quest, playerPos, targetPos, activeQuests, selectedQuestIdx, time) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.FF_BLUE_DARK;
+    r.clear();
+
+    const panelW = Math.min(cols - 2, 70);
+    const panelH = Math.min(rows - 2, 35);
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.floor((rows - panelH) / 2);
+
+    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Quest Compass ');
+
+    if (!quest || !targetPos) {
+      r.drawString(px + 4, py + 4, 'No active quest with a known location.', COLORS.BRIGHT_BLACK, bg);
+      r.drawString(px + 2, py + panelH - 1, 'Esc:Close', COLORS.BRIGHT_BLACK, bg);
+      return;
+    }
+
+    // ─ Quest info header ─
+    let y = py + 2;
+    r.drawString(px + 2, y, quest.title, COLORS.BRIGHT_WHITE, bg, panelW - 4); y++;
+    if (quest.objectives && quest.objectives.length > 0) {
+      const obj = quest.objectives[0];
+      r.drawString(px + 4, y, obj.description.substring(0, panelW - 8), COLORS.BRIGHT_BLACK, bg); y++;
+    }
+
+    // ─ Direction calculation ─
+    const dx = targetPos.x - playerPos.x;
+    const dy = targetPos.y - playerPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx); // radians, 0=east, PI/2=south
+
+    y++;
+    r.drawString(px + 1, y, '─'.repeat(panelW - 2), COLORS.FF_BORDER, bg); y++;
+
+    // ─ Distance display ─
+    const distText = dist < 10 ? 'Very Close' : dist < 30 ? 'Nearby' : dist < 80 ? 'Moderate Distance' : dist < 200 ? 'Far Away' : 'Very Distant';
+    r.drawString(px + 2, y, `Distance: ${Math.round(dist)} tiles (${distText})`, COLORS.BRIGHT_YELLOW, bg); y++;
+    y++;
+
+    // ─ Animated compass ─
+    const compassSize = 13;
+    const compassCX = px + Math.floor(panelW / 2);
+    const compassCY = y + Math.floor(compassSize / 2);
+
+    // Floating offset (pseudo-3D bob)
+    const bobOffset = Math.sin(time / 800) * 0.8;
+    const floatY = Math.round(bobOffset);
+
+    // Compass ring using gradient characters for pseudo-3D
+    const ringRadius = 5;
+    const ringChars = ['░', '▒', '▓', '█', '▓', '▒', '░'];
+
+    // Draw outer ring
+    for (let a = 0; a < 32; a++) {
+      const ra = (a / 32) * Math.PI * 2 - Math.PI / 2;
+      const rx = Math.round(Math.cos(ra) * ringRadius);
+      const ry = Math.round(Math.sin(ra) * (ringRadius * 0.6)); // squash for perspective
+      const depthIdx = Math.floor(((Math.sin(ra) + 1) / 2) * (ringChars.length - 1));
+      const ch = ringChars[depthIdx];
+      const cCol = compassCX + rx;
+      const cRow = compassCY + ry + floatY;
+      if (cCol > px && cCol < px + panelW - 1 && cRow > py && cRow < py + panelH - 2) {
+        // Pulse color
+        const pulse = Math.sin(time / 300 + a * 0.2) * 0.5 + 0.5;
+        const ringColor = pulse > 0.6 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
+        r.drawChar(cCol, cRow, ch, ringColor, bg);
+      }
+    }
+
+    // Cardinal direction labels
+    const cardinals = [
+      { label: 'N', angle: -Math.PI / 2, offX: 0, offY: -ringRadius - 1 },
+      { label: 'S', angle: Math.PI / 2, offX: 0, offY: Math.round(ringRadius * 0.6) + 1 },
+      { label: 'E', angle: 0, offX: ringRadius + 2, offY: 0 },
+      { label: 'W', angle: Math.PI, offX: -ringRadius - 2, offY: 0 },
+    ];
+    for (const c of cardinals) {
+      const lx = compassCX + c.offX;
+      const ly = compassCY + c.offY + floatY;
+      if (lx > px && lx < px + panelW - 1 && ly > py && ly < py + panelH - 2) {
+        r.drawChar(lx, ly, c.label, COLORS.BRIGHT_WHITE, bg);
+      }
+    }
+
+    // Center jewel
+    const jewelChars = ['◆', '◇', '◆', '◈'];
+    const jewel = jewelChars[Math.floor(time / 500) % jewelChars.length];
+    r.drawChar(compassCX, compassCY + floatY, jewel, COLORS.BRIGHT_CYAN, bg);
+
+    // ─ Needle pointing toward target ─
+    // Gentle oscillation on the needle
+    const needleAngle = angle + Math.sin(time / 600) * 0.05;
+    const needleLen = ringRadius - 1;
+
+    // Arrow head characters based on direction
+    const arrowHeads = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+    const headIdx = Math.round(((needleAngle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+    // Remap: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE
+    const arrowHead = arrowHeads[headIdx];
+
+    // Draw needle line from center outward
+    const steps = needleLen;
+    for (let s = 1; s <= steps; s++) {
+      const frac = s / steps;
+      const nx = Math.round(Math.cos(needleAngle) * s);
+      const ny = Math.round(Math.sin(needleAngle) * (s * 0.6)); // perspective squash
+      const ncx = compassCX + nx;
+      const ncy = compassCY + ny + floatY;
+      if (ncx > px && ncx < px + panelW - 1 && ncy > py && ncy < py + panelH - 2) {
+        // Needle color pulses
+        const nPulse = Math.sin(time / 200 + frac * 3) * 0.5 + 0.5;
+        const needleColor = nPulse > 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.YELLOW;
+        const ch = s === steps ? arrowHead : (Math.abs(nx) > Math.abs(ny) ? '─' : '│');
+        r.drawChar(ncx, ncy, ch, needleColor, bg);
+      }
+    }
+
+    // ─ Floating star particles for space effect ─
+    for (let i = 0; i < 12; i++) {
+      const starPhase = (time / 1000 + i * 1.7) % 3;
+      if (starPhase < 0.3) {
+        const sx = px + 3 + Math.floor(Math.abs(Math.sin(i * 7.3)) * (panelW - 6));
+        const sy2 = py + 3 + Math.floor(Math.abs(Math.cos(i * 5.1)) * (panelH - 8));
+        if (sx > px && sx < px + panelW - 1 && sy2 > py && sy2 < py + panelH - 2) {
+          const starChar = Math.floor(time / 300 + i) % 2 === 0 ? '·' : '∙';
+          r.drawChar(sx, sy2, starChar, COLORS.BRIGHT_BLACK, bg);
+        }
+      }
+    }
+
+    // ─ Direction text below compass ─
+    const dirY = compassCY + Math.round(ringRadius * 0.6) + 3 + floatY;
+    const dirNames = ['East', 'South-East', 'South', 'South-West', 'West', 'North-West', 'North', 'North-East'];
+    const dirName = dirNames[headIdx];
+    if (dirY < py + panelH - 3) {
+      const dirText = `Heading: ${dirName}`;
+      r.drawString(px + Math.floor((panelW - dirText.length) / 2), dirY, dirText, COLORS.BRIGHT_WHITE, bg);
+    }
+
+    // ─ Quest list at bottom (cycle with Up/Down) ─
+    const listY = py + panelH - 4;
+    if (activeQuests && activeQuests.length > 1) {
+      r.drawString(px + 1, listY - 1, '─'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+      r.drawString(px + 2, listY, `Quest ${selectedQuestIdx + 1}/${activeQuests.length} (↑↓ to cycle)`,
+        COLORS.BRIGHT_BLACK, bg, panelW - 4);
+    }
+
+    // ─ Controls ─
+    r.drawString(px + 2, py + panelH - 1, 'Esc:Close', COLORS.BRIGHT_BLACK, bg);
+    if (activeQuests && activeQuests.length > 1) {
+      r.drawString(px + panelW - 16, py + panelH - 1, '↑↓:Switch Quest', COLORS.BRIGHT_BLACK, bg);
+    }
   }
 
   // ─── LOADING SCREEN (FF-style) ───
