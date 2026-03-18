@@ -75,6 +75,9 @@ class Game {
       showLightMap: false,
       disableShadows: false,
       disableLighting: false,
+      noEncounters: false,
+      infiniteAttack: false,
+      infiniteMana: false,
     };
     this._debugPanel = null;
     this._debugVisible = false;
@@ -1626,8 +1629,8 @@ class Game {
       const abilityIdx = parseInt(action.split('_')[1]);
       if (abilityIdx >= 0 && abilityIdx < (this.player.abilities?.length || 0)) {
         const ability = this.player.abilities[abilityIdx];
-        if (this.player.stats.mana >= ability.manaCost) {
-          this.player.stats.mana -= ability.manaCost;
+        if (this.debug.infiniteMana || this.player.stats.mana >= ability.manaCost) {
+          if (!this.debug.infiniteMana) this.player.stats.mana -= ability.manaCost;
           const enemy = this.combatState.enemy;
 
           if (ability.type === 'heal') {
@@ -1960,7 +1963,7 @@ class Game {
     if (isNight) {
       nightBonus = lightInfo.hasLight ? 1.3 : 2.0;
     }
-    if (this.rng.chance(baseEncounterRate * nightBonus)) {
+    if (!this.debug.noEncounters && this.rng.chance(baseEncounterRate * nightBonus)) {
       const tileBiome = tile.biome || 'forest';
       const enemy = this.creatureGen.generate(this.rng, tileBiome, 1, this.player.stats.level);
       enemy.position = { x: nx, y: ny };
@@ -3346,6 +3349,9 @@ class Game {
       <div class="debug-section">
         <div class="debug-title">PLAYER</div>
         <label><input type="checkbox" id="dbg-invincible"> Invincible</label>
+        <label><input type="checkbox" id="dbg-no-encounters"> No Encounters</label>
+        <label><input type="checkbox" id="dbg-infinite-attack"> Infinite Attack</label>
+        <label><input type="checkbox" id="dbg-infinite-mana"> Infinite Mana</label>
         <button id="dbg-full-heal">Full Heal</button>
         <button id="dbg-give-xp">+100 XP</button>
         <button id="dbg-give-gold">+100 Gold</button>
@@ -3357,6 +3363,17 @@ class Game {
         <button id="dbg-give-lantern">Give Lantern</button>
         <button id="dbg-give-weapon">Give Weapon</button>
         <button id="dbg-give-potion">Give Potion</button>
+        <button id="dbg-give-scroll">Give Scroll</button>
+        <button id="dbg-give-food">Give Food</button>
+        <button id="dbg-give-helmet">Give Helmet</button>
+        <button id="dbg-give-chest">Give Chestplate</button>
+        <button id="dbg-give-gloves">Give Gloves</button>
+        <button id="dbg-give-legs">Give Leggings</button>
+        <button id="dbg-give-boots">Give Boots</button>
+        <button id="dbg-give-shield">Give Shield</button>
+        <button id="dbg-give-ring">Give Ring</button>
+        <button id="dbg-give-amulet">Give Amulet</button>
+        <button id="dbg-give-artifact">Give Artifact</button>
         <button id="dbg-clear-inv">Clear Inventory</button>
       </div>
       <div class="debug-section">
@@ -3411,6 +3428,16 @@ class Game {
     panel.querySelector('#dbg-invincible').addEventListener('change', (e) => {
       this.debug.invincible = e.target.checked;
     });
+    panel.querySelector('#dbg-no-encounters').addEventListener('change', (e) => {
+      this.debug.noEncounters = e.target.checked;
+    });
+    panel.querySelector('#dbg-infinite-attack').addEventListener('change', (e) => {
+      this.debug.infiniteAttack = e.target.checked;
+      if (this.player) this.player._debugInfiniteAttack = e.target.checked;
+    });
+    panel.querySelector('#dbg-infinite-mana').addEventListener('change', (e) => {
+      this.debug.infiniteMana = e.target.checked;
+    });
     panel.querySelector('#dbg-full-heal').addEventListener('click', () => {
       if (this.player) {
         this.player.stats.hp = this.player.stats.maxHp;
@@ -3445,6 +3472,42 @@ class Game {
     });
     panel.querySelector('#dbg-give-potion').addEventListener('click', () => {
       if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'potion', 'uncommon'));
+    });
+    panel.querySelector('#dbg-give-scroll').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'scroll', 'rare', 5));
+    });
+    panel.querySelector('#dbg-give-food').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'food', 'common'));
+    });
+    // Armor helpers — generate armor then override subtype to the desired piece
+    const ARMOR_SUBTYPES = {
+      helmet: { char: '^', name: 'Helmet' }, chestplate: { char: '[', name: 'Chestplate' },
+      gloves: { char: '{', name: 'Gloves' }, leggings: { char: '=', name: 'Leggings' },
+      boots: { char: '_', name: 'Boots' }, shield: { char: ']', name: 'Shield' },
+    };
+    const giveArmor = (subtypeKey) => {
+      if (!this.player) return;
+      const item = this.itemGen.generate(this.rng, 'armor', 'rare', 5);
+      const st = ARMOR_SUBTYPES[subtypeKey];
+      item.name = item.name.replace(/Helmet|Chestplate|Gloves|Leggings|Boots|Shield/, st.name);
+      item.subtype = subtypeKey;
+      item.char = st.char;
+      this.player.addItem(item);
+    };
+    panel.querySelector('#dbg-give-helmet').addEventListener('click', () => giveArmor('helmet'));
+    panel.querySelector('#dbg-give-chest').addEventListener('click', () => giveArmor('chestplate'));
+    panel.querySelector('#dbg-give-gloves').addEventListener('click', () => giveArmor('gloves'));
+    panel.querySelector('#dbg-give-legs').addEventListener('click', () => giveArmor('leggings'));
+    panel.querySelector('#dbg-give-boots').addEventListener('click', () => giveArmor('boots'));
+    panel.querySelector('#dbg-give-shield').addEventListener('click', () => giveArmor('shield'));
+    panel.querySelector('#dbg-give-ring').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'ring', 'rare', 5));
+    });
+    panel.querySelector('#dbg-give-amulet').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'amulet', 'rare', 5));
+    });
+    panel.querySelector('#dbg-give-artifact').addEventListener('click', () => {
+      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'artifact', 'rare', 5));
     });
     panel.querySelector('#dbg-clear-inv').addEventListener('click', () => {
       if (this.player) this.player.inventory = [];
@@ -3507,6 +3570,9 @@ class Game {
       lines.push(`Light: ${p.hasLightSource().hasLight ? p.hasLightSource().type : 'none'}`);
     }
     lines.push(`Invincible: ${this.debug.invincible}`);
+    lines.push(`No Encounters: ${this.debug.noEncounters}`);
+    lines.push(`Inf Attack: ${this.debug.infiniteAttack}`);
+    lines.push(`Inf Mana: ${this.debug.infiniteMana}`);
     info.textContent = lines.join('\n');
   }
 }
