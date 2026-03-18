@@ -1079,20 +1079,24 @@ export class InputManager {
       { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
       { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
       { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
+      { label: 'DBG', key: '`', debug: true },
     ]},
     LOCATION:    { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
       { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
       { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
       { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
+      { label: 'DBG', key: '`', debug: true },
     ]},
     DUNGEON:     { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
       { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
       { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
       { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
+      { label: 'DBG', key: '`', debug: true },
     ]},
     COMBAT:      { dpad: ['up', 'down'], actions: [
       { label: 'ATK', key: 'Enter', primary: true }, { label: 'FLEE', key: 'f' },
       { label: 'INV', key: 'i' }, { label: 'ESC', key: 'Escape' },
+      { label: 'DBG', key: '`', debug: true },
     ]},
     DIALOGUE:    { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
     SHOP:        { dpad: ['up', 'down'], actions: [{ label: 'BUY', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
@@ -1127,7 +1131,7 @@ export class InputManager {
       actionContainer.innerHTML = '';
       for (const act of layout.actions) {
         const btn = document.createElement('button');
-        btn.className = 'action-btn' + (act.primary ? ' act' : '');
+        btn.className = 'action-btn' + (act.primary ? ' act' : '') + (act.debug ? ' dbg' : '');
         btn.setAttribute('data-action', act.key);
         btn.textContent = act.label;
 
