@@ -253,6 +253,35 @@ export class UIManager {
     const r = this.renderer;
     r.clear();
 
+    const t = Date.now() / 1000;
+
+    // ── Layer 0: Animated Voronoi cellular automata background ──
+    const numSeeds = 10;
+    const bgChars = [' ', '.', '·', ':', '∙', '░', '▒'];
+    const bgColors = ['#0a0a14', '#0d0d1a', '#101020', '#0a0f1a', '#12101e', '#0e0a18'];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        let minDist = Infinity;
+        let secondDist = Infinity;
+        for (let s = 0; s < numSeeds; s++) {
+          const sx = (cols / 2) + Math.sin(t * 0.3 + s * 2.09) * (cols * 0.4) + Math.sin(t * 0.17 + s * 1.3) * (cols * 0.15);
+          const sy = (rows / 2) + Math.cos(t * 0.25 + s * 1.88) * (rows * 0.4) + Math.cos(t * 0.13 + s * 0.9) * (rows * 0.15);
+          const dx = col - sx;
+          const dy = (row - sy) * 2;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < minDist) { secondDist = minDist; minDist = d; }
+          else if (d < secondDist) { secondDist = d; }
+        }
+        const edge = secondDist - minDist;
+        const pulse = Math.sin(minDist * 0.15 - t * 1.2) * 0.5 + 0.5;
+        const edgePulse = Math.sin(edge * 0.5 - t * 0.8) * 0.5 + 0.5;
+        const val = pulse * 0.6 + edgePulse * 0.4;
+        const ci = Math.min(Math.floor(val * bgChars.length), bgChars.length - 1);
+        const fi = Math.min(Math.floor((val * 0.7 + edge * 0.02) * bgColors.length), bgColors.length - 1);
+        r.drawChar(col, row, bgChars[ci], bgColors[fi], '#020204');
+      }
+    }
+
     const title = [
       ' ██████  ███████  █████ ██ ██  █████  ██  ██ ██████ ███████ ██████',
       '██   ██ ██      ██     ██ ██ ██   ██ ██  ██ ██     ██         ██',
@@ -263,15 +292,44 @@ export class UIManager {
 
     const titleWidth = 65;
     const startY = Math.max(2, Math.floor(rows / 2) - 10);
-    const t = Date.now() / 1000;
     const compact = cols < titleWidth + 6;
 
-    // Draw title with FF crystal shimmer (blue -> cyan -> white)
     const artStartX = Math.floor((cols - titleWidth) / 2);
     const artStartY = startY;
     const waveColors = [COLORS.BLUE, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_WHITE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
 
+    // ── Layer 1: Title block with red pulsating border on black bg ──
     if (!compact) {
+      const boxW = titleWidth + 4;
+      const boxH = title.length + 2;
+      const boxX = artStartX - 2;
+      const boxY = artStartY - 1;
+
+      // Red pulsating border color (subtle, dark crimson — opposite of the blue wave)
+      const redPulse = Math.sin(t * 1.5) * 0.5 + 0.5;
+      const rVal = Math.floor(40 + redPulse * 50);
+      const gVal = Math.floor(6 + redPulse * 10);
+      const bVal = Math.floor(6 + redPulse * 10);
+      const borderColor = `rgb(${rVal},${gVal},${bVal})`;
+
+      // Fill interior with black
+      r.fillRect(boxX, boxY, boxW, boxH, ' ', COLORS.WHITE, COLORS.BLACK);
+
+      // Draw double-line border
+      r.drawChar(boxX, boxY, '\u2554', borderColor, COLORS.BLACK);                     // ╔
+      r.drawChar(boxX + boxW - 1, boxY, '\u2557', borderColor, COLORS.BLACK);           // ╗
+      r.drawChar(boxX, boxY + boxH - 1, '\u255A', borderColor, COLORS.BLACK);           // ╚
+      r.drawChar(boxX + boxW - 1, boxY + boxH - 1, '\u255D', borderColor, COLORS.BLACK); // ╝
+      for (let x = 1; x < boxW - 1; x++) {
+        r.drawChar(boxX + x, boxY, '\u2550', borderColor, COLORS.BLACK);               // ═
+        r.drawChar(boxX + x, boxY + boxH - 1, '\u2550', borderColor, COLORS.BLACK);     // ═
+      }
+      for (let y = 1; y < boxH - 1; y++) {
+        r.drawChar(boxX, boxY + y, '\u2551', borderColor, COLORS.BLACK);               // ║
+        r.drawChar(boxX + boxW - 1, boxY + y, '\u2551', borderColor, COLORS.BLACK);     // ║
+      }
+
+      // Draw title text with wave animation on black bg
       for (let i = 0; i < title.length; i++) {
         for (let j = 0; j < title[i].length; j++) {
           const ch = title[i][j];
@@ -279,25 +337,50 @@ export class UIManager {
           const phase = (j + i * 3) * 0.1 - t * 1.8;
           const wave = (Math.sin(phase) + 1) / 2;
           const ci = Math.min(Math.floor(wave * waveColors.length), waveColors.length - 1);
-          r.drawChar(artStartX + j, artStartY + i, ch, waveColors[ci]);
+          r.drawChar(artStartX + j, artStartY + i, ch, waveColors[ci], COLORS.BLACK);
         }
       }
     } else {
       const shortTitle = 'A S C I I Q U E S T';
       const stx = Math.floor((cols - shortTitle.length) / 2);
+      const boxW = shortTitle.length + 4;
+      const boxH = 3;
+      const boxX = stx - 2;
+      const boxY = artStartY;
+
+      const redPulse = Math.sin(t * 1.5) * 0.5 + 0.5;
+      const rVal = Math.floor(40 + redPulse * 50);
+      const gVal = Math.floor(6 + redPulse * 10);
+      const bVal = Math.floor(6 + redPulse * 10);
+      const borderColor = `rgb(${rVal},${gVal},${bVal})`;
+
+      r.fillRect(boxX, boxY, boxW, boxH, ' ', COLORS.WHITE, COLORS.BLACK);
+      r.drawChar(boxX, boxY, '\u2554', borderColor, COLORS.BLACK);
+      r.drawChar(boxX + boxW - 1, boxY, '\u2557', borderColor, COLORS.BLACK);
+      r.drawChar(boxX, boxY + boxH - 1, '\u255A', borderColor, COLORS.BLACK);
+      r.drawChar(boxX + boxW - 1, boxY + boxH - 1, '\u255D', borderColor, COLORS.BLACK);
+      for (let x = 1; x < boxW - 1; x++) {
+        r.drawChar(boxX + x, boxY, '\u2550', borderColor, COLORS.BLACK);
+        r.drawChar(boxX + x, boxY + boxH - 1, '\u2550', borderColor, COLORS.BLACK);
+      }
+      for (let y = 1; y < boxH - 1; y++) {
+        r.drawChar(boxX, boxY + y, '\u2551', borderColor, COLORS.BLACK);
+        r.drawChar(boxX + boxW - 1, boxY + y, '\u2551', borderColor, COLORS.BLACK);
+      }
+
       for (let j = 0; j < shortTitle.length; j++) {
         const ch = shortTitle[j];
         if (ch === ' ') continue;
         const phase = j * 0.3 - t * 1.8;
         const wave = (Math.sin(phase) + 1) / 2;
         const ci = Math.min(Math.floor(wave * waveColors.length), waveColors.length - 1);
-        r.drawChar(stx + j, artStartY + 1, ch, waveColors[ci]);
+        r.drawChar(stx + j, artStartY + 1, ch, waveColors[ci], COLORS.BLACK);
       }
     }
 
     const titleBlockEnd = compact ? artStartY + 3 : artStartY + title.length;
 
-    // Crystal emblem
+    // Crystal emblem (on black bg to occlude background)
     const crystal = [
       '    /\\    ',
       '   /  \\   ',
@@ -313,15 +396,15 @@ export class UIManager {
         const ch = crystal[i][j];
         if (ch === ' ') continue;
         const shimmer = Math.sin(t * 2 + i * 0.5 + j * 0.3) > 0 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_BLUE;
-        r.drawChar(crystalX + j, crystalY + i, ch, ch === '*' ? COLORS.BRIGHT_WHITE : shimmer);
+        r.drawChar(crystalX + j, crystalY + i, ch, ch === '*' ? COLORS.BRIGHT_WHITE : shimmer, COLORS.BLACK);
       }
     }
 
     const subtitle = '~ Colony Salvage Roguelike ~';
     r.drawString(Math.floor((cols - subtitle.length) / 2), crystalY + crystal.length + 1,
-      subtitle, COLORS.BRIGHT_BLACK);
+      subtitle, COLORS.BRIGHT_BLACK, COLORS.BLACK);
 
-    // FF-style menu box
+    // FF-style menu box (draws on top of background)
     const menuItems = ['New Game', 'Quick Start', 'Continue', 'Settings', 'Help'];
     const menuW = 22;
     const menuH = menuItems.length * 2 + 3;
@@ -338,7 +421,7 @@ export class UIManager {
     }
 
     const footer = 'Select with arrows, confirm with Enter';
-    r.drawString(Math.floor((cols - footer.length) / 2), rows - 2, footer, COLORS.BRIGHT_BLACK);
+    r.drawString(Math.floor((cols - footer.length) / 2), rows - 2, footer, COLORS.BRIGHT_BLACK, COLORS.BLACK);
   }
 
   // ─── CHARACTER CREATION (FF-style) ───
