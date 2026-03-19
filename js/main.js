@@ -1955,7 +1955,6 @@ class Game {
     this.player.position.x = nx;
     this.player.position.y = ny;
     this.turnCount++;
-    this.timeSystem.advance(0.5);
 
     // Ensure surrounding chunks are loaded
     this.overworld.ensureChunksAround(nx, ny);
@@ -2113,7 +2112,6 @@ class Game {
     this.player.position.x = nx;
     this.player.position.y = ny;
     this.turnCount++;
-    this.timeSystem.advance(0.1);
 
     // Update NPC schedules — move NPCs based on time of day
     this.updateNPCSchedules();
@@ -2175,7 +2173,6 @@ class Game {
     this.player.position.x = nx;
     this.player.position.y = ny;
     this.turnCount++;
-    this.timeSystem.advance(0.1);
 
     // Check for items on ground
     const itemAt = this.items.find(i =>
