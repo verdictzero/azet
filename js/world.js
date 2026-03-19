@@ -868,11 +868,15 @@ export class SettlementGenerator {
     }
 
     if (dist <= 10) {
-      // Near outskirts: gardens, fences, fields
-      if (r < 0.05) return tile('FENCE', '\u2502', '#aa6622', '#112211', false, { buildingId: null }); // │
-      if (r < 0.10) return tile('WELL', '\u25CE', '#4488ff', '#112211', false, { buildingId: null }); // ◎
-      if (r < 0.20) return tile('FIELD', '\u2261', '#aaaa22', '#222211', true, { buildingId: null }); // ≡
-      if (r < 0.30) return tile('TREE', 't', '#228822', '#112211', false, { buildingId: null });
+      // Near outskirts: gardens, fences, fields, animal pens
+      if (r < 0.04) return tile('FENCE', '\u2502', '#aa6622', '#112211', false, { buildingId: null }); // │
+      if (r < 0.06) return tile('WELL', '\u25CE', '#4488ff', '#112211', false, { buildingId: null }); // ◎
+      if (r < 0.10) return tile('GARDEN', '\u273B', '#66CC66', '#112211', true, { buildingId: null }); // ✻
+      if (r < 0.13) return tile('FLOWER_BED', '\u2740', '#FF88AA', '#112211', true, { buildingId: null }); // ❀
+      if (r < 0.22) return tile('FIELD', '\u2261', '#aaaa22', '#222211', true, { buildingId: null }); // ≡
+      if (r < 0.26) return tile('HAY_BALE', '\u2593', '#CCAA44', '#112211', false, { buildingId: null }); // ▓
+      if (r < 0.28) return tile('ANIMAL_PEN', '\u25A1', '#AA6622', '#112211', false, { buildingId: null }); // □
+      if (r < 0.35) return tile('TREE', '\u2663', '#228822', '#112211', false, { buildingId: null }); // ♣
       return tile('GRASSLAND', ',', '#55bb55', '#112211', true, { buildingId: null });
     }
 
@@ -1018,28 +1022,76 @@ export class SettlementGenerator {
       }
     }
 
-    // Gate at bottom center
+    // Corner towers
+    const corners = [
+      [margin, margin], [w - margin - 1, margin],
+      [margin, h - margin - 1], [w - margin - 1, h - margin - 1],
+    ];
+    for (const [cx, cy] of corners) {
+      tiles[cy][cx] = tile('TOWER', '\u25D9', '#BBBBBB', '#333333', false, { buildingId: null }); // ◙
+    }
+
+    // Battlements along top wall - alternate merlon/crenel
+    for (let x = margin + 1; x < w - margin - 1; x++) {
+      if (x % 2 === 0) {
+        tiles[margin][x] = tile('MERLON', '\u2565', '#AAAAAA', '#333333', false, { buildingId: null }); // ╥
+      } else {
+        tiles[margin][x] = tile('CRENEL', '\u2550', '#888888', '#333333', false, { buildingId: null }); // ═
+      }
+    }
+
+    // Arrow slits on side walls
+    for (let y = margin + 2; y < h - margin - 2; y += 3) {
+      tiles[y][margin] = tile('ARROW_SLIT', '\u25AB', '#444444', '#333333', false, { buildingId: null }); // ▫
+      tiles[y][w - margin - 1] = tile('ARROW_SLIT', '\u25AB', '#444444', '#333333', false, { buildingId: null });
+    }
+
+    // Gate at bottom center - portcullis
     const gateX = Math.floor(w / 2);
-    tiles[h - margin - 1][gateX] = tile('DOOR', '+', '#aa6622', '#222222', true, { buildingId: null });
-    tiles[h - margin - 1][gateX - 1] = tile('DOOR', '+', '#aa6622', '#222222', true, { buildingId: null });
+    tiles[h - margin - 1][gateX] = tile('PORTCULLIS', '\u256B', '#888888', '#222222', true, { buildingId: null }); // ╫
+    tiles[h - margin - 1][gateX - 1] = tile('PORTCULLIS', '\u256B', '#888888', '#222222', true, { buildingId: null });
+    // Guard pillars flanking gate
+    if (gateX - 2 >= margin) tiles[h - margin - 1][gateX - 2] = tile('PILLAR', '\u25CB', '#AAAAAA', '#333333', false, { buildingId: null }); // ○
+    if (gateX + 1 < w - margin) tiles[h - margin - 1][gateX + 1] = tile('PILLAR', '\u25CB', '#AAAAAA', '#333333', false, { buildingId: null });
 
     // Road from gate inward
     for (let y = h - margin; y < h; y++) {
-      tiles[y][gateX] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+      tiles[y][gateX] = tile('ROAD', '\u25AA', '#BBAA77', '#332211', true, { buildingId: null }); // ▪
     }
 
-    // Inner courtyard road
+    // Inner courtyard road with cobblestone
     const courtY = Math.floor(h / 2);
     for (let x = margin + 2; x < w - margin - 2; x++) {
-      tiles[courtY][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+      const ph = ((x * 31 + courtY * 17) & 0xFFFF) / 65536;
+      if (ph < 0.6) {
+        tiles[courtY][x] = tile('COBBLESTONE', '\u25AA', '#BBAA77', '#332211', true, { buildingId: null });
+      } else {
+        tiles[courtY][x] = tile('ROAD', '\u00B7', '#AA9966', '#332211', true, { buildingId: null });
+      }
     }
 
-    // Place internal buildings
+    // Courtyard decorations
+    const courtCX = Math.floor(w / 2);
+    // Well in courtyard
+    if (tiles[courtY - 2] && tiles[courtY - 2][courtCX]) {
+      tiles[courtY - 2][courtCX] = tile('WELL', '\u25CE', '#4488ff', '#222222', false, { buildingId: null }); // ◎
+    }
+    // Training dummies
+    if (tiles[courtY + 2]) {
+      if (courtCX - 3 >= margin + 2) tiles[courtY + 2][courtCX - 3] = tile('TRAINING_DUMMY', '\u253C', '#AA8844', '#222222', false, { buildingId: null }); // ┼
+      if (courtCX + 3 < w - margin - 2) tiles[courtY + 2][courtCX + 3] = tile('TRAINING_DUMMY', '\u253C', '#AA8844', '#222222', false, { buildingId: null });
+    }
+    // Weapon racks near courtyard
+    if (tiles[courtY - 1] && courtCX - 4 >= margin + 2) {
+      tiles[courtY - 1][courtCX - 4] = tile('WEAPON_RACK', '/', '#aaaaaa', '#222222', false, { buildingId: null });
+    }
+
+    // Place internal buildings - first one becomes throne room
     const internalDefs = [
+      { type: 'tavern', name: 'Throne Room', minW: 10, minH: 8 },
       { type: 'barracks', name: 'Guard Post', minW: 8, minH: 6 },
-      { type: 'tavern', name: 'Great Hall', minW: 10, minH: 8 },
       { type: 'blacksmith', name: 'Smithy', minW: 6, minH: 5 },
-      { type: 'temple', name: 'Temple', minW: 6, minH: 6 },
+      { type: 'temple', name: 'Chapel', minW: 6, minH: 6 },
     ];
 
     // Place buildings in quadrants
@@ -1063,6 +1115,36 @@ export class SettlementGenerator {
       this._carveBuilding(tiles, bx, by, bw, bh, bid);
       buildings.push({ id: bid, type: def.type, name: def.name, x: bx, y: by, w: bw, h: bh });
       npcSlots.push({ buildingId: bid, role: def.type === 'barracks' ? 'guard' : def.type === 'tavern' ? 'innkeeper' : 'npc', position: { x: bx + 2, y: by + 2 } });
+
+      // Throne room decoration for the first building (tavern/Great Hall)
+      if (i === 0 && bw >= 6 && bh >= 5) {
+        const throneX = bx + Math.floor(bw / 2);
+        const throneY = by + 1;
+        // Throne
+        if (tiles[throneY][throneX].type === 'FLOOR') {
+          tiles[throneY][throneX] = tile('THRONE', '\u03A9', '#FFD700', '#222222', false, { buildingId: bid }); // Ω
+        }
+        // Carpet runner from door to throne
+        for (let ry = throneY + 1; ry < by + bh - 1; ry++) {
+          if (tiles[ry][throneX].type === 'FLOOR') {
+            tiles[ry][throneX] = tile('CARPET', '\u2592', '#882222', '#222222', true, { buildingId: bid }); // ▒
+          }
+        }
+        // Flanking pillars
+        if (throneX - 2 > bx && tiles[throneY + 1][throneX - 2].type === 'FLOOR') {
+          tiles[throneY + 1][throneX - 2] = tile('PILLAR', '\u25CB', '#AAAAAA', '#222222', false, { buildingId: bid });
+        }
+        if (throneX + 2 < bx + bw - 1 && tiles[throneY + 1][throneX + 2].type === 'FLOOR') {
+          tiles[throneY + 1][throneX + 2] = tile('PILLAR', '\u25CB', '#AAAAAA', '#222222', false, { buildingId: bid });
+        }
+        // Wall banners
+        if (tiles[by + 1][bx + 1].type === 'FLOOR') {
+          tiles[by + 1][bx + 1] = tile('BANNER', '\u2691', '#CC2222', '#222222', false, { buildingId: bid }); // ⚑
+        }
+        if (tiles[by + 1][bx + bw - 2].type === 'FLOOR') {
+          tiles[by + 1][bx + bw - 2] = tile('BANNER', '\u2691', '#2222CC', '#222222', false, { buildingId: bid });
+        }
+      }
     }
   }
 
@@ -1075,14 +1157,41 @@ export class SettlementGenerator {
 
     for (let y = plazaY; y < plazaY + plazaH; y++) {
       for (let x = plazaX; x < plazaX + plazaW; x++) {
-        tiles[y][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+        // Cobblestone plaza with variation
+        const ph = ((x * 31 + y * 17) & 0xFFFF) / 65536;
+        if (ph < 0.6) {
+          tiles[y][x] = tile('COBBLESTONE', '\u25AA', '#BBAA77', '#332211', true, { buildingId: null }); // ▪
+        } else if (ph < 0.85) {
+          tiles[y][x] = tile('COBBLESTONE', '\u00B7', '#AA9966', '#332211', true, { buildingId: null }); // ·
+        } else {
+          tiles[y][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+        }
       }
     }
 
     // Place a fountain in center of plaza
     const fcx = plazaX + Math.floor(plazaW / 2);
     const fcy = plazaY + Math.floor(plazaH / 2);
-    tiles[fcy][fcx] = tile('FOUNTAIN', '\u00a4', '#4488ff', '#332211', false, { buildingId: null });
+    tiles[fcy][fcx] = tile('FOUNTAIN', '\u00a4', '#4488ff', '#223344', false, { buildingId: null });
+
+    // Decorations around the fountain
+    // Benches facing the fountain
+    if (fcx - 2 >= plazaX) tiles[fcy][fcx - 2] = tile('BENCH', '\u2564', '#886644', '#332211', false, { buildingId: null });
+    if (fcx + 2 < plazaX + plazaW) tiles[fcy][fcx + 2] = tile('BENCH', '\u2564', '#886644', '#332211', false, { buildingId: null });
+
+    // Lamp posts at plaza corners
+    const plazaCorners = [
+      [plazaX, plazaY], [plazaX + plazaW - 1, plazaY],
+      [plazaX, plazaY + plazaH - 1], [plazaX + plazaW - 1, plazaY + plazaH - 1],
+    ];
+    for (const [lx, ly] of plazaCorners) {
+      tiles[ly][lx] = tile('LAMP_POST', '\u263C', '#FFDD44', '#332211', false, { buildingId: null });
+    }
+
+    // Statue in cities
+    if (type === 'city' && fcy - 1 >= plazaY) {
+      tiles[fcy - 1][fcx] = tile('STATUE', '\u03A9', '#AAAAAA', '#332211', false, { buildingId: null });
+    }
 
     // Determine building count based on type
     const buildingCounts = {
@@ -1178,7 +1287,15 @@ export class SettlementGenerator {
     for (let y = by; y < by + bh; y++) {
       for (let x = bx; x < bx + bw; x++) {
         if (y === by || y === by + bh - 1 || x === bx || x === bx + bw - 1) {
-          tiles[y][x] = tile('WALL', '#', '#cccccc', '#333333', false, { solid: true, buildingId });
+          // Use box-drawing for building walls
+          let ch = '#';
+          if (y === by && x === bx) ch = '\u250C';           // ┌
+          else if (y === by && x === bx + bw - 1) ch = '\u2510'; // ┐
+          else if (y === by + bh - 1 && x === bx) ch = '\u2514'; // └
+          else if (y === by + bh - 1 && x === bx + bw - 1) ch = '\u2518'; // ┘
+          else if (y === by || y === by + bh - 1) ch = '\u2500'; // ─
+          else ch = '\u2502'; // │
+          tiles[y][x] = tile('WALL', ch, '#cccccc', '#333333', false, { solid: true, buildingId });
         } else {
           tiles[y][x] = tile('FLOOR', '.', '#999999', '#222222', true, { solid: false, buildingId });
         }
@@ -1186,19 +1303,34 @@ export class SettlementGenerator {
     }
     // Door at bottom center
     const doorX = bx + Math.floor(bw / 2);
-    tiles[by + bh - 1][doorX] = tile('DOOR', '+', '#aa6622', '#222222', true, { solid: false, buildingId });
+    tiles[by + bh - 1][doorX] = tile('DOOR', '\u25AF', '#aa6622', '#222222', true, { solid: false, buildingId }); // ▯
   }
 
   _carveRoad(tiles, sx, sy, ex, ey, w, h) {
-    // Simple L-shaped road
+    // Simple L-shaped road with cobblestone variation near center
     const midX = sx;
+    const centerX = Math.floor(w / 2), centerY = Math.floor(h / 2);
+
+    const roadTile = (rx, ry) => {
+      const dist = Math.abs(rx - centerX) + Math.abs(ry - centerY);
+      if (dist < 8) {
+        const ph = ((rx * 31 + ry * 17) & 0xFFFF) / 65536;
+        if (ph < 0.5) return tile('COBBLESTONE', '\u25AA', '#BBAA77', '#332211', true, { buildingId: null });
+        return tile('COBBLESTONE', '\u00B7', '#AA9966', '#332211', true, { buildingId: null });
+      }
+      if (dist < 15) {
+        return tile('ROAD', '\u00B7', '#AA9966', '#332211', true, { buildingId: null });
+      }
+      return tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+    };
+
     // Vertical segment
     const yDir = ey > sy ? 1 : -1;
     let y = sy;
     while (y !== ey && y >= 0 && y < h) {
       const t = tiles[y][midX];
       if (t.type === 'GRASSLAND') {
-        tiles[y][midX] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+        tiles[y][midX] = roadTile(midX, y);
       }
       y += yDir;
     }
@@ -1208,14 +1340,14 @@ export class SettlementGenerator {
     while (x !== ex && x >= 0 && x < w) {
       const t = tiles[ey][x];
       if (t.type === 'GRASSLAND') {
-        tiles[ey][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
+        tiles[ey][x] = roadTile(x, ey);
       }
       x += xDir;
     }
   }
 
   _scatterDecorations(rng, tiles, w, h, biome, placed) {
-    const decorCount = Math.floor(w * h * 0.02);
+    const decorCount = Math.floor(w * h * 0.035);
     for (let i = 0; i < decorCount; i++) {
       const x = rng.nextInt(1, w - 2);
       const y = rng.nextInt(1, h - 2);
@@ -1230,12 +1362,21 @@ export class SettlementGenerator {
       if (inside) continue;
 
       const decor = rng.random([
-        tile('TREE', 't', '#228822', '#112211', false, { buildingId: null }),
+        tile('TREE', '\u2663', '#228822', '#112211', false, { buildingId: null }),      // ♣
+        tile('TREE', '\u2660', '#116611', '#112211', false, { buildingId: null }),      // ♠
         tile('TREE', 'T', '#116611', '#112211', false, { buildingId: null }),
-        tile('FENCE', '\u2502', '#aa6622', '#112211', false, { buildingId: null }),  // │
-        tile('CRATE', '\u25AA', '#886644', '#112211', false, { buildingId: null }),  // ▪
-        tile('WELL', '\u25CE', '#4488ff', '#112211', false, { buildingId: null }),   // ◎
-        tile('BARREL', '\u25CB', '#886644', '#112211', false, { buildingId: null }), // ○
+        tile('BUSH', '\u273F', '#44AA44', '#112211', false, { buildingId: null }),      // ✿
+        tile('FLOWER_BED', '\u2740', '#FF88AA', '#112211', true, { buildingId: null }), // ❀
+        tile('GARDEN', '\u273B', '#66CC66', '#112211', true, { buildingId: null }),     // ✻
+        tile('LAMP_POST', '\u263C', '#FFDD44', '#112211', false, { buildingId: null }), // ☼
+        tile('BENCH', '\u2564', '#886644', '#112211', false, { buildingId: null }),     // ╤
+        tile('FENCE', '\u2502', '#aa6622', '#112211', false, { buildingId: null }),     // │
+        tile('CRATE', '\u25AA', '#886644', '#112211', false, { buildingId: null }),     // ▪
+        tile('WELL', '\u25CE', '#4488ff', '#112211', false, { buildingId: null }),      // ◎
+        tile('BARREL', '\u25CB', '#886644', '#112211', false, { buildingId: null }),    // ○
+        tile('HAY_BALE', '\u2593', '#CCAA44', '#112211', false, { buildingId: null }),  // ▓
+        tile('WAGON', '\u25D8', '#886644', '#112211', false, { buildingId: null }),     // ◘
+        tile('STATUE', '\u03A9', '#AAAAAA', '#112211', false, { buildingId: null }),    // Ω
       ]);
       tiles[y][x] = decor;
     }
@@ -1265,6 +1406,9 @@ export class BuildingInterior {
     const doorX = Math.floor(width / 2);
     tiles[height - 1][doorX] = tile('DOOR', '+', '#aa6622', '#222222', true);
 
+    // Windows on side walls (not door wall)
+    this._placeWindows(tiles, width, height, doorX);
+
     const npcPositions = [];
     const itemPositions = [];
 
@@ -1287,6 +1431,9 @@ export class BuildingInterior {
         break;
     }
 
+    // Resolve wall characters to box-drawing
+    this._resolveInteriorWalls(tiles, width, height);
+
     return { tiles, width, height, npcPositions, itemPositions };
   }
 
@@ -1298,11 +1445,92 @@ export class BuildingInterior {
     return false;
   }
 
+  _placeWindows(tiles, w, h, doorX) {
+    // Windows on top wall
+    for (let x = 2; x < w - 2; x += 3) {
+      if (tiles[0][x].type === 'WALL') {
+        tiles[0][x] = tile('WINDOW', '\u25AF', '#AADDFF', '#333333', false);
+      }
+    }
+    // Windows on left wall
+    for (let y = 2; y < h - 2; y += 3) {
+      if (tiles[y][0].type === 'WALL') {
+        tiles[y][0] = tile('WINDOW', '\u25AF', '#AADDFF', '#333333', false);
+      }
+    }
+    // Windows on right wall
+    for (let y = 2; y < h - 2; y += 3) {
+      if (tiles[y][w - 1].type === 'WALL') {
+        tiles[y][w - 1] = tile('WINDOW', '\u25AF', '#AADDFF', '#333333', false);
+      }
+    }
+  }
+
+  _resolveInteriorWalls(tiles, width, height) {
+    // Single-line box-drawing for interior walls
+    const chars = [
+      '\u25CB', // 0: isolated ○
+      '\u2502', // 1: N │
+      '\u2500', // 2: E ─
+      '\u2514', // 3: N+E └
+      '\u2502', // 4: S │
+      '\u2502', // 5: N+S │
+      '\u250C', // 6: S+E ┌
+      '\u251C', // 7: N+S+E ├
+      '\u2500', // 8: W ─
+      '\u2518', // 9: N+W ┘
+      '\u2500', // 10: E+W ─
+      '\u2534', // 11: N+E+W ┴
+      '\u2510', // 12: S+W ┐
+      '\u2524', // 13: N+S+W ┤
+      '\u252C', // 14: S+E+W ┬
+      '\u253C', // 15: all ┼
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y][x].type !== 'WALL') continue;
+
+        const isWallLike = (nx, ny) => {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) return true;
+          const t = tiles[ny][nx].type;
+          return t === 'WALL' || t === 'DOOR' || t === 'WINDOW';
+        };
+
+        let mask = 0;
+        if (isWallLike(x, y - 1)) mask |= 1;
+        if (isWallLike(x + 1, y)) mask |= 2;
+        if (isWallLike(x, y + 1)) mask |= 4;
+        if (isWallLike(x - 1, y)) mask |= 8;
+
+        tiles[y][x] = tile('WALL', chars[mask], '#cccccc', '#333333', false);
+      }
+    }
+  }
+
+  _placeRug(tiles, cx, cy, w, h, fg) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const rx = cx + dx, ry = cy + dy;
+        if (rx > 0 && ry > 0 && rx < w - 1 && ry < h - 1 && tiles[ry][rx].type === 'FLOOR') {
+          tiles[ry][rx] = tile('RUG', '\u2592', fg, '#222222', true);
+        }
+      }
+    }
+  }
+
   _furnishTavern(rng, tiles, w, h, npcPositions, itemPositions) {
+    // Warm rug in the center
+    this._placeRug(tiles, Math.floor(w / 2), Math.floor(h / 2), w, h, '#884422');
+
     // Bar counter along the top wall
     for (let x = 2; x < Math.min(w - 2, 7); x++) {
-      this._place(tiles, x, 2, 'COUNTER', '=', '#aa6622');
+      this._place(tiles, x, 2, 'COUNTER', '\u2550', '#aa6622'); // ═
     }
+    // Barrels behind counter
+    this._place(tiles, 2, 1, 'BARREL', '\u25CB', '#886644'); // ○
+    if (w > 6) this._place(tiles, 5, 1, 'BARREL', '\u25CB', '#886644');
+
     // Innkeeper behind bar
     npcPositions.push({ x: 3, y: 1, role: 'innkeeper' });
 
@@ -1311,18 +1539,29 @@ export class BuildingInterior {
     for (let ty = 4; ty < h - 3; ty += 3) {
       for (let tx = 2; tx < w - 3; tx += 4) {
         if (rng.chance(0.7)) {
-          this._place(tiles, tx, ty, 'TABLE', '\u03c0', '#886644');
+          this._place(tiles, tx, ty, 'TABLE', '\u2565', '#886644'); // ╥
           tablePositions.push({ x: tx, y: ty });
           // Chairs around table
-          if (tx > 1) this._place(tiles, tx - 1, ty, 'CHAIR', 'h', '#664422');
-          if (tx < w - 2) this._place(tiles, tx + 1, ty, 'CHAIR', 'h', '#664422');
-          if (ty > 1) this._place(tiles, tx, ty - 1, 'CHAIR', 'h', '#664422');
+          if (tx > 1) this._place(tiles, tx - 1, ty, 'CHAIR', '\u2561', '#664422'); // ╡
+          if (tx < w - 2) this._place(tiles, tx + 1, ty, 'CHAIR', '\u255E', '#664422'); // ╞
+          if (ty > 1) this._place(tiles, tx, ty - 1, 'CHAIR', '\u2568', '#664422'); // ╨
+          // Candle on some tables
+          if (rng.chance(0.4) && ty + 1 < h - 1) {
+            this._place(tiles, tx, ty + 1, 'CANDLE', '\u2219', '#FFDD00');
+          }
         }
       }
     }
 
     // Fireplace on a side wall
-    this._place(tiles, w - 2, 1, 'FIREPLACE', '\u2593', '#ff4400');
+    this._place(tiles, w - 2, 1, 'FIREPLACE', '\u2593', '#ff4400'); // ▓
+    this._place(tiles, w - 2, 2, 'FIREPLACE', '\u2591', '#ff6622'); // ░
+
+    // Kitchen area in corner
+    if (h > 6) {
+      this._place(tiles, 1, h - 2, 'POT', '\u25CE', '#886644'); // ◎
+      this._place(tiles, 2, h - 2, 'KNIFE', '\u254C', '#AAAAAA'); // ╌
+    }
 
     // Stairs up
     this._place(tiles, 1, 1, 'STAIRS_UP', '<', '#ffffff');
@@ -1334,17 +1573,23 @@ export class BuildingInterior {
   }
 
   _furnishShop(rng, tiles, w, h, npcPositions, itemPositions) {
+    // Rug in front of counter
+    this._placeRug(tiles, Math.floor(w / 2), 3, w, h, '#664433');
+
     // Counter near the top
     for (let x = 2; x < Math.min(w - 2, 7); x++) {
-      this._place(tiles, x, 2, 'COUNTER', '=', '#aa6622');
+      this._place(tiles, x, 2, 'COUNTER', '\u2550', '#aa6622'); // ═
     }
     // Shopkeeper behind counter
     npcPositions.push({ x: 3, y: 1, role: 'merchant' });
 
-    // Shelves along walls
+    // Lantern above counter
+    this._place(tiles, Math.floor(w / 2), 1, 'LANTERN', '\u263C', '#FFDD44'); // ☼
+
+    // Shelves along walls (bookshelf-style)
     for (let y = 3; y < h - 2; y += 2) {
-      this._place(tiles, 1, y, 'SHELF', '%', '#886644');
-      this._place(tiles, w - 2, y, 'SHELF', '%', '#886644');
+      this._place(tiles, 1, y, 'SHELF', '\u2562', '#886644'); // ╢
+      this._place(tiles, w - 2, y, 'SHELF', '\u2562', '#886644');
       itemPositions.push({ x: 1, y, type: 'merchandise' });
       itemPositions.push({ x: w - 2, y, type: 'merchandise' });
     }
@@ -1352,53 +1597,87 @@ export class BuildingInterior {
     // Display cases in the middle
     for (let x = 3; x < w - 3; x += 3) {
       const dy = Math.floor(h / 2);
-      this._place(tiles, x, dy, 'DISPLAY_CASE', '\u25a1', '#aaaacc');
+      this._place(tiles, x, dy, 'DISPLAY_CASE', '\u25A1', '#aaaacc'); // □
       itemPositions.push({ x, y: dy, type: 'valuable' });
+    }
+
+    // Sign near door
+    const doorX = Math.floor(w / 2);
+    if (doorX + 1 < w - 1) {
+      this._place(tiles, doorX + 1, h - 2, 'SIGN', '\u2691', '#CC8844'); // ⚑
     }
   }
 
   _furnishBlacksmith(rng, tiles, w, h, npcPositions, itemPositions) {
-    // Forge in a corner
-    this._place(tiles, 1, 1, 'FORGE', '\u2593', '#ff4400');
+    // Forge in a corner - heat gradient
+    this._place(tiles, 1, 1, 'FORGE', '\u2593', '#ff4400');  // ▓
     this._place(tiles, 2, 1, 'FORGE', '\u2593', '#ff2200');
+    this._place(tiles, 1, 2, 'FORGE', '\u2591', '#ff6622');  // ░ cooler edge
 
-    // Anvil in center
+    // Bellows next to forge
+    this._place(tiles, 3, 1, 'BELLOWS', '\u2302', '#AA8866'); // ⌂
+
+    // Water trough
+    this._place(tiles, 1, 3, 'WATER_TROUGH', '\u2248', '#4488FF'); // ≈
+
+    // Anvil in center - better character
     const ax = Math.floor(w / 2);
     const ay = Math.floor(h / 2);
-    this._place(tiles, ax, ay, 'ANVIL', '\u252c', '#aaaaaa');
+    this._place(tiles, ax, ay, 'ANVIL', '\u22A4', '#aaaaaa'); // ⊤
     npcPositions.push({ x: ax + 1, y: ay, role: 'blacksmith' });
+
+    // Horseshoe on wall
+    this._place(tiles, w - 2, 1, 'HORSESHOE', '\u2229', '#AA8844'); // ∩
 
     // Barrels along the bottom wall
     for (let x = 1; x < w - 1; x += 2) {
-      this._place(tiles, x, h - 2, 'BARREL', 'o', '#886644');
+      this._place(tiles, x, h - 2, 'BARREL', '\u25CB', '#886644'); // ○
     }
 
     // Weapon rack on side wall
-    for (let y = 2; y < Math.min(h - 2, 5); y++) {
-      this._place(tiles, w - 2, y, 'WEAPON_RACK', '/', '#aaaaaa');
+    for (let y = 3; y < Math.min(h - 2, 6); y++) {
+      this._place(tiles, w - 2, y, 'WEAPON_RACK', '\u2571', '#aaaaaa'); // ╱ (or /)
       itemPositions.push({ x: w - 2, y, type: 'weapon' });
     }
   }
 
   _furnishTemple(rng, tiles, w, h, npcPositions, itemPositions) {
-    // Altar at the top center
+    // Carpet runner down the center aisle
     const altarX = Math.floor(w / 2);
-    this._place(tiles, altarX, 1, 'ALTAR', '\u2534', '#ddddaa');
+    for (let y = 2; y < h - 1; y++) {
+      if (tiles[y][altarX].type === 'FLOOR') {
+        tiles[y][altarX] = tile('CARPET', '\u2592', '#442266', '#222222', true);
+      }
+    }
+
+    // Altar at the top center - enhanced
+    this._place(tiles, altarX, 1, 'ALTAR', '\u2565', '#ddddaa'); // ╥
     // Holy symbol above altar
-    this._place(tiles, altarX, 2, 'HOLY_SYMBOL', '\u2020', '#ffdd44');
+    this._place(tiles, altarX, 2, 'HOLY_SYMBOL', '\u2020', '#ffdd44'); // †
+
+    // Incense near altar
+    if (altarX - 1 > 0) this._place(tiles, altarX - 1, 1, 'INCENSE', '\u2591', '#886688'); // ░
+    if (altarX + 1 < w - 1) this._place(tiles, altarX + 1, 1, 'INCENSE', '\u2591', '#886688');
 
     // Pews in rows
     for (let y = 4; y < h - 2; y += 2) {
       for (let x = 2; x < w - 2; x++) {
         if (x === altarX) continue; // Leave center aisle clear
-        this._place(tiles, x, y, 'PEW', '\u2261', '#664422');
+        this._place(tiles, x, y, 'PEW', '\u2261', '#664422'); // ≡
       }
     }
 
-    // Candles along side walls
+    // Candelabras along side walls
     for (let y = 1; y < h - 1; y += 2) {
-      this._place(tiles, 1, y, 'CANDLE', '.', '#ffdd44');
-      this._place(tiles, w - 2, y, 'CANDLE', '.', '#ffdd44');
+      this._place(tiles, 1, y, 'CANDELABRA', '\u2219', '#FFDD00'); // ∙
+      this._place(tiles, w - 2, y, 'CANDELABRA', '\u2219', '#FFDD00');
+    }
+
+    // Stained glass windows (override regular windows with colored ones)
+    for (let x = 2; x < w - 2; x += 3) {
+      if (tiles[0][x].type === 'WINDOW') {
+        tiles[0][x] = tile('STAINED_GLASS', '\u25C8', rng.chance(0.5) ? '#FF44AA' : '#44AAFF', '#333333', false); // ◈
+      }
     }
 
     // Priest at the altar
@@ -1406,25 +1685,35 @@ export class BuildingInterior {
   }
 
   _furnishHouse(rng, tiles, w, h, npcPositions, itemPositions) {
+    // Rug in center
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
+    this._placeRug(tiles, cx, cy, w, h, '#885544');
+
     // Bed in a corner
-    this._place(tiles, 1, 1, 'BED', '~', '#4444aa');
-    this._place(tiles, 2, 1, 'BED', '~', '#4444aa');
+    this._place(tiles, 1, 1, 'BED', '\u2261', '#4444aa'); // ≡
+    this._place(tiles, 2, 1, 'BED', '\u2261', '#4444aa');
 
     // Table and chair
-    const tx = Math.floor(w / 2);
-    const ty = Math.floor(h / 2);
-    this._place(tiles, tx, ty, 'TABLE', '\u03c0', '#886644');
-    this._place(tiles, tx + 1, ty, 'CHAIR', 'h', '#664422');
+    this._place(tiles, cx, cy, 'TABLE', '\u2565', '#886644'); // ╥
+    this._place(tiles, cx + 1, cy, 'CHAIR', '\u255E', '#664422'); // ╞
 
     // Chest
-    this._place(tiles, w - 2, 1, 'CHEST', '\u25a1', '#886644');
+    this._place(tiles, w - 2, 1, 'CHEST', '\u25A1', '#886644'); // □
     itemPositions.push({ x: w - 2, y: 1, type: 'loot' });
 
+    // Bookshelf on wall
+    this._place(tiles, 1, Math.floor(h / 2), 'BOOKSHELF', '\u2562', '#886644'); // ╢
+    if (h > 5) this._place(tiles, 1, Math.floor(h / 2) + 1, 'BOOKSHELF', '\u2562', '#886644');
+
+    // Potted plant in corner
+    this._place(tiles, w - 2, h - 2, 'PLANT', '\u2663', '#44AA44'); // ♣
+
     // Fireplace
-    this._place(tiles, w - 2, Math.floor(h / 2), 'FIREPLACE', '\u2593', '#ff4400');
+    this._place(tiles, w - 2, Math.floor(h / 2), 'FIREPLACE', '\u2593', '#ff4400'); // ▓
 
     // Resident
-    npcPositions.push({ x: tx - 1, y: ty, role: 'resident' });
+    npcPositions.push({ x: cx - 1, y: cy, role: 'resident' });
   }
 }
 
@@ -1471,6 +1760,9 @@ export class DungeonGenerator {
       this._addLiquidFeatures(rng, tiles, width, height, depth);
     }
 
+    // Add decorative features to rooms
+    this._decorateRooms(rng, tiles, rooms, depth, width, height, useCaves);
+
     return { tiles, width, height, rooms, corridors, entitySpots, depth };
   }
 
@@ -1498,11 +1790,11 @@ export class DungeonGenerator {
     const corridors = [];
     this._connectRooms(rng, root, tiles, corridors);
 
-    // Carve rooms into tiles
+    // Carve rooms into tiles with varied floor characters
     for (const room of rooms) {
       for (let y = room.y; y < room.y + room.h; y++) {
         for (let x = room.x; x < room.x + room.w; x++) {
-          tiles[y][x] = tile('FLOOR', '.', '#888888', '#222222', true);
+          tiles[y][x] = this._floorTile(rng, x, y, depth, false);
         }
       }
     }
@@ -1511,13 +1803,16 @@ export class DungeonGenerator {
     for (const cor of corridors) {
       for (const p of cor.points) {
         if (p.x >= 0 && p.y >= 0 && p.x < width && p.y < height) {
-          tiles[p.y][p.x] = tile('FLOOR', '.', '#888888', '#222222', true);
+          tiles[p.y][p.x] = this._floorTile(rng, p.x, p.y, depth, false);
         }
       }
     }
 
     // Place doors at room entrances
     this._placeDoors(rng, tiles, rooms, width, height);
+
+    // Resolve wall characters to box-drawing
+    this._resolveWallChars(tiles, width, height, depth, false);
 
     return { tiles, rooms, corridors };
   }
@@ -1730,10 +2025,10 @@ export class DungeonGenerator {
       grid[p.y][p.x] = 0;
     }
 
-    // Convert grid to tiles
+    // Convert grid to tiles with varied floor characters
     const tiles = makeTileGrid(width, height, (x, y) => {
       if (grid[y][x] === 0) {
-        return tile('FLOOR', '.', '#aa9977', '#222211', true);
+        return this._floorTile(rng, x, y, depth, true);
       }
       return tile('WALL', '#', '#666655', '#111100', false);
     });
@@ -1741,6 +2036,9 @@ export class DungeonGenerator {
     // Identify "rooms" as open areas (we pick some representative points)
     const rooms = this._identifyCaveRooms(rng, grid, largestRegion, width, height);
     const corridors = []; // Caves don't have explicit corridors
+
+    // Resolve wall characters to single-line box-drawing
+    this._resolveWallChars(tiles, width, height, depth, true);
 
     return { tiles, rooms, corridors };
   }
@@ -1852,6 +2150,279 @@ export class DungeonGenerator {
       }
     }
   }
+
+  // --- Context-sensitive wall characters using box-drawing ---
+
+  _resolveWallChars(tiles, width, height, depth, isCave) {
+    // Depth-based wall colors
+    const wallColors = depth <= 2 ? ['#AAAAAA', '#222222']
+      : depth <= 4 ? ['#888888', '#1A1A1A']
+      : depth <= 6 ? ['#666666', '#111111']
+      : ['#555566', '#0A0A11'];
+    const caveFg = '#666655';
+    const caveBg = '#111100';
+
+    // Double-line box-drawing for constructed dungeons (indexed by 4-bit adjacency mask)
+    const doubleChars = [
+      '\u25CB', // 0: isolated pillar ○
+      '\u2551', // 1: N only ║
+      '\u2550', // 2: E only ═
+      '\u255A', // 3: N+E ╚
+      '\u2551', // 4: S only ║
+      '\u2551', // 5: N+S ║
+      '\u2554', // 6: S+E ╔
+      '\u2560', // 7: N+S+E ╠
+      '\u2550', // 8: W only ═
+      '\u255D', // 9: N+W ╝
+      '\u2550', // 10: E+W ═
+      '\u2569', // 11: N+E+W ╩
+      '\u2557', // 12: S+W ╗
+      '\u2563', // 13: N+S+W ╣
+      '\u2566', // 14: S+E+W ╦
+      '\u256C', // 15: all ╬
+    ];
+
+    // Single-line box-drawing for caves
+    const singleChars = [
+      '\u25CF', // 0: isolated ●
+      '\u2502', // 1: N │
+      '\u2500', // 2: E ─
+      '\u2514', // 3: N+E └
+      '\u2502', // 4: S │
+      '\u2502', // 5: N+S │
+      '\u250C', // 6: S+E ┌
+      '\u251C', // 7: N+S+E ├
+      '\u2500', // 8: W ─
+      '\u2518', // 9: N+W ┘
+      '\u2500', // 10: E+W ─
+      '\u2534', // 11: N+E+W ┴
+      '\u2510', // 12: S+W ┐
+      '\u2524', // 13: N+S+W ┤
+      '\u252C', // 14: S+E+W ┬
+      '\u253C', // 15: all ┼
+    ];
+
+    const chars = isCave ? singleChars : doubleChars;
+    const fg = isCave ? caveFg : wallColors[0];
+    const bg = isCave ? caveBg : wallColors[1];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y][x].type !== 'WALL') continue;
+
+        // Build adjacency mask: check if neighbor is wall/door/out-of-bounds
+        const isWallLike = (nx, ny) => {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) return true;
+          const t = tiles[ny][nx].type;
+          return t === 'WALL' || t === 'DOOR' || t === 'MOSSY_WALL';
+        };
+
+        let mask = 0;
+        if (isWallLike(x, y - 1)) mask |= 1; // N
+        if (isWallLike(x + 1, y)) mask |= 2; // E
+        if (isWallLike(x, y + 1)) mask |= 4; // S
+        if (isWallLike(x - 1, y)) mask |= 8; // W
+
+        tiles[y][x] = tile('WALL', chars[mask], fg, bg, false);
+      }
+    }
+  }
+
+  // --- Varied floor tiles ---
+
+  _floorTile(rng, x, y, depth, isCave) {
+    const hash = ((x * 31 + y * 17) & 0xFFFF) / 65536;
+
+    if (isCave) {
+      const chars = ['\u00B7', '.', '\u2219', ',', '\u2058'];
+      const weights = [0.35, 0.60, 0.80, 0.95, 1.0];
+      let ch = chars[chars.length - 1];
+      for (let i = 0; i < weights.length; i++) {
+        if (hash < weights[i]) { ch = chars[i]; break; }
+      }
+      // Earthy color variation
+      const v = ((x * 7 + y * 13) % 30) - 15;
+      const r = Math.min(255, Math.max(0, 0xAA + v));
+      const g = Math.min(255, Math.max(0, 0x99 + v));
+      const b = Math.min(255, Math.max(0, 0x77 + v));
+      const fg = '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
+      const bv = ((x * 3 + y * 11) % 16) - 8;
+      const br = Math.min(255, Math.max(0, 0x22 + bv));
+      const bgr = Math.min(255, Math.max(0, 0x22 + bv));
+      const bgb = Math.min(255, Math.max(0, 0x11 + bv));
+      const bg = '#' + br.toString(16).padStart(2, '0') + bgr.toString(16).padStart(2, '0') + bgb.toString(16).padStart(2, '0');
+      return tile('FLOOR', ch, fg, bg, true);
+    }
+
+    // Constructed dungeon
+    const chars = ['\u00B7', '\u2219', '\u22C5', '\u2591', '\u2236'];
+    const weights = [0.40, 0.65, 0.85, 0.95, 1.0];
+    let ch = chars[chars.length - 1];
+    for (let i = 0; i < weights.length; i++) {
+      if (hash < weights[i]) { ch = chars[i]; break; }
+    }
+    const v = ((x * 7 + y * 13) % 30) - 15;
+    const base = Math.max(0x55, 0x88 - depth * 5);
+    const r = Math.min(255, Math.max(0, base + v));
+    const g = Math.min(255, Math.max(0, base + v));
+    const b = Math.min(255, Math.max(0, base + v));
+    const fg = '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
+    const bv = ((x * 3 + y * 11) % 16) - 8;
+    const bgVal = Math.min(255, Math.max(0, 0x22 + bv));
+    const bg = '#' + bgVal.toString(16).padStart(2, '0') + bgVal.toString(16).padStart(2, '0') + bgVal.toString(16).padStart(2, '0');
+    return tile('FLOOR', ch, fg, bg, true);
+  }
+
+  // --- Room and corridor decorations ---
+
+  _decorateRooms(rng, tiles, rooms, depth, width, height, isCave) {
+    for (const room of rooms) {
+      const isLargeRoom = room.w >= 7 && room.h >= 7;
+
+      if (!isCave) {
+        // Pillars in large rooms - evenly spaced
+        if (isLargeRoom) {
+          for (let y = room.y + 2; y < room.y + room.h - 2; y += 3) {
+            for (let x = room.x + 2; x < room.x + room.w - 2; x += 3) {
+              if (tiles[y][x].type === 'FLOOR') {
+                tiles[y][x] = tile('PILLAR', '\u25CB', '#AAAAAA', tiles[y][x].bg, false);
+              }
+            }
+          }
+        }
+
+        // Torches on walls adjacent to rooms
+        for (let x = room.x; x < room.x + room.w; x++) {
+          for (const wy of [room.y - 1, room.y + room.h]) {
+            if (wy < 0 || wy >= height) continue;
+            if (tiles[wy][x].type === 'WALL' && (x - room.x) % 5 === 2 && rng.chance(0.6)) {
+              tiles[wy][x] = tile('TORCH', '\u263C', '#FFAA22', tiles[wy][x].bg, false);
+            }
+          }
+        }
+        for (let y = room.y; y < room.y + room.h; y++) {
+          for (const wx of [room.x - 1, room.x + room.w]) {
+            if (wx < 0 || wx >= width) continue;
+            if (tiles[y][wx].type === 'WALL' && (y - room.y) % 5 === 2 && rng.chance(0.6)) {
+              tiles[y][wx] = tile('TORCH', '\u263C', '#FFAA22', tiles[y][wx].bg, false);
+            }
+          }
+        }
+
+        // Cobwebs in corners
+        const corners = [
+          [room.x, room.y], [room.x + room.w - 1, room.y],
+          [room.x, room.y + room.h - 1], [room.x + room.w - 1, room.y + room.h - 1],
+        ];
+        for (const [cx, cy] of corners) {
+          if (cx >= 0 && cy >= 0 && cx < width && cy < height && tiles[cy][cx].type === 'FLOOR' && rng.chance(0.3)) {
+            tiles[cy][cx] = tile('COBWEB', '\u224B', '#777777', tiles[cy][cx].bg, true);
+          }
+        }
+      }
+
+      // Scatter decorations on floor tiles
+      for (let y = room.y; y < room.y + room.h; y++) {
+        for (let x = room.x; x < room.x + room.w; x++) {
+          if (x < 0 || y < 0 || x >= width || y >= height) continue;
+          if (tiles[y][x].type !== 'FLOOR') continue;
+
+          const r = rng.next();
+
+          if (isCave) {
+            // Cave decorations
+            if (r < 0.04) {
+              const mushroomColor = rng.chance(0.5) ? '#DD88CC' : '#88DD88';
+              tiles[y][x] = tile('MUSHROOM', '\u2660', mushroomColor, tiles[y][x].bg, true);
+            } else if (r < 0.06 && depth > 3) {
+              const crystalFg = rng.chance(0.7) ? '#44DDFF' : '#FF44DD';
+              tiles[y][x] = tile('CRYSTAL', '\u25C6', crystalFg, tiles[y][x].bg, false);
+            } else if (r < 0.09) {
+              // Stalagmite on floor
+              const nearWall = (x > 0 && tiles[y][x - 1].type === 'WALL') ||
+                (x < width - 1 && tiles[y][x + 1].type === 'WALL') ||
+                (y > 0 && tiles[y - 1][x].type === 'WALL') ||
+                (y < height - 1 && tiles[y + 1][x].type === 'WALL');
+              if (nearWall && rng.chance(0.5)) {
+                tiles[y][x] = tile('STALAGMITE', '\u25B2', '#887766', tiles[y][x].bg, false);
+              }
+            } else if (r < 0.12) {
+              tiles[y][x] = tile('FUNGAL_PATCH', '\u2234', '#88CC44', tiles[y][x].bg, true);
+            }
+          } else {
+            // Constructed dungeon decorations
+            if (r < 0.03) {
+              tiles[y][x] = tile('RUBBLE', '\u2234', '#887766', tiles[y][x].bg, true);
+            } else if (r < 0.05) {
+              tiles[y][x] = tile('PUDDLE', '\u223D', '#4466AA', tiles[y][x].bg, true);
+            } else if (r < 0.05 + 0.01 * depth) {
+              tiles[y][x] = tile('BONES', '\u00A5', '#CCCCAA', tiles[y][x].bg, true);
+            } else if (r < 0.08 && depth > 3) {
+              tiles[y][x] = tile('MOSS', '\u2248', '#448844', tiles[y][x].bg, true);
+            }
+          }
+        }
+      }
+
+      // Special room decorations
+      if (room.type === 'treasure') {
+        // Braziers at accessible corners
+        const offsets = [[1, 1], [room.w - 2, 1], [1, room.h - 2], [room.w - 2, room.h - 2]];
+        for (const [ox, oy] of offsets) {
+          const bx = room.x + ox, by = room.y + oy;
+          if (bx >= 0 && by >= 0 && bx < width && by < height && tiles[by][bx].type === 'FLOOR') {
+            tiles[by][bx] = tile('BRAZIER', '\u2609', '#FF6622', tiles[by][bx].bg, false);
+          }
+        }
+        // Gold piles
+        for (let i = 0; i < 3; i++) {
+          const gx = rng.nextInt(room.x + 1, room.x + room.w - 2);
+          const gy = rng.nextInt(room.y + 1, room.y + room.h - 2);
+          if (gx >= 0 && gy >= 0 && gx < width && gy < height && tiles[gy][gx].type === 'FLOOR') {
+            tiles[gy][gx] = tile('GOLD_PILE', '$', '#FFD700', tiles[gy][gx].bg, true);
+          }
+        }
+      }
+
+      if (room.type === 'boss') {
+        // Pillars flanking the room
+        const offsets = [[1, 1], [room.w - 2, 1], [1, room.h - 2], [room.w - 2, room.h - 2]];
+        for (const [ox, oy] of offsets) {
+          const px = room.x + ox, py = room.y + oy;
+          if (px >= 0 && py >= 0 && px < width && py < height && tiles[py][px].type === 'FLOOR') {
+            tiles[py][px] = tile('PILLAR', '\u25CB', '#AAAAAA', tiles[py][px].bg, false);
+          }
+        }
+        // Braziers
+        const mid = Math.floor(room.w / 2);
+        for (const [ox, oy] of [[mid, 1], [mid, room.h - 2]]) {
+          const bx = room.x + ox, by = room.y + oy;
+          if (bx >= 0 && by >= 0 && bx < width && by < height && tiles[by][bx].type === 'FLOOR') {
+            tiles[by][bx] = tile('BRAZIER', '\u2609', '#FF6622', tiles[by][bx].bg, false);
+          }
+        }
+        // Extra bones
+        for (let i = 0; i < 4; i++) {
+          const bx = rng.nextInt(room.x + 1, room.x + room.w - 2);
+          const by = rng.nextInt(room.y + 1, room.y + room.h - 2);
+          if (bx >= 0 && by >= 0 && bx < width && by < height && tiles[by][bx].type === 'FLOOR') {
+            tiles[by][bx] = tile('BONES', '\u00A5', '#CCCCAA', tiles[by][bx].bg, true);
+          }
+        }
+      }
+    }
+
+    // Stalactites on cave walls above open space
+    if (isCave) {
+      for (let y = 0; y < height - 1; y++) {
+        for (let x = 0; x < width; x++) {
+          if (tiles[y][x].type === 'WALL' && tiles[y + 1][x].type === 'FLOOR' && rng.chance(0.08)) {
+            tiles[y][x] = tile('STALACTITE', '\u25BC', '#998877', tiles[y][x].bg, false);
+          }
+        }
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -1893,9 +2464,12 @@ export class TowerGenerator {
 
         if (dist <= radius) {
           if (dist >= radius - 0.8) {
-            tiles[y][x] = tile('WALL', '#', '#888888', '#222222', false);
+            tiles[y][x] = tile('WALL', '\u2591', '#888888', '#222222', false); // ░ textured stone
           } else {
-            tiles[y][x] = tile('FLOOR', '.', '#999999', '#222222', true);
+            // Varied floor tiles for tower
+            const fh = ((x * 31 + y * 17) & 0xFFFF) / 65536;
+            const fch = fh < 0.5 ? '\u00B7' : fh < 0.8 ? '\u2219' : '.'; // · ∙ .
+            tiles[y][x] = tile('FLOOR', fch, '#999999', '#222222', true);
           }
         }
       }
@@ -2123,9 +2697,13 @@ export class RuinGenerator {
       const sy = rng.nextInt(1, height - 2);
       if (baseTiles[sy][sx].walkable && baseTiles[sy][sx].type !== 'HOLE') {
         const element = rng.random([
-          { type: 'BONES', char: '\u00a5', fg: '#ccccaa', name: 'scattered bones' },
-          { type: 'BROKEN_FURNITURE', char: '\u2591', fg: '#886644', name: 'broken furniture' },
-          { type: 'INSCRIPTION', char: '\u00a7', fg: '#aaaacc', name: 'faded inscription' },
+          { type: 'BONES', char: '\u00a5', fg: '#ccccaa', name: 'scattered bones' },           // ¥
+          { type: 'BROKEN_FURNITURE', char: '\u2234', fg: '#886644', name: 'broken furniture' }, // ∴
+          { type: 'INSCRIPTION', char: '\u00a7', fg: '#aaaacc', name: 'faded inscription' },     // §
+          { type: 'SKULL', char: '\u25CF', fg: '#CCCCAA', name: 'bleached skull' },              // ●
+          { type: 'SHATTERED_CRYSTAL', char: '\u25C7', fg: '#88AABB', name: 'shattered crystal' }, // ◇
+          { type: 'OLD_WEAPON', char: '\u2571', fg: '#887766', name: 'rusted weapon' },          // ╱
+          { type: 'COBWEB', char: '\u224B', fg: '#777777', name: 'thick cobwebs' },              // ≋
         ]);
         baseTiles[sy][sx] = tile(element.type, element.char, element.fg, '#222211', true);
         storyElements.push({ x: sx, y: sy, type: element.type, name: element.name });
