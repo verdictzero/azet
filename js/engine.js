@@ -96,8 +96,8 @@ export class Renderer {
     this.prevBuffer = [];  // last rendered frame
 
     this.effectsEnabled = false; // visual FX disabled for now (toggle with settings)
-    this.zoomLevel = 1.0;
-    this._baseFontSize = null; // stored when zoom is applied
+    this.zoomLevel = 1; // detail zoom: 1=normal, 2=2x2 tiles, 3=3x3 tiles
+    this._baseFontSize = null;
 
     // Perform initial sizing
     this.resize();
@@ -122,12 +122,7 @@ export class Renderer {
       this.fontSize = Math.round(minFont + t * (maxFont - minFont));
       if (isPortrait) this.fontSize = Math.max(10, this.fontSize - 1);
     }
-    // Store base font size and apply zoom multiplier
-    if (this.zoomLevel === 1.0) {
-      this._baseFontSize = this.fontSize;
-    } else if (this._baseFontSize) {
-      this.fontSize = Math.round(this._baseFontSize * this.zoomLevel);
-    }
+    this._baseFontSize = this.fontSize;
 
     // Measure a representative character to derive cell size
     this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
@@ -135,12 +130,13 @@ export class Renderer {
     this.cellWidth = Math.ceil(metrics.width);
     this.cellHeight = Math.ceil(this.fontSize * 1.35);
 
-    // Reserve space for touch controls on mobile so they don't overlap the game
-    const touchReserve = isMobile ? (isPortrait ? 180 : 120) : 0;
-    const availH = h - touchReserve;
+    // Reserve horizontal space for touch controls on mobile (right-side panel)
+    const touchReserveW = isMobile ? Math.min(Math.round(w * 0.33), 220) : 0;
+    const availW = w - touchReserveW;
+    const availH = h;
 
     // Compute grid to fill available area
-    this.cols = Math.floor(w / this.cellWidth);
+    this.cols = Math.floor(availW / this.cellWidth);
     this.rows = Math.floor(availH / this.cellHeight);
 
     // Ultra-wide cap, portrait minimum
@@ -170,8 +166,8 @@ export class Renderer {
   }
 
   setZoom(level) {
-    this.zoomLevel = Math.max(1.0, Math.min(2.0, level));
-    this.resize();
+    this.zoomLevel = Math.max(1, Math.min(3, Math.round(level)));
+    this.invalidate();
   }
 
   set enableCRT(val) {
@@ -1543,5 +1539,283 @@ export class GlowSystem {
       b = hue2rgb(p, q, h - 1/3);
     }
     return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+  }
+}
+
+// ─────────────────────────────────────────────
+// TileDetailSystem — Multi-character zoom detail
+// ─────────────────────────────────────────────
+
+/**
+ * Provides 2x2 and 3x3 ASCII representations of tile types for zoomed views.
+ * Each template is an array of rows, each row an array of {char, fg, bg} objects.
+ * If fg/bg is null, uses the tile's original color.
+ */
+export class TileDetailSystem {
+  constructor() {
+    // 2x2 detail templates keyed by tile type
+    this._templates2x2 = {
+      WALL: [
+        [{ char: '#', fg: null }, { char: '#', fg: null }],
+        [{ char: '#', fg: null }, { char: '#', fg: null }],
+      ],
+      FLOOR: [
+        [{ char: '.', fg: null }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: '.', fg: null }],
+      ],
+      DOOR: [
+        [{ char: '[', fg: null }, { char: ']', fg: null }],
+        [{ char: '|', fg: null }, { char: '|', fg: null }],
+      ],
+      STAIRS_DOWN: [
+        [{ char: '>', fg: null }, { char: '\\', fg: null }],
+        [{ char: '\\', fg: null }, { char: '>', fg: null }],
+      ],
+      STAIRS_UP: [
+        [{ char: '/', fg: null }, { char: '<', fg: null }],
+        [{ char: '<', fg: null }, { char: '/', fg: null }],
+      ],
+      CHEST: [
+        [{ char: '[', fg: '#cc8800' }, { char: ']', fg: '#cc8800' }],
+        [{ char: '=', fg: '#aa6600' }, { char: '=', fg: '#aa6600' }],
+      ],
+      LAVA: [
+        [{ char: '~', fg: '#ff4400' }, { char: '~', fg: '#ff6600' }],
+        [{ char: '~', fg: '#ff6600' }, { char: '~', fg: '#ff4400' }],
+      ],
+      WATER: [
+        [{ char: '~', fg: '#4488ff' }, { char: '~', fg: '#3366dd' }],
+        [{ char: '~', fg: '#3366dd' }, { char: '~', fg: '#4488ff' }],
+      ],
+      FIREPLACE: [
+        [{ char: '\u2593', fg: '#ff4400' }, { char: '\u2591', fg: '#ff6600' }],
+        [{ char: '\u2588', fg: '#442200' }, { char: '\u2588', fg: '#442200' }],
+      ],
+      CAMPFIRE: [
+        [{ char: '*', fg: '#ff6600' }, { char: '^', fg: '#ff4400' }],
+        [{ char: '=', fg: '#663300' }, { char: '=', fg: '#663300' }],
+      ],
+      TORCH_SCONCE: [
+        [{ char: '|', fg: '#886644' }, { char: '*', fg: '#ffaa44' }],
+        [{ char: '|', fg: '#886644' }, { char: ' ', fg: null }],
+      ],
+      BRIDGE: [
+        [{ char: '=', fg: '#886644' }, { char: '=', fg: '#886644' }],
+        [{ char: '=', fg: '#886644' }, { char: '=', fg: '#886644' }],
+      ],
+    };
+
+    // 3x3 detail templates
+    this._templates3x3 = {
+      WALL: [
+        [{ char: '#', fg: null }, { char: '=', fg: null }, { char: '#', fg: null }],
+        [{ char: '|', fg: null }, { char: '#', fg: null }, { char: '|', fg: null }],
+        [{ char: '#', fg: null }, { char: '=', fg: null }, { char: '#', fg: null }],
+      ],
+      FLOOR: [
+        [{ char: ' ', fg: null }, { char: '.', fg: null }, { char: ' ', fg: null }],
+        [{ char: '.', fg: null }, { char: ' ', fg: null }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: ' ', fg: null }, { char: '.', fg: null }],
+      ],
+      DOOR: [
+        [{ char: '+', fg: '#886644' }, { char: '-', fg: '#886644' }, { char: '+', fg: '#886644' }],
+        [{ char: '|', fg: '#886644' }, { char: '.', fg: '#aa8866' }, { char: '|', fg: '#886644' }],
+        [{ char: '+', fg: '#886644' }, { char: '-', fg: '#886644' }, { char: '+', fg: '#886644' }],
+      ],
+      STAIRS_DOWN: [
+        [{ char: ' ', fg: null }, { char: '\\', fg: null }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: '>', fg: '#ffffff' }, { char: '\\', fg: null }],
+        [{ char: ' ', fg: null }, { char: ' ', fg: null }, { char: '>', fg: '#ffffff' }],
+      ],
+      STAIRS_UP: [
+        [{ char: '<', fg: '#ffffff' }, { char: ' ', fg: null }, { char: ' ', fg: null }],
+        [{ char: '/', fg: null }, { char: '<', fg: '#ffffff' }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: '/', fg: null }, { char: ' ', fg: null }],
+      ],
+      CHEST: [
+        [{ char: ',', fg: '#cc8800' }, { char: '-', fg: '#cc8800' }, { char: '.', fg: '#cc8800' }],
+        [{ char: '|', fg: '#cc8800' }, { char: '$', fg: '#ffcc00' }, { char: '|', fg: '#cc8800' }],
+        [{ char: '\'', fg: '#cc8800' }, { char: '=', fg: '#aa6600' }, { char: '\'', fg: '#cc8800' }],
+      ],
+      LAVA: [
+        [{ char: '~', fg: '#ff4400' }, { char: '^', fg: '#ff6600' }, { char: '~', fg: '#ff3300' }],
+        [{ char: '^', fg: '#ff5500' }, { char: '~', fg: '#ff4400' }, { char: '^', fg: '#ff6600' }],
+        [{ char: '~', fg: '#ff6600' }, { char: '~', fg: '#ff3300' }, { char: '~', fg: '#ff5500' }],
+      ],
+      WATER: [
+        [{ char: '~', fg: '#4488ff' }, { char: ' ', fg: '#3366dd' }, { char: '~', fg: '#4488ff' }],
+        [{ char: ' ', fg: '#3366dd' }, { char: '~', fg: '#4488ff' }, { char: ' ', fg: '#3366dd' }],
+        [{ char: '~', fg: '#3366dd' }, { char: ' ', fg: '#4488ff' }, { char: '~', fg: '#3366dd' }],
+      ],
+      FIREPLACE: [
+        [{ char: ' ', fg: null }, { char: '^', fg: '#ff6600' }, { char: ' ', fg: null }],
+        [{ char: '\u2591', fg: '#ff4400' }, { char: '*', fg: '#ffaa00' }, { char: '\u2591', fg: '#ff4400' }],
+        [{ char: '\u2588', fg: '#442200' }, { char: '\u2588', fg: '#442200' }, { char: '\u2588', fg: '#442200' }],
+      ],
+      CAMPFIRE: [
+        [{ char: ' ', fg: null }, { char: '^', fg: '#ff4400' }, { char: ' ', fg: null }],
+        [{ char: '*', fg: '#ff6600' }, { char: '#', fg: '#ff8800' }, { char: '*', fg: '#ff6600' }],
+        [{ char: ' ', fg: null }, { char: '=', fg: '#663300' }, { char: ' ', fg: null }],
+      ],
+      TORCH_SCONCE: [
+        [{ char: ' ', fg: null }, { char: '*', fg: '#ffaa44' }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: '|', fg: '#886644' }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: '|', fg: '#886644' }, { char: ' ', fg: null }],
+      ],
+      BRIDGE: [
+        [{ char: '|', fg: '#886644' }, { char: '=', fg: '#aa8866' }, { char: '|', fg: '#886644' }],
+        [{ char: '|', fg: '#886644' }, { char: '=', fg: '#aa8866' }, { char: '|', fg: '#886644' }],
+        [{ char: '|', fg: '#886644' }, { char: '=', fg: '#aa8866' }, { char: '|', fg: '#886644' }],
+      ],
+    };
+
+    // Entity detail templates (player, NPC, enemy)
+    this._entity2x2 = {
+      player: [
+        [{ char: '@', fg: null }, { char: ')', fg: null }],
+        [{ char: '/', fg: null }, { char: '\\', fg: null }],
+      ],
+      npc: [
+        [{ char: ' ', fg: null }, { char: '?', fg: null }],
+        [{ char: '@', fg: null }, { char: ' ', fg: null }],
+      ],
+      enemy: [
+        [{ char: null, fg: null }, { char: '!', fg: '#ff4444' }],
+        [{ char: '/', fg: null }, { char: '\\', fg: null }],
+      ],
+      item: [
+        [{ char: null, fg: null }, { char: '*', fg: null }],
+        [{ char: ' ', fg: null }, { char: ' ', fg: null }],
+      ],
+    };
+
+    this._entity3x3 = {
+      player: [
+        [{ char: ' ', fg: null }, { char: 'O', fg: null }, { char: ' ', fg: null }],
+        [{ char: '/', fg: null }, { char: '@', fg: null }, { char: '\\', fg: null }],
+        [{ char: '/', fg: null }, { char: ' ', fg: null }, { char: '\\', fg: null }],
+      ],
+      npc: [
+        [{ char: ' ', fg: null }, { char: '?', fg: null }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: '@', fg: null }, { char: ' ', fg: null }],
+        [{ char: '/', fg: null }, { char: ' ', fg: null }, { char: '\\', fg: null }],
+      ],
+      enemy: [
+        [{ char: ' ', fg: null }, { char: '!', fg: '#ff4444' }, { char: ' ', fg: null }],
+        [{ char: '\\', fg: null }, { char: null, fg: null }, { char: '/', fg: null }],
+        [{ char: '/', fg: null }, { char: ' ', fg: null }, { char: '\\', fg: null }],
+      ],
+      item: [
+        [{ char: ' ', fg: null }, { char: '*', fg: null }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: null, fg: null }, { char: ' ', fg: null }],
+        [{ char: ' ', fg: null }, { char: ' ', fg: null }, { char: ' ', fg: null }],
+      ],
+    };
+  }
+
+  /**
+   * Get the detail template for a tile at the given zoom level.
+   * @param {string} tileType - e.g. 'WALL', 'FLOOR', 'LAVA'
+   * @param {number} zoom - 2 or 3
+   * @returns {Array|null} 2D array of {char, fg} or null for default
+   */
+  getTileDetail(tileType, zoom) {
+    if (zoom === 2) return this._templates2x2[tileType] || null;
+    if (zoom === 3) return this._templates3x3[tileType] || null;
+    return null;
+  }
+
+  /**
+   * Get entity detail template.
+   * @param {string} entityType - 'player', 'npc', 'enemy', 'item'
+   * @param {number} zoom - 2 or 3
+   * @returns {Array|null}
+   */
+  getEntityDetail(entityType, zoom) {
+    if (zoom === 2) return this._entity2x2[entityType] || null;
+    if (zoom === 3) return this._entity3x3[entityType] || null;
+    return null;
+  }
+
+  /**
+   * Draw a tile at zoom level using the renderer.
+   * @param {Renderer} r - the renderer
+   * @param {number} screenX - screen column for top-left of the expanded tile
+   * @param {number} screenY - screen row for top-left of the expanded tile
+   * @param {object} tile - {char, fg, bg, type}
+   * @param {number} zoom - 1, 2, or 3
+   * @param {string} [overrideFg] - optional color override (e.g. from glow/lighting)
+   */
+  drawTile(r, screenX, screenY, tile, zoom, overrideFg) {
+    if (zoom === 1) {
+      r.drawChar(screenX, screenY, tile.char, overrideFg || tile.fg, tile.bg);
+      return;
+    }
+
+    const template = this.getTileDetail(tile.type, zoom);
+    if (!template) {
+      // Fallback: fill the NxN block with the tile char
+      for (let dy = 0; dy < zoom; dy++) {
+        for (let dx = 0; dx < zoom; dx++) {
+          r.drawChar(screenX + dx, screenY + dy, tile.char, overrideFg || tile.fg, tile.bg);
+        }
+      }
+      return;
+    }
+
+    for (let dy = 0; dy < zoom; dy++) {
+      for (let dx = 0; dx < zoom; dx++) {
+        const cell = template[dy]?.[dx];
+        if (!cell) continue;
+        const ch = cell.char || tile.char;
+        const fg = overrideFg || cell.fg || tile.fg;
+        const bg = tile.bg;
+        r.drawChar(screenX + dx, screenY + dy, ch, fg, bg);
+      }
+    }
+  }
+
+  /**
+   * Draw an entity at zoom level.
+   * @param {Renderer} r
+   * @param {number} screenX
+   * @param {number} screenY
+   * @param {string} char - the entity's character
+   * @param {string} fg - entity foreground color
+   * @param {string} entityType - 'player', 'npc', 'enemy', 'item'
+   * @param {number} zoom
+   */
+  drawEntity(r, screenX, screenY, char, fg, entityType, zoom) {
+    if (zoom === 1) {
+      r.drawChar(screenX, screenY, char, fg);
+      return;
+    }
+
+    const template = this.getEntityDetail(entityType, zoom);
+    if (!template) {
+      // Fallback: put char at center of NxN block
+      const cx = Math.floor(zoom / 2);
+      const cy = Math.floor(zoom / 2);
+      for (let dy = 0; dy < zoom; dy++) {
+        for (let dx = 0; dx < zoom; dx++) {
+          if (dx === cx && dy === cy) {
+            r.drawChar(screenX + dx, screenY + dy, char, fg);
+          }
+        }
+      }
+      return;
+    }
+
+    for (let dy = 0; dy < zoom; dy++) {
+      for (let dx = 0; dx < zoom; dx++) {
+        const cell = template[dy]?.[dx];
+        if (!cell) continue;
+        const ch = cell.char === null ? char : cell.char;
+        const color = cell.fg || fg;
+        if (ch && ch !== ' ') {
+          r.drawChar(screenX + dx, screenY + dy, ch, color);
+        }
+      }
+    }
   }
 }

@@ -1054,7 +1054,7 @@ export class UIManager {
 
   // ─── LOCATION VIEW ───
 
-  drawLocationOverview(settlement, npcs, player, camera) {
+  drawLocationOverview(settlement, npcs, player, camera, tileDetail, zoom) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -1062,19 +1062,30 @@ export class UIManager {
     const viewTop = LAYOUT.VIEWPORT_TOP;
     const viewW = cols - 2;
     const viewH = rows - LAYOUT.HUD_TOTAL;
+    zoom = zoom || 1;
+
+    // At zoom N, each world tile takes N screen cells
+    const tilesW = Math.floor(viewW / zoom);
+    const tilesH = Math.floor(viewH / zoom);
 
     // Draw settlement map tiles with camera
     if (settlement.tiles) {
-      const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - viewW) / 2));
-      const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - viewH) / 2));
+      const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - tilesW) / 2));
+      const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - tilesH) / 2));
 
-      for (let sy = 0; sy < viewH; sy++) {
-        for (let sx = 0; sx < viewW; sx++) {
+      for (let sy = 0; sy < tilesH; sy++) {
+        for (let sx = 0; sx < tilesW; sx++) {
           const wx = camX + sx;
           const wy = camY + sy;
+          const scrX = viewLeft + sx * zoom;
+          const scrY = viewTop + sy * zoom;
           if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
             const tile = settlement.tiles[wy][wx];
-            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+            if (tileDetail && zoom > 1) {
+              tileDetail.drawTile(r, scrX, scrY, tile, zoom);
+            } else {
+              r.drawChar(scrX, scrY, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+            }
           }
         }
       }
@@ -1084,9 +1095,13 @@ export class UIManager {
         for (const npc of npcs) {
           const sx = npc.position.x - camX;
           const sy = npc.position.y - camY;
-          if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+          if (sx >= 0 && sx < tilesW && sy >= 0 && sy < tilesH) {
             const npcColor = this.glow ? this.glow.getGlowColor('NPC', npc.color || COLORS.BRIGHT_CYAN) : (npc.color || COLORS.BRIGHT_CYAN);
-            r.drawChar(viewLeft + sx, viewTop + sy, npc.char, npcColor);
+            if (tileDetail && zoom > 1) {
+              tileDetail.drawEntity(r, viewLeft + sx * zoom, viewTop + sy * zoom, npc.char, npcColor, 'npc', zoom);
+            } else {
+              r.drawChar(viewLeft + sx, viewTop + sy, npc.char, npcColor);
+            }
           }
         }
       }
@@ -1095,9 +1110,13 @@ export class UIManager {
       if (player) {
         const px = player.position.x - camX;
         const py = player.position.y - camY;
-        if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
+        if (px >= 0 && px < tilesW && py >= 0 && py < tilesH) {
           const playerColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
-          r.drawChar(viewLeft + px, viewTop + py, '@', playerColor);
+          if (tileDetail && zoom > 1) {
+            tileDetail.drawEntity(r, viewLeft + px * zoom, viewTop + py * zoom, '@', playerColor, 'player', zoom);
+          } else {
+            r.drawChar(viewLeft + px, viewTop + py, '@', playerColor);
+          }
         }
       }
     }

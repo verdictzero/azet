@@ -30,28 +30,31 @@ html, body {
   border-radius: 6px;
 }
 
-/* Touch Controls — centered bottom grid */
+/* Touch Controls — right-aligned vertical strip */
 #touch-controls {
   position: fixed;
   bottom: 0;
-  left: 0;
   right: 0;
+  top: 0;
+  width: clamp(160px, 33vw, 220px);
   z-index: 10;
   pointer-events: none;
-  padding: 0 env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 8px) env(safe-area-inset-left, 0);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 env(safe-area-inset-right, 4px) env(safe-area-inset-bottom, 8px) 0;
 }
 
 #touch-controls.hidden {
   display: none;
 }
 
-/* 3-wide centered grid for all controls */
+/* 3-wide grid for all controls, aligned to bottom-right */
 .touch-grid {
   display: grid;
-  grid-template-columns: repeat(3, clamp(52px, 14vw, 68px));
-  gap: 4px;
-  justify-content: center;
-  padding: 6px 10px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  padding: 4px;
   pointer-events: auto;
 }
 
@@ -66,7 +69,7 @@ html, body {
   touch-action: manipulation;
   user-select: none;
   transition: background 0.08s, border-color 0.08s, transform 0.06s;
-  min-height: clamp(46px, 11vw, 58px);
+  min-height: clamp(38px, 9vw, 48px);
   font-family: 'Noto Sans Mono', monospace;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -76,76 +79,76 @@ html, body {
   transform: scale(0.93);
 }
 
-/* D-pad buttons (green) */
+/* D-pad buttons (green, dimmed) */
 .grid-btn.dpad {
-  background: rgba(0, 170, 0, 0.3);
-  border: 1.5px solid rgba(0, 255, 0, 0.45);
-  color: rgba(0, 255, 0, 0.8);
-  font-size: clamp(18px, 5vw, 26px);
+  background: rgba(0, 170, 0, 0.15);
+  border: 1.5px solid rgba(0, 255, 0, 0.22);
+  color: rgba(0, 255, 0, 0.5);
+  font-size: clamp(16px, 4vw, 22px);
 }
 .grid-btn.dpad:active, .grid-btn.dpad.pressed {
-  background: rgba(0, 255, 0, 0.45);
-  border-color: rgba(0, 255, 0, 0.8);
+  background: rgba(0, 255, 0, 0.3);
+  border-color: rgba(0, 255, 0, 0.55);
 }
 
 /* D-pad center/wait button */
 .grid-btn.dpad-center {
-  background: rgba(0, 170, 0, 0.2);
-  border: 1.5px solid rgba(0, 255, 0, 0.25);
-  color: rgba(0, 255, 0, 0.6);
-  font-size: clamp(12px, 3vw, 16px);
+  background: rgba(0, 170, 0, 0.1);
+  border: 1.5px solid rgba(0, 255, 0, 0.12);
+  color: rgba(0, 255, 0, 0.35);
+  font-size: clamp(10px, 2.5vw, 14px);
 }
 .grid-btn.dpad-center:active, .grid-btn.dpad-center.pressed {
-  background: rgba(0, 255, 0, 0.4);
-  border-color: rgba(0, 255, 0, 0.7);
+  background: rgba(0, 255, 0, 0.25);
+  border-color: rgba(0, 255, 0, 0.45);
 }
 
-/* Action buttons (cyan) */
+/* Action buttons (cyan, dimmed) */
 .grid-btn.action {
-  background: rgba(0, 170, 170, 0.25);
-  border: 1.5px solid rgba(0, 255, 255, 0.4);
-  color: rgba(0, 255, 255, 0.85);
-  font-size: clamp(11px, 3vw, 14px);
+  background: rgba(0, 170, 170, 0.12);
+  border: 1.5px solid rgba(0, 255, 255, 0.2);
+  color: rgba(0, 255, 255, 0.5);
+  font-size: clamp(10px, 2.5vw, 13px);
 }
 .grid-btn.action:active, .grid-btn.action.pressed {
-  background: rgba(0, 255, 255, 0.4);
-  border-color: rgba(0, 255, 255, 0.8);
+  background: rgba(0, 255, 255, 0.25);
+  border-color: rgba(0, 255, 255, 0.5);
 }
 
-/* Primary action button (yellow/gold) */
+/* Primary action button (yellow/gold, dimmed) */
 .grid-btn.action-primary {
-  background: rgba(255, 255, 85, 0.2);
-  border: 1.5px solid rgba(255, 255, 85, 0.5);
-  color: rgba(255, 255, 85, 0.9);
-  font-size: clamp(11px, 3vw, 14px);
+  background: rgba(255, 255, 85, 0.1);
+  border: 1.5px solid rgba(255, 255, 85, 0.25);
+  color: rgba(255, 255, 85, 0.55);
+  font-size: clamp(10px, 2.5vw, 13px);
 }
 .grid-btn.action-primary:active, .grid-btn.action-primary.pressed {
-  background: rgba(255, 255, 85, 0.45);
-  border-color: rgba(255, 255, 85, 0.85);
+  background: rgba(255, 255, 85, 0.3);
+  border-color: rgba(255, 255, 85, 0.55);
 }
 
-/* Debug button (green, smaller) */
+/* Debug button (green, dimmed) */
 .grid-btn.debug {
-  background: rgba(0, 170, 0, 0.2);
-  border: 1.5px solid rgba(0, 255, 0, 0.4);
-  color: rgba(0, 255, 0, 0.8);
+  background: rgba(0, 170, 0, 0.1);
+  border: 1.5px solid rgba(0, 255, 0, 0.2);
+  color: rgba(0, 255, 0, 0.45);
   font-size: clamp(9px, 2.5vw, 11px);
 }
 .grid-btn.debug:active, .grid-btn.debug.pressed {
-  background: rgba(0, 255, 0, 0.4);
-  border-color: rgba(0, 255, 0, 0.8);
+  background: rgba(0, 255, 0, 0.25);
+  border-color: rgba(0, 255, 0, 0.5);
 }
 
-/* Tab/page button (purple) */
+/* Tab/page button (purple, dimmed) */
 .grid-btn.tab {
-  background: rgba(170, 85, 255, 0.25);
-  border: 1.5px solid rgba(170, 85, 255, 0.5);
-  color: rgba(200, 150, 255, 0.9);
-  font-size: clamp(10px, 2.8vw, 13px);
+  background: rgba(170, 85, 255, 0.12);
+  border: 1.5px solid rgba(170, 85, 255, 0.25);
+  color: rgba(200, 150, 255, 0.55);
+  font-size: clamp(10px, 2.5vw, 13px);
 }
 .grid-btn.tab:active, .grid-btn.tab.pressed {
-  background: rgba(170, 85, 255, 0.5);
-  border-color: rgba(170, 85, 255, 0.85);
+  background: rgba(170, 85, 255, 0.3);
+  border-color: rgba(170, 85, 255, 0.55);
 }
 
 /* Empty/spacer cell */
@@ -158,12 +161,11 @@ html, body {
 
 /* Landscape: tighten up for wider screens */
 @media (orientation: landscape) and (max-height: 500px) {
-  .touch-grid {
-    grid-template-columns: repeat(3, 44px);
-    gap: 3px;
+  #touch-controls {
+    width: clamp(130px, 25vw, 180px);
   }
   .grid-btn {
-    min-height: 40px;
+    min-height: 36px;
   }
 }
 

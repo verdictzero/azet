@@ -1,4 +1,4 @@
-import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
+import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem, TileDetailSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator } from './entities.js';
@@ -65,6 +65,7 @@ class Game {
     this.weatherSystem = new WeatherSystem(this.rng);
     this.particles = new ParticleSystem();
     this.glow = new GlowSystem();
+    this.tileDetail = new TileDetailSystem();
     this.lighting = new LightingSystem();
 
     // Debug state
@@ -137,11 +138,20 @@ class Game {
 
   handleResize() {
     this.renderer.resize();
-    this.camera.viewportCols = this.renderer.cols - 2;
-    this.camera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    this._updateViewportForZoom();
+  }
+
+  _updateViewportForZoom() {
+    const zoom = this.renderer.zoomLevel;
+    const viewW = this.renderer.cols - 2;
+    const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    // Overworld camera always uses 1:1 (no zoom on overworld)
+    this.camera.viewportCols = viewW;
+    this.camera.viewportRows = viewH;
+    // Location camera uses zoomed tile count
     if (this.locationCamera) {
-      this.locationCamera.viewportCols = this.renderer.cols - 2;
-      this.locationCamera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+      this.locationCamera.viewportCols = Math.floor(viewW / zoom);
+      this.locationCamera.viewportRows = Math.floor(viewH / zoom);
     }
   }
 
@@ -152,45 +162,35 @@ class Game {
     this.state = newState;
     this.ui.resetSelection();
     // Reset zoom when leaving dungeon/location states
-    if (newState === 'OVERWORLD' && this.renderer.zoomLevel !== 1.0) {
-      this.renderer.setZoom(1.0);
-      this.camera.viewportCols = this.renderer.cols - 2;
-      this.camera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    if (newState === 'OVERWORLD' && this.renderer.zoomLevel !== 1) {
+      this.renderer.setZoom(1);
     }
     // Update touch controls layout for new state
     this.input.updateTouchLayout(newState);
   }
 
   _zoomIn() {
-    const levels = [1.0, 1.5, 2.0];
     const cur = this.renderer.zoomLevel;
-    const next = levels.find(l => l > cur) || levels[levels.length - 1];
-    if (next === cur) return;
+    if (cur >= 3) return;
+    const next = cur + 1;
     this.renderer.setZoom(next);
     this._updateCameraAfterZoom();
-    this.ui.addMessage(`Zoom: ${next}x`, COLORS.BRIGHT_CYAN);
+    const labels = { 1: '1x (normal)', 2: '2x (detailed)', 3: '3x (high detail)' };
+    this.ui.addMessage(`Zoom: ${labels[next]}`, COLORS.BRIGHT_CYAN);
   }
 
   _zoomOut() {
-    const levels = [1.0, 1.5, 2.0];
     const cur = this.renderer.zoomLevel;
-    const prev = [...levels].reverse().find(l => l < cur) || levels[0];
-    if (prev === cur) return;
-    this.renderer.setZoom(prev);
+    if (cur <= 1) return;
+    const next = cur - 1;
+    this.renderer.setZoom(next);
     this._updateCameraAfterZoom();
-    this.ui.addMessage(`Zoom: ${prev}x`, COLORS.BRIGHT_CYAN);
+    const labels = { 1: '1x (normal)', 2: '2x (detailed)', 3: '3x (high detail)' };
+    this.ui.addMessage(`Zoom: ${labels[next]}`, COLORS.BRIGHT_CYAN);
   }
 
   _updateCameraAfterZoom() {
-    const viewW = this.renderer.cols - 2;
-    const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
-    if (this.state === 'LOCATION' && this.locationCamera) {
-      this.locationCamera.viewportCols = viewW;
-      this.locationCamera.viewportRows = viewH;
-      this.locationCamera.follow(this.player);
-      this.locationCamera.x = this.locationCamera.targetX;
-      this.locationCamera.y = this.locationCamera.targetY;
-    }
+    this._updateViewportForZoom();
     this.renderer.invalidate();
   }
 
@@ -2801,7 +2801,7 @@ class Game {
 
       case 'LOCATION':
         if (this.locationCamera) { this.locationCamera.follow(this.player); this.locationCamera.update(); }
-        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera);
+        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.tileDetail, this.renderer.zoomLevel);
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
         break;
 
@@ -2814,7 +2814,7 @@ class Game {
       case 'DIALOGUE':
         // Render background
         if (this.currentSettlement) {
-          this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera);
+          this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.tileDetail, this.renderer.zoomLevel);
         }
         if (this.ui.dialogueState) this.ui.drawDialogue(this.ui.dialogueState);
         break;
@@ -3122,9 +3122,14 @@ class Game {
     const viewW = r.cols - 2;
     const viewH = r.rows - LAYOUT.HUD_TOTAL;
 
+    const zoom = r.zoomLevel;
+    // At zoom N, each world tile takes N screen cells — viewport shows fewer tiles
+    const tilesW = Math.floor(viewW / zoom);
+    const tilesH = Math.floor(viewH / zoom);
+
     // Center on player
-    const offsetX = this.player.position.x - Math.floor(viewW / 2);
-    const offsetY = this.player.position.y - Math.floor(viewH / 2);
+    const offsetX = this.player.position.x - Math.floor(tilesW / 2);
+    const offsetY = this.player.position.y - Math.floor(tilesH / 2);
 
     const dw = this.currentDungeon.tiles[0]?.length || 0;
     const dh = this.currentDungeon.tiles.length;
@@ -3147,8 +3152,8 @@ class Game {
       });
 
       // Static light sources (fireplaces, lava, etc)
-      for (let ty = Math.max(0, offsetY); ty < Math.min(dh, offsetY + viewH); ty++) {
-        for (let tx = Math.max(0, offsetX); tx < Math.min(dw, offsetX + viewW); tx++) {
+      for (let ty = Math.max(0, offsetY); ty < Math.min(dh, offsetY + tilesH); ty++) {
+        for (let tx = Math.max(0, offsetX); tx < Math.min(dw, offsetX + tilesW); tx++) {
           const tile = this.currentDungeon.tiles[ty]?.[tx];
           if (!tile) continue;
           if (tile.type === 'FIREPLACE' || tile.type === 'CAMPFIRE') {
@@ -3197,10 +3202,12 @@ class Game {
       }
     }
 
-    for (let sy = 0; sy < viewH; sy++) {
-      for (let sx = 0; sx < viewW; sx++) {
+    for (let sy = 0; sy < tilesH; sy++) {
+      for (let sx = 0; sx < tilesW; sx++) {
         const wx = offsetX + sx;
         const wy = offsetY + sy;
+        const scrX = viewLeft + sx * zoom;
+        const scrY = viewTop + sy * zoom;
 
         if (wy >= 0 && wy < dh && wx >= 0 && wx < dw) {
           const tile = this.currentDungeon.tiles[wy][wx];
@@ -3225,12 +3232,21 @@ class Game {
             // Dim fg/bg based on light brightness
             const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
             const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
-            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, dimFg, dimBg);
+            this.tileDetail.drawTile(r, scrX, scrY, { ...tile, bg: dimBg }, zoom, dimFg);
           } else {
-            r.drawChar(viewLeft + sx, viewTop + sy, ' ', COLORS.BLACK, COLORS.BLACK);
+            // Fill the NxN block with black
+            for (let dy = 0; dy < zoom; dy++) {
+              for (let dx = 0; dx < zoom; dx++) {
+                r.drawChar(scrX + dx, scrY + dy, ' ', COLORS.BLACK, COLORS.BLACK);
+              }
+            }
           }
         } else {
-          r.drawChar(viewLeft + sx, viewTop + sy, ' ', COLORS.BLACK, COLORS.BLACK);
+          for (let dy = 0; dy < zoom; dy++) {
+            for (let dx = 0; dx < zoom; dx++) {
+              r.drawChar(scrX + dx, scrY + dy, ' ', COLORS.BLACK, COLORS.BLACK);
+            }
+          }
         }
       }
     }
@@ -3243,8 +3259,9 @@ class Game {
         if (light.brightness > 0.02) {
           const sx = item.position.x - offsetX;
           const sy = item.position.y - offsetY;
-          if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
-            r.drawChar(viewLeft + sx, viewTop + sy, item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW));
+          if (sx >= 0 && sx < tilesW && sy >= 0 && sy < tilesH) {
+            this.tileDetail.drawEntity(r, viewLeft + sx * zoom, viewTop + sy * zoom,
+              item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW), 'item', zoom);
           }
         }
       }
@@ -3257,16 +3274,18 @@ class Game {
       if (light.brightness > 0.02) {
         const sx = enemy.position.x - offsetX;
         const sy = enemy.position.y - offsetY;
-        if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
-          r.drawChar(viewLeft + sx, viewTop + sy, enemy.char, enemy.color || COLORS.BRIGHT_RED);
+        if (sx >= 0 && sx < tilesW && sy >= 0 && sy < tilesH) {
+          this.tileDetail.drawEntity(r, viewLeft + sx * zoom, viewTop + sy * zoom,
+            enemy.char, enemy.color || COLORS.BRIGHT_RED, 'enemy', zoom);
         }
       }
     }
 
     // Draw player
-    const playerScreenX = viewLeft + Math.floor(viewW / 2);
-    const playerScreenY = viewTop + Math.floor(viewH / 2);
-    r.drawChar(playerScreenX, playerScreenY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+    const playerScrX = viewLeft + Math.floor(tilesW / 2) * zoom;
+    const playerScrY = viewTop + Math.floor(tilesH / 2) * zoom;
+    this.tileDetail.drawEntity(r, playerScrX, playerScrY, '@',
+      this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW), 'player', zoom);
 
     // Render particles in dungeon
     this.particles.update();
