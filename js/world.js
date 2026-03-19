@@ -33,6 +33,7 @@ export class OverworldGenerator {
     const rng = new SeededRNG(seed);
     const heightNoise = new PerlinNoise(rng);
     const moistureNoise = new PerlinNoise(rng);
+    const anomalyNoise = new PerlinNoise(rng);
 
     // Generate base terrain
     const tiles = makeTileGrid(width, height, (x, y) => {
@@ -40,7 +41,8 @@ export class OverworldGenerator {
       const ny = y / height;
       const h = (heightNoise.fbm(nx * 4, ny * 4, 6) + 1) / 2;
       const m = (moistureNoise.fbm(nx * 4 + 100, ny * 4 + 100, 5) + 1) / 2;
-      return this._terrainFromNoise(h, m);
+      const a = (anomalyNoise.fbm(nx * 2, ny * 2, 4) + 1) / 2;
+      return this._terrainFromNoise(h, m, a);
     });
 
     // Place locations
@@ -52,7 +54,36 @@ export class OverworldGenerator {
     return { tiles, width, height, locations, roads, getLocation: (x, y) => this._getLocation(locations, x, y) };
   }
 
-  _terrainFromNoise(h, m) {
+  _terrainFromNoise(h, m, a = 0) {
+    // === ANOMALY BIOMES — checked first; high 'a' threshold keeps them rare ===
+
+    // Void Rift: tears in reality (very rare)
+    if (a > 0.92 && h < 0.4) return tile('VOID_RIFT', ' ', '#220044', '#000000', true, { biome: 'void_rift' });
+    // Alien Crash Site: embedded xeno-vessel wreckage
+    if (a > 0.9) return tile('ALIEN_CRASH', '*', '#FF44FF', '#220022', true, { biome: 'alien_crash' });
+    // Data Corruption: ship systems haywire
+    if (a > 0.85 && m >= 0.3 && m <= 0.6) return tile('GLITCH_ZONE', '?', '#FF0088', '#110011', true, { biome: 'glitch_zone' });
+    // Assimilation Front: alien biomass consuming colony structure
+    if (a > 0.82 && h > 0.5) return tile('ASSIMILATED', '=', '#AA0044', '#110000', true, { biome: 'assimilated' });
+    // Hull Breach: exposed outer hull, vacuum-adjacent sectors
+    if (a > 0.8 && h < 0.35) return tile('HULL_BREACH', '%', '#8899AA', '#111122', true, { biome: 'hull_breach' });
+    // Nano-Plague Zone: grey goo dissolving everything
+    if (a > 0.78 && h >= 0.4 && h <= 0.7) return tile('NANO_PLAGUE', ':', '#888888', '#222222', true, { biome: 'nano_plague' });
+    // Reactor Slag: molten areas around failed reactors
+    if (a > 0.75 && h > 0.7) return tile('REACTOR_SLAG', '~', '#FF6622', '#331100', true, { biome: 'reactor_slag' });
+    // Frozen Deck: cryogenics failure, frost-covered corridors
+    if (a > 0.7 && h < 0.5 && m > 0.6) return tile('FROZEN_DECK', '.', '#AADDFF', '#112233', true, { biome: 'frozen_deck' });
+    // Crystalline Growth: alien mineral formations
+    if (a > 0.7 && h > 0.6 && m < 0.3) return tile('CRYSTAL_ZONE', '#', '#44FFFF', '#002222', false, { biome: 'crystal_zone' });
+    // Fungal Network: bioluminescent mycelium
+    if (a > 0.65 && h >= 0.3 && h <= 0.6 && m > 0.5) return tile('FUNGAL_NET', '%', '#CC88FF', '#1A0022', true, { biome: 'fungal_net' });
+    // Toxic Sump: waste processing overflow
+    if (a > 0.6 && h < 0.3) return tile('TOXIC_SUMP', '~', '#44FF00', '#112200', false, { biome: 'toxic_sump' });
+    // Hydroponic Jungle: agri-domes gone wild
+    if (a > 0.5 && h >= 0.4 && h <= 0.65 && m > 0.75) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { biome: 'hydro_jungle' });
+
+    // === EXISTING BIOMES (unchanged) ===
+
     // Deep water
     if (h < 0.2) return tile('DEEP_LAKE', '\u2248', '#000088', '#000044', false, { biome: 'lake' });
     // Shallows
@@ -282,6 +313,7 @@ export class ChunkManager {
     const initRng = new SeededRNG(seed);
     this.heightNoise = new PerlinNoise(initRng);
     this.moistureNoise = new PerlinNoise(initRng);
+    this.anomalyNoise = new PerlinNoise(initRng);
     this._terrainGen = new OverworldGenerator(); // reuse _terrainFromNoise
 
     this.chunks = new Map();       // "cx,cy" -> { tiles: [][], locations: [] }
@@ -300,7 +332,174 @@ export class ChunkManager {
   _generateTile(wx, wy) {
     const h = (this.heightNoise.fbm(wx * TERRAIN_SCALE, wy * TERRAIN_SCALE, 6) + 1) / 2;
     const m = (this.moistureNoise.fbm(wx * TERRAIN_SCALE + 100, wy * TERRAIN_SCALE + 100, 5) + 1) / 2;
-    return this._terrainGen._terrainFromNoise(h, m);
+    const a = (this.anomalyNoise.fbm(wx * TERRAIN_SCALE * 0.5, wy * TERRAIN_SCALE * 0.5, 4) + 1) / 2;
+    return this._terrainGen._terrainFromNoise(h, m, a);
+  }
+
+  // ── Megalithic surface structure definitions ──
+  _structureDefs() {
+    return [
+      {
+        type: 'signal_obelisk', w: 3, h: 5, biomes: null, // any biome
+        build(tiles, sx, sy) {
+          // Tall pillar with beacon
+          for (let dy = 0; dy < 5; dy++) tiles[sy + dy][sx + 1] = tile('OBELISK', '|', '#6688AA', '#111122', false, { structure: true });
+          tiles[sy][sx + 1] = tile('OBELISK_TOP', '*', '#44FFFF', '#111122', false, { structure: true });
+          tiles[sy + 4][sx] = tile('OBELISK_BASE', '[', '#556677', '#111122', false, { structure: true });
+          tiles[sy + 4][sx + 2] = tile('OBELISK_BASE', ']', '#556677', '#111122', false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 1, y: oy + sy, radius: 8, r: 0, g: 0.8, b: 1, intensity: 0.9 }];
+        },
+      },
+      {
+        type: 'reactor_monolith', w: 5, h: 5, biomes: ['reactor_slag'],
+        build(tiles, sx, sy) {
+          for (let dy = 0; dy < 5; dy++) for (let dx = 0; dx < 5; dx++) {
+            if (dx === 0 || dx === 4 || dy === 0 || dy === 4)
+              tiles[sy + dy][sx + dx] = tile('REACTOR_WALL', '#', '#AA4400', '#331100', false, { structure: true });
+            else
+              tiles[sy + dy][sx + dx] = tile('REACTOR_CORE', '~', '#FF8822', '#441100', false, { structure: true });
+          }
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 2, y: oy + sy + 2, radius: 12, r: 1, g: 0.4, b: 0, intensity: 1.0 }];
+        },
+      },
+      {
+        type: 'alien_spire', w: 4, h: 7, biomes: ['alien_crash', 'crystal_zone'],
+        build(tiles, sx, sy) {
+          for (let dy = 0; dy < 7; dy++) {
+            tiles[sy + dy][sx + 1] = tile('ALIEN_PILLAR', '|', '#CC44FF', '#220033', false, { structure: true });
+            tiles[sy + dy][sx + 2] = tile('ALIEN_PILLAR', '|', '#CC44FF', '#220033', false, { structure: true });
+          }
+          tiles[sy][sx + 1] = tile('ALIEN_NODE', '*', '#FF88FF', '#220033', false, { structure: true });
+          tiles[sy][sx + 2] = tile('ALIEN_NODE', '*', '#FF88FF', '#220033', false, { structure: true });
+          tiles[sy + 3][sx] = tile('ALIEN_NODE', '*', '#DD66FF', '#220033', false, { structure: true });
+          tiles[sy + 3][sx + 3] = tile('ALIEN_NODE', '*', '#DD66FF', '#220033', false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [
+            { x: ox + sx + 1, y: oy + sy, radius: 10, r: 0.8, g: 0, b: 1, intensity: 0.85 },
+            { x: ox + sx + 1, y: oy + sy + 3, radius: 6, r: 0.6, g: 0, b: 0.8, intensity: 0.5 },
+          ];
+        },
+      },
+      {
+        type: 'cryo_pylon', w: 3, h: 3, biomes: ['frozen_deck'],
+        build(tiles, sx, sy) {
+          tiles[sy][sx] = tile('CRYO_HOUSING', '[', '#6688AA', '#112233', false, { structure: true });
+          tiles[sy][sx + 2] = tile('CRYO_HOUSING', ']', '#6688AA', '#112233', false, { structure: true });
+          tiles[sy][sx + 1] = tile('CRYO_EMITTER', '*', '#88DDFF', '#112233', false, { structure: true });
+          tiles[sy + 1][sx] = tile('CRYO_HOUSING', '[', '#6688AA', '#112233', false, { structure: true });
+          tiles[sy + 1][sx + 2] = tile('CRYO_HOUSING', ']', '#6688AA', '#112233', false, { structure: true });
+          tiles[sy + 2][sx + 1] = tile('CRYO_BASE', '=', '#556688', '#112233', false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 1, y: oy + sy, radius: 6, r: 0.3, g: 0.6, b: 1, intensity: 0.7 }];
+        },
+      },
+      {
+        type: 'fungal_colossus', w: 6, h: 6, biomes: ['fungal_net', 'hydro_jungle'],
+        build(tiles, sx, sy) {
+          for (let dy = 0; dy < 6; dy++) for (let dx = 0; dx < 6; dx++) {
+            const dist = Math.abs(dx - 2.5) + Math.abs(dy - 2.5);
+            if (dist < 3) tiles[sy + dy][sx + dx] = tile('FUNGAL_MASS', '&', '#AA66DD', '#1A0022', false, { structure: true });
+            else if (dist < 4.5 && (dx + dy) % 2 === 0) tiles[sy + dy][sx + dx] = tile('SPORE_FLOOR', '.', '#8844AA', '#1A0022', true, { structure: true });
+          }
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 3, y: oy + sy + 3, radius: 8, r: 0.2, g: 1, b: 0.4, intensity: 0.75 }];
+        },
+      },
+      {
+        type: 'data_shrine', w: 4, h: 4, biomes: ['glitch_zone'],
+        build(tiles, sx, sy) {
+          for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) {
+            if (dx === 0 || dx === 3 || dy === 0 || dy === 3)
+              tiles[sy + dy][sx + dx] = tile('DATA_FRAME', '#', '#FF4488', '#110011', false, { structure: true });
+            else
+              tiles[sy + dy][sx + dx] = tile('DATA_CORE', '?', '#FF0088', '#220011', false, { structure: true });
+          }
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 2, y: oy + sy + 2, radius: 6, r: 1, g: 0, b: 0.5, intensity: 0.8 }];
+        },
+      },
+      {
+        type: 'void_gate', w: 5, h: 3, biomes: ['void_rift'],
+        build(tiles, sx, sy) {
+          tiles[sy][sx] = tile('VOID_ARCH', '(', '#6644AA', '#000011', false, { structure: true });
+          tiles[sy][sx + 4] = tile('VOID_ARCH', ')', '#6644AA', '#000011', false, { structure: true });
+          tiles[sy + 1][sx] = tile('VOID_ARCH', '(', '#6644AA', '#000011', false, { structure: true });
+          tiles[sy + 1][sx + 4] = tile('VOID_ARCH', ')', '#6644AA', '#000011', false, { structure: true });
+          tiles[sy + 2][sx + 1] = tile('VOID_BASE', '=', '#443366', '#000011', false, { structure: true });
+          tiles[sy + 2][sx + 3] = tile('VOID_BASE', '=', '#443366', '#000011', false, { structure: true });
+          // Void center
+          for (let dx = 1; dx <= 3; dx++) {
+            tiles[sy][sx + dx] = tile('VOID_CENTER', ' ', '#110022', '#000000', false, { structure: true });
+            tiles[sy + 1][sx + dx] = tile('VOID_CENTER', ' ', '#110022', '#000000', false, { structure: true });
+          }
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 2, y: oy + sy + 1, radius: 10, r: 0.4, g: 0, b: 0.8, intensity: 0.9 }];
+        },
+      },
+    ];
+  }
+
+  _placeStructures(cx, cy, tiles) {
+    const rng = this._chunkRng(cx, cy);
+    // Use a separate roll so we don't disturb location placement RNG
+    const structRng = new SeededRNG(rng.nextInt(0, 999999));
+
+    if (structRng.next() > 0.15) return []; // 15% chance per chunk
+
+    const ox = cx * CHUNK_SIZE;
+    const oy = cy * CHUNK_SIZE;
+
+    // Tally biomes in this chunk to weight structure selection
+    const biomeCounts = {};
+    for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const b = tiles[ly][lx].biome;
+        if (b) biomeCounts[b] = (biomeCounts[b] || 0) + 1;
+      }
+    }
+
+    const defs = this._structureDefs();
+    // Filter to structures that fit this chunk's biomes
+    const candidates = defs.filter(d => {
+      if (!d.biomes) return true; // universal
+      return d.biomes.some(b => (biomeCounts[b] || 0) > 10);
+    });
+    if (candidates.length === 0) return [];
+
+    const def = structRng.random(candidates);
+    const structures = [];
+
+    // Try to place structure
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const sx = structRng.nextInt(2, CHUNK_SIZE - def.w - 2);
+      const sy = structRng.nextInt(2, CHUNK_SIZE - def.h - 2);
+
+      // Check area is walkable
+      let ok = true;
+      for (let dy = 0; dy < def.h && ok; dy++) {
+        for (let dx = 0; dx < def.w && ok; dx++) {
+          const t = tiles[sy + dy][sx + dx];
+          if (t.type === 'LOCATION' || t.structure) ok = false;
+        }
+      }
+      if (!ok) continue;
+
+      def.build(tiles, sx, sy);
+      const lights = def.lights(sx, sy, ox, oy);
+      structures.push({ type: def.type, x: ox + sx, y: oy + sy, w: def.w, h: def.h, lights });
+      break;
+    }
+
+    return structures;
   }
 
   _generateChunk(cx, cy) {
@@ -317,8 +516,9 @@ export class ChunkManager {
       }
     }
 
+    const structures = this._placeStructures(cx, cy, tiles);
     const locations = this._placeChunkLocations(cx, cy, tiles);
-    const chunk = { tiles, locations, cx, cy };
+    const chunk = { tiles, locations, structures, cx, cy };
     this.chunks.set(key, chunk);
     return chunk;
   }
@@ -643,6 +843,64 @@ export class SettlementGenerator {
         if (r < 0.15) return tile('MOUNTAIN', '^', '#cccccc', '#333333', false, { buildingId: null });
         if (r < 0.25) return tile('FOREST', 't', '#116611', '#0a1a0a', false, { buildingId: null });
         return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
+      },
+      hull_breach: () => {
+        if (r < 0.15) return tile('HULL_BREACH', '%', '#667788', '#111122', true, { buildingId: null });
+        if (r < 0.25) return tile('HULL_BREACH', '.', '#556677', '#111122', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#778899', '#111122', true, { buildingId: null });
+      },
+      reactor_slag: () => {
+        if (r < 0.10) return tile('REACTOR_SLAG', '~', '#FF6622', '#331100', true, { buildingId: null });
+        if (r < 0.25) return tile('BARREN_WASTE', '.', '#AA6633', '#221100', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#886644', '#221100', true, { buildingId: null });
+      },
+      frozen_deck: () => {
+        if (r < 0.15) return tile('FROZEN_DECK', '.', '#AADDFF', '#112233', true, { buildingId: null });
+        if (r < 0.25) return tile('FROZEN_DECK', '*', '#88BBDD', '#112233', false, { buildingId: null });
+        return tile('GRASSLAND', '.', '#88BBCC', '#112233', true, { buildingId: null });
+      },
+      hydro_jungle: () => {
+        if (r < 0.30) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { buildingId: null });
+        if (r < 0.45) return tile('DEEP_FOREST', 'T', '#00CC44', '#001A0A', false, { buildingId: null });
+        return tile('GRASSLAND', '.', '#22AA44', '#001A0A', true, { buildingId: null });
+      },
+      fungal_net: () => {
+        if (r < 0.20) return tile('FUNGAL_NET', '%', '#CC88FF', '#1A0022', true, { buildingId: null });
+        if (r < 0.30) return tile('FUNGAL_NET', '.', '#9966CC', '#1A0022', true, { buildingId: null });
+        return tile('GRASSLAND', '.', '#886699', '#1A0022', true, { buildingId: null });
+      },
+      toxic_sump: () => {
+        if (r < 0.15) return tile('TOXIC_SUMP', '~', '#44FF00', '#112200', false, { buildingId: null });
+        if (r < 0.30) return tile('MIRE', '~', '#338800', '#112200', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#667744', '#112200', true, { buildingId: null });
+      },
+      alien_crash: () => {
+        if (r < 0.15) return tile('ALIEN_CRASH', '*', '#FF44FF', '#220022', true, { buildingId: null });
+        if (r < 0.25) return tile('ALIEN_CRASH', '.', '#CC44CC', '#220022', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#886688', '#220022', true, { buildingId: null });
+      },
+      crystal_zone: () => {
+        if (r < 0.20) return tile('CRYSTAL_ZONE', '#', '#44FFFF', '#002222', false, { buildingId: null });
+        if (r < 0.30) return tile('CRYSTAL_ZONE', '.', '#22AAAA', '#002222', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#448888', '#002222', true, { buildingId: null });
+      },
+      void_rift: () => {
+        if (r < 0.15) return tile('VOID_RIFT', ' ', '#220044', '#000000', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#332244', '#000011', true, { buildingId: null });
+      },
+      glitch_zone: () => {
+        if (r < 0.20) return tile('GLITCH_ZONE', '?', '#FF0088', '#110011', true, { buildingId: null });
+        if (r < 0.30) return tile('GLITCH_ZONE', '.', '#CC0066', '#110011', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#884466', '#110011', true, { buildingId: null });
+      },
+      nano_plague: () => {
+        if (r < 0.25) return tile('NANO_PLAGUE', ':', '#888888', '#222222', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#666666', '#222222', true, { buildingId: null });
+      },
+      assimilated: () => {
+        if (r < 0.20) return tile('ASSIMILATED', '=', '#AA0044', '#110000', true, { buildingId: null });
+        if (r < 0.35) return tile('ASSIMILATED', '.', '#882244', '#110000', true, { buildingId: null });
+        return tile('BARREN_WASTE', '.', '#664444', '#110000', true, { buildingId: null });
       },
     };
 

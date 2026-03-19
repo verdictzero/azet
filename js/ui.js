@@ -70,7 +70,7 @@ export class UIManager {
 
     // Weather indicator
     if (weatherSystem && weatherSystem.current !== 'clear') {
-      const weatherIcons = { rain: '~', snow: '*', storm: '!', fog: '=', sandstorm: '=', cloudy: '-' };
+      const weatherIcons = { rain: '~', snow: '*', storm: '!', fog: '=', sandstorm: '=', cloudy: '-', acid_rain: '~', coolant_mist: '.', spore_fall: '*', ember_rain: ',', data_storm: '#', nano_haze: '.', ion_storm: '/', blood_rain: '~' };
       const wIcon = weatherIcons[weatherSystem.current] || '';
       r.drawString(loc.length + 4, topY, wIcon, COLORS.BRIGHT_CYAN, bg);
     }
