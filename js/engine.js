@@ -499,15 +499,44 @@ export class Renderer {
     const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
 
     switch (tileType) {
+      // ── Water types ──
+      case 'ABYSS': {
+        const abyssColors = ['#000033', '#000022', '#000044'];
+        return abyssColors[Math.floor(t * 0.5) % abyssColors.length];
+      }
+      case 'DEEP_OCEAN':
+      case 'DEEP_LAKE': {
+        const deeps = ['#000088', '#000066', '#001199'];
+        return deeps[Math.floor(t) % deeps.length];
+      }
+      case 'OCEAN': {
+        const oceans = ['#0044AA', '#0055BB', '#003399'];
+        return oceans[Math.floor(t) % oceans.length];
+      }
       case 'SHALLOWS':
       case 'WATER': {
         const blues = ['#0055AA', '#0066BB', '#0044AA'];
         return blues[Math.floor(t) % blues.length];
       }
-      case 'DEEP_LAKE': {
-        const deeps = ['#000088', '#000066', '#001199'];
-        return deeps[Math.floor(t) % deeps.length];
+      case 'TIDAL_POOL': {
+        const tides = ['#66AADD', '#5599CC', '#77BBEE'];
+        return tides[Math.floor(t * 1.5) % tides.length];
       }
+      case 'TOXIC_SUMP': {
+        const toxics = ['#44FF00', '#33DD00', '#55FF22'];
+        return toxics[Math.floor(t) % toxics.length];
+      }
+      // ── Wetland types ──
+      case 'MIRE':
+      case 'BOG': {
+        const bogs = ['#228844', '#1A7733', '#2A9955'];
+        return bogs[Math.floor(t * 0.7) % bogs.length];
+      }
+      case 'MARSH_REEDS': {
+        const reeds = ['#55AA44', '#4D9940', '#5DBB48'];
+        return reeds[Math.floor(t * 0.8) % reeds.length];
+      }
+      // ── Fire/heat types ──
       case 'LAVA': {
         const r = Math.floor(200 + phase * 55);
         const g = Math.floor(50 + phase * 80);
@@ -518,6 +547,33 @@ export class Renderer {
         const r = Math.floor(220 + phase * 35);
         const g = Math.floor(80 + phase * 100);
         return `rgb(${r},${g},0)`;
+      }
+      case 'THERMAL_VENT': {
+        const r = Math.floor(220 + phase * 35);
+        const g = Math.floor(100 + phase * 50);
+        return `rgb(${r},${g},20)`;
+      }
+      case 'REACTOR_SLAG': {
+        const r = Math.floor(200 + phase * 55);
+        const g = Math.floor(60 + phase * 50);
+        return `rgb(${r},${g},0)`;
+      }
+      // ── Anomaly types ──
+      case 'FUNGAL_NET': {
+        const fungi = ['#CC88FF', '#BB77EE', '#DD99FF'];
+        return fungi[Math.floor(t * 0.6) % fungi.length];
+      }
+      case 'GLITCH_ZONE': {
+        const glitches = ['#FF0088', '#EE0077', '#FF2299', '#DD0066'];
+        return glitches[Math.floor(t * 2) % glitches.length];
+      }
+      case 'CRYSTAL_ZONE': {
+        const crystals = ['#44FFFF', '#33EEFF', '#55FFEE'];
+        return crystals[Math.floor(t * 0.9) % crystals.length];
+      }
+      case 'VOID_RIFT': {
+        const voids = ['#220044', '#110033', '#330055'];
+        return voids[Math.floor(t * 0.4) % voids.length];
       }
       default:
         return baseColor;
