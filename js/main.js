@@ -3086,13 +3086,13 @@ class Game {
 
     if (!this.debug.disableLighting) {
       // Player light
-      const playerRadius = lightInfo.hasLight ? lightInfo.radius : 2;
+      const playerRadius = lightInfo.hasLight ? lightInfo.radius : 6;
       const plColor = lightInfo.hasLight ? this._hexToRGB(lightInfo.color) : { r: 200, g: 200, b: 200 };
       lightSources.push({
         x: px, y: py,
         radius: playerRadius,
         r: plColor.r / 255, g: plColor.g / 255, b: plColor.b / 255,
-        intensity: lightInfo.hasLight ? 1.0 : 0.5,
+        intensity: lightInfo.hasLight ? 1.0 : 0.7,
       });
 
       // Static light sources (fireplaces, lava, etc)

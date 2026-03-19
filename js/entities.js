@@ -1779,7 +1779,7 @@ export class ItemGenerator {
         color: '#FFDD66',
         value: 25,
         stats: {},
-        lightSource: { type: 'lantern', radius: 8, color: '#FFDD66', uses: -1 },
+        lightSource: { type: 'lantern', radius: 14, color: '#FFDD66', uses: -1 },
         description: 'A cobbled-together lantern. Provides steady light. Never runs out.',
       };
     }
@@ -1793,7 +1793,7 @@ export class ItemGenerator {
       color: '#FFAA44',
       value: 8,
       stats: {},
-      lightSource: { type: 'torch', radius: 6, color: '#FFAA44', uses: 50 },
+      lightSource: { type: 'torch', radius: 10, color: '#FFAA44', uses: 50 },
       description: 'A makeshift torch. Provides light for 50 moves before burning out.',
     };
   }

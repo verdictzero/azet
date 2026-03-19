@@ -151,6 +151,78 @@ html, body {
   border-color: rgba(0, 255, 0, 0.8);
 }
 
+/* Tab-switch button */
+.action-btn.tab-btn {
+  background: rgba(170, 85, 255, 0.25);
+  border-color: rgba(170, 85, 255, 0.5);
+  color: rgba(200, 150, 255, 0.9);
+  font-size: clamp(10px, 2.8vw, 13px);
+}
+.action-btn.tab-btn:active {
+  background: rgba(170, 85, 255, 0.5);
+  border-color: rgba(170, 85, 255, 0.85);
+}
+
+/* Handedness mode-switch button */
+.action-btn.mode-btn {
+  background: rgba(255, 140, 0, 0.2);
+  border-color: rgba(255, 160, 0, 0.45);
+  color: rgba(255, 180, 50, 0.9);
+  font-size: clamp(10px, 2.8vw, 13px);
+}
+.action-btn.mode-btn:active {
+  background: rgba(255, 160, 0, 0.45);
+  border-color: rgba(255, 180, 0, 0.8);
+}
+
+/* ── Handedness modes ── */
+
+/* Dual mode (default): d-pad left, actions right */
+.touch-bar.mode-dual {
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+/* Left-hand mode: everything on the left */
+.touch-bar.mode-left {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.touch-bar.mode-left .dpad {
+  grid-template-columns: repeat(3, clamp(44px, 11vw, 54px));
+  grid-template-rows: repeat(3, clamp(44px, 11vw, 54px));
+}
+.touch-bar.mode-left .action-buttons {
+  max-width: calc(3 * clamp(44px, 11vw, 54px) + 8px);
+  justify-content: flex-start;
+}
+.touch-bar.mode-left .action-btn {
+  min-width: clamp(44px, 11vw, 54px);
+  min-height: clamp(38px, 9vw, 48px);
+  font-size: clamp(10px, 2.5vw, 12px);
+}
+
+/* Right-hand mode: everything on the right */
+.touch-bar.mode-right {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.touch-bar.mode-right .dpad {
+  grid-template-columns: repeat(3, clamp(44px, 11vw, 54px));
+  grid-template-rows: repeat(3, clamp(44px, 11vw, 54px));
+}
+.touch-bar.mode-right .action-buttons {
+  max-width: calc(3 * clamp(44px, 11vw, 54px) + 8px);
+  justify-content: flex-end;
+}
+.touch-bar.mode-right .action-btn {
+  min-width: clamp(44px, 11vw, 54px);
+  min-height: clamp(38px, 9vw, 48px);
+  font-size: clamp(10px, 2.5vw, 12px);
+}
+
 /* Landscape: tighten up for wider screens */
 @media (orientation: landscape) and (max-height: 500px) {
   .dpad {
@@ -164,6 +236,16 @@ html, body {
   .action-btn {
     min-width: 52px;
     min-height: 40px;
+  }
+  .touch-bar.mode-left .dpad,
+  .touch-bar.mode-right .dpad {
+    grid-template-columns: repeat(3, 38px);
+    grid-template-rows: repeat(3, 38px);
+  }
+  .touch-bar.mode-left .action-btn,
+  .touch-bar.mode-right .action-btn {
+    min-width: 44px;
+    min-height: 34px;
   }
 }
 

@@ -473,7 +473,8 @@ export class QuestSystem {
     else difficulty = 'hard';
 
     const diffMultiplier = difficulty === 'easy' ? 1 : difficulty === 'medium' ? 1.5 : 2.5;
-    const npcName = giverNPC?.name || rng.random(this._npcNames);
+    const rawName = giverNPC?.name;
+    const npcName = (rawName && typeof rawName === 'object' ? rawName.full : rawName) || rng.random(this._npcNames);
     const npcId = giverNPC?.id || npcName;
 
     // Build substitution context
