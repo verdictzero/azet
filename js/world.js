@@ -34,6 +34,7 @@ export class OverworldGenerator {
     const heightNoise = new PerlinNoise(rng);
     const moistureNoise = new PerlinNoise(rng);
     const anomalyNoise = new PerlinNoise(rng);
+    const detailNoise = new PerlinNoise(rng);
 
     // Generate base terrain
     const tiles = makeTileGrid(width, height, (x, y) => {
@@ -42,7 +43,8 @@ export class OverworldGenerator {
       const h = (heightNoise.fbm(nx * 4, ny * 4, 6) + 1) / 2;
       const m = (moistureNoise.fbm(nx * 4 + 100, ny * 4 + 100, 5) + 1) / 2;
       const a = (anomalyNoise.fbm(nx * 2, ny * 2, 4) + 1) / 2;
-      return this._terrainFromNoise(h, m, a);
+      const d = (detailNoise.fbm(nx * 8, ny * 8, 3) + 1) / 2;
+      return this._terrainFromNoise(h, m, a, d);
     });
 
     // Place locations
@@ -54,7 +56,7 @@ export class OverworldGenerator {
     return { tiles, width, height, locations, roads, getLocation: (x, y) => this._getLocation(locations, x, y) };
   }
 
-  _terrainFromNoise(h, m, a = 0) {
+  _terrainFromNoise(h, m, a = 0, d = 0.5) {
     // === ANOMALY BIOMES — checked first; high 'a' threshold keeps them rare ===
 
     // Void Rift: tears in reality (very rare)
@@ -82,32 +84,95 @@ export class OverworldGenerator {
     // Hydroponic Jungle: agri-domes gone wild
     if (a > 0.5 && h >= 0.4 && h <= 0.65 && m > 0.75) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { biome: 'hydro_jungle' });
 
-    // === EXISTING BIOMES (unchanged) ===
+    // === EXPANDED NATURAL BIOMES — finer height/moisture subdivisions ===
 
-    // Deep water
-    if (h < 0.2) return tile('DEEP_LAKE', '\u2248', '#000088', '#000044', false, { biome: 'lake' });
-    // Shallows
-    if (h < 0.3) return tile('SHALLOWS', '~', '#4488ff', '#000066', false, { biome: 'lake' });
-    // Mire: high moisture + low ground
-    if (h < 0.4 && m > 0.7) return tile('MIRE', '~', '#228844', '#112211', true, { biome: 'swamp' });
-    // Barren waste: low moisture + medium height
-    if (h >= 0.3 && h < 0.6 && m < 0.25) return tile('BARREN_WASTE', '.', '#ddcc44', '#332200', true, { biome: 'badlands' });
-    // Grassland
-    if (h < 0.5) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
-    // Forest
-    if (h < 0.6) {
-      if (m > 0.55) return tile('DEEP_FOREST', 'T', '#22aa22', '#0a1a0a', true, { biome: 'forest' });
-      return tile('FOREST', 't', '#116611', '#0a1a0a', true, { biome: 'forest' });
-    }
-    // More forest at medium height
-    if (h < 0.75) {
-      if (m > 0.45) return tile('FOREST', 't', '#116611', '#0a1a0a', true, { biome: 'forest' });
-      return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
-    }
-    // Mountain
-    if (h < 0.9) return tile('MOUNTAIN', '^', '#cccccc', '#333333', false, { biome: 'mountain' });
-    // High peak
-    return tile('HIGH_PEAK', '\u25b2', '#ffffff', '#666688', false, { biome: 'mountain' });
+    // ── WATER & DEPTH (h < 0.3) ──
+    // Abyssal depths: darkest water, near-black
+    if (h < 0.08) return tile('ABYSS', '\u2591', '#000044', '#000011', false, { biome: 'ocean' });
+    // Deep ocean: dark blue expanse
+    if (h < 0.15) return tile('DEEP_OCEAN', '\u2248', '#000088', '#000044', false, { biome: 'ocean' });
+    // Open ocean: medium-depth water
+    if (h < 0.2) return tile('OCEAN', '\u223D', '#0044AA', '#000055', false, { biome: 'ocean' });
+    // Shallows: lighter coastal water
+    if (h < 0.27) return tile('SHALLOWS', '~', '#4488ff', '#000066', false, { biome: 'lake' });
+    // Tidal pools: very shallow, walkable in wet areas
+    if (h < 0.3 && m > 0.6) return tile('TIDAL_POOL', '\u25CC', '#66AADD', '#001133', true, { biome: 'shore' });
+    // Shoals: sandy shallows, barely above water
+    if (h < 0.3) return tile('SHOAL', '\u00B7', '#88BBCC', '#112233', true, { biome: 'shore' });
+
+    // ── WETLANDS & LOW GROUND (h 0.3 - 0.45) ──
+    // Mire: deep swamp, high moisture
+    if (h < 0.36 && m > 0.7) return tile('MIRE', '~', '#228844', '#112211', true, { biome: 'swamp' });
+    // Bog: waterlogged ground
+    if (h < 0.36 && m > 0.55) return tile('BOG', '\u224B', '#336633', '#0a1a0a', true, { biome: 'swamp' });
+    // Marsh reeds: tall wetland vegetation
+    if (h < 0.40 && m > 0.65) return tile('MARSH_REEDS', '\u2307', '#55AA44', '#112211', true, { biome: 'swamp' });
+    // Mudflat: drying ground, low moisture
+    if (h < 0.40 && m < 0.35) return tile('MUDFLAT', '\u2234', '#AA8844', '#221100', true, { biome: 'badlands' });
+    // Salt flat: arid, cracked earth
+    if (h < 0.45 && m < 0.2) return tile('SALT_FLAT', '\u2043', '#CCBB99', '#332211', true, { biome: 'badlands' });
+    // Dry riverbed: ancient waterways
+    if (h < 0.42 && m >= 0.2 && m < 0.35 && d > 0.75) return tile('DRY_RIVERBED', '\u2240', '#AA9966', '#332211', true, { biome: 'badlands' });
+
+    // ── LOWLANDS & PLAINS (h 0.42 - 0.55) ──
+    // Barren waste: arid scrub
+    if (h < 0.55 && m < 0.25) return tile('BARREN_WASTE', '.', '#ddcc44', '#332200', true, { biome: 'badlands' });
+    // Scrubland: sparse dry bushes
+    if (h < 0.55 && m >= 0.25 && m < 0.4) return tile('SCRUBLAND', ';', '#99AA44', '#1a1a0a', true, { biome: 'grassland' });
+    // Grassland: open plains
+    if (h < 0.5 && m >= 0.4 && m < 0.55) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
+    // Meadow: lush flowering fields
+    if (h < 0.5 && m >= 0.55 && m < 0.7) return tile('MEADOW', ',', '#66DD66', '#112a11', true, { biome: 'grassland' });
+    // Tall grass: dense high vegetation
+    if (h < 0.5 && m >= 0.7) return tile('TALL_GRASS', '\u0131', '#33BB33', '#0a1a0a', true, { biome: 'grassland' });
+    // Default grassland for remaining plains
+    if (h < 0.55) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
+
+    // ── FOREST ZONE (h 0.5 - 0.7) ──
+    // Sparse trees: scattered woodland edge
+    if (h < 0.58 && m < 0.35) return tile('SPARSE_TREES', '\u03C4', '#338833', '#0a1a0a', true, { biome: 'forest' });
+    // Forest: standard deciduous woodland
+    if (h < 0.62 && m <= 0.55) return tile('FOREST', '\u2663', '#22AA22', '#0a1a0a', true, { biome: 'forest' });
+    // Deep forest: dense canopy, high moisture
+    if (h < 0.62 && m > 0.55) return tile('DEEP_FOREST', '\u2660', '#116611', '#060f06', true, { biome: 'forest' });
+    // Dense canopy: impenetrable old-growth
+    if (h < 0.68 && m > 0.6) return tile('CANOPY', '\u03A8', '#0A8810', '#040d04', false, { biome: 'forest' });
+    // Pine stand: coniferous highland forest
+    if (h < 0.7 && m <= 0.6) return tile('PINE_STAND', '\u21DF', '#226622', '#0a0f0a', true, { biome: 'forest' });
+    // Boulder field: rocky clearings in forest (detail noise driven)
+    if (h >= 0.58 && h < 0.7 && d > 0.85) return tile('BOULDER_FIELD', '\u25CF', '#888877', '#222211', false, { biome: 'forest' });
+    // Ancient ruins: crumbling structures (rare detail feature)
+    if (h >= 0.55 && h < 0.68 && d > 0.92) return tile('ANCIENT_RUINS', '\u03A0', '#887766', '#221111', true, { biome: 'forest' });
+
+    // ── HILLS & FOOTHILLS (h 0.68 - 0.8) ──
+    // Foothills: gentle rises
+    if (h < 0.72) return tile('FOOTHILL', '\u2229', '#AABB88', '#222211', true, { biome: 'hills' });
+    // Rolling hills: undulating terrain
+    if (h < 0.76) return tile('ROLLING_HILLS', '\u2312', '#BBAA77', '#2a2a1a', true, { biome: 'hills' });
+    // Ridge: exposed ridgeline (detail noise)
+    if (h < 0.8 && d > 0.8) return tile('RIDGE', '\u2261', '#BBAA99', '#333322', true, { biome: 'hills' });
+    // Rocky slope: dry eroded hillside
+    if (h < 0.8 && m < 0.3) return tile('ROCKY_SLOPE', '\u2592', '#998877', '#333322', true, { biome: 'hills' });
+    // Highland: elevated green terrain
+    if (h < 0.8) return tile('HIGHLAND', '\u2206', '#AABBAA', '#222222', true, { biome: 'hills' });
+
+    // ── MOUNTAIN ZONE (h 0.8+) ──
+    // Cave mouth: rare entrance in mountainside
+    if (h >= 0.8 && h < 0.86 && d > 0.93) return tile('CAVE_MOUTH', '\u25D7', '#665544', '#221100', true, { biome: 'mountain' });
+    // Thermal vent: volcanic fissure (rare)
+    if (h >= 0.82 && d > 0.9 && m < 0.3) return tile('THERMAL_VENT', '\u229B', '#FF8844', '#331100', true, { biome: 'mountain' });
+    // Mountain base: lower rocky slopes
+    if (h < 0.84) return tile('MOUNTAIN_BASE', '\u2593', '#AAAAAA', '#333333', false, { biome: 'mountain' });
+    // Mountain: solid rock faces
+    if (h < 0.88) return tile('MOUNTAIN', '\u25B3', '#BBBBBB', '#444444', false, { biome: 'mountain' });
+    // Crag: jagged upper peaks
+    if (h < 0.92) return tile('CRAG', '\u25C7', '#CCCCCC', '#555555', false, { biome: 'mountain' });
+    // Snowcap: snow-covered high peaks (high moisture)
+    if (h < 0.96 && m > 0.5) return tile('SNOWCAP', '\u2746', '#DDEEFF', '#667799', false, { biome: 'mountain' });
+    // High peak: towering summits
+    if (h < 0.96) return tile('HIGH_PEAK', '\u25B2', '#ffffff', '#666688', false, { biome: 'mountain' });
+    // Summit: the very highest points
+    return tile('SUMMIT', '\u25C6', '#EEEEFF', '#8888AA', false, { biome: 'mountain' });
   }
 
   _placeLocations(rng, tiles, width, height) {
@@ -314,6 +379,7 @@ export class ChunkManager {
     this.heightNoise = new PerlinNoise(initRng);
     this.moistureNoise = new PerlinNoise(initRng);
     this.anomalyNoise = new PerlinNoise(initRng);
+    this.detailNoise = new PerlinNoise(initRng);
     this._terrainGen = new OverworldGenerator(); // reuse _terrainFromNoise
 
     this.chunks = new Map();       // "cx,cy" -> { tiles: [][], locations: [] }
@@ -333,7 +399,8 @@ export class ChunkManager {
     const h = (this.heightNoise.fbm(wx * TERRAIN_SCALE, wy * TERRAIN_SCALE, 6) + 1) / 2;
     const m = (this.moistureNoise.fbm(wx * TERRAIN_SCALE + 100, wy * TERRAIN_SCALE + 100, 5) + 1) / 2;
     const a = (this.anomalyNoise.fbm(wx * TERRAIN_SCALE * 0.5, wy * TERRAIN_SCALE * 0.5, 4) + 1) / 2;
-    return this._terrainGen._terrainFromNoise(h, m, a);
+    const d = (this.detailNoise.fbm(wx * TERRAIN_SCALE * 2, wy * TERRAIN_SCALE * 2, 3) + 1) / 2;
+    return this._terrainGen._terrainFromNoise(h, m, a, d);
   }
 
   // ── Megalithic surface structure definitions ──

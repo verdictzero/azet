@@ -2903,8 +2903,21 @@ class Game {
     CRYO_HOUSING: 2, CRYO_EMITTER: 3, CRYO_BASE: 1,
     FUNGAL_MASS: 3, DATA_FRAME: 2, DATA_CORE: 1,
     VOID_ARCH: 4, VOID_BASE: 2, VOID_CENTER: 0,
-    // New biome tiles with height
+    // Anomaly biome tiles
     CRYSTAL_ZONE: 2, HYDRO_JUNGLE: 2,
+    // Wetland & vegetation
+    MARSH_REEDS: 1, TALL_GRASS: 1,
+    // Forest types
+    SPARSE_TREES: 1, FOREST: 2, DEEP_FOREST: 2,
+    CANOPY: 3, PINE_STAND: 2,
+    // Hills & foothills
+    FOOTHILL: 1, ROLLING_HILLS: 2, RIDGE: 3,
+    ROCKY_SLOPE: 2, HIGHLAND: 2,
+    BOULDER_FIELD: 2, ANCIENT_RUINS: 2,
+    // Mountain types
+    MOUNTAIN_BASE: 3, CRAG: 4,
+    HIGH_PEAK: 5, SUMMIT: 5, SNOWCAP: 5,
+    CAVE_MOUTH: 3,
   };
 
   renderOverworld() {
