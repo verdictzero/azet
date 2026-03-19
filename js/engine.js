@@ -96,6 +96,8 @@ export class Renderer {
     this.prevBuffer = [];  // last rendered frame
 
     this.effectsEnabled = false; // visual FX disabled for now (toggle with settings)
+    this.zoomLevel = 1.0;
+    this._baseFontSize = null; // stored when zoom is applied
 
     // Perform initial sizing
     this.resize();
@@ -119,6 +121,12 @@ export class Renderer {
       const t = Math.max(0, Math.min(1, (w - minW) / (maxW - minW)));
       this.fontSize = Math.round(minFont + t * (maxFont - minFont));
       if (isPortrait) this.fontSize = Math.max(10, this.fontSize - 1);
+    }
+    // Store base font size and apply zoom multiplier
+    if (this.zoomLevel === 1.0) {
+      this._baseFontSize = this.fontSize;
+    } else if (this._baseFontSize) {
+      this.fontSize = Math.round(this._baseFontSize * this.zoomLevel);
     }
 
     // Measure a representative character to derive cell size
@@ -158,6 +166,11 @@ export class Renderer {
   setFontSize(size) {
     this._userFontSize = true;
     this.fontSize = size;
+    this.resize();
+  }
+
+  setZoom(level) {
+    this.zoomLevel = Math.max(1.0, Math.min(2.0, level));
     this.resize();
   }
 
@@ -1036,84 +1049,7 @@ export class InputManager {
     }
 
     this._touchDiv = touchDiv;
-    this._applyTouchMode();
-
-    // Haptic helper — short vibration on button press
-    const haptic = () => {
-      if (navigator.vibrate) navigator.vibrate(12);
-    };
-
-    // D-pad direction buttons
-    const dirToKey = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
-    const dirButtons = document.querySelectorAll('[data-dir]');
-    dirButtons.forEach((btn) => {
-      const dir = btn.getAttribute('data-dir');
-
-      const activate = (e) => {
-        e.preventDefault();
-        btn.classList.add('pressed');
-        haptic();
-        const key = dirToKey[dir];
-        if (key) {
-          this._keysDown.add(key);
-          this.lastAction = key;
-          // Start touch repeat for held d-pad
-          this._startRepeat(key);
-        } else if (dir === 'wait') {
-          this.lastAction = 'wait';
-        }
-      };
-
-      const deactivate = (e) => {
-        e.preventDefault();
-        btn.classList.remove('pressed');
-        const key = dirToKey[dir];
-        if (key) {
-          this._keysDown.delete(key);
-          if (this._repeatKey === key) {
-            this._stopRepeat();
-          }
-        }
-      };
-
-      btn.addEventListener('touchstart', activate, { passive: false });
-      btn.addEventListener('touchend', deactivate, { passive: false });
-      btn.addEventListener('touchcancel', deactivate, { passive: false });
-      btn.addEventListener('mousedown', activate);
-      btn.addEventListener('mouseup', deactivate);
-    });
-
-    // Action buttons — map to the key values that handleInput expects
-    const actionKeyMap = {
-      interact: 'Enter',
-      inventory: 'i',
-      map: 'm',
-      character: 'c',
-      quest: 'q',
-      menu: 'Escape',
-    };
-
-    const actionButtons = document.querySelectorAll('[data-action]');
-    actionButtons.forEach((btn) => {
-      const action = btn.getAttribute('data-action');
-
-      const fire = (e) => {
-        e.preventDefault();
-        btn.classList.add('pressed');
-        haptic();
-        this.lastAction = actionKeyMap[action] || action;
-      };
-
-      const release = (e) => {
-        btn.classList.remove('pressed');
-      };
-
-      btn.addEventListener('touchstart', fire, { passive: false });
-      btn.addEventListener('touchend', release, { passive: false });
-      btn.addEventListener('touchcancel', release, { passive: false });
-      btn.addEventListener('mousedown', fire);
-      btn.addEventListener('mouseup', release);
-    });
+    // All buttons are created dynamically by updateTouchLayout()
   }
 
   set enableTouch(val) {
@@ -1133,188 +1069,235 @@ export class InputManager {
   /**
    * Touch button layout configurations per game state.
    */
+  // Grid-based touch layouts: each page is an array of rows, each row has 3 cells
+  // Cell types: 'dpad', 'dpad-center', 'action', 'action-primary', 'debug', 'empty'
+  // null = empty spacer cell
+  static _E = null; // shorthand for empty cell
   static TOUCH_LAYOUTS = {
-    MENU:        { dpad: ['up', 'down'], actions: [
-      [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'ESC', key: 'Escape' }],
-    ]},
-    CHAR_CREATE: { dpad: ['up', 'down'], actions: [
-      [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }],
-    ]},
-    LOADING:     { dpad: [], actions: [[]] },
-    OVERWORLD:   { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
+    MENU: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'SEL', key: 'Enter', type: 'action-primary' }, null, { label: 'ESC', key: 'Escape', type: 'action' }],
+    ]]},
+    CHAR_CREATE: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'SEL', key: 'Enter', type: 'action-primary' }, null, { label: 'BACK', key: 'Escape', type: 'action' }],
+    ]]},
+    LOADING: { pages: [[[null, null, null]]] },
+    OVERWORLD: { pages: [
       [
-        { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
-        { label: 'REST', key: 'r' }, { label: 'TALK', key: 't' },
-        { label: 'ESC', key: 'Escape' },
+        [{ label: 'ACT', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'INV', key: 'i', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'REST', key: 'r', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'TALK', key: 't', type: 'action' }],
+        [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'CHR', key: 'c', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
       ],
       [
-        { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
-        { label: 'QST', key: 'q' }, { label: 'CMP', key: 'j' },
-        { label: 'FCTN', key: 'f' }, { label: 'SAVE', key: 'p' },
-        { label: 'SET', key: 'o' }, { label: 'HELP', key: '?' },
-        { label: 'DBG', key: '`', debug: true },
+        [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'FCTN', key: 'f', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'SAVE', key: 'p', type: 'action' }],
+        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'DBG', key: '`', type: 'debug' }],
       ],
     ]},
-    LOCATION:    { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
+    LOCATION: { pages: [
       [
-        { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
-        { label: 'TALK', key: 't' }, { label: 'ESC', key: 'Escape' },
-      ],
-      [
-        { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
-        { label: 'QST', key: 'q' }, { label: 'CMP', key: 'j' },
-        { label: 'FCTN', key: 'f' }, { label: 'SAVE', key: 'p' },
-        { label: 'SET', key: 'o' }, { label: 'HELP', key: '?' },
-        { label: 'DBG', key: '`', debug: true },
-      ],
-    ]},
-    DUNGEON:     { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
-      [
-        { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
-        { label: 'GET', key: 'g' }, { label: 'STR', key: '>' },
-        { label: 'ESC', key: 'Escape' },
+        [{ label: 'ACT', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'INV', key: 'i', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'TALK', key: 't', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'ESC', key: 'Escape', type: 'action' }],
+        [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'MAP', key: 'm', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }],
       ],
       [
-        { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
-        { label: 'QST', key: 'q' }, { label: 'CMP', key: 'j' },
-        { label: 'FCTN', key: 'f' }, { label: 'SAVE', key: 'p' },
-        { label: 'SET', key: 'o' }, { label: 'HELP', key: '?' },
-        { label: 'DBG', key: '`', debug: true },
+        [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
+        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
       ],
     ]},
-    COMBAT:      { dpad: ['up', 'down'], actions: [
+    DUNGEON: { pages: [
       [
-        { label: 'ATK', key: 'Enter', primary: true }, { label: 'FLEE', key: 'f' },
-        { label: 'INV', key: 'i' }, { label: 'ESC', key: 'Escape' },
+        [{ label: 'ACT', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'INV', key: 'i', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'GET', key: 'g', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'STR', key: '>', type: 'action' }],
+        [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }],
       ],
       [
-        { label: 'AB1', key: '1' }, { label: 'AB2', key: '2' },
-        { label: 'AB3', key: '3' },
-        { label: 'DBG', key: '`', debug: true },
+        [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
+        [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
       ],
     ]},
-    DIALOGUE:    { dpad: ['up', 'down'], actions: [
-      [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }],
+    COMBAT: { pages: [
+      [
+        [{ label: 'ATK', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'FLEE', key: 'f', type: 'action' }],
+        [null, null, null],
+        [{ label: 'INV', key: 'i', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'ESC', key: 'Escape', type: 'action' }],
+      ],
+      [
+        [{ label: 'AB1', key: '1', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'AB2', key: '2', type: 'action' }],
+        [null, null, null],
+        [{ label: 'AB3', key: '3', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'DBG', key: '`', type: 'debug' }],
+      ],
     ]},
-    SHOP:        { dpad: ['up', 'down'], actions: [
-      [{ label: 'BUY', key: 'Enter', primary: true }, { label: 'SELL', key: 's' }, { label: 'BACK', key: 'Escape' }],
-    ]},
-    INVENTORY:   { dpad: ['up', 'down'], actions: [
-      [{ label: 'USE', key: 'Enter', primary: true }, { label: 'EQP', key: 'e' }, { label: 'DROP', key: 'd' }, { label: 'BACK', key: 'Escape' }],
-    ]},
-    CHARACTER:   { dpad: ['up', 'down'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
-    QUEST_LOG:   { dpad: ['up', 'down'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
-    MAP:         { dpad: ['up', 'down', 'left', 'right'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
-    HELP:        { dpad: ['up', 'down'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
-    SETTINGS:    { dpad: ['up', 'down'], actions: [[{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }]] },
-    GAME_OVER:   { dpad: [], actions: [[{ label: 'MENU', key: 'Enter', primary: true }]] },
-    FACTION:     { dpad: ['up', 'down'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
+    DIALOGUE: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'SEL', key: 'Enter', type: 'action-primary' }, null, { label: 'BACK', key: 'Escape', type: 'action' }],
+    ]]},
+    SHOP: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'BUY', key: 'Enter', type: 'action-primary' }, { label: 'SELL', key: 's', type: 'action' }, { label: 'BACK', key: 'Escape', type: 'action' }],
+    ]]},
+    INVENTORY: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'USE', key: 'Enter', type: 'action-primary' }, { label: 'EQP', key: 'e', type: 'action' }, { label: 'DROP', key: 'd', type: 'action' }],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+    ]]},
+    CHARACTER: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+    ]]},
+    QUEST_LOG: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+    ]]},
+    MAP: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+    ]]},
+    HELP: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+    ]]},
+    SETTINGS: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'SEL', key: 'Enter', type: 'action-primary' }, null, { label: 'BACK', key: 'Escape', type: 'action' }],
+    ]]},
+    GAME_OVER: { pages: [[
+      [null, null, null],
+      [null, { label: 'MENU', key: 'Enter', type: 'action-primary' }, null],
+    ]]},
+    FACTION: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+    ]]},
   };
-
-  /**
-   * Cycle touch handedness mode: dual -> left -> right -> dual
-   */
-  cycleTouchMode() {
-    const modes = ['dual', 'left', 'right'];
-    const idx = modes.indexOf(this._touchMode);
-    this._touchMode = modes[(idx + 1) % modes.length];
-    localStorage.setItem('touchMode', this._touchMode);
-    this._applyTouchMode();
-    // Re-render current layout
-    if (this._lastTouchState) this.updateTouchLayout(this._lastTouchState);
-  }
 
   get touchMode() { return this._touchMode; }
 
-  _applyTouchMode() {
-    if (!this._touchDiv) return;
-    const bar = this._touchDiv.querySelector('.touch-bar');
-    if (!bar) return;
-    bar.classList.remove('mode-dual', 'mode-left', 'mode-right');
-    bar.classList.add('mode-' + this._touchMode);
-  }
-
   /**
    * Update touch control layout based on current game state.
+   * Renders a 3-wide grid with d-pad + action buttons.
    */
   updateTouchLayout(state) {
     if (!this._touchDiv) return;
     this._lastTouchState = state;
     const layout = InputManager.TOUCH_LAYOUTS[state] || InputManager.TOUCH_LAYOUTS.OVERWORLD;
+    const pages = layout.pages;
 
     // Clamp tab index
-    const tabs = layout.actions;
-    if (this._actionTab >= tabs.length) this._actionTab = 0;
+    if (this._actionTab >= pages.length) this._actionTab = 0;
 
-    // Apply handedness mode class
-    this._applyTouchMode();
+    const gridContainer = this._touchDiv.querySelector('.touch-grid');
+    if (!gridContainer) return;
 
-    // Update D-pad buttons visibility
-    const dpadBtns = this._touchDiv.querySelectorAll('[data-dir]');
-    dpadBtns.forEach(btn => {
-      const dir = btn.getAttribute('data-dir');
-      btn.style.visibility = layout.dpad.includes(dir) ? 'visible' : 'hidden';
-    });
+    gridContainer.innerHTML = '';
+    const currentPage = pages[this._actionTab] || [[]];
+    const dirToKey = { ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight' };
 
-    // Update action buttons
-    const actionContainer = this._touchDiv.querySelector('.action-buttons');
-    if (!actionContainer) return;
+    // Render each row of the grid
+    for (const row of currentPage) {
+      for (const cell of row) {
+        if (!cell) {
+          // Empty spacer
+          const spacer = document.createElement('div');
+          spacer.className = 'grid-btn empty';
+          gridContainer.appendChild(spacer);
+          continue;
+        }
 
-    actionContainer.innerHTML = '';
-    const currentActions = tabs[this._actionTab] || [];
+        const btn = document.createElement('button');
+        btn.className = 'grid-btn ' + (cell.type || 'action');
+        btn.textContent = cell.label;
 
-    // Render action buttons for current tab
-    for (const act of currentActions) {
-      const btn = document.createElement('button');
-      btn.className = 'action-btn' + (act.primary ? ' act' : '') + (act.debug ? ' dbg' : '');
-      btn.setAttribute('data-action', act.key);
-      btn.textContent = act.label;
+        const isDpad = cell.type === 'dpad' || cell.type === 'dpad-center';
+        const key = cell.key;
 
-      const fire = (e) => {
-        e.preventDefault();
-        btn.classList.add('pressed');
-        if (navigator.vibrate) navigator.vibrate(12);
-        this.lastAction = act.key;
-      };
-      const release = () => btn.classList.remove('pressed');
+        if (isDpad && key !== 'wait') {
+          // D-pad: support key repeat for held directions
+          const activate = (e) => {
+            e.preventDefault();
+            btn.classList.add('pressed');
+            if (navigator.vibrate) navigator.vibrate(12);
+            this._keysDown.add(key);
+            this.lastAction = key;
+            this._startRepeat(key);
+          };
+          const deactivate = (e) => {
+            e.preventDefault();
+            btn.classList.remove('pressed');
+            this._keysDown.delete(key);
+            if (this._repeatKey === key) this._stopRepeat();
+          };
+          btn.addEventListener('touchstart', activate, { passive: false });
+          btn.addEventListener('touchend', deactivate, { passive: false });
+          btn.addEventListener('touchcancel', deactivate, { passive: false });
+          btn.addEventListener('mousedown', activate);
+          btn.addEventListener('mouseup', deactivate);
+        } else {
+          // Action button or wait: single fire
+          const fire = (e) => {
+            e.preventDefault();
+            btn.classList.add('pressed');
+            if (navigator.vibrate) navigator.vibrate(12);
+            this.lastAction = key;
+          };
+          const release = () => btn.classList.remove('pressed');
+          btn.addEventListener('touchstart', fire, { passive: false });
+          btn.addEventListener('touchend', release, { passive: false });
+          btn.addEventListener('touchcancel', release, { passive: false });
+          btn.addEventListener('mousedown', fire);
+          btn.addEventListener('mouseup', release);
+        }
 
-      btn.addEventListener('touchstart', fire, { passive: false });
-      btn.addEventListener('touchend', release, { passive: false });
-      btn.addEventListener('touchcancel', release, { passive: false });
-      btn.addEventListener('mousedown', fire);
-      btn.addEventListener('mouseup', release);
-      actionContainer.appendChild(btn);
+        gridContainer.appendChild(btn);
+      }
     }
 
-    // Add tab-switch button if multiple tabs exist
-    if (tabs.length > 1) {
+    // Add tab-switch button if multiple pages
+    if (pages.length > 1) {
       const tabBtn = document.createElement('button');
-      tabBtn.className = 'action-btn tab-btn';
-      tabBtn.textContent = `${this._actionTab + 1}/${tabs.length}`;
+      tabBtn.className = 'grid-btn tab';
+      tabBtn.textContent = `${this._actionTab + 1}/${pages.length}`;
       const switchTab = (e) => {
         e.preventDefault();
         if (navigator.vibrate) navigator.vibrate(12);
-        this._actionTab = (this._actionTab + 1) % tabs.length;
+        this._actionTab = (this._actionTab + 1) % pages.length;
         this.updateTouchLayout(state);
       };
       tabBtn.addEventListener('touchstart', switchTab, { passive: false });
       tabBtn.addEventListener('mousedown', switchTab);
-      actionContainer.appendChild(tabBtn);
+      gridContainer.appendChild(tabBtn);
     }
-
-    // Add handedness mode-switch button
-    const modeBtn = document.createElement('button');
-    modeBtn.className = 'action-btn mode-btn';
-    const modeLabels = { dual: 'D', left: 'L', right: 'R' };
-    modeBtn.textContent = modeLabels[this._touchMode];
-    const switchMode = (e) => {
-      e.preventDefault();
-      if (navigator.vibrate) navigator.vibrate(12);
-      this.cycleTouchMode();
-    };
-    modeBtn.addEventListener('touchstart', switchMode, { passive: false });
-    modeBtn.addEventListener('mousedown', switchMode);
-    actionContainer.appendChild(modeBtn);
   }
 
   // ── Text input mode (mobile keyboard) ─────
@@ -1441,5 +1424,124 @@ export class InputManager {
   destroy() {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Glow System - Color cycling for interactive objects
+// ─────────────────────────────────────────────
+
+const GLOW_PROFILES = {
+  LOOT:             { hueMin: 40,  hueMax: 60,  speed: 1.5, pattern: 'pulse' },
+  SETTLEMENT:       { hueMin: 180, hueMax: 220, speed: 0.8, pattern: 'wave' },
+  DUNGEON_ENTRANCE: { hueMin: 0,   hueMax: 30,  speed: 1.2, pattern: 'flicker' },
+  NPC:              { hueMin: 90,  hueMax: 130, speed: 1.0, pattern: 'pulse' },
+  INTERACTIVE:      { hueMin: 270, hueMax: 310, speed: 1.0, pattern: 'pulse' },
+  PLAYER:           { hueMin: 0,   hueMax: 360, speed: 2.0, pattern: 'rainbow' },
+};
+
+export class GlowSystem {
+  constructor() {
+    this.time = 0;
+    this._cache = {};
+  }
+
+  update(dt) {
+    this.time += dt;
+    this._cache = {};
+  }
+
+  getGlowColor(category, baseColor) {
+    const key = category + baseColor;
+    if (this._cache[key]) return this._cache[key];
+
+    const profile = GLOW_PROFILES[category];
+    if (!profile) return baseColor;
+
+    const t = this.time * profile.speed;
+    let hue, saturation, lightness;
+
+    switch (profile.pattern) {
+      case 'pulse': {
+        const phase = Math.sin(t * 2.5) * 0.5 + 0.5;
+        hue = profile.hueMin + (profile.hueMax - profile.hueMin) * 0.5;
+        saturation = 80 + phase * 20;
+        lightness = 50 + phase * 25;
+        break;
+      }
+      case 'wave': {
+        const phase = Math.sin(t * 1.8) * 0.5 + 0.5;
+        hue = profile.hueMin + (profile.hueMax - profile.hueMin) * phase;
+        saturation = 70 + phase * 20;
+        lightness = 55 + Math.sin(t * 2.2) * 15;
+        break;
+      }
+      case 'flicker': {
+        const base = Math.sin(t * 3.0) * 0.5 + 0.5;
+        const jitter = Math.sin(t * 7.3) * 0.15 + Math.sin(t * 13.1) * 0.1;
+        const phase = Math.max(0, Math.min(1, base + jitter));
+        hue = profile.hueMin + (profile.hueMax - profile.hueMin) * phase;
+        saturation = 85;
+        lightness = 45 + phase * 30;
+        break;
+      }
+      case 'rainbow': {
+        hue = (t * 60) % 360;
+        saturation = 90;
+        lightness = 60 + Math.sin(t * 3) * 10;
+        break;
+      }
+      default: {
+        hue = profile.hueMin;
+        saturation = 80;
+        lightness = 60;
+      }
+    }
+
+    const glowRGB = this._hslToRgb(hue / 360, saturation / 100, lightness / 100);
+    const baseRGB = this._hexToRgb(baseColor);
+
+    const blend = 0.4;
+    const r = Math.round(baseRGB.r * (1 - blend) + glowRGB.r * blend);
+    const g = Math.round(baseRGB.g * (1 - blend) + glowRGB.g * blend);
+    const b = Math.round(baseRGB.b * (1 - blend) + glowRGB.b * blend);
+
+    const result = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    this._cache[key] = result;
+    return result;
+  }
+
+  _hexToRgb(hex) {
+    if (!hex || hex.charAt(0) !== '#') return { r: 200, g: 200, b: 200 };
+    const val = parseInt(hex.slice(1), 16);
+    if (hex.length === 4) {
+      const r = ((val >> 8) & 0xf) * 17;
+      const g = ((val >> 4) & 0xf) * 17;
+      const b = (val & 0xf) * 17;
+      return { r, g, b };
+    }
+    return { r: (val >> 16) & 0xff, g: (val >> 8) & 0xff, b: val & 0xff };
+  }
+
+  _hslToRgb(h, s, l) {
+    let r, g, b;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
   }
 }
