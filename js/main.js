@@ -343,8 +343,10 @@ class Game {
               description: `${this.worldHistoryGen.civilizations.length} civilizations rose — ${this.worldHistoryGen.civilizations.filter(c=>c.isActive).length} survive`, category: 'civ' });
             addWorldGenEvent({ year: this.worldHistoryGen.currentYear, type: 'summary',
               description: `${this.worldHistoryGen.wars.length} wars, ${this.worldHistoryGen.artifacts.length} artifacts, ${this.worldHistoryGen.historicalFigures.length} legends`, category: 'misc' });
-            flushWorldGen('History woven');
-            setTimeout(() => runStep(3), 300);
+            this._worldGenResumeStep = 3;
+            this._worldGenRunStep = runStep;
+            this.setState('WORLD_GEN_PAUSE');
+            flushWorldGen('History woven — press any key to continue');
           }
         };
         streamBatch();
@@ -758,6 +760,10 @@ class Game {
       case 'GAME_OVER': return this.handleGameOverInput(key);
       case 'COMBAT': return this.handleCombatInput(key);
       case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
+      case 'WORLD_GEN_PAUSE':
+        this.setState('LOADING');
+        this._worldGenRunStep(this._worldGenResumeStep);
+        return;
     }
   }
 
@@ -776,8 +782,10 @@ class Game {
           const race = this.rng.random(races);
           const playerClass = this.rng.random(classes);
           const nameObj = this.nameGen.generate(this.rng, race);
-          this.charGenState = { step: 'confirm', race, playerClass, name: nameObj.first, historyDepth: 'short' };
-          this.startNewGame();
+          this.charGenState = { step: 'history_depth', race, playerClass, name: nameObj.first, historyDepth: 'medium', quickStart: true };
+          this.ui.resetSelection();
+          this.ui.selectedIndex = 0; // Default to "Short" for quick start
+          this.setState('CHAR_CREATE');
           break;
         }
         case 2: // Continue
@@ -834,13 +842,22 @@ class Game {
       const result = this.ui.handleMenuInput(key, depthOptions.length);
       if (result === 'select') {
         this.charGenState.historyDepth = depthOptions[this.ui.selectedIndex];
-        this.charGenState.step = 'confirm';
-        this.ui.resetSelection();
+        if (this.charGenState.quickStart) {
+          this.startNewGame();
+        } else {
+          this.charGenState.step = 'confirm';
+          this.ui.resetSelection();
+        }
       }
       if (result === 'back') {
-        this.charGenState.step = 'name';
-        this.ui.resetSelection();
-        this.input.enterTextInputMode();
+        if (this.charGenState.quickStart) {
+          this.setState('MENU');
+          this.ui.resetSelection();
+        } else {
+          this.charGenState.step = 'name';
+          this.ui.resetSelection();
+          this.input.enterTextInputMode();
+        }
       }
       return;
     }
