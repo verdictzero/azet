@@ -28,6 +28,7 @@ export class UIManager {
     this.visibleMessages = 5;
     this.messageScroll = 0;
     this.dialogueState = null;
+    this.versionString = '';
     this.shopState = null;
     this.menuState = null;
     this.selectedIndex = 0;
@@ -403,6 +404,12 @@ export class UIManager {
     const subtitle = '~ Colony Salvage Roguelike ~';
     r.drawString(Math.floor((cols - subtitle.length) / 2), crystalY + crystal.length + 1,
       subtitle, COLORS.BRIGHT_BLACK, COLORS.BLACK);
+
+    if (this.versionString) {
+      const vLabel = `[${this.versionString}]`;
+      r.drawString(Math.floor((cols - vLabel.length) / 2), crystalY + crystal.length + 2,
+        vLabel, COLORS.BRIGHT_BLACK, COLORS.BLACK);
+    }
 
     // FF-style menu box (draws on top of background)
     const menuItems = ['New Game', 'Quick Start', 'Continue', 'Settings', 'Help'];
