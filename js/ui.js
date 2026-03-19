@@ -307,7 +307,7 @@ export class UIManager {
       subtitle, COLORS.BRIGHT_BLACK);
 
     // FF-style menu box
-    const menuItems = ['New Game', 'Continue', 'Settings', 'Help'];
+    const menuItems = ['New Game', 'Quick Start', 'Continue', 'Settings', 'Help'];
     const menuW = 22;
     const menuH = menuItems.length * 2 + 3;
     const menuX = Math.floor((cols - menuW) / 2);
