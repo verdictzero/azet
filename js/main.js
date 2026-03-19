@@ -191,6 +191,10 @@ class Game {
       this.locationCamera.x = this.locationCamera.targetX;
       this.locationCamera.y = this.locationCamera.targetY;
     }
+    if (this.state === 'DUNGEON') {
+      this.camera.viewportCols = viewW;
+      this.camera.viewportRows = viewH;
+    }
     this.renderer.invalidate();
   }
 
