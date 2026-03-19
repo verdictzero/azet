@@ -18,7 +18,6 @@ class Game {
     this.camera = new Camera(this.renderer.cols - 2, this.renderer.rows - LAYOUT.HUD_TOTAL);
     this.locationCamera = null;
     this.ui = new UIManager(this.renderer);
-    this.ui.glow = this.glow;
 
     // Game state
     this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS
@@ -65,6 +64,7 @@ class Game {
     this.weatherSystem = new WeatherSystem(this.rng);
     this.particles = new ParticleSystem();
     this.glow = new GlowSystem();
+    this.ui.glow = this.glow;
     this.lighting = new LightingSystem();
 
     // Debug state
