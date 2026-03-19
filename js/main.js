@@ -721,7 +721,7 @@ class Game {
   }
 
   handleMenuInput(key) {
-    const result = this.ui.handleMenuInput(key, 4);
+    const result = this.ui.handleMenuInput(key, 5);
     if (result === 'select') {
       switch (this.ui.selectedIndex) {
         case 0: // New Game
@@ -729,17 +729,27 @@ class Game {
           this.ui.resetSelection();
           this.setState('CHAR_CREATE');
           break;
-        case 1: // Continue
+        case 1: { // Quick Start
+          const races = ['human', 'enhanced', 'cyborg'];
+          const classes = ['junk_collector', 'scavenger', 'mercenary', 'engineer'];
+          const race = this.rng.random(races);
+          const playerClass = this.rng.random(classes);
+          const nameObj = this.nameGen.generate(this.rng, race);
+          this.charGenState = { step: 'confirm', race, playerClass, name: nameObj.first, historyDepth: 'short' };
+          this.startNewGame();
+          break;
+        }
+        case 2: // Continue
           if (this.loadGame()) {
             this.ui.addMessage('Game loaded.', COLORS.BRIGHT_GREEN);
           } else {
             this.ui.addMessage('No save found.', COLORS.BRIGHT_RED);
           }
           break;
-        case 2: // Settings (placeholder)
+        case 3: // Settings (placeholder)
           this.ui.addMessage('Settings coming soon.', COLORS.BRIGHT_BLACK);
           break;
-        case 3: // Help
+        case 4: // Help
           this.setState('HELP');
           break;
       }
