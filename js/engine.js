@@ -943,6 +943,11 @@ export class InputManager {
     this.isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
     this._enableTouch = true;
 
+    // Touch handedness mode: 'dual', 'left', 'right'
+    this._touchMode = localStorage.getItem('touchMode') || 'dual';
+    // Current action tab index (for tabbed button sets)
+    this._actionTab = 0;
+
     // Text input mode (for mobile keyboard)
     this._textInputMode = false;
     this._textInput = document.getElementById('mobile-text-input');
@@ -1031,6 +1036,7 @@ export class InputManager {
     }
 
     this._touchDiv = touchDiv;
+    this._applyTouchMode();
 
     // Haptic helper — short vibration on button press
     const haptic = () => {
@@ -1128,50 +1134,120 @@ export class InputManager {
    * Touch button layout configurations per game state.
    */
   static TOUCH_LAYOUTS = {
-    MENU:        { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'ESC', key: 'Escape' }] },
-    CHAR_CREATE: { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
-    LOADING:     { dpad: [], actions: [] },
+    MENU:        { dpad: ['up', 'down'], actions: [
+      [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'ESC', key: 'Escape' }],
+    ]},
+    CHAR_CREATE: { dpad: ['up', 'down'], actions: [
+      [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }],
+    ]},
+    LOADING:     { dpad: [], actions: [[]] },
     OVERWORLD:   { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
-      { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
-      { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
-      { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
-      { label: 'DBG', key: '`', debug: true },
+      [
+        { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
+        { label: 'REST', key: 'r' }, { label: 'TALK', key: 't' },
+        { label: 'ESC', key: 'Escape' },
+      ],
+      [
+        { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
+        { label: 'QST', key: 'q' }, { label: 'CMP', key: 'j' },
+        { label: 'FCTN', key: 'f' }, { label: 'SAVE', key: 'p' },
+        { label: 'SET', key: 'o' }, { label: 'HELP', key: '?' },
+        { label: 'DBG', key: '`', debug: true },
+      ],
     ]},
     LOCATION:    { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
-      { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
-      { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
-      { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
-      { label: 'DBG', key: '`', debug: true },
+      [
+        { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
+        { label: 'TALK', key: 't' }, { label: 'ESC', key: 'Escape' },
+      ],
+      [
+        { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
+        { label: 'QST', key: 'q' }, { label: 'CMP', key: 'j' },
+        { label: 'FCTN', key: 'f' }, { label: 'SAVE', key: 'p' },
+        { label: 'SET', key: 'o' }, { label: 'HELP', key: '?' },
+        { label: 'DBG', key: '`', debug: true },
+      ],
     ]},
     DUNGEON:     { dpad: ['up', 'down', 'left', 'right', 'wait'], actions: [
-      { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
-      { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
-      { label: 'QST', key: 'q' }, { label: 'ESC', key: 'Escape' },
-      { label: 'DBG', key: '`', debug: true },
+      [
+        { label: 'ACT', key: 'Enter', primary: true }, { label: 'INV', key: 'i' },
+        { label: 'GET', key: 'g' }, { label: 'STR', key: '>' },
+        { label: 'ESC', key: 'Escape' },
+      ],
+      [
+        { label: 'MAP', key: 'm' }, { label: 'CHR', key: 'c' },
+        { label: 'QST', key: 'q' }, { label: 'CMP', key: 'j' },
+        { label: 'FCTN', key: 'f' }, { label: 'SAVE', key: 'p' },
+        { label: 'SET', key: 'o' }, { label: 'HELP', key: '?' },
+        { label: 'DBG', key: '`', debug: true },
+      ],
     ]},
     COMBAT:      { dpad: ['up', 'down'], actions: [
-      { label: 'ATK', key: 'Enter', primary: true }, { label: 'FLEE', key: 'f' },
-      { label: 'INV', key: 'i' }, { label: 'ESC', key: 'Escape' },
-      { label: 'DBG', key: '`', debug: true },
+      [
+        { label: 'ATK', key: 'Enter', primary: true }, { label: 'FLEE', key: 'f' },
+        { label: 'INV', key: 'i' }, { label: 'ESC', key: 'Escape' },
+      ],
+      [
+        { label: 'AB1', key: '1' }, { label: 'AB2', key: '2' },
+        { label: 'AB3', key: '3' },
+        { label: 'DBG', key: '`', debug: true },
+      ],
     ]},
-    DIALOGUE:    { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
-    SHOP:        { dpad: ['up', 'down'], actions: [{ label: 'BUY', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
-    INVENTORY:   { dpad: ['up', 'down'], actions: [{ label: 'USE', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
-    CHARACTER:   { dpad: ['up', 'down'], actions: [{ label: 'BACK', key: 'Escape' }] },
-    QUEST_LOG:   { dpad: ['up', 'down'], actions: [{ label: 'BACK', key: 'Escape' }] },
-    MAP:         { dpad: ['up', 'down', 'left', 'right'], actions: [{ label: 'BACK', key: 'Escape' }] },
-    HELP:        { dpad: ['up', 'down'], actions: [{ label: 'BACK', key: 'Escape' }] },
-    SETTINGS:    { dpad: ['up', 'down'], actions: [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }] },
-    GAME_OVER:   { dpad: [], actions: [{ label: 'MENU', key: 'Enter', primary: true }] },
-    FACTION:     { dpad: ['up', 'down'], actions: [{ label: 'BACK', key: 'Escape' }] },
+    DIALOGUE:    { dpad: ['up', 'down'], actions: [
+      [{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }],
+    ]},
+    SHOP:        { dpad: ['up', 'down'], actions: [
+      [{ label: 'BUY', key: 'Enter', primary: true }, { label: 'SELL', key: 's' }, { label: 'BACK', key: 'Escape' }],
+    ]},
+    INVENTORY:   { dpad: ['up', 'down'], actions: [
+      [{ label: 'USE', key: 'Enter', primary: true }, { label: 'EQP', key: 'e' }, { label: 'DROP', key: 'd' }, { label: 'BACK', key: 'Escape' }],
+    ]},
+    CHARACTER:   { dpad: ['up', 'down'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
+    QUEST_LOG:   { dpad: ['up', 'down'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
+    MAP:         { dpad: ['up', 'down', 'left', 'right'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
+    HELP:        { dpad: ['up', 'down'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
+    SETTINGS:    { dpad: ['up', 'down'], actions: [[{ label: 'SEL', key: 'Enter', primary: true }, { label: 'BACK', key: 'Escape' }]] },
+    GAME_OVER:   { dpad: [], actions: [[{ label: 'MENU', key: 'Enter', primary: true }]] },
+    FACTION:     { dpad: ['up', 'down'], actions: [[{ label: 'BACK', key: 'Escape' }]] },
   };
+
+  /**
+   * Cycle touch handedness mode: dual -> left -> right -> dual
+   */
+  cycleTouchMode() {
+    const modes = ['dual', 'left', 'right'];
+    const idx = modes.indexOf(this._touchMode);
+    this._touchMode = modes[(idx + 1) % modes.length];
+    localStorage.setItem('touchMode', this._touchMode);
+    this._applyTouchMode();
+    // Re-render current layout
+    if (this._lastTouchState) this.updateTouchLayout(this._lastTouchState);
+  }
+
+  get touchMode() { return this._touchMode; }
+
+  _applyTouchMode() {
+    if (!this._touchDiv) return;
+    const bar = this._touchDiv.querySelector('.touch-bar');
+    if (!bar) return;
+    bar.classList.remove('mode-dual', 'mode-left', 'mode-right');
+    bar.classList.add('mode-' + this._touchMode);
+  }
 
   /**
    * Update touch control layout based on current game state.
    */
   updateTouchLayout(state) {
     if (!this._touchDiv) return;
+    this._lastTouchState = state;
     const layout = InputManager.TOUCH_LAYOUTS[state] || InputManager.TOUCH_LAYOUTS.OVERWORLD;
+
+    // Clamp tab index
+    const tabs = layout.actions;
+    if (this._actionTab >= tabs.length) this._actionTab = 0;
+
+    // Apply handedness mode class
+    this._applyTouchMode();
 
     // Update D-pad buttons visibility
     const dpadBtns = this._touchDiv.querySelectorAll('[data-dir]');
@@ -1182,31 +1258,63 @@ export class InputManager {
 
     // Update action buttons
     const actionContainer = this._touchDiv.querySelector('.action-buttons');
-    if (actionContainer) {
-      // Clear existing
-      actionContainer.innerHTML = '';
-      for (const act of layout.actions) {
-        const btn = document.createElement('button');
-        btn.className = 'action-btn' + (act.primary ? ' act' : '') + (act.debug ? ' dbg' : '');
-        btn.setAttribute('data-action', act.key);
-        btn.textContent = act.label;
+    if (!actionContainer) return;
 
-        const fire = (e) => {
-          e.preventDefault();
-          btn.classList.add('pressed');
-          if (navigator.vibrate) navigator.vibrate(12);
-          this.lastAction = act.key;
-        };
-        const release = () => btn.classList.remove('pressed');
+    actionContainer.innerHTML = '';
+    const currentActions = tabs[this._actionTab] || [];
 
-        btn.addEventListener('touchstart', fire, { passive: false });
-        btn.addEventListener('touchend', release, { passive: false });
-        btn.addEventListener('touchcancel', release, { passive: false });
-        btn.addEventListener('mousedown', fire);
-        btn.addEventListener('mouseup', release);
-        actionContainer.appendChild(btn);
-      }
+    // Render action buttons for current tab
+    for (const act of currentActions) {
+      const btn = document.createElement('button');
+      btn.className = 'action-btn' + (act.primary ? ' act' : '') + (act.debug ? ' dbg' : '');
+      btn.setAttribute('data-action', act.key);
+      btn.textContent = act.label;
+
+      const fire = (e) => {
+        e.preventDefault();
+        btn.classList.add('pressed');
+        if (navigator.vibrate) navigator.vibrate(12);
+        this.lastAction = act.key;
+      };
+      const release = () => btn.classList.remove('pressed');
+
+      btn.addEventListener('touchstart', fire, { passive: false });
+      btn.addEventListener('touchend', release, { passive: false });
+      btn.addEventListener('touchcancel', release, { passive: false });
+      btn.addEventListener('mousedown', fire);
+      btn.addEventListener('mouseup', release);
+      actionContainer.appendChild(btn);
     }
+
+    // Add tab-switch button if multiple tabs exist
+    if (tabs.length > 1) {
+      const tabBtn = document.createElement('button');
+      tabBtn.className = 'action-btn tab-btn';
+      tabBtn.textContent = `${this._actionTab + 1}/${tabs.length}`;
+      const switchTab = (e) => {
+        e.preventDefault();
+        if (navigator.vibrate) navigator.vibrate(12);
+        this._actionTab = (this._actionTab + 1) % tabs.length;
+        this.updateTouchLayout(state);
+      };
+      tabBtn.addEventListener('touchstart', switchTab, { passive: false });
+      tabBtn.addEventListener('mousedown', switchTab);
+      actionContainer.appendChild(tabBtn);
+    }
+
+    // Add handedness mode-switch button
+    const modeBtn = document.createElement('button');
+    modeBtn.className = 'action-btn mode-btn';
+    const modeLabels = { dual: 'D', left: 'L', right: 'R' };
+    modeBtn.textContent = modeLabels[this._touchMode];
+    const switchMode = (e) => {
+      e.preventDefault();
+      if (navigator.vibrate) navigator.vibrate(12);
+      this.cycleTouchMode();
+    };
+    modeBtn.addEventListener('touchstart', switchMode, { passive: false });
+    modeBtn.addEventListener('mousedown', switchMode);
+    actionContainer.appendChild(modeBtn);
   }
 
   // ── Text input mode (mobile keyboard) ─────
