@@ -1858,7 +1858,7 @@ class Game {
   }
 
   handleHelpInput(key) {
-    const tabCount = 6;
+    const tabCount = 8;
     const tab = this.ui.helpTab || 0;
     if (key === 'Escape') {
       this.ui.helpTab = 0;
@@ -1874,7 +1874,7 @@ class Game {
       this.ui.helpScroll = (this.ui.helpScroll || 0) + 1;
     } else if (key === 'ArrowUp' || key === 'w') {
       this.ui.helpScroll = Math.max(0, (this.ui.helpScroll || 0) - 1);
-    } else if (key >= '1' && key <= '6') {
+    } else if (key >= '1' && key <= '8') {
       this.ui.helpTab = parseInt(key) - 1;
       this.ui.helpScroll = 0;
     }
