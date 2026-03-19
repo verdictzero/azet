@@ -930,7 +930,13 @@ export class UIManager {
             loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
               loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
                 loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
-          r.drawChar(sx, sy, ch, known ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK);
+          if (known && this.glow) {
+            const isDng = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
+            const glowCat = isDng ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
+            r.drawChar(sx, sy, ch, this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE));
+          } else {
+            r.drawChar(sx, sy, ch, known ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK);
+          }
         }
       }
 
@@ -939,7 +945,8 @@ export class UIManager {
         const px = Math.floor((player.position.x - worldMinX) / scaleX) + 2;
         const py2 = Math.floor((player.position.y - worldMinY) / scaleY) + 2;
         if (px >= 2 && px < cols - 2 && py2 >= 2 && py2 < rows - 2) {
-          r.drawChar(px, py2, '@', COLORS.BRIGHT_YELLOW);
+          const pColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
+          r.drawChar(px, py2, '@', pColor);
         }
       }
     } else if (overworld.tiles) {
@@ -968,7 +975,13 @@ export class UIManager {
               loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
                 loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
                   loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
-            r.drawChar(sx, sy, ch, known ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK);
+            if (known && this.glow) {
+              const isDng = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
+              const glowCat = isDng ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
+              r.drawChar(sx, sy, ch, this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE));
+            } else {
+              r.drawChar(sx, sy, ch, known ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK);
+            }
           }
         }
       }
@@ -978,7 +991,8 @@ export class UIManager {
         const px = Math.floor(player.position.x / scaleX3) + 2;
         const py2 = Math.floor(player.position.y / scaleY3) + 2;
         if (px >= 2 && px < cols - 2 && py2 >= 2 && py2 < rows - 2) {
-          r.drawChar(px, py2, '@', COLORS.BRIGHT_YELLOW);
+          const pColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
+          r.drawChar(px, py2, '@', pColor);
         }
       }
     }
@@ -1071,7 +1085,8 @@ export class UIManager {
           const sx = npc.position.x - camX;
           const sy = npc.position.y - camY;
           if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
-            r.drawChar(viewLeft + sx, viewTop + sy, npc.char, npc.color || COLORS.BRIGHT_CYAN);
+            const npcColor = this.glow ? this.glow.getGlowColor('NPC', npc.color || COLORS.BRIGHT_CYAN) : (npc.color || COLORS.BRIGHT_CYAN);
+            r.drawChar(viewLeft + sx, viewTop + sy, npc.char, npcColor);
           }
         }
       }
@@ -1081,7 +1096,8 @@ export class UIManager {
         const px = player.position.x - camX;
         const py = player.position.y - camY;
         if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
-          r.drawChar(viewLeft + px, viewTop + py, '@', COLORS.BRIGHT_YELLOW);
+          const playerColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
+          r.drawChar(viewLeft + px, viewTop + py, '@', playerColor);
         }
       }
     }

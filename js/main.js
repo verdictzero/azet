@@ -1,4 +1,4 @@
-import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem } from './engine.js';
+import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator } from './entities.js';
@@ -18,6 +18,7 @@ class Game {
     this.camera = new Camera(this.renderer.cols - 2, this.renderer.rows - LAYOUT.HUD_TOTAL);
     this.locationCamera = null;
     this.ui = new UIManager(this.renderer);
+    this.ui.glow = this.glow;
 
     // Game state
     this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS
@@ -63,6 +64,7 @@ class Game {
     this.eventSystem = new EventSystem(this.rng);
     this.weatherSystem = new WeatherSystem(this.rng);
     this.particles = new ParticleSystem();
+    this.glow = new GlowSystem();
     this.lighting = new LightingSystem();
 
     // Debug state
@@ -149,8 +151,47 @@ class Game {
     this.prevState = this.state;
     this.state = newState;
     this.ui.resetSelection();
+    // Reset zoom when leaving dungeon/location states
+    if (newState === 'OVERWORLD' && this.renderer.zoomLevel !== 1.0) {
+      this.renderer.setZoom(1.0);
+      this.camera.viewportCols = this.renderer.cols - 2;
+      this.camera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    }
     // Update touch controls layout for new state
     this.input.updateTouchLayout(newState);
+  }
+
+  _zoomIn() {
+    const levels = [1.0, 1.5, 2.0];
+    const cur = this.renderer.zoomLevel;
+    const next = levels.find(l => l > cur) || levels[levels.length - 1];
+    if (next === cur) return;
+    this.renderer.setZoom(next);
+    this._updateCameraAfterZoom();
+    this.ui.addMessage(`Zoom: ${next}x`, COLORS.BRIGHT_CYAN);
+  }
+
+  _zoomOut() {
+    const levels = [1.0, 1.5, 2.0];
+    const cur = this.renderer.zoomLevel;
+    const prev = [...levels].reverse().find(l => l < cur) || levels[0];
+    if (prev === cur) return;
+    this.renderer.setZoom(prev);
+    this._updateCameraAfterZoom();
+    this.ui.addMessage(`Zoom: ${prev}x`, COLORS.BRIGHT_CYAN);
+  }
+
+  _updateCameraAfterZoom() {
+    const viewW = this.renderer.cols - 2;
+    const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    if (this.state === 'LOCATION' && this.locationCamera) {
+      this.locationCamera.viewportCols = viewW;
+      this.locationCamera.viewportRows = viewH;
+      this.locationCamera.follow(this.player);
+      this.locationCamera.x = this.locationCamera.targetX;
+      this.locationCamera.y = this.locationCamera.targetY;
+    }
+    this.renderer.invalidate();
   }
 
   // Start a screen fade transition. Fades out, runs callback, fades in.
@@ -922,6 +963,10 @@ class Game {
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
 
+    // Zoom controls
+    if (key === '+' || key === '=') { this._zoomIn(); return; }
+    if (key === '-') { this._zoomOut(); return; }
+
     if (key === 'Escape') {
       // Leave location back to overworld with transition
       this.startTransition(() => {
@@ -968,6 +1013,10 @@ class Game {
     if (key === 'j' || key === 'J') { this._openQuestCompass(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
+
+    // Zoom controls
+    if (key === '+' || key === '=') { this._zoomIn(); return; }
+    if (key === '-') { this._zoomOut(); return; }
 
     if (key === 'Escape') {
       this.startTransition(() => {
@@ -2993,7 +3042,9 @@ class Game {
           loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
             loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
               loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
-        r.drawChar(viewLeft + sx, viewTop + sy, ch, COLORS.BRIGHT_WHITE);
+        const isDungeon = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
+        const glowCat = isDungeon ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
+        r.drawChar(viewLeft + sx, viewTop + sy, ch, this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE));
       }
     }
 
@@ -3001,7 +3052,7 @@ class Game {
     const px = this.player.position.x - Math.floor(this.camera.x);
     const py = this.player.position.y - Math.floor(this.camera.y);
     if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
-      r.drawChar(viewLeft + px, viewTop + py, '@', COLORS.BRIGHT_YELLOW);
+      r.drawChar(viewLeft + px, viewTop + py, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
     }
 
     // Render structure light glow on overworld at night
@@ -3165,7 +3216,12 @@ class Game {
           }
 
           if (isVisible) {
-            const animFg = r.getAnimatedColor(tile.fg, tile.type);
+            let animFg = r.getAnimatedColor(tile.fg, tile.type);
+            // Apply glow to interactive dungeon tiles
+            const iType = tile.type;
+            if (iType === 'STAIRS_DOWN' || iType === 'STAIRS_UP' || iType === 'DOOR' || iType === 'CHEST' || iType === 'BRIDGE') {
+              animFg = this.glow.getGlowColor('INTERACTIVE', animFg);
+            }
             // Dim fg/bg based on light brightness
             const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
             const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
@@ -3188,7 +3244,7 @@ class Game {
           const sx = item.position.x - offsetX;
           const sy = item.position.y - offsetY;
           if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
-            r.drawChar(viewLeft + sx, viewTop + sy, item.char || '!', item.color || COLORS.BRIGHT_YELLOW);
+            r.drawChar(viewLeft + sx, viewTop + sy, item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW));
           }
         }
       }
@@ -3210,7 +3266,7 @@ class Game {
     // Draw player
     const playerScreenX = viewLeft + Math.floor(viewW / 2);
     const playerScreenY = viewTop + Math.floor(viewH / 2);
-    r.drawChar(playerScreenX, playerScreenY, '@', COLORS.BRIGHT_YELLOW);
+    r.drawChar(playerScreenX, playerScreenY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
 
     // Render particles in dungeon
     this.particles.update();
@@ -3367,6 +3423,9 @@ class Game {
         this.timeSystem.updateRealTime(timestamp);
       }
     }
+
+    // Update glow system
+    this.glow.update(delta / 1000);
 
     // Update transitions
     this.updateTransition();
