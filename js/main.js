@@ -2887,6 +2887,15 @@ class Game {
     WALL: 3, BUILDING: 3, TOWER: 4, CASTLE: 4,
     MOUNTAIN: 4, HILL: 2, RUINS: 2,
     FENCE: 1, COLUMN: 2, STATUE: 2,
+    // Structure tiles
+    OBELISK: 4, OBELISK_TOP: 5, OBELISK_BASE: 2,
+    REACTOR_WALL: 3, REACTOR_CORE: 1,
+    ALIEN_PILLAR: 5, ALIEN_NODE: 3,
+    CRYO_HOUSING: 2, CRYO_EMITTER: 3, CRYO_BASE: 1,
+    FUNGAL_MASS: 3, DATA_FRAME: 2, DATA_CORE: 1,
+    VOID_ARCH: 4, VOID_BASE: 2, VOID_CENTER: 0,
+    // New biome tiles with height
+    CRYSTAL_ZONE: 2, HYDRO_JUNGLE: 2,
   };
 
   renderOverworld() {
@@ -2971,6 +2980,44 @@ class Game {
     const py = this.player.position.y - Math.floor(this.camera.y);
     if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
       r.drawChar(viewLeft + px, viewTop + py, '@', COLORS.BRIGHT_YELLOW);
+    }
+
+    // Render structure light glow on overworld at night
+    if (isNight && this.overworld.chunkManager) {
+      const camX = Math.floor(this.camera.x);
+      const camY = Math.floor(this.camera.y);
+      const cm = this.overworld.chunkManager;
+      // Check visible chunks for structures with lights
+      const cx1 = Math.floor(camX / 32) - 1;
+      const cy1 = Math.floor(camY / 32) - 1;
+      const cx2 = Math.floor((camX + viewW) / 32) + 1;
+      const cy2 = Math.floor((camY + viewH) / 32) + 1;
+      for (let ccx = cx1; ccx <= cx2; ccx++) {
+        for (let ccy = cy1; ccy <= cy2; ccy++) {
+          const chunk = cm.chunks.get(`${ccx},${ccy}`);
+          if (!chunk || !chunk.structures) continue;
+          for (const struct of chunk.structures) {
+            for (const light of struct.lights) {
+              const rad = light.radius;
+              for (let dy = -rad; dy <= rad; dy++) {
+                for (let dx = -rad; dx <= rad; dx++) {
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  if (dist > rad) continue;
+                  const sx = light.x + dx - camX;
+                  const sy = light.y + dy - camY;
+                  if (sx < 0 || sx >= viewW || sy < 0 || sy >= viewH) continue;
+                  const falloff = Math.max(0, 1 - dist / rad);
+                  const alpha = falloff * falloff * light.intensity * 0.4;
+                  const hexR = Math.round(light.r * 255).toString(16).padStart(2, '0');
+                  const hexG = Math.round(light.g * 255).toString(16).padStart(2, '0');
+                  const hexB = Math.round(light.b * 255).toString(16).padStart(2, '0');
+                  r.tintCell(viewLeft + sx, viewTop + sy, `#${hexR}${hexG}${hexB}`, alpha);
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     // Store shadow data for post-process tinting pass
@@ -3354,6 +3401,10 @@ class Game {
           <option value="clear">Clear</option><option value="rain">Rain</option>
           <option value="storm">Storm</option><option value="fog">Fog</option>
           <option value="snow">Snow</option><option value="sandstorm">Sandstorm</option>
+          <option value="acid_rain">Acid Rain</option><option value="coolant_mist">Coolant Mist</option>
+          <option value="spore_fall">Spore Fall</option><option value="ember_rain">Ember Rain</option>
+          <option value="data_storm">Data Storm</option><option value="nano_haze">Nano Haze</option>
+          <option value="ion_storm">Ion Storm</option><option value="blood_rain">Blood Rain</option>
         </select></label>
       </div>
       <div class="debug-section">

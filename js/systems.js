@@ -1584,13 +1584,30 @@ export class WeatherSystem {
     this._turnsSinceChange = 0;
 
     this._biomeWeather = {
-      desert:    ['clear', 'clear', 'sandstorm'],
-      tundra:    ['clear', 'snow', 'snow', 'storm'],
-      swamp:     ['fog', 'rain', 'rain', 'cloudy'],
-      forest:    ['clear', 'cloudy', 'rain', 'fog'],
-      grassland: ['clear', 'clear', 'cloudy', 'rain'],
-      mountain:  ['clear', 'cloudy', 'snow', 'storm'],
-      ocean:     ['clear', 'rain', 'storm'],
+      desert:       ['clear', 'clear', 'sandstorm'],
+      tundra:       ['clear', 'snow', 'snow', 'storm'],
+      swamp:        ['fog', 'rain', 'rain', 'cloudy', 'acid_rain'],
+      forest:       ['clear', 'cloudy', 'rain', 'fog', 'spore_fall'],
+      grassland:    ['clear', 'clear', 'cloudy', 'rain'],
+      mountain:     ['clear', 'cloudy', 'snow', 'storm', 'ion_storm'],
+      ocean:        ['clear', 'rain', 'storm'],
+      lake:         ['clear', 'rain', 'storm', 'fog'],
+      // Colony infrastructure biomes
+      hull_breach:  ['clear', 'ion_storm', 'storm', 'ion_storm'],
+      reactor_slag: ['ember_rain', 'ember_rain', 'clear', 'ember_rain'],
+      frozen_deck:  ['snow', 'snow', 'coolant_mist', 'clear', 'coolant_mist'],
+      // Environmental failure biomes
+      hydro_jungle: ['rain', 'rain', 'spore_fall', 'fog', 'rain'],
+      fungal_net:   ['spore_fall', 'spore_fall', 'fog', 'spore_fall'],
+      toxic_sump:   ['acid_rain', 'acid_rain', 'fog', 'acid_rain'],
+      // Anomaly/alien biomes
+      alien_crash:  ['data_storm', 'ion_storm', 'clear', 'ion_storm'],
+      crystal_zone: ['clear', 'ion_storm', 'coolant_mist', 'clear'],
+      void_rift:    ['data_storm', 'data_storm', 'fog', 'data_storm'],
+      // Corruption biomes
+      glitch_zone:  ['data_storm', 'data_storm', 'data_storm', 'data_storm'],
+      nano_plague:  ['nano_haze', 'nano_haze', 'fog', 'nano_haze'],
+      assimilated:  ['blood_rain', 'spore_fall', 'fog', 'blood_rain'],
     };
   }
 
@@ -1617,12 +1634,20 @@ export class WeatherSystem {
    */
   getFOVModifier() {
     switch (this.current) {
-      case 'fog':       return 0.5;
-      case 'storm':     return 0.6;
-      case 'sandstorm': return 0.4;
-      case 'rain':      return 0.85;
-      case 'snow':      return 0.75;
-      default:          return 1.0;
+      case 'fog':          return 0.5;
+      case 'storm':        return 0.6;
+      case 'sandstorm':    return 0.4;
+      case 'rain':         return 0.85;
+      case 'snow':         return 0.75;
+      case 'acid_rain':    return 0.8;
+      case 'coolant_mist': return 0.45;
+      case 'spore_fall':   return 0.7;
+      case 'ember_rain':   return 0.75;
+      case 'data_storm':   return 0.55;
+      case 'nano_haze':    return 0.5;
+      case 'ion_storm':    return 0.5;
+      case 'blood_rain':   return 0.8;
+      default:             return 1.0;
     }
   }
 
@@ -1642,6 +1667,22 @@ export class WeatherSystem {
         return { char: '.', fg: '#AA8844', density: this.intensity * 0.1 };
       case 'fog':
         return { char: '~', fg: '#666666', density: this.intensity * 0.03 };
+      case 'acid_rain':
+        return { char: '|', fg: '#88FF00', density: this.intensity * 0.08 };
+      case 'coolant_mist':
+        return { char: '.', fg: '#88DDFF', density: this.intensity * 0.04 };
+      case 'spore_fall':
+        return { char: '*', fg: '#CC88FF', density: this.intensity * 0.06 };
+      case 'ember_rain':
+        return { char: ',', fg: '#FF6622', density: this.intensity * 0.07 };
+      case 'data_storm':
+        return { char: '#', fg: '#FF0088', density: this.intensity * 0.1 };
+      case 'nano_haze':
+        return { char: '.', fg: '#AAAAAA', density: this.intensity * 0.05 };
+      case 'ion_storm':
+        return { char: '/', fg: '#FFFF44', density: this.intensity * 0.12 };
+      case 'blood_rain':
+        return { char: '|', fg: '#AA2244', density: this.intensity * 0.08 };
       default:
         return null;
     }
@@ -1656,6 +1697,14 @@ export class WeatherSystem {
       snow: 'Snow drifts down softly.',
       fog: 'A thick fog blankets the land.',
       sandstorm: 'Sand whips through the air!',
+      acid_rain: 'Corrosive droplets hiss against the hull plating.',
+      coolant_mist: 'Cryogenic coolant vents into the air, freezing everything.',
+      spore_fall: 'Bioluminescent spores drift down like toxic snow.',
+      ember_rain: 'Glowing embers rain from overloaded reactor vents.',
+      data_storm: 'Holographic noise crackles through corrupted systems.',
+      nano_haze: 'A grey haze of nanites hangs in the air, dissolving everything.',
+      ion_storm: 'Electrical discharges arc between damaged power conduits!',
+      blood_rain: 'Dark bio-matter drips from assimilated ceiling panels.',
     };
     return descs[this.current] || '';
   }
