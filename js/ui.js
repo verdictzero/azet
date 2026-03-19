@@ -65,17 +65,9 @@ export class UIManager {
     // ── Top info bar (row 1, inside border) ──
     const topY = 1;
     r.fillRect(1, topY, cols - 2, 1, ' ', COLORS.BRIGHT_WHITE, bg);
-    const loc = gameState.currentLocationName || 'Uncharted Wilds';
-    r.drawString(2, topY, loc, COLORS.BRIGHT_WHITE, bg);
 
-    // Weather indicator
-    if (weatherSystem && weatherSystem.current !== 'clear') {
-      const weatherIcons = { rain: '~', snow: '*', storm: '!', fog: '=', sandstorm: '=', cloudy: '-', acid_rain: '~', coolant_mist: '.', spore_fall: '*', ember_rain: ',', data_storm: '#', nano_haze: '.', ion_storm: '/', blood_rain: '~' };
-      const wIcon = weatherIcons[weatherSystem.current] || '';
-      r.drawString(loc.length + 4, topY, wIcon, COLORS.BRIGHT_CYAN, bg);
-    }
-
-    // Clock + solar/lunar cycle
+    // Clock + solar/lunar cycle (draw first to calculate reserved space)
+    let rightReserved = 0;
     if (timeSystem) {
       const h = timeSystem.hour;
       const hh = String(Math.floor(h)).padStart(2, '0');
@@ -86,9 +78,25 @@ export class UIManager {
       const moonChar = lunarChars[Math.floor(lunarPhase * 8) % 8];
 
       const rightStr = `${moonChar} ${clock}`;
+      rightReserved = rightStr.length + 3;
       const rightX = cols - rightStr.length - 2;
       r.drawString(rightX, topY, rightStr,
         h >= 20 || h < 5 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_YELLOW, bg);
+    }
+
+    // Location name — truncate to avoid overlapping clock
+    const loc = gameState.currentLocationName || 'Uncharted Wilds';
+    const locMaxW = cols - 4 - rightReserved;
+    r.drawString(2, topY, loc, COLORS.BRIGHT_WHITE, bg, Math.max(0, locMaxW));
+
+    // Weather indicator — only if it fits
+    if (weatherSystem && weatherSystem.current !== 'clear') {
+      const weatherIcons = { rain: '~', snow: '*', storm: '!', fog: '=', sandstorm: '=', cloudy: '-', acid_rain: '~', coolant_mist: '.', spore_fall: '*', ember_rain: ',', data_storm: '#', nano_haze: '.', ion_storm: '/', blood_rain: '~' };
+      const wIcon = weatherIcons[weatherSystem.current] || '';
+      const wPos = Math.min(loc.length, locMaxW) + 4;
+      if (wPos < cols - rightReserved - 2) {
+        r.drawString(wPos, topY, wIcon, COLORS.BRIGHT_CYAN, bg);
+      }
     }
 
     // ── Separator after top bar ──
@@ -127,15 +135,22 @@ export class UIManager {
       sx += gaugeW + 1;
     }
 
-    r.drawString(sx, statRow, mp, COLORS.BRIGHT_CYAN, bg);
-    sx += mp.length + 2;
-    r.drawString(sx, statRow, lv, COLORS.BRIGHT_YELLOW, bg);
-    sx += lv.length + 2;
-    r.drawString(sx, statRow, gold, COLORS.BRIGHT_YELLOW, bg);
+    const statLimit = cols - 2;
+    if (sx + mp.length < statLimit) {
+      r.drawString(sx, statRow, mp, COLORS.BRIGHT_CYAN, bg, statLimit - sx);
+      sx += mp.length + 2;
+    }
+    if (sx + lv.length < statLimit) {
+      r.drawString(sx, statRow, lv, COLORS.BRIGHT_YELLOW, bg, statLimit - sx);
+      sx += lv.length + 2;
+    }
+    if (sx + gold.length < statLimit) {
+      r.drawString(sx, statRow, gold, COLORS.BRIGHT_YELLOW, bg, statLimit - sx);
+      sx += gold.length + 2;
+    }
 
     // Status effects (FF-style abbreviated)
     if (statusEffects && statusEffects.length > 0) {
-      sx += gold.length + 2;
       for (const effect of statusEffects) {
         const effectColors = {
           poisoned: COLORS.BRIGHT_GREEN, weakened: COLORS.BRIGHT_YELLOW, exposed: COLORS.BRIGHT_RED,
@@ -144,7 +159,7 @@ export class UIManager {
         const color = effectColors[effect.name] || COLORS.BRIGHT_BLACK;
         const abbrev = effect.name.substring(0, 3).toUpperCase();
         const tag = `${abbrev}${effect.duration}`;
-        if (sx + tag.length < cols - 4) {
+        if (sx + tag.length < statLimit) {
           r.drawString(sx, statRow, tag, color, bg);
           sx += tag.length + 1;
         }
@@ -442,16 +457,18 @@ export class UIManager {
 
     // Name plate box (small box above the dialogue)
     const nameStr = dialogueState.npcName;
-    const nameBoxW = nameStr.length + 4;
+    const nameBoxW = Math.min(nameStr.length + 4, panelW - 8);
     const nameBoxX = px;
     const nameBoxY = rows - 18;
     r.drawBox(nameBoxX, nameBoxY, nameBoxW, 3, COLORS.FF_BORDER, bg);
-    r.drawString(nameBoxX + 2, nameBoxY + 1, nameStr, COLORS.BRIGHT_WHITE, bg);
+    r.drawString(nameBoxX + 2, nameBoxY + 1, nameStr, COLORS.BRIGHT_WHITE, bg, nameBoxW - 4);
 
-    // Rep indicator next to name
+    // Rep indicator next to name — only if it fits within panel
     const repStr = `${dialogueState.reputation >= 0 ? '+' : ''}${dialogueState.reputation}`;
     const repColor = dialogueState.reputation >= 0 ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED;
-    r.drawString(nameBoxX + nameBoxW + 1, nameBoxY + 1, repStr, repColor);
+    if (nameBoxX + nameBoxW + 1 + repStr.length < px + panelW) {
+      r.drawString(nameBoxX + nameBoxW + 1, nameBoxY + 1, repStr, repColor);
+    }
 
     // Main dialogue box at bottom
     const textH = 6;
@@ -594,6 +611,7 @@ export class UIManager {
     // Command help at bottom
     r.drawString(px + 2, detBoxY + detBoxH - 1,
       'Enter:Confirm  H:Haggle  Esc:Leave', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+
   }
 
   // ─── INVENTORY (FF-style Items menu) ───
@@ -633,7 +651,7 @@ export class UIManager {
 
       r.drawString(px + 2, listY + 1 + i,
         cursor + ' ' + item.char + ' ' + item.name.substring(0, panelW - 14) + eqTag,
-        sel ? COLORS.BRIGHT_WHITE : (item.color || COLORS.WHITE), bg);
+        sel ? COLORS.BRIGHT_WHITE : (item.color || COLORS.WHITE), bg, panelW - 4);
     }
 
     if (items.length === 0) {
@@ -659,7 +677,7 @@ export class UIManager {
     }
 
     r.drawString(px + 2, detY + detH - 1,
-      'E:Equip  D:Drop  U:Use  Esc:Close', COLORS.BRIGHT_BLACK, bg);
+      'E:Equip  D:Drop  U:Use  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
   // ─── CHARACTER SHEET (FF Status screen) ───
@@ -684,7 +702,7 @@ export class UIManager {
     const s = player.stats;
     const xpStr = `EXP ${s.xp}/${s.xpToNext}`;
     const gilStr = `${player.gold}§`;
-    r.drawString(px + halfW, py + 2, xpStr, COLORS.BRIGHT_GREEN, bg);
+    r.drawString(px + halfW, py + 2, xpStr, COLORS.BRIGHT_GREEN, bg, halfW - 2);
 
     // HP/MP box
     const hpmpY = py + 4;
@@ -804,14 +822,19 @@ export class UIManager {
       const labelColor = standing > 50 ? COLORS.BRIGHT_GREEN : standing > 20 ? COLORS.GREEN :
         standing > -20 ? COLORS.WHITE : standing > -50 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_RED;
 
-      r.drawString(px + 2, y, faction.name.substring(0, 16).padEnd(16), COLORS.BRIGHT_WHITE, bg);
-      r.drawString(px + 19, y, bar, labelColor, bg);
-      r.drawString(px + 19 + barW + 1, y, standingLabel, labelColor, bg);
+      const nameMaxW = Math.min(16, panelW - 4);
+      r.drawString(px + 2, y, faction.name.substring(0, nameMaxW).padEnd(nameMaxW), COLORS.BRIGHT_WHITE, bg);
+      const barX = px + nameMaxW + 3;
+      r.drawString(barX, y, bar, labelColor, bg, panelW - nameMaxW - 5);
+      const labelX = barX + barW + 1;
+      if (labelX < px + panelW - 2) {
+        r.drawString(labelX, y, standingLabel, labelColor, bg, px + panelW - 2 - labelX);
+      }
       y += 2;
     }
 
-    r.drawString(px + 2, py + panelH - 2, 'Defeat enemies to raise standing.', COLORS.BRIGHT_BLACK, bg);
-    r.drawString(px + 2, py + panelH - 1, 'Esc:Close', COLORS.BRIGHT_BLACK, bg);
+    r.drawString(px + 2, py + panelH - 2, 'Defeat enemies to raise standing.', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+    r.drawString(px + 2, py + panelH - 1, 'Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
   // ─── QUEST LOG (FF-style Quests menu) ───
@@ -847,8 +870,11 @@ export class UIManager {
       y++;
       for (const obj of q.objectives) {
         const progress = `${obj.current}/${obj.required}`;
-        r.drawString(px + 6, y, obj.description.substring(0, panelW - 16) + '  ' + progress,
-          COLORS.BRIGHT_BLACK, bg);
+        const objMaxW = panelW - 8;
+        const descMax = objMaxW - progress.length - 2;
+        const desc = obj.description.length > descMax ? obj.description.substring(0, descMax) : obj.description;
+        r.drawString(px + 6, y, desc + '  ' + progress,
+          COLORS.BRIGHT_BLACK, bg, objMaxW);
         y++;
       }
     }
@@ -1119,14 +1145,17 @@ export class UIManager {
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, COLORS.FF_BLUE_DARK, ' Help ');
 
-    // Tab bar
+    // Tab bar — clip to panel bounds
     const bg = COLORS.FF_BLUE_DARK;
+    const tabMaxX = px + panelW - 2; // right edge inside border
     let tx = px + 2;
     for (let i = 0; i < tabs.length; i++) {
       const active = i === tab;
       const label = `[${i + 1}]${tabs[i]}`;
       const color = active ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
-      r.drawString(tx, py + 1, label, color, bg);
+      const avail = tabMaxX - tx;
+      if (avail <= 0) break;
+      r.drawString(tx, py + 1, label, color, bg, avail);
       tx += label.length + 1;
     }
     r.drawString(px + 1, py + 2, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
@@ -1416,9 +1445,9 @@ export class UIManager {
     for (let i = 0; i < visibleLines.length; i++) {
       const line = visibleLines[i];
       if (line.h) {
-        r.drawString(px + 2, contentY + i, line.h, line.c || COLORS.BRIGHT_WHITE, bg);
+        r.drawString(px + 2, contentY + i, line.h, line.c || COLORS.BRIGHT_WHITE, bg, w);
       } else if (line.t !== undefined) {
-        r.drawString(px + 2, contentY + i, line.t.substring(0, w), COLORS.WHITE, bg);
+        r.drawString(px + 2, contentY + i, line.t, COLORS.WHITE, bg, w);
       }
     }
 
@@ -1431,7 +1460,7 @@ export class UIManager {
     }
 
     r.drawString(px + 2, py + panelH - 1,
-      '1-8:Tab  Arrows:Scroll  Esc:Close', COLORS.BRIGHT_BLACK, bg);
+      '1-8:Tab  Arrows:Scroll  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
   // ─── SETTINGS (FF-style Config) ───
@@ -1484,7 +1513,7 @@ export class UIManager {
       }
     }
 
-    r.drawString(px + 2, py + panelH - 2, 'Press key to toggle  Esc:Close', COLORS.BRIGHT_BLACK, bg);
+    r.drawString(px + 2, py + panelH - 2, 'Press key to toggle  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
   // ─── CONFIRM DIALOG (FF-style) ───
@@ -1657,7 +1686,7 @@ export class UIManager {
     r.drawString(px + 2, y, quest.title, COLORS.BRIGHT_WHITE, bg, panelW - 4); y++;
     if (quest.objectives && quest.objectives.length > 0) {
       const obj = quest.objectives[0];
-      r.drawString(px + 4, y, obj.description.substring(0, panelW - 8), COLORS.BRIGHT_BLACK, bg); y++;
+      r.drawString(px + 4, y, obj.description, COLORS.BRIGHT_BLACK, bg, panelW - 6); y++;
     }
 
     // ─ Direction calculation ─
@@ -1671,7 +1700,7 @@ export class UIManager {
 
     // ─ Distance display ─
     const distText = dist < 10 ? 'Very Close' : dist < 30 ? 'Nearby' : dist < 80 ? 'Moderate Distance' : dist < 200 ? 'Far Away' : 'Very Distant';
-    r.drawString(px + 2, y, `Distance: ${Math.round(dist)} tiles (${distText})`, COLORS.BRIGHT_YELLOW, bg); y++;
+    r.drawString(px + 2, y, `Distance: ${Math.round(dist)} tiles (${distText})`, COLORS.BRIGHT_YELLOW, bg, panelW - 4); y++;
     y++;
 
     // ─ Animated compass ─

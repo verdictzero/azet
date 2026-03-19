@@ -310,7 +310,11 @@ export class Renderer {
    * Write a horizontal string into the buffer.
    */
   drawString(col, row, str, fg = COLORS.WHITE, bg = COLORS.BLACK, maxWidth = 0) {
-    const len = maxWidth > 0 ? Math.min(str.length, maxWidth) : str.length;
+    // Clip to screen right edge to prevent any horizontal overflow
+    const screenLimit = this.cols - col;
+    if (screenLimit <= 0) return;
+    let len = maxWidth > 0 ? Math.min(str.length, maxWidth) : str.length;
+    len = Math.min(len, screenLimit);
     for (let i = 0; i < len; i++) {
       this.drawChar(col + i, row, str[i], fg, bg);
     }
