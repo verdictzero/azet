@@ -1124,12 +1124,14 @@ class Game {
 
     const options = this.ui.dialogueState.options;
 
-    // Letter shortcuts (A, B, C, D)
-    const letterIndex = key.toUpperCase().charCodeAt(0) - 65;
-    if (letterIndex >= 0 && letterIndex < options.length) {
-      this.ui.selectedIndex = letterIndex;
-      this.selectDialogueOption(letterIndex);
-      return;
+    // Letter shortcuts (A, B, C, D) - only for single-char keys
+    if (key.length === 1) {
+      const letterIndex = key.toUpperCase().charCodeAt(0) - 65;
+      if (letterIndex >= 0 && letterIndex < options.length) {
+        this.ui.selectedIndex = letterIndex;
+        this.selectDialogueOption(letterIndex);
+        return;
+      }
     }
 
     const result = this.ui.handleMenuInput(key, options.length);
