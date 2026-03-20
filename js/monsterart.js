@@ -339,6 +339,87 @@ const ARCHETYPE_ART = {
     '   ║░║  ║░║   ',
     '   ╚═╝  ╚═╝   ',
   ],
+  jellyfish: [
+    '     ╱══╲     ',
+    '   ╱▒▓▓▓▒╲   ',
+    '  ║▓●▓▓●▓║   ',
+    '  ║▒▓▓▓▓▒║   ',
+    '   ╲▒▓▓▒╱    ',
+    '   │║│║│║│   ',
+    '  │ ║│║│ ║   ',
+    '   │ │ │ │   ',
+  ],
+  centipede: [
+    '    ╱●●╲     ',
+    '   ║▓▓▓▓║    ',
+    '   ╱╲▓▓╱╲    ',
+    '  ║▓▓▓▓▓▓║   ',
+    '   ╱╲▓▓╱╲    ',
+    '  ║▓▓▓▓▓▓║   ',
+    '   ╱╲▓▓╱╲    ',
+    '   ╲▒▒▒▒╱    ',
+    '    ╲══╱     ',
+  ],
+  eye: [
+    '    ╔═══╗     ',
+    '   ╱░▒▓▒░╲   ',
+    '  ║░▒▓●▓▒░║  ',
+    '  ║░▒▓▓▓▒░║  ',
+    '   ╲░▒▓▒░╱   ',
+    '    ╚═══╝    ',
+    '   ╱│ │ │╲   ',
+    '  ╱ │ │ │ ╲  ',
+  ],
+  turret: [
+    '     ║║║      ',
+    '   ╔═╣●╠═╗   ',
+    '   ║▓████▓║   ',
+    '   ╠══════╣   ',
+    '  ╔╝▒▒▒▒▒╚╗  ',
+    '  ║████████║  ',
+    '  ╚╗▓▓▓▓▓╔╝  ',
+    '   ╚══════╝   ',
+  ],
+  amalgam: [
+    '  ▓█╔═╗█▓    ',
+    ' ▓█▒║●║▒█▓   ',
+    ' █▓▒╠═╣▒▓█   ',
+    ' ▓▒░║▓▓║░▒▓  ',
+    ' █▓▒║██║▒▓█  ',
+    ' ▓█▒╠═╣▒█▓   ',
+    '  ▓█║░░║█▓   ',
+    '  ░▒╚══╝▒░   ',
+  ],
+  crystal_entity: [
+    '      ▲       ',
+    '     ╱◆╲      ',
+    '    ╱◇◆◇╲     ',
+    '   ╱◆●◆●◆╲   ',
+    '    ╲◇◆◇╱    ',
+    '    ║◆◇◆║     ',
+    '    ║◇◆◇║     ',
+    '    ╱╲ ╱╲     ',
+    '   ╱  ╲╱  ╲  ',
+  ],
+  swirl: [
+    '   · ∙ · ∙   ',
+    '  ∙ ╱░▒╲ ·   ',
+    ' · ╱▒▓█▓╲ ∙  ',
+    ' ∙ ║▓█●█▓║ · ',
+    ' · ╲▓█▓▒╱ ∙  ',
+    '  ∙ ╲▒░╱ ·   ',
+    '   · ∙ · ∙   ',
+  ],
+  hound: [
+    '   ╱╲  ╱╲    ',
+    '  ╱●╲╲╱╱●╲   ',
+    '  ╲══╲╱══╱   ',
+    '  ║▓████▓║   ',
+    '  ║██████║   ',
+    '  ║▓▓▓▓▓▓║   ',
+    ' ╱╱║    ║╲╲  ',
+    ' ╱╱ ║  ║ ╲╲  ',
+  ],
 };
 
 // ── Archetype Mapping ──
@@ -389,6 +470,37 @@ const NAME_TO_ARCHETYPE = {
   'Spore Carrier': 'wall',
   // Walkers / xenos
   'Void Walker': 'walker', 'Xenomorph Scout': 'walker',
+  // Jellyfish / floaters
+  'Acid Jellyfish': 'jellyfish', 'Stellar Jellyfish': 'jellyfish', 'Plasma Jellyfish': 'jellyfish',
+  'Vacuum Jellyfish': 'jellyfish', 'Canopy Jellyfish': 'jellyfish', 'Void Jellyfish': 'jellyfish',
+  // Centipedes / segmented
+  'Soil Centipede': 'centipede', 'Sewer Centipede': 'centipede', 'Hull Centipede': 'centipede',
+  'Acid Centipede': 'centipede', 'Grey Centipede': 'centipede', 'Pipe Worm': 'centipede',
+  'Heat Shimmer': 'swirl',
+  // Eyes / watchers
+  'Watcher Node': 'eye', 'Broken Watcher': 'eye', 'Frozen Watcher': 'eye',
+  'Mycelium Eye': 'eye', 'Beacon Eye': 'eye', 'Resonance Eye': 'eye',
+  'Disassembler Eye': 'eye', 'Neural Watcher': 'eye',
+  // Turrets / emitters
+  'Irrigation Turret': 'turret', 'Breach Turret': 'turret', 'Temporal Sentry': 'turret',
+  'Sparking Junction': 'turret',
+  // Amalgams / fusions
+  'Waste Amalgam': 'amalgam', 'Forge Amalgam': 'amalgam', 'Molten Amalgam': 'amalgam',
+  'Toxic Amalgam': 'amalgam', 'Lattice Amalgam': 'amalgam', 'Bone Amalgam': 'amalgam',
+  'Symbiotic Cluster': 'amalgam',
+  // Crystal entities
+  'Temporal Frost': 'crystal_entity',
+  // Swirl / temporal anomalies
+  'Time Loop Entity': 'swirl', 'Gravity Maw': 'swirl',
+  'Recursive Entity': 'swirl', 'Memory Overflow': 'swirl', 'Pixel Storm': 'swirl',
+  // Hounds / pack predators
+  'Hull Hound': 'hound', 'Cryo Hound': 'hound', 'Feral Hound Pack': 'hound',
+  'Spore Hound': 'hound', 'Xeno Hound': 'hound', 'Crystal Hound': 'hound',
+  'Nano Hound': 'hound', 'Assimilated Hound': 'hound',
+  // Existing archetypes for new enemies
+  'Cable Strangler': 'parasite', 'Echo Bat': 'swarm', 'Memory Phantom': 'wraith',
+  'Grief Echo': 'wraith', 'Gravity Leech': 'parasite', 'Corridor Creeper': 'critter',
+  'Loot Mimic': 'wall', 'Lost Child Echo': 'wraith', 'Crop Mimic': 'wall',
 };
 
 /**
@@ -431,6 +543,15 @@ export function getMonsterArt(creature) {
   if (lower.includes('wall') || lower.includes('node') || lower.includes('process') || lower.includes('carrier')) return { lines: ARCHETYPE_ART.wall, color };
   if (lower.includes('walker') || lower.includes('xenomorph') || lower.includes('scout')) return { lines: ARCHETYPE_ART.walker, color };
   if (lower.includes('colonist') || lower.includes('scavenger') || lower.includes('raider') || lower.includes('marine') || lower.includes('host')) return { lines: ARCHETYPE_ART.humanoid, color };
+  if (lower.includes('jellyfish')) return { lines: ARCHETYPE_ART.jellyfish, color };
+  if (lower.includes('centipede') || lower.includes('pipe worm')) return { lines: ARCHETYPE_ART.centipede, color };
+  if (lower.includes('eye') || lower.includes('watcher')) return { lines: ARCHETYPE_ART.eye, color };
+  if (lower.includes('turret') || lower.includes('junction') || lower.includes('sentry')) return { lines: ARCHETYPE_ART.turret, color };
+  if (lower.includes('amalgam') || lower.includes('cluster')) return { lines: ARCHETYPE_ART.amalgam, color };
+  if (lower.includes('hound')) return { lines: ARCHETYPE_ART.hound, color };
+  if (lower.includes('shimmer') || lower.includes('loop') || lower.includes('recursive') || lower.includes('overflow') || lower.includes('pixel storm') || lower.includes('gravity maw')) return { lines: ARCHETYPE_ART.swirl, color };
+  if (lower.includes('mimic')) return { lines: ARCHETYPE_ART.wall, color };
+  if (lower.includes('echo') || lower.includes('grief')) return { lines: ARCHETYPE_ART.wraith, color };
 
   // Ultimate fallback - humanoid
   return { lines: ARCHETYPE_ART.humanoid, color };

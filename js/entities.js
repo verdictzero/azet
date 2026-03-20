@@ -1918,6 +1918,9 @@ const CREATURE_TABLES = {
     { name: 'Scavenger', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'MUTANT' },
     { name: 'Feral Livestock', char: 'b', color: '#886644', behavior: 'coward', hp: 14, attack: 4, defense: 3, xpBase: 12, faction: 'MUTANT' },
     { name: 'Bioluminescent Moth', char: 'f', color: '#44FF44', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 8, faction: 'MUTANT' },
+    { name: 'Soil Centipede', char: '~', color: '#886644', behavior: 'ambush', hp: 16, attack: 6, defense: 2, xpBase: 22, ability: 'toxinSpray', faction: 'MUTANT' },
+    { name: 'Irrigation Turret', char: 'T', color: '#6688AA', behavior: 'patrol', hp: 20, attack: 7, defense: 6, xpBase: 30, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
+    { name: 'Crop Mimic', char: '?', color: '#66AA44', behavior: 'ambush', hp: 14, attack: 8, defense: 1, xpBase: 25, faction: 'MUTANT' },
   ],
   // MAINTENANCE TUNNELS — Service corridors with malfunctioning industrial machines
   underground: [
@@ -1926,6 +1929,9 @@ const CREATURE_TABLES = {
     { name: 'Loader Mech', char: 'L', color: '#668866', behavior: 'aggressive', hp: 35, attack: 8, defense: 4, xpBase: 50, ability: 'selfRepair', faction: 'MALFUNCTIONING' },
     { name: 'Duct Rat', char: 'r', color: '#AA6644', behavior: 'coward', hp: 8, attack: 3, defense: 2, xpBase: 8, faction: 'MUTANT' },
     { name: 'Mining Automaton', char: 'M', color: '#888888', behavior: 'patrol', hp: 40, attack: 6, defense: 8, xpBase: 45, faction: 'MALFUNCTIONING' },
+    { name: 'Pipe Worm', char: 'w', color: '#997755', behavior: 'ambush', hp: 18, attack: 5, defense: 3, xpBase: 20, ability: 'corrosiveSpit', faction: 'MUTANT' },
+    { name: 'Echo Bat', char: 'e', color: '#AA88CC', behavior: 'coward', hp: 7, attack: 3, defense: 0, xpBase: 10, ability: 'echoScream', faction: 'MUTANT' },
+    { name: 'Cable Strangler', char: 'C', color: '#556677', behavior: 'ambush', hp: 22, attack: 7, defense: 2, xpBase: 28, ability: 'gravCrush', faction: 'MALFUNCTIONING' },
   ],
   // QUARANTINE ZONE — Sealed sectors overrun by nano-fungal assimilation
   haunted: [
@@ -1934,6 +1940,8 @@ const CREATURE_TABLES = {
     { name: 'Shambling Host', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'ASSIMILATED' },
     { name: 'Hivemind Nexus', char: 'N', color: '#AA00FF', behavior: 'aggressive', hp: 50, attack: 12, defense: 5, xpBase: 100, ability: 'thermalOverload', isBoss: true, faction: 'ASSIMILATED' },
     { name: 'Phase Stalker', char: 'p', color: '#AAAAFF', behavior: 'ambush', hp: 10, attack: 5, defense: 0, xpBase: 20, ability: 'phaseShift', faction: 'ALIEN' },
+    { name: 'Memory Phantom', char: 'm', color: '#9988BB', behavior: 'aggressive', hp: 14, attack: 6, defense: 1, xpBase: 22, ability: 'memoryLeech', faction: 'ASSIMILATED' },
+    { name: 'Grief Echo', char: 'e', color: '#7766AA', behavior: 'coward', hp: 9, attack: 4, defense: 0, xpBase: 15, ability: 'echoScream', faction: 'ASSIMILATED' },
   ],
   // WASTE PROCESSING — Recycling sectors with toxic mutations and broken reclamation bots
   swamp: [
@@ -1941,6 +1949,9 @@ const CREATURE_TABLES = {
     { name: 'Sludge Crawler', char: 'C', color: '#446644', behavior: 'ambush', hp: 25, attack: 5, defense: 5, xpBase: 25, faction: 'MUTANT' },
     { name: 'Mutant Amphibian', char: 't', color: '#66AA44', behavior: 'coward', hp: 8, attack: 2, defense: 2, xpBase: 8, ability: 'toxinSpray', faction: 'MUTANT' },
     { name: 'Vent Gas Wisp', char: '*', color: '#88FFFF', behavior: 'coward', hp: 5, attack: 3, defense: 0, xpBase: 12, faction: 'MUTANT' },
+    { name: 'Acid Jellyfish', char: 'J', color: '#44CCAA', behavior: 'patrol', hp: 15, attack: 5, defense: 1, xpBase: 18, ability: 'corrosiveSpit', faction: 'MUTANT' },
+    { name: 'Sewer Centipede', char: '~', color: '#557744', behavior: 'ambush', hp: 20, attack: 6, defense: 4, xpBase: 25, ability: 'toxinSpray', faction: 'MUTANT' },
+    { name: 'Waste Amalgam', char: 'A', color: '#668855', behavior: 'aggressive', hp: 28, attack: 7, defense: 5, xpBase: 35, ability: 'symbioticBurst', faction: 'MUTANT' },
   ],
   // EXTERIOR HULL — Exposed outer surface where alien organisms board the colony
   badlands: [
@@ -1948,6 +1959,9 @@ const CREATURE_TABLES = {
     { name: 'Void Sentinel', char: 'V', color: '#AAAA88', behavior: 'patrol', hp: 28, attack: 5, defense: 6, xpBase: 35, ability: 'signalJam', faction: 'ASSIMILATED' },
     { name: 'Hull Borer', char: 'B', color: '#CCAA66', behavior: 'ambush', hp: 40, attack: 10, defense: 3, xpBase: 55, faction: 'ALIEN' },
     { name: 'Radiation Shade', char: 'h', color: '#CCAA88', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15, faction: 'ALIEN' },
+    { name: 'Hull Hound', char: 'h', color: '#BB9966', behavior: 'aggressive', hp: 18, attack: 7, defense: 3, xpBase: 25, faction: 'ALIEN' },
+    { name: 'Gravity Leech', char: 'g', color: '#8877AA', behavior: 'ambush', hp: 12, attack: 5, defense: 2, xpBase: 20, ability: 'gravCrush', faction: 'ALIEN' },
+    { name: 'Stellar Jellyfish', char: 'J', color: '#AABBDD', behavior: 'patrol', hp: 20, attack: 6, defense: 1, xpBase: 28, ability: 'entropyField', faction: 'ALIEN' },
   ],
   // REACTOR/INDUSTRIAL — Power generation and heavy industry sectors
   mountain: [
@@ -1955,6 +1969,9 @@ const CREATURE_TABLES = {
     { name: 'Conduit Parasite', char: 'c', color: '#AA88CC', behavior: 'aggressive', hp: 14, attack: 5, defense: 2, xpBase: 20, ability: 'empPulse', faction: 'ALIEN' },
     { name: 'Reactor Guardian', char: 'G', color: '#FF8844', behavior: 'patrol', hp: 50, attack: 10, defense: 8, xpBase: 60, ability: 'overcharge', isBoss: true, faction: 'MALFUNCTIONING' },
     { name: 'Thermal Creeper', char: 'T', color: '#FF4444', behavior: 'aggressive', hp: 30, attack: 8, defense: 4, xpBase: 45, ability: 'naniteInjection', faction: 'ASSIMILATED' },
+    { name: 'Watcher Node', char: '@', color: '#88AACC', behavior: 'patrol', hp: 16, attack: 4, defense: 5, xpBase: 22, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
+    { name: 'Plasma Jellyfish', char: 'J', color: '#FFAA44', behavior: 'aggressive', hp: 15, attack: 9, defense: 0, xpBase: 28, ability: 'thermalOverload', faction: 'MUTANT' },
+    { name: 'Forge Amalgam', char: 'A', color: '#CC8844', behavior: 'aggressive', hp: 35, attack: 9, defense: 6, xpBase: 50, ability: 'mirrorShield', faction: 'MALFUNCTIONING' },
   ],
   // ABANDONED SECTORS — Derelict colony modules with mixed threats
   ruins: [
@@ -1965,6 +1982,9 @@ const CREATURE_TABLES = {
     { name: 'Scrap Raider', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12 },
     { name: 'Raider Captain', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20 },
     { name: 'Mimic Cache', char: '!', color: '#FFDD44', behavior: 'ambush', hp: 22, attack: 6, defense: 4, xpBase: 35, faction: 'ALIEN' },
+    { name: 'Corridor Creeper', char: 'c', color: '#776655', behavior: 'ambush', hp: 12, attack: 5, defense: 2, xpBase: 15, faction: 'MUTANT' },
+    { name: 'Broken Watcher', char: '@', color: '#999999', behavior: 'patrol', hp: 10, attack: 3, defense: 3, xpBase: 12, ability: 'signalJam', faction: 'MALFUNCTIONING' },
+    { name: 'Loot Mimic', char: '$', color: '#FFCC44', behavior: 'ambush', hp: 18, attack: 8, defense: 3, xpBase: 30, faction: 'ALIEN' },
   ],
   // COLONY COMMONS — Open habitation areas with low-level strays
   grassland: [
@@ -1972,6 +1992,9 @@ const CREATURE_TABLES = {
     { name: 'Feral Colony Cat', char: 'c', color: '#AA8866', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 5, faction: 'MUTANT' },
     { name: 'Rogue Courier Drone', char: 'q', color: '#8888CC', behavior: 'aggressive', hp: 10, attack: 4, defense: 1, xpBase: 12, faction: 'MALFUNCTIONING' },
     { name: 'Scavenger', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 14, attack: 4, defense: 3, xpBase: 15 },
+    { name: 'Feral Hound Pack', char: 'h', color: '#AA7755', behavior: 'aggressive', hp: 10, attack: 5, defense: 2, xpBase: 14, faction: 'MUTANT' },
+    { name: 'Sparking Junction', char: 'j', color: '#AABB44', behavior: 'patrol', hp: 12, attack: 4, defense: 4, xpBase: 15, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
+    { name: 'Lost Child Echo', char: 'e', color: '#8888CC', behavior: 'coward', hp: 5, attack: 1, defense: 0, xpBase: 8, ability: 'memoryLeech', faction: 'ASSIMILATED' },
   ],
 
   // HULL BREACH — Exposed outer hull, vacuum-adjacent sectors
@@ -1980,6 +2003,9 @@ const CREATURE_TABLES = {
     { name: 'Hull Breach Drone', char: 'd', color: '#8899AA', behavior: 'aggressive', hp: 16, attack: 6, defense: 3, xpBase: 20, faction: 'MALFUNCTIONING' },
     { name: 'Pressure Wraith', char: 'p', color: '#AABBCC', behavior: 'ambush', hp: 12, attack: 8, defense: 1, xpBase: 30, ability: 'phaseShift', faction: 'ALIEN' },
     { name: 'Vacuum Leech', char: 'l', color: '#445566', behavior: 'coward', hp: 8, attack: 2, defense: 2, xpBase: 10, faction: 'ALIEN' },
+    { name: 'Vacuum Jellyfish', char: 'J', color: '#6688BB', behavior: 'patrol', hp: 18, attack: 6, defense: 2, xpBase: 25, ability: 'gravCrush', faction: 'ALIEN' },
+    { name: 'Hull Centipede', char: '~', color: '#778899', behavior: 'ambush', hp: 25, attack: 7, defense: 5, xpBase: 32, faction: 'ALIEN' },
+    { name: 'Breach Turret', char: 'T', color: '#8899AA', behavior: 'patrol', hp: 22, attack: 8, defense: 7, xpBase: 35, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
   ],
 
   // REACTOR SLAG — Molten areas around failed reactors
@@ -1988,6 +2014,8 @@ const CREATURE_TABLES = {
     { name: 'Plasma Wisp', char: '*', color: '#FFAA22', behavior: 'aggressive', hp: 10, attack: 10, defense: 0, xpBase: 25, ability: 'thermalOverload', faction: 'MUTANT' },
     { name: 'Meltdown Core', char: 'M', color: '#FF4400', behavior: 'aggressive', hp: 70, attack: 14, defense: 6, xpBase: 120, ability: 'thermalOverload', isBoss: true, faction: 'MALFUNCTIONING' },
     { name: 'Char Crawler', char: 'c', color: '#CC6622', behavior: 'coward', hp: 8, attack: 4, defense: 2, xpBase: 10, faction: 'MUTANT' },
+    { name: 'Molten Amalgam', char: 'A', color: '#FF6622', behavior: 'aggressive', hp: 40, attack: 10, defense: 7, xpBase: 55, ability: 'symbioticBurst', faction: 'MUTANT' },
+    { name: 'Heat Shimmer', char: '~', color: '#FFCC88', behavior: 'coward', hp: 8, attack: 6, defense: 0, xpBase: 15, ability: 'entropyField', faction: 'MUTANT' },
   ],
 
   // FROZEN DECK — Cryogenics failure, frost-covered corridors
@@ -1996,6 +2024,9 @@ const CREATURE_TABLES = {
     { name: 'Cryo Specter', char: 'C', color: '#AADDFF', behavior: 'ambush', hp: 18, attack: 6, defense: 2, xpBase: 25, ability: 'empPulse', faction: 'ALIEN' },
     { name: 'Ice Borer', char: 'B', color: '#6699BB', behavior: 'aggressive', hp: 20, attack: 8, defense: 4, xpBase: 30, faction: 'MUTANT' },
     { name: 'Frozen Colonist', char: 'z', color: '#88AACC', behavior: 'coward', hp: 12, attack: 3, defense: 3, xpBase: 8, faction: 'ASSIMILATED' },
+    { name: 'Cryo Hound', char: 'h', color: '#88BBDD', behavior: 'aggressive', hp: 22, attack: 7, defense: 4, xpBase: 28, faction: 'MUTANT' },
+    { name: 'Temporal Frost', char: '?', color: '#AACCEE', behavior: 'ambush', hp: 14, attack: 5, defense: 3, xpBase: 22, ability: 'timeFracture', faction: 'ALIEN' },
+    { name: 'Frozen Watcher', char: '@', color: '#99BBDD', behavior: 'patrol', hp: 20, attack: 4, defense: 8, xpBase: 25, ability: 'empPulse', faction: 'MALFUNCTIONING' },
   ],
 
   // HYDROPONIC JUNGLE — Agri-domes gone wild with rampant growth
@@ -2004,6 +2035,8 @@ const CREATURE_TABLES = {
     { name: 'Pollinator Swarm', char: 's', color: '#FFDD00', behavior: 'patrol', hp: 14, attack: 5, defense: 1, xpBase: 18, ability: 'toxinSpray', faction: 'MUTANT' },
     { name: 'Root Titan', char: 'R', color: '#228844', behavior: 'aggressive', hp: 65, attack: 12, defense: 8, xpBase: 100, ability: 'selfRepair', isBoss: true, faction: 'MUTANT' },
     { name: 'Bioluminescent Stalker', char: 'b', color: '#44FF88', behavior: 'ambush', hp: 16, attack: 7, defense: 2, xpBase: 22, faction: 'MUTANT' },
+    { name: 'Canopy Jellyfish', char: 'J', color: '#66DDAA', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15, ability: 'toxinSpray', faction: 'MUTANT' },
+    { name: 'Symbiotic Cluster', char: '&', color: '#44CC66', behavior: 'aggressive', hp: 24, attack: 8, defense: 3, xpBase: 30, ability: 'symbioticBurst', faction: 'MUTANT' },
   ],
 
   // FUNGAL NETWORK — Bioluminescent mycelium corridors
@@ -2012,6 +2045,8 @@ const CREATURE_TABLES = {
     { name: 'Mycelium Tendril', char: 't', color: '#AA66DD', behavior: 'ambush', hp: 15, attack: 7, defense: 2, xpBase: 20, faction: 'MUTANT' },
     { name: 'Fungal Colossus', char: 'F', color: '#DD88FF', behavior: 'aggressive', hp: 60, attack: 10, defense: 7, xpBase: 90, ability: 'sporeCloud', isBoss: true, faction: 'MUTANT' },
     { name: 'Puffball Mine', char: 'o', color: '#EEAAFF', behavior: 'coward', hp: 5, attack: 15, defense: 0, xpBase: 18, faction: 'MUTANT' },
+    { name: 'Mycelium Eye', char: '@', color: '#BB88DD', behavior: 'patrol', hp: 18, attack: 5, defense: 3, xpBase: 22, ability: 'sporeCloud', faction: 'MUTANT' },
+    { name: 'Spore Hound', char: 'h', color: '#AA77CC', behavior: 'aggressive', hp: 16, attack: 7, defense: 2, xpBase: 22, ability: 'toxinSpray', faction: 'MUTANT' },
   ],
 
   // TOXIC SUMP — Waste processing overflow, acid pools
@@ -2020,6 +2055,8 @@ const CREATURE_TABLES = {
     { name: 'Waste Processor', char: 'W', color: '#668844', behavior: 'aggressive', hp: 30, attack: 7, defense: 6, xpBase: 35, faction: 'MALFUNCTIONING' },
     { name: 'Sludge Titan', char: 'T', color: '#33AA00', behavior: 'aggressive', hp: 55, attack: 11, defense: 8, xpBase: 80, ability: 'corrosiveSpit', isBoss: true, faction: 'MUTANT' },
     { name: 'Dissolving Rat', char: 'r', color: '#88AA44', behavior: 'coward', hp: 6, attack: 3, defense: 1, xpBase: 8, ability: 'toxinSpray', faction: 'MUTANT' },
+    { name: 'Acid Centipede', char: '~', color: '#55CC22', behavior: 'ambush', hp: 22, attack: 7, defense: 4, xpBase: 28, ability: 'corrosiveSpit', faction: 'MUTANT' },
+    { name: 'Toxic Amalgam', char: 'A', color: '#44AA22', behavior: 'aggressive', hp: 38, attack: 9, defense: 7, xpBase: 45, ability: 'entropyField', faction: 'MUTANT' },
   ],
 
   // ALIEN CRASH SITE — Embedded xeno-vessel wreckage with xenotech
@@ -2028,6 +2065,9 @@ const CREATURE_TABLES = {
     { name: 'Xenomorph Scout', char: 'x', color: '#DD22DD', behavior: 'aggressive', hp: 18, attack: 10, defense: 3, xpBase: 35, faction: 'ALIEN' },
     { name: 'Artifact Guardian', char: 'G', color: '#FF88FF', behavior: 'aggressive', hp: 75, attack: 14, defense: 8, xpBase: 130, ability: 'empPulse', isBoss: true, faction: 'ALIEN' },
     { name: 'Beacon Drone', char: 'b', color: '#CC66CC', behavior: 'coward', hp: 10, attack: 3, defense: 2, xpBase: 12, ability: 'signalJam', faction: 'ALIEN' },
+    { name: 'Xeno Hound', char: 'h', color: '#DD44DD', behavior: 'aggressive', hp: 24, attack: 9, defense: 4, xpBase: 35, ability: 'voidDrain', faction: 'ALIEN' },
+    { name: 'Beacon Eye', char: '@', color: '#EE66EE', behavior: 'patrol', hp: 20, attack: 6, defense: 5, xpBase: 28, ability: 'psionicLash', faction: 'ALIEN' },
+    { name: 'Temporal Sentry', char: 'T', color: '#CC88DD', behavior: 'patrol', hp: 28, attack: 7, defense: 8, xpBase: 40, ability: 'timeFracture', faction: 'ALIEN' },
   ],
 
   // CRYSTALLINE GROWTH — Alien mineral formations, refractive
@@ -2036,6 +2076,9 @@ const CREATURE_TABLES = {
     { name: 'Resonance Phantom', char: 'R', color: '#22DDDD', behavior: 'ambush', hp: 15, attack: 9, defense: 2, xpBase: 30, ability: 'empPulse', faction: 'ALIEN' },
     { name: 'Shard Swarm', char: 's', color: '#66FFFF', behavior: 'aggressive', hp: 8, attack: 12, defense: 0, xpBase: 20, faction: 'ALIEN' },
     { name: 'Prism Core', char: 'P', color: '#88FFFF', behavior: 'aggressive', hp: 60, attack: 10, defense: 10, xpBase: 100, ability: 'overcharge', isBoss: true, faction: 'ALIEN' },
+    { name: 'Crystal Hound', char: 'h', color: '#55EEFF', behavior: 'aggressive', hp: 20, attack: 8, defense: 6, xpBase: 28, faction: 'ALIEN' },
+    { name: 'Resonance Eye', char: '@', color: '#44DDEE', behavior: 'patrol', hp: 16, attack: 7, defense: 4, xpBase: 25, ability: 'echoScream', faction: 'ALIEN' },
+    { name: 'Lattice Amalgam', char: 'A', color: '#66EEFF', behavior: 'aggressive', hp: 35, attack: 8, defense: 10, xpBase: 42, ability: 'mirrorShield', faction: 'ALIEN' },
   ],
 
   // VOID RIFT — Tears in reality, dimensional anomalies
@@ -2044,6 +2087,9 @@ const CREATURE_TABLES = {
     { name: 'Void Tendril', char: 'v', color: '#6622AA', behavior: 'ambush', hp: 18, attack: 8, defense: 3, xpBase: 28, faction: 'ALIEN' },
     { name: 'Reality Fragment', char: '?', color: '#AA66FF', behavior: 'patrol', hp: 20, attack: 7, defense: 5, xpBase: 25, faction: 'ALIEN' },
     { name: 'Dimensional Anchor', char: 'D', color: '#CC88FF', behavior: 'aggressive', hp: 80, attack: 15, defense: 7, xpBase: 140, ability: 'phaseShift', isBoss: true, faction: 'ALIEN' },
+    { name: 'Time Loop Entity', char: '8', color: '#BB66EE', behavior: 'aggressive', hp: 22, attack: 9, defense: 3, xpBase: 35, ability: 'timeFracture', faction: 'ALIEN' },
+    { name: 'Gravity Maw', char: 'O', color: '#9944CC', behavior: 'ambush', hp: 30, attack: 10, defense: 4, xpBase: 40, ability: 'gravCrush', faction: 'ALIEN' },
+    { name: 'Void Jellyfish', char: 'J', color: '#AA55DD', behavior: 'patrol', hp: 16, attack: 7, defense: 1, xpBase: 25, ability: 'voidDrain', faction: 'ALIEN' },
   ],
 
   // DATA CORRUPTION — Ship systems haywire, glitched reality
@@ -2052,6 +2098,9 @@ const CREATURE_TABLES = {
     { name: 'Corrupted Process', char: 'p', color: '#DD0066', behavior: 'patrol', hp: 20, attack: 6, defense: 4, xpBase: 22, faction: 'ASSIMILATED' },
     { name: 'Null Entity', char: 'n', color: '#FF44AA', behavior: 'ambush', hp: 14, attack: 8, defense: 2, xpBase: 25, ability: 'empPulse', faction: 'ASSIMILATED' },
     { name: 'Stack Overflow', char: 'O', color: '#FF66CC', behavior: 'aggressive', hp: 65, attack: 13, defense: 5, xpBase: 110, ability: 'overcharge', isBoss: true, faction: 'ASSIMILATED' },
+    { name: 'Recursive Entity', char: 'R', color: '#EE4499', behavior: 'aggressive', hp: 18, attack: 8, defense: 3, xpBase: 28, ability: 'mirrorShield', faction: 'ASSIMILATED' },
+    { name: 'Memory Overflow', char: 'm', color: '#DD3388', behavior: 'ambush', hp: 20, attack: 7, defense: 2, xpBase: 25, ability: 'memoryLeech', faction: 'ASSIMILATED' },
+    { name: 'Pixel Storm', char: '#', color: '#FF55BB', behavior: 'aggressive', hp: 12, attack: 11, defense: 0, xpBase: 22, ability: 'chainLightning', faction: 'ASSIMILATED' },
   ],
 
   // NANO-PLAGUE ZONE — Grey goo dissolving everything
@@ -2060,6 +2109,9 @@ const CREATURE_TABLES = {
     { name: 'Dissolving Hulk', char: 'H', color: '#777777', behavior: 'patrol', hp: 35, attack: 7, defense: 6, xpBase: 35, faction: 'ASSIMILATED' },
     { name: 'Assembler Node', char: 'A', color: '#AAAAAA', behavior: 'coward', hp: 18, attack: 3, defense: 4, xpBase: 20, ability: 'selfRepair', faction: 'ASSIMILATED' },
     { name: 'Grey Tide', char: 'T', color: '#BBBBBB', behavior: 'aggressive', hp: 70, attack: 12, defense: 8, xpBase: 120, ability: 'naniteInjection', isBoss: true, faction: 'ASSIMILATED' },
+    { name: 'Grey Centipede', char: '~', color: '#888888', behavior: 'ambush', hp: 20, attack: 6, defense: 4, xpBase: 22, ability: 'naniteInjection', faction: 'ASSIMILATED' },
+    { name: 'Disassembler Eye', char: '@', color: '#999999', behavior: 'patrol', hp: 22, attack: 5, defense: 5, xpBase: 25, ability: 'entropyField', faction: 'ASSIMILATED' },
+    { name: 'Nano Hound', char: 'h', color: '#AAAAAA', behavior: 'aggressive', hp: 16, attack: 8, defense: 2, xpBase: 22, faction: 'ASSIMILATED' },
   ],
 
   // ASSIMILATION FRONT — Alien biomass consuming colony structure
@@ -2068,6 +2120,9 @@ const CREATURE_TABLES = {
     { name: 'Flesh Wall', char: 'W', color: '#880033', behavior: 'ambush', hp: 40, attack: 6, defense: 10, xpBase: 35, faction: 'ASSIMILATED' },
     { name: 'Hive Coordinator', char: 'C', color: '#CC2255', behavior: 'patrol', hp: 25, attack: 5, defense: 4, xpBase: 28, ability: 'signalJam', faction: 'ASSIMILATED' },
     { name: 'Assimilation Engine', char: 'E', color: '#FF0044', behavior: 'aggressive', hp: 80, attack: 14, defense: 7, xpBase: 130, ability: 'assimilate', isBoss: true, faction: 'ASSIMILATED' },
+    { name: 'Bone Amalgam', char: 'A', color: '#CC1144', behavior: 'aggressive', hp: 35, attack: 10, defense: 6, xpBase: 42, ability: 'symbioticBurst', faction: 'ASSIMILATED' },
+    { name: 'Neural Watcher', char: '@', color: '#DD2255', behavior: 'patrol', hp: 28, attack: 6, defense: 7, xpBase: 35, ability: 'psionicLash', faction: 'ASSIMILATED' },
+    { name: 'Assimilated Hound', char: 'h', color: '#BB1144', behavior: 'aggressive', hp: 20, attack: 9, defense: 4, xpBase: 30, ability: 'assimilate', faction: 'ASSIMILATED' },
   ],
 };
 
@@ -2090,6 +2145,15 @@ const ABILITY_EFFECTS = {
   thermalOverload:{ name: 'Thermal Overload', damage: 12, type: 'magic', description: 'Superheated nanite swarm detonation.' },
   assimilate:     { name: 'Assimilate', damage: 6, heal: 6, type: 'drain', description: 'Absorbs biomass to fuel nano-organic growth.' },
   fungalSnare:    { name: 'Fungal Snare', damage: 2, stun: true, type: 'control', description: 'Nano-fungal tendrils lock you in place.' },
+  // Tier 5 — Exotic abilities
+  gravCrush:      { name: 'Gravity Crush', damage: 6, defenseReduce: 3, type: 'debuff', description: 'Localized gravity spike crushes armor plating.' },
+  echoScream:     { name: 'Echo Scream', damage: 5, stun: true, type: 'control', description: 'Sonic blast reverberates through hull corridors.' },
+  memoryLeech:    { name: 'Memory Leech', damage: 4, attackReduce: 3, type: 'debuff', description: 'Drains combat knowledge, weakening your attacks.' },
+  mirrorShield:   { name: 'Mirror Shield', damage: 0, healSelf: 8, type: 'heal', description: 'Absorbs incoming energy and converts it to self-repair.' },
+  chainLightning: { name: 'Chain Lightning', damage: 9, type: 'magic', description: 'Arc of electricity jumps through conductive hull surfaces.' },
+  entropyField:   { name: 'Entropy Field', damage: 3, duration: 5, armorReduce: 1, type: 'dot', description: 'Accelerates material decay, corroding equipment over time.' },
+  symbioticBurst: { name: 'Symbiotic Burst', damage: 7, heal: 4, type: 'drain', description: 'Paired organism detonates and is rapidly regrown.' },
+  timeFracture:   { name: 'Time Fracture', damage: 0, attackReduce: 2, defenseReduce: 2, stun: true, type: 'control', description: 'Temporal stutter freezes you in a causal loop.' },
 };
 
 export class CreatureGenerator {
