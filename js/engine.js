@@ -96,7 +96,8 @@ export class Renderer {
     this.prevBuffer = [];  // last rendered frame
 
     this.effectsEnabled = false; // visual FX disabled for now (toggle with settings)
-    this.zoomLevel = 1.0;
+    this.zoomLevel = 1;       // legacy compat
+    this.densityLevel = 1;    // density zoom: 1, 2, or 3
     this._baseFontSize = null; // stored when zoom is applied
 
     // Perform initial sizing
@@ -122,12 +123,8 @@ export class Renderer {
       this.fontSize = Math.round(minFont + t * (maxFont - minFont));
       if (isPortrait) this.fontSize = Math.max(10, this.fontSize - 1);
     }
-    // Store base font size and apply zoom multiplier
-    if (this.zoomLevel === 1.0) {
-      this._baseFontSize = this.fontSize;
-    } else if (this._baseFontSize) {
-      this.fontSize = Math.round(this._baseFontSize * this.zoomLevel);
-    }
+    // Store base font size (no longer modified by zoom — density zoom is character-based)
+    this._baseFontSize = this.fontSize;
 
     // Measure a representative character to derive cell size
     this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
@@ -170,8 +167,9 @@ export class Renderer {
   }
 
   setZoom(level) {
-    this.zoomLevel = Math.max(1.0, Math.min(2.0, level));
-    this.resize();
+    this.densityLevel = Math.max(1, Math.min(3, Math.round(level)));
+    this.zoomLevel = this.densityLevel; // keep in sync for compat
+    this.invalidate();
   }
 
   set enableCRT(val) {
@@ -932,13 +930,17 @@ export class ParticleSystem {
     const viewTop = LAYOUT.VIEWPORT_TOP;
     const viewW = renderer.cols - 2;
     const viewH = renderer.rows - LAYOUT.HUD_TOTAL;
+    const density = renderer.densityLevel;
+    const entityOff = Math.floor(density / 2);
     for (const p of this.particles) {
-      const sx = Math.round(p.x - cameraX);
-      const sy = Math.round(p.y - cameraY);
-      if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+      const wx_off = Math.round(p.x - cameraX);
+      const wy_off = Math.round(p.y - cameraY);
+      const screenX = wx_off * density + entityOff;
+      const screenY = wy_off * density + entityOff;
+      if (screenX >= 0 && screenX < viewW && screenY >= 0 && screenY < viewH) {
         const fade = p.life / p.maxLife;
         if (fade > 0.3) {
-          renderer.drawChar(viewLeft + sx, viewTop + sy, p.char, p.fg);
+          renderer.drawChar(viewLeft + screenX, viewTop + screenY, p.char, p.fg);
         }
       }
     }
