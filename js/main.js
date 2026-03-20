@@ -4115,8 +4115,7 @@ class Game {
         const dy = artY + row;
         if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
         if (ch === ' ') continue; // fire bg shows through
-        const cellBg = (bgColors[dy - shakeY] && bgColors[dy - shakeY][dx - shakeX]) || '#1a0800';
-        r.drawChar(dx, dy, ch, drawColor, cellBg);
+        r.drawChar(dx, dy, ch, drawColor, '#0a0500');
       }
     }
 
