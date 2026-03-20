@@ -2,7 +2,7 @@
 // systems.js — Game systems for ASCIIQUEST, a colony salvage roguelike
 // ============================================================================
 
-import { SeededRNG, distance } from './utils.js';
+import { SeededRNG, PerlinNoise, distance } from './utils.js';
 import { ItemGenerator } from './entities.js';
 
 // ============================================================================
@@ -1827,5 +1827,62 @@ export class LightingSystem {
       if (e2 < dx) { err += dx; y += sy; }
     }
     return points;
+  }
+}
+
+// ============================================================================
+// CloudSystem — Procedural drifting clouds with sun-responsive shadows
+// ============================================================================
+
+export class CloudSystem {
+  constructor(seed) {
+    this._noise = new PerlinNoise(new SeededRNG((seed + 7777) | 0));
+    this._detailNoise = new PerlinNoise(new SeededRNG((seed + 8888) | 0));
+    this.windX = 0;
+    this.windY = 0;
+    this.windSpeedX = 0.4;   // tiles/sec eastward drift
+    this.windSpeedY = 0.1;   // tiles/sec slight southward drift
+    this.coverage = 0.3;     // 0-1, driven by weather
+  }
+
+  // Coverage mapping from weather type
+  static WEATHER_COVERAGE = {
+    clear: 0.15, cloudy: 0.55, rain: 0.70, storm: 0.85,
+    snow: 0.50, fog: 0.60, acid_rain: 0.70, ion_storm: 0.80,
+    sandstorm: 0.40, coolant_mist: 0.45, spore_fall: 0.50,
+    ember_rain: 0.35, data_storm: 0.65, nano_haze: 0.55,
+    blood_rain: 0.65,
+  };
+
+  update(dt, weatherType) {
+    this.windX += this.windSpeedX * dt;
+    this.windY += this.windSpeedY * dt;
+    this.coverage = CloudSystem.WEATHER_COVERAGE[weatherType] ?? 0.30;
+  }
+
+  /**
+   * Get cloud density at a world position.
+   * Returns 0 (clear sky) to 1 (thick cloud).
+   */
+  getCloudDensity(worldX, worldY) {
+    const freq1 = 0.018;  // large billowy shapes
+    const freq2 = 0.055;  // detail/edge breakup
+    const wx = worldX + this.windX;
+    const wy = worldY + this.windY;
+
+    // Two-octave noise, weighted blend
+    const n1 = this._noise.noise2D(wx * freq1, wy * freq1);       // -1..1
+    const n2 = this._detailNoise.noise2D(wx * freq2, wy * freq2); // -1..1
+    const raw = n1 * 0.7 + n2 * 0.3; // -1..1
+
+    // Map to 0..1 and apply coverage threshold
+    // Higher coverage → lower threshold → more cloud
+    const threshold = 1.0 - this.coverage; // e.g. coverage 0.55 → threshold 0.45
+    const mapped = (raw + 1) * 0.5;        // 0..1
+    if (mapped < threshold) return 0;
+
+    // Smooth density ramp above threshold
+    const density = (mapped - threshold) / (1.0 - threshold);
+    return Math.min(1, density);
   }
 }
