@@ -434,6 +434,7 @@ class Game {
 
   // Start battle with enter animation
   startBattleTransition(enemy) {
+    this._battleReturnState = this.state; // remember pre-battle state before state chain
     this.combatState = {
       enemy,
       selectedAction: 0,
@@ -2138,7 +2139,7 @@ class Game {
       if (this.rng.chance(0.5)) {
         this.ui.addMessage('Escaped!', COLORS.BRIGHT_YELLOW);
         this.combatState = null;
-        this.setState(this.prevState || 'DUNGEON');
+        this.setState(this._battleReturnState || 'DUNGEON');
       } else {
         this.ui.addMessage('Cannot escape!', COLORS.BRIGHT_RED);
         const result = this.combat.calculateAttack(this.combatState.enemy, this.player);
@@ -2190,19 +2191,83 @@ class Game {
           }
 
           if (enemy.stats.hp <= 0) {
-            this.ui.addMessage(`${enemy.name} defeated!`, COLORS.BRIGHT_GREEN);
+            const deadEnemy = enemy;
+            this.ui.addMessage(`${deadEnemy.name} defeated!`, COLORS.BRIGHT_GREEN);
+            // Death burst effect
             this.renderer.flash('#FFFFFF', 0.4);
             this.spawnCombatParticles(15, ['\u2588', '\u2593', '\u2592', '\u2591', '*'], '#FFAA00');
-            const xp = this.combat.calculateXPReward(enemy);
+
+            const xp = this.combat.calculateXPReward(deadEnemy);
             const leveled = this.player.addXP(xp);
-            this.ui.addMessage(`${xp} EXP gained!`, COLORS.BRIGHT_CYAN);
+            const loot = this.combat.calculateLoot(this.rng, deadEnemy, this.currentFloor);
+            for (const item of loot) {
+              if (item.type === 'gold') {
+                this.player.gold += item.amount;
+                this.ui.addMessage(`Received ${item.amount}§.`, COLORS.BRIGHT_YELLOW);
+              } else {
+                this.player.addItem(item);
+                this.ui.addMessage(`Found ${item.name}!`, COLORS.BRIGHT_GREEN);
+              }
+            }
+            this.ui.addMessage(`${xp} EXP received.`, COLORS.BRIGHT_CYAN);
+
             if (leveled.length > 0) {
               this.ui.addMessage(`Level up! Lv ${leveled[leveled.length - 1]}!`, COLORS.BRIGHT_YELLOW);
               this.renderer.flash('#FFFF00', 0.5);
+              this.particles.emit(this.player.position.x, this.player.position.y, '*', COLORS.BRIGHT_YELLOW, 10, 4, 20);
             }
-            this.enemies = this.enemies.filter(e => e !== enemy);
+
+            // Update quest progress for KILL quests
+            const activeQuests = this.questSystem.getActiveQuests();
+            for (const quest of activeQuests) {
+              this.questSystem.updateProgress(quest.id, 'kill', deadEnemy.name, 1);
+              this.questSystem.updateProgress(quest.id, 'kill', 'any', 1);
+              if (this.questSystem.checkCompletion(quest.id)) {
+                this.ui.addMessage(`Quest "${quest.title}" is ready to turn in!`, COLORS.BRIGHT_YELLOW);
+              }
+            }
+
+            // Faction standing changes from combat
+            if (deadEnemy.faction) {
+              this.factionSystem.modifyPlayerStanding(deadEnemy.faction, -5);
+              if (deadEnemy.faction === 'MALFUNCTIONING') {
+                this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 1);
+              }
+              if (deadEnemy.faction === 'MUTANT') {
+                this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 2);
+              }
+              if (deadEnemy.faction === 'ALIEN') {
+                this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2);
+                this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 1);
+              }
+              if (deadEnemy.faction === 'ASSIMILATED') {
+                this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 3);
+                this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 2);
+                this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2);
+              }
+            }
+
+            // Reputation boost with nearby NPCs
+            for (const npc of this.npcs) {
+              if (distance(npc.position.x, npc.position.y, this.player.position.x, this.player.position.y) < 10) {
+                this.dialogueSys.modifyReputation(npc, 3, 'defended settlement');
+              }
+            }
+
+            this.enemies = this.enemies.filter(e => e !== deadEnemy);
+            this.particles.emit(deadEnemy.position.x, deadEnemy.position.y, '*', COLORS.BRIGHT_RED, 5, 3, 12);
+
+            // Store results for display and go to results screen
+            this.battleResults = {
+              enemyName: deadEnemy.name,
+              xp,
+              gold: loot.filter(i => i.type === 'gold').reduce((s, i) => s + i.amount, 0),
+              items: loot.filter(i => i.type !== 'gold'),
+              leveled,
+            };
+            this.battleResultsTimer = 0;
             this.combatState = null;
-            this.setState(this.prevState || 'DUNGEON');
+            this.setState('BATTLE_RESULTS');
             return;
           }
 
@@ -2328,14 +2393,12 @@ class Game {
             leveled,
           };
           this.battleResultsTimer = 0;
-          this._battleReturnState = this.prevState || 'DUNGEON';
           this.combatState = null;
           this.setState('BATTLE_RESULTS');
         } else {
           this.setState('GAME_OVER');
           return;
         }
-        return;
         return;
       }
     }
