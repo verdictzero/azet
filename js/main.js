@@ -784,6 +784,52 @@ class Game {
     this.ui.addMessage('You descend into the dark depths...', COLORS.BRIGHT_RED);
   }
 
+  enterMechanicalRuin(location) {
+    const id = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
+    const rng = new SeededRNG(this.seed + id * 6000);
+    this.currentFloor = 0;
+    const dungeon = this.dungeonGen.generate(rng, 60, 40, 1, 'mechanical');
+    this.currentDungeon = dungeon;
+
+    // Spawn enemies
+    this.enemies = [];
+    if (dungeon.entitySpots) {
+      for (const spot of dungeon.entitySpots) {
+        if (spot.type === 'enemy') {
+          const creature = this.creatureGen.generate(rng, 'mechanical', this.currentFloor + 1, this.player.stats.level);
+          creature.position = { x: spot.x, y: spot.y };
+          this.enemies.push(creature);
+        }
+      }
+    }
+
+    // Place items
+    this.items = [];
+    if (dungeon.entitySpots) {
+      for (const spot of dungeon.entitySpots) {
+        if (spot.type === 'item') {
+          const item = this.itemGen.generate(rng,
+            rng.random(['weapon', 'armor', 'potion']),
+            this.itemGen.rollRarity(rng, this.currentFloor + 1),
+            this.currentFloor + 1);
+          item.position = { x: spot.x, y: spot.y };
+          this.items.push(item);
+        }
+      }
+    }
+
+    // Place player at entrance
+    if (dungeon.rooms && dungeon.rooms.length > 0) {
+      const entrance = dungeon.rooms.find(r => r.type === 'entrance') || dungeon.rooms[0];
+      this.player.position.x = entrance.x + Math.floor(entrance.w / 2);
+      this.player.position.y = entrance.y + Math.floor(entrance.h / 2);
+    }
+
+    this.gameContext.currentLocationName = (location.name || 'Mechanical Ruin') + ` (Floor ${this.currentFloor + 1})`;
+    this.setState('DUNGEON');
+    this.ui.addMessage('You enter the dormant machinery... gears creak in the darkness.', COLORS.BRIGHT_YELLOW);
+  }
+
   // ─── INPUT HANDLING ───
 
   handleInput(key) {
@@ -1024,6 +1070,8 @@ class Game {
             this.enterTower(loc);
           } else if (loc.type === 'ruins') {
             this.enterRuin(loc);
+          } else if (loc.type === 'mechanical_ruin') {
+            this.enterMechanicalRuin(loc);
           } else {
             this.enterLocation(loc);
           }
@@ -3650,6 +3698,19 @@ class Game {
     CRYO_HOUSING: 2, CRYO_EMITTER: 3, CRYO_BASE: 1,
     FUNGAL_MASS: 3, DATA_FRAME: 2, DATA_CORE: 1,
     VOID_ARCH: 4, VOID_BASE: 2, VOID_CENTER: 0,
+    // Mechanical mega-structure tiles
+    MANUFACTORY_WALL: 3, MANUFACTORY_STACK: 5, MANUFACTORY_STACK_TOP: 6,
+    MANUFACTORY_GEAR: 2, MANUFACTORY_CONVEYOR: 1, MANUFACTORY_FURNACE: 2, MANUFACTORY_FLOOR: 0,
+    BORE_DRILL: 3, BORE_SHAFT: 5, BORE_HOUSING: 3, BORE_CROSSBRACE: 4,
+    BORE_PLATFORM: 1, BORE_GEAR: 2, BORE_EXHAUST: 2, BORE_SLAG: 0,
+    CLOCKWORK_WALL: 3, CLOCKWORK_TOWER: 6, CLOCKWORK_TURRET: 7,
+    CLOCKWORK_GEAR: 2, CLOCKWORK_FLYWHEEL: 3, CLOCKWORK_PLATFORM: 1, CLOCKWORK_GATE: 2, CLOCKWORK_FLOOR: 0,
+    PIPE_HORIZONTAL: 2, PIPE_VERTICAL: 2, PIPE_JUNCTION: 2, PIPE_VALVE: 2,
+    TURBINE_BLADE: 3, TURBINE_NACELLE: 4, TURBINE_TOWER: 5,
+    TURBINE_HOUSING: 3, TURBINE_PLATFORM: 1, TURBINE_BRACKET: 2,
+    CRANE_BOOM: 6, CRANE_SUPPORT: 5, CRANE_HOOK: 2, CRANE_CROSSBEAM: 4,
+    CRANE_MACHINERY: 3, CRANE_BASIN: 0, CRANE_PLATFORM: 1, CRANE_FRAME: 2,
+    MECH_GEAR: 2, MECH_PIPE: 2, MECH_VALVE: 1, MECH_CONDUIT: 2,
     // Anomaly biome tiles
     CRYSTAL_ZONE: 2, HYDRO_JUNGLE: 2,
     // Wetland & vegetation
@@ -3900,8 +3961,10 @@ class Game {
             lightSources.push({ x: tx, y: ty, radius: 4, r: 1.0, g: 0.5, b: 0.15, intensity: 0.8 });
           } else if (tile.type === 'LAVA') {
             lightSources.push({ x: tx, y: ty, radius: 3, r: 1.0, g: 0.13, b: 0.0, intensity: 0.6 });
-          } else if (tile.type === 'TORCH_SCONCE') {
+          } else if (tile.type === 'TORCH_SCONCE' || tile.type === 'TORCH') {
             lightSources.push({ x: tx, y: ty, radius: 5, r: 1.0, g: 0.7, b: 0.3, intensity: 0.7 });
+          } else if (tile.type === 'MECH_CONDUIT') {
+            lightSources.push({ x: tx, y: ty, radius: 4, r: 0.2, g: 0.6, b: 1.0, intensity: 0.65 });
           }
         }
       }
