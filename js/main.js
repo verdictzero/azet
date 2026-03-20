@@ -4392,7 +4392,7 @@ class Game {
           }
           continue; // External space: fire bg shows through
         }
-        r.drawChar(dx, dy, ch, drawColor, monsterBg);
+        r.drawChar(dx, dy, ch, drawColor, monsterBg, true);
       }
     }
 
