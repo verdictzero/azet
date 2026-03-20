@@ -1198,6 +1198,18 @@ export class InputManager {
       [null, null, null],
       [null, { label: 'MENU', key: 'Enter', type: 'action-primary' }, null],
     ]]},
+    DEBUG_MENU: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'LOG', key: 'l', type: 'action' }, null, { label: 'ESC', key: 'Escape', type: 'action' }],
+    ]]},
+    CONSOLE_LOG: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'HOME', key: 'Home', type: 'action' }, { label: 'END', key: 'End', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
+    ]]},
     FACTION: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [null, null, null],

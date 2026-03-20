@@ -25,7 +25,7 @@ export class UIManager {
     this.renderer = renderer;
     this.activePanel = null;
     this.messageLog = [];
-    this.maxMessages = 50;
+    this.maxMessages = 500;
     this.visibleMessages = 5;
     this.messageScroll = 0;
     this.dialogueState = null;
@@ -35,6 +35,14 @@ export class UIManager {
     this.selectedIndex = 0;
     this.confirmCallback = null;
     this.confirmMessage = null;
+
+    // Debug menu state
+    this.debugTab = 0;        // 0=cheats, 1=world, 2=visual, 3=info
+    this.debugScroll = 0;
+    this.debugCursor = 0;
+
+    // Console log viewer state
+    this.consoleLogScroll = 0;
   }
 
   addMessage(text, color = COLORS.WHITE) {
@@ -2075,5 +2083,313 @@ export class UIManager {
 
   resetSelection() {
     this.selectedIndex = 0;
+  }
+
+  // ─── DEBUG MENU (in-game, canvas-rendered) ───
+
+  drawDebugMenu(debug, player, timeSystem, weatherSystem, gameState, turnCount) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const panelW = Math.min(cols - 4, 72);
+    const panelH = Math.min(rows - 2, 38);
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.floor((rows - panelH) / 2);
+    const bg = COLORS.FF_BLUE_DARK;
+    const w = panelW - 4;
+
+    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Debug Menu ');
+
+    // Tab bar
+    const tabs = ['Cheats', 'World', 'Visual', 'Info'];
+    const tab = this.debugTab || 0;
+    const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
+    const totalTabLen = tabLabels.reduce((s, l) => s + l.length, 0) + tabLabels.length - 1;
+    let tx = px + 2 + Math.floor((w - totalTabLen) / 2);
+    for (let i = 0; i < tabLabels.length; i++) {
+      const color = i === tab ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
+      r.drawString(tx, py + 1, tabLabels[i], color, bg);
+      tx += tabLabels[i].length + 1;
+    }
+    r.drawString(px + 1, py + 2, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+
+    const contentY = py + 3;
+    const contentH = panelH - 5;
+    const cursor = this.debugCursor || 0;
+
+    // Build entries for current tab
+    let entries = [];
+    if (tab === 0) {
+      // Cheats tab
+      entries = [
+        { type: 'toggle', label: 'Invincible', key: 'invincible', value: debug.invincible },
+        { type: 'toggle', label: 'No Encounters', key: 'noEncounters', value: debug.noEncounters },
+        { type: 'toggle', label: 'Infinite Attack', key: 'infiniteAttack', value: debug.infiniteAttack },
+        { type: 'toggle', label: 'Infinite Mana', key: 'infiniteMana', value: debug.infiniteMana },
+        { type: 'toggle', label: 'No Clip', key: 'noClip', value: debug.noClip },
+        { type: 'sep' },
+        { type: 'action', label: 'Full Heal', key: 'fullHeal' },
+        { type: 'action', label: '+100 XP', key: 'giveXP' },
+        { type: 'action', label: '+100 Gold', key: 'giveGold' },
+        { type: 'action', label: 'Level Up', key: 'levelUp' },
+        { type: 'sep' },
+        { type: 'action', label: 'Give Torch', key: 'giveTorch' },
+        { type: 'action', label: 'Give Lantern', key: 'giveLantern' },
+        { type: 'action', label: 'Give Weapon', key: 'giveWeapon' },
+        { type: 'action', label: 'Give Potion', key: 'givePotion' },
+        { type: 'action', label: 'Give Scroll', key: 'giveScroll' },
+        { type: 'action', label: 'Give Food', key: 'giveFood' },
+        { type: 'action', label: 'Give Helmet', key: 'giveHelmet' },
+        { type: 'action', label: 'Give Chestplate', key: 'giveChest' },
+        { type: 'action', label: 'Give Gloves', key: 'giveGloves' },
+        { type: 'action', label: 'Give Leggings', key: 'giveLegs' },
+        { type: 'action', label: 'Give Boots', key: 'giveBoots' },
+        { type: 'action', label: 'Give Shield', key: 'giveShield' },
+        { type: 'action', label: 'Give Ring', key: 'giveRing' },
+        { type: 'action', label: 'Give Amulet', key: 'giveAmulet' },
+        { type: 'action', label: 'Give Artifact', key: 'giveArtifact' },
+        { type: 'action', label: 'Clear Inventory', key: 'clearInv' },
+      ];
+    } else if (tab === 1) {
+      // World tab
+      entries = [
+        { type: 'action', label: 'Reveal Map', key: 'revealMap' },
+        { type: 'action', label: 'Advance Day (+24h)', key: 'advanceDay' },
+        { type: 'sep' },
+        { type: 'slider', label: 'Hour', key: 'hour', value: timeSystem ? timeSystem.hour : 0, min: 0, max: 23 },
+        { type: 'sep' },
+        { type: 'select', label: 'Weather', key: 'weather', value: weatherSystem ? weatherSystem.current : 'clear',
+          options: ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','spore_fall','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'] },
+        { type: 'sep' },
+        { type: 'action', label: 'Teleport to 50,30', key: 'teleport' },
+      ];
+    } else if (tab === 2) {
+      // Visual tab
+      entries = [
+        { type: 'toggle', label: 'Disable Shadows', key: 'disableShadows', value: debug.disableShadows },
+        { type: 'toggle', label: 'Disable Lighting', key: 'disableLighting', value: debug.disableLighting },
+        { type: 'toggle', label: 'Disable Clouds', key: 'disableClouds', value: debug.disableClouds },
+        { type: 'toggle', label: 'CRT Effects', key: 'crtEffects', value: r.effectsEnabled },
+      ];
+    } else if (tab === 3) {
+      // Info tab
+      const lines = [
+        `State: ${gameState}`,
+        `Turn: ${turnCount}`,
+      ];
+      if (timeSystem) {
+        lines.push(`Time: ${timeSystem.getTimeString()} (${timeSystem.getTimeOfDay()})`);
+      }
+      if (weatherSystem) {
+        lines.push(`Weather: ${weatherSystem.current}`);
+      }
+      if (player) {
+        lines.push(`Pos: (${player.position.x}, ${player.position.y})`);
+        lines.push(`HP: ${player.stats.hp}/${player.stats.maxHp}  MP: ${player.stats.mana}/${player.stats.maxMana}`);
+        lines.push(`Lv: ${player.stats.level}  XP: ${player.stats.xp}/${player.stats.xpToNext}`);
+        lines.push(`Gold: ${player.gold}  Items: ${player.inventory.length}/20`);
+        const lightInfo = player.hasLightSource();
+        lines.push(`Light: ${lightInfo.hasLight ? lightInfo.type : 'none'}`);
+      }
+      lines.push('');
+      lines.push(`Invincible: ${debug.invincible}`);
+      lines.push(`No Encounters: ${debug.noEncounters}`);
+      lines.push(`Inf Attack: ${debug.infiniteAttack}`);
+      lines.push(`Inf Mana: ${debug.infiniteMana}`);
+      lines.push('');
+      lines.push(`Messages: ${this.messageLog.length}`);
+      lines.push(`FPS: ${(1000 / 16.67).toFixed(0)}`);
+
+      for (let i = 0; i < lines.length && i < contentH; i++) {
+        r.drawString(px + 2, contentY + i, lines[i], COLORS.BRIGHT_GREEN, bg, w);
+      }
+      // Footer
+      r.drawString(px + 2, py + panelH - 2,
+        'L:Console Log  1-4:Tab  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
+      return;
+    }
+
+    // Auto-scroll: find the row index in the full entries array for the current cursor
+    // Cursor is in terms of selectables only; map it to full-array index
+    let cursorFullIdx = 0;
+    {
+      let selCount = 0;
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i].type !== 'sep') {
+          if (selCount === cursor) { cursorFullIdx = i; break; }
+          selCount++;
+        }
+      }
+    }
+    // Adjust scroll to keep cursor visible
+    let scroll = this.debugScroll || 0;
+    if (cursorFullIdx < scroll) scroll = cursorFullIdx;
+    if (cursorFullIdx >= scroll + contentH) scroll = cursorFullIdx - contentH + 1;
+    scroll = Math.max(0, Math.min(scroll, entries.length - contentH));
+    this.debugScroll = scroll;
+
+    // Render selectable entries
+    let drawY = contentY;
+    // Count selectables before scroll to compute cursor offset
+    let selectablesBefore = 0;
+    for (let i = 0; i < scroll; i++) {
+      if (entries[i].type !== 'sep') selectablesBefore++;
+    }
+
+    for (let ei = scroll; ei < entries.length && drawY < contentY + contentH; ei++) {
+      const entry = entries[ei];
+      if (entry.type === 'sep') {
+        r.drawString(px + 2, drawY, '\u2500'.repeat(w), COLORS.BRIGHT_BLACK, bg);
+        drawY++;
+        continue;
+      }
+
+      const itemIdx = selectablesBefore;
+      selectablesBefore++;
+      const isCursor = itemIdx === cursor;
+      const ptr = isCursor ? '\u25BA ' : '  ';
+      const fg = isCursor ? COLORS.BRIGHT_WHITE : COLORS.WHITE;
+
+      if (entry.type === 'toggle') {
+        const state = entry.value ? '[ON]' : '[OFF]';
+        const stateColor = entry.value ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED;
+        r.drawString(px + 2, drawY, ptr + entry.label, fg, bg, w - 6);
+        r.drawString(px + panelW - 7, drawY, state, stateColor, bg);
+      } else if (entry.type === 'action') {
+        r.drawString(px + 2, drawY, ptr + entry.label, fg, bg, w);
+      } else if (entry.type === 'slider') {
+        const valStr = `<${entry.value}>`;
+        r.drawString(px + 2, drawY, ptr + entry.label, fg, bg, w - valStr.length - 2);
+        r.drawString(px + panelW - valStr.length - 3, drawY, valStr, COLORS.BRIGHT_YELLOW, bg);
+      } else if (entry.type === 'select') {
+        const valStr = `<${entry.value}>`;
+        r.drawString(px + 2, drawY, ptr + entry.label, fg, bg, w - valStr.length - 2);
+        r.drawString(px + panelW - valStr.length - 3, drawY, valStr, COLORS.BRIGHT_CYAN, bg);
+      }
+      drawY++;
+    }
+
+    // Scroll indicators
+    if (scroll > 0) {
+      r.drawString(px + panelW - 4, contentY, ' \u25b2 ', COLORS.BRIGHT_WHITE, bg);
+    }
+    if (scroll + contentH < entries.length) {
+      r.drawString(px + panelW - 4, contentY + contentH - 1, ' \u25bc ', COLORS.BRIGHT_WHITE, bg);
+    }
+
+    // Footer
+    r.drawString(px + 2, py + panelH - 2,
+      'L:Console Log  1-4:Tab  Enter:Toggle  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
+  }
+
+  /**
+   * Get the current debug tab entries (for input handling).
+   */
+  getDebugEntries(debug, timeSystem, weatherSystem, renderer) {
+    const tab = this.debugTab || 0;
+    if (tab === 0) {
+      return [
+        { type: 'toggle', key: 'invincible' },
+        { type: 'toggle', key: 'noEncounters' },
+        { type: 'toggle', key: 'infiniteAttack' },
+        { type: 'toggle', key: 'infiniteMana' },
+        { type: 'toggle', key: 'noClip' },
+        { type: 'action', key: 'fullHeal' },
+        { type: 'action', key: 'giveXP' },
+        { type: 'action', key: 'giveGold' },
+        { type: 'action', key: 'levelUp' },
+        { type: 'action', key: 'giveTorch' },
+        { type: 'action', key: 'giveLantern' },
+        { type: 'action', key: 'giveWeapon' },
+        { type: 'action', key: 'givePotion' },
+        { type: 'action', key: 'giveScroll' },
+        { type: 'action', key: 'giveFood' },
+        { type: 'action', key: 'giveHelmet' },
+        { type: 'action', key: 'giveChest' },
+        { type: 'action', key: 'giveGloves' },
+        { type: 'action', key: 'giveLegs' },
+        { type: 'action', key: 'giveBoots' },
+        { type: 'action', key: 'giveShield' },
+        { type: 'action', key: 'giveRing' },
+        { type: 'action', key: 'giveAmulet' },
+        { type: 'action', key: 'giveArtifact' },
+        { type: 'action', key: 'clearInv' },
+      ];
+    } else if (tab === 1) {
+      return [
+        { type: 'action', key: 'revealMap' },
+        { type: 'action', key: 'advanceDay' },
+        { type: 'slider', key: 'hour', value: timeSystem ? timeSystem.hour : 0, min: 0, max: 23 },
+        { type: 'select', key: 'weather', value: weatherSystem ? weatherSystem.current : 'clear',
+          options: ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','spore_fall','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'] },
+        { type: 'action', key: 'teleport' },
+      ];
+    } else if (tab === 2) {
+      return [
+        { type: 'toggle', key: 'disableShadows' },
+        { type: 'toggle', key: 'disableLighting' },
+        { type: 'toggle', key: 'disableClouds' },
+        { type: 'toggle', key: 'crtEffects' },
+      ];
+    }
+    return [];
+  }
+
+  // ─── CONSOLE LOG VIEWER ───
+
+  drawConsoleLog() {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const panelW = Math.min(cols - 2, 80);
+    const panelH = Math.min(rows - 2, 40);
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.floor((rows - panelH) / 2);
+    const bg = COLORS.FF_BLUE_DARK;
+    const w = panelW - 4;
+
+    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Console Log ');
+
+    const contentY = py + 1;
+    const contentH = panelH - 3;
+    const scroll = this.consoleLogScroll || 0;
+
+    // Messages are stored newest-first; display oldest-first (reversed)
+    const total = this.messageLog.length;
+    // scrollable range: user can scroll from 0 (oldest at top) to total - contentH
+    const maxScroll = Math.max(0, total - contentH);
+
+    // Render lines from the reversed log
+    let drawY = contentY;
+    for (let i = 0; i < contentH; i++) {
+      // index into reversed array (oldest first)
+      const logIdx = total - 1 - (scroll + i);
+      if (logIdx < 0 || logIdx >= total) {
+        drawY++;
+        continue;
+      }
+      const msg = this.messageLog[logIdx];
+      // Truncate to fit
+      const text = msg.text.length > w ? msg.text.slice(0, w) : msg.text;
+      r.drawString(px + 2, drawY, text, msg.color, bg, w);
+      drawY++;
+    }
+
+    // Scroll indicators
+    if (scroll > 0) {
+      r.drawString(px + panelW - 4, contentY, ' \u25b2 ', COLORS.BRIGHT_WHITE, bg);
+    }
+    if (scroll < maxScroll) {
+      r.drawString(px + panelW - 4, contentY + contentH - 1, ' \u25bc ', COLORS.BRIGHT_WHITE, bg);
+    }
+
+    // Status bar
+    const shown = Math.min(contentH, total);
+    const fromLine = scroll + 1;
+    const toLine = Math.min(scroll + contentH, total);
+    const status = `${fromLine}-${toLine} of ${total}`;
+    r.drawString(px + 2, py + panelH - 2,
+      `Up/Down:Scroll  PgUp/PgDn:Page  Home/End  Esc:Back`, COLORS.BRIGHT_BLACK, bg, w);
+    r.drawString(px + panelW - status.length - 3, py + panelH - 2, status, COLORS.BRIGHT_BLACK, bg);
   }
 }
