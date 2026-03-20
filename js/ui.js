@@ -302,7 +302,7 @@ export class UIManager {
     // ── Layer 0: Animated Voronoi cellular automata background ──
     const numSeeds = 10;
     const bgChars = [' ', '.', '·', ':', '∙', '░', '▒'];
-    const bgColors = ['#0a0a14', '#0d0d1a', '#101020', '#0a0f1a', '#12101e', '#0e0a18'];
+    const bgColors = ['#1a1a30', '#1e1e38', '#222244', '#1a2238', '#261e3c', '#1e1a34'];
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         let minDist = Infinity;
@@ -322,7 +322,7 @@ export class UIManager {
         const val = pulse * 0.6 + edgePulse * 0.4;
         const ci = Math.min(Math.floor(val * bgChars.length), bgChars.length - 1);
         const fi = Math.min(Math.floor((val * 0.7 + edge * 0.02) * bgColors.length), bgColors.length - 1);
-        r.drawChar(col, row, bgChars[ci], bgColors[fi], '#020204');
+        r.drawChar(col, row, bgChars[ci], bgColors[fi], '#060610');
       }
     }
 
@@ -361,35 +361,54 @@ export class UIManager {
       }
     }
 
-    // ── Layer 1: Title block with red pulsating border on black bg ──
+    // ── Layer 1: Title block with animated gold sheen border on black bg ──
     if (!compact) {
       const boxW = titleWidth + 4;
       const boxH = title.length + 2;
       const boxX = artStartX - 2;
       const boxY = artStartY - 1;
 
-      // Red pulsating border color (subtle, dark crimson — opposite of the blue wave)
-      const redPulse = Math.sin(t * 1.5) * 0.5 + 0.5;
-      const rVal = Math.floor(40 + redPulse * 50);
-      const gVal = Math.floor(6 + redPulse * 10);
-      const bVal = Math.floor(6 + redPulse * 10);
-      const borderColor = `rgb(${rVal},${gVal},${bVal})`;
+      // Animated gold sheen border
+      const perim = 2 * (boxW - 1) + 2 * (boxH - 1); // total perimeter length
+      const sheenPos = ((t * 1.2) % 1.0 + 1.0) % 1.0; // sheen position 0-1 traveling around
+      const sheenWidth = 0.08;
+      const goldSheen = (frac) => {
+        // Distance along perimeter (wrapping)
+        let dist = Math.abs(frac - sheenPos);
+        if (dist > 0.5) dist = 1.0 - dist;
+        const brightness = Math.exp(-(dist * dist) / (sheenWidth * sheenWidth));
+        const r = Math.floor(160 + brightness * 95);   // 160-255
+        const g = Math.floor(120 + brightness * 115);  // 120-235
+        const b = Math.floor(30 + brightness * 100);   // 30-130
+        return `rgb(${r},${g},${b})`;
+      };
+      const perimFrac = (idx) => idx / perim; // convert perimeter index to 0-1
 
       // Fill interior with black
       r.fillRect(boxX, boxY, boxW, boxH, ' ', COLORS.WHITE, COLORS.BLACK);
 
-      // Draw double-line border
-      r.drawChar(boxX, boxY, '\u2554', borderColor, COLORS.BLACK);                     // ╔
-      r.drawChar(boxX + boxW - 1, boxY, '\u2557', borderColor, COLORS.BLACK);           // ╗
-      r.drawChar(boxX, boxY + boxH - 1, '\u255A', borderColor, COLORS.BLACK);           // ╚
-      r.drawChar(boxX + boxW - 1, boxY + boxH - 1, '\u255D', borderColor, COLORS.BLACK); // ╝
+      // Draw double-line border with gold sheen
+      // Top edge: left to right (perimeter indices 0 to boxW-1)
+      r.drawChar(boxX, boxY, '\u2554', goldSheen(perimFrac(0)), COLORS.BLACK);
       for (let x = 1; x < boxW - 1; x++) {
-        r.drawChar(boxX + x, boxY, '\u2550', borderColor, COLORS.BLACK);               // ═
-        r.drawChar(boxX + x, boxY + boxH - 1, '\u2550', borderColor, COLORS.BLACK);     // ═
+        r.drawChar(boxX + x, boxY, '\u2550', goldSheen(perimFrac(x)), COLORS.BLACK);
       }
+      r.drawChar(boxX + boxW - 1, boxY, '\u2557', goldSheen(perimFrac(boxW - 1)), COLORS.BLACK);
+      // Right edge: top to bottom (perimeter indices boxW-1 to boxW-1+boxH-1)
       for (let y = 1; y < boxH - 1; y++) {
-        r.drawChar(boxX, boxY + y, '\u2551', borderColor, COLORS.BLACK);               // ║
-        r.drawChar(boxX + boxW - 1, boxY + y, '\u2551', borderColor, COLORS.BLACK);     // ║
+        r.drawChar(boxX + boxW - 1, boxY + y, '\u2551', goldSheen(perimFrac(boxW - 1 + y)), COLORS.BLACK);
+      }
+      // Bottom-right corner
+      r.drawChar(boxX + boxW - 1, boxY + boxH - 1, '\u255D', goldSheen(perimFrac(boxW - 1 + boxH - 1)), COLORS.BLACK);
+      // Bottom edge: right to left (perimeter indices boxW-1+boxH-1 to 2*(boxW-1)+boxH-1)
+      for (let x = boxW - 2; x >= 1; x--) {
+        r.drawChar(boxX + x, boxY + boxH - 1, '\u2550', goldSheen(perimFrac(boxW - 1 + boxH - 1 + (boxW - 1 - x))), COLORS.BLACK);
+      }
+      // Bottom-left corner
+      r.drawChar(boxX, boxY + boxH - 1, '\u255A', goldSheen(perimFrac(2 * (boxW - 1) + boxH - 1)), COLORS.BLACK);
+      // Left edge: bottom to top (perimeter indices 2*(boxW-1)+boxH-1 to perim)
+      for (let y = boxH - 2; y >= 1; y--) {
+        r.drawChar(boxX, boxY + y, '\u2551', goldSheen(perimFrac(2 * (boxW - 1) + boxH - 1 + (boxH - 1 - y))), COLORS.BLACK);
       }
 
       // Draw title text with wave animation on black bg
@@ -411,24 +430,37 @@ export class UIManager {
       const boxX = stx - 2;
       const boxY = artStartY;
 
-      const redPulse = Math.sin(t * 1.5) * 0.5 + 0.5;
-      const rVal = Math.floor(40 + redPulse * 50);
-      const gVal = Math.floor(6 + redPulse * 10);
-      const bVal = Math.floor(6 + redPulse * 10);
-      const borderColor = `rgb(${rVal},${gVal},${bVal})`;
+      // Animated gold sheen border (compact mode)
+      const cPerim = 2 * (boxW - 1) + 2 * (boxH - 1);
+      const cSheenPos = ((t * 1.2) % 1.0 + 1.0) % 1.0;
+      const cSheenW = 0.08;
+      const cGoldSheen = (frac) => {
+        let dist = Math.abs(frac - cSheenPos);
+        if (dist > 0.5) dist = 1.0 - dist;
+        const brightness = Math.exp(-(dist * dist) / (cSheenW * cSheenW));
+        const rv = Math.floor(160 + brightness * 95);
+        const gv = Math.floor(120 + brightness * 115);
+        const bv = Math.floor(30 + brightness * 100);
+        return `rgb(${rv},${gv},${bv})`;
+      };
+      const cPF = (idx) => idx / cPerim;
 
       r.fillRect(boxX, boxY, boxW, boxH, ' ', COLORS.WHITE, COLORS.BLACK);
-      r.drawChar(boxX, boxY, '\u2554', borderColor, COLORS.BLACK);
-      r.drawChar(boxX + boxW - 1, boxY, '\u2557', borderColor, COLORS.BLACK);
-      r.drawChar(boxX, boxY + boxH - 1, '\u255A', borderColor, COLORS.BLACK);
-      r.drawChar(boxX + boxW - 1, boxY + boxH - 1, '\u255D', borderColor, COLORS.BLACK);
+      r.drawChar(boxX, boxY, '\u2554', cGoldSheen(cPF(0)), COLORS.BLACK);
       for (let x = 1; x < boxW - 1; x++) {
-        r.drawChar(boxX + x, boxY, '\u2550', borderColor, COLORS.BLACK);
-        r.drawChar(boxX + x, boxY + boxH - 1, '\u2550', borderColor, COLORS.BLACK);
+        r.drawChar(boxX + x, boxY, '\u2550', cGoldSheen(cPF(x)), COLORS.BLACK);
       }
+      r.drawChar(boxX + boxW - 1, boxY, '\u2557', cGoldSheen(cPF(boxW - 1)), COLORS.BLACK);
       for (let y = 1; y < boxH - 1; y++) {
-        r.drawChar(boxX, boxY + y, '\u2551', borderColor, COLORS.BLACK);
-        r.drawChar(boxX + boxW - 1, boxY + y, '\u2551', borderColor, COLORS.BLACK);
+        r.drawChar(boxX + boxW - 1, boxY + y, '\u2551', cGoldSheen(cPF(boxW - 1 + y)), COLORS.BLACK);
+      }
+      r.drawChar(boxX + boxW - 1, boxY + boxH - 1, '\u255D', cGoldSheen(cPF(boxW - 1 + boxH - 1)), COLORS.BLACK);
+      for (let x = boxW - 2; x >= 1; x--) {
+        r.drawChar(boxX + x, boxY + boxH - 1, '\u2550', cGoldSheen(cPF(boxW - 1 + boxH - 1 + (boxW - 1 - x))), COLORS.BLACK);
+      }
+      r.drawChar(boxX, boxY + boxH - 1, '\u255A', cGoldSheen(cPF(2 * (boxW - 1) + boxH - 1)), COLORS.BLACK);
+      for (let y = boxH - 2; y >= 1; y--) {
+        r.drawChar(boxX, boxY + y, '\u2551', cGoldSheen(cPF(2 * (boxW - 1) + boxH - 1 + (boxH - 1 - y))), COLORS.BLACK);
       }
 
       for (let j = 0; j < shortTitle.length; j++) {
