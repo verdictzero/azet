@@ -44,6 +44,75 @@ function importSaveFromText(text) {
   }
 }
 
+// ─── Dungeon Circuitry Background Effect ───
+// Procedural grid-aligned circuit traces with animated energy pulses
+// for non-visible / out-of-bounds dungeon areas.
+
+function _circuitHash(x, y) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967296; // 0..1
+}
+
+function _hasTrace(x, y) {
+  return _circuitHash(x, y) < 0.35;
+}
+
+// Connectivity bitmask → box-drawing character
+// Bits: up=8, down=4, left=2, right=1
+const _CIRCUIT_CONN = [
+  '·',  // 0000 isolated
+  '─',  // 0001 right
+  '─',  // 0010 left
+  '─',  // 0011 left+right
+  '│',  // 0100 down
+  '┌',  // 0101 down+right
+  '┐',  // 0110 down+left
+  '┬',  // 0111 down+left+right
+  '│',  // 1000 up
+  '└',  // 1001 up+right
+  '┘',  // 1010 up+left
+  '┴',  // 1011 up+left+right
+  '│',  // 1100 up+down
+  '├',  // 1101 up+down+right
+  '┤',  // 1110 up+down+left
+  '○',  // 1111 all four — junction node
+];
+
+const _circuitResult = { char: ' ', fg: '#000000', bg: '#000000' };
+
+function getCircuitryCell(wx, wy) {
+  if (!_hasTrace(wx, wy)) {
+    _circuitResult.char = ' ';
+    _circuitResult.fg = '#000000';
+    _circuitResult.bg = '#000000';
+    return _circuitResult;
+  }
+
+  // Determine connectivity from cardinal neighbors
+  const conn = (_hasTrace(wx, wy - 1) ? 8 : 0)
+             | (_hasTrace(wx, wy + 1) ? 4 : 0)
+             | (_hasTrace(wx - 1, wy) ? 2 : 0)
+             | (_hasTrace(wx + 1, wy) ? 1 : 0);
+
+  _circuitResult.char = _CIRCUIT_CONN[conn];
+
+  // Animated energy pulse — two overlapping diagonal waves
+  const t = Date.now() / 1000;
+  const wave = Math.sin((wx * 0.3 + wy * 0.2) - t * 1.5) * 0.5 + 0.5;
+  const pulse2 = Math.sin((wx * 0.1 - wy * 0.15) + t * 0.7) * 0.5 + 0.5;
+  const energy = wave * 0.7 + pulse2 * 0.3;
+
+  // Very dark cyan/blue-green palette
+  const cr = Math.floor(6 + energy * 10);   // 6..16
+  const cg = Math.floor(6 + energy * 50);   // 6..56
+  const cb = Math.floor(18 + energy * 62);  // 18..80
+  _circuitResult.fg = `rgb(${cr},${cg},${cb})`;
+  _circuitResult.bg = '#000000';
+  return _circuitResult;
+}
+
 // ═══════════════════════════════════════════
 //  GAME - Main controller
 // ═══════════════════════════════════════════
@@ -4386,32 +4455,34 @@ class Game {
               }
             }
           } else {
-            // Not visible — draw black
+            // Not visible — draw circuitry background
+            const circuit = getCircuitryCell(wx, wy);
             if (density === 1) {
-              r.drawChar(viewLeft + wx_off, viewTop + wy_off, ' ', COLORS.BLACK, COLORS.BLACK);
+              r.drawChar(viewLeft + wx_off, viewTop + wy_off, circuit.char, circuit.fg, circuit.bg);
             } else {
               for (let dy = 0; dy < density; dy++) {
                 for (let dx = 0; dx < density; dx++) {
                   const screenX = viewLeft + wx_off * density + dx;
                   const screenY = viewTop + wy_off * density + dy;
                   if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                    r.drawChar(screenX, screenY, ' ', COLORS.BLACK, COLORS.BLACK);
+                    r.drawChar(screenX, screenY, circuit.char, circuit.fg, circuit.bg);
                   }
                 }
               }
             }
           }
         } else {
-          // Out of bounds
+          // Out of bounds — draw circuitry background
+          const circuit = getCircuitryCell(wx, wy);
           if (density === 1) {
-            r.drawChar(viewLeft + wx_off, viewTop + wy_off, ' ', COLORS.BLACK, COLORS.BLACK);
+            r.drawChar(viewLeft + wx_off, viewTop + wy_off, circuit.char, circuit.fg, circuit.bg);
           } else {
             for (let dy = 0; dy < density; dy++) {
               for (let dx = 0; dx < density; dx++) {
                 const screenX = viewLeft + wx_off * density + dx;
                 const screenY = viewTop + wy_off * density + dy;
                 if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                  r.drawChar(screenX, screenY, ' ', COLORS.BLACK, COLORS.BLACK);
+                  r.drawChar(screenX, screenY, circuit.char, circuit.fg, circuit.bg);
                 }
               }
             }
