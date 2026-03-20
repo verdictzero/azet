@@ -6,6 +6,7 @@ import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, Inven
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
 import { getMonsterArt } from './monsterart.js';
+import { expandTile } from './tileExpansion.js';
 
 // ─── Save Export/Import Cipher ───
 const SAVE_CIPHER_KEY = 'AETHON-ASCIIQUEST-2024';
@@ -196,49 +197,60 @@ class Game {
     this.prevState = this.state;
     this.state = newState;
     this.ui.resetSelection();
-    // Reset zoom when leaving dungeon/location states
-    if (newState === 'OVERWORLD' && this.renderer.zoomLevel !== 1.0) {
-      this.renderer.setZoom(1.0);
-      this.camera.viewportCols = this.renderer.cols - 2;
-      this.camera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    // Update camera viewport for density zoom when switching states
+    if (newState === 'OVERWORLD') {
+      const density = this.renderer.densityLevel;
+      this.camera.viewportCols = Math.floor((this.renderer.cols - 2) / density);
+      this.camera.viewportRows = Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density);
     }
     // Update touch controls layout for new state
     this.input.updateTouchLayout(newState);
   }
 
   _zoomIn() {
-    const levels = [1.0, 1.5, 2.0];
-    const cur = this.renderer.zoomLevel;
+    const levels = [1, 2, 3];
+    const cur = this.renderer.densityLevel;
     const next = levels.find(l => l > cur) || levels[levels.length - 1];
     if (next === cur) return;
     this.renderer.setZoom(next);
     this._updateCameraAfterZoom();
-    this.ui.addMessage(`Zoom: ${next}x`, COLORS.BRIGHT_CYAN);
+    this.ui.addMessage(`Zoom: ${next}x density`, COLORS.BRIGHT_CYAN);
   }
 
   _zoomOut() {
-    const levels = [1.0, 1.5, 2.0];
-    const cur = this.renderer.zoomLevel;
+    const levels = [1, 2, 3];
+    const cur = this.renderer.densityLevel;
     const prev = [...levels].reverse().find(l => l < cur) || levels[0];
     if (prev === cur) return;
     this.renderer.setZoom(prev);
     this._updateCameraAfterZoom();
-    this.ui.addMessage(`Zoom: ${prev}x`, COLORS.BRIGHT_CYAN);
+    this.ui.addMessage(`Zoom: ${prev}x density`, COLORS.BRIGHT_CYAN);
   }
 
   _updateCameraAfterZoom() {
+    const density = this.renderer.densityLevel;
     const viewW = this.renderer.cols - 2;
     const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    // Camera viewport is in world tiles, so divide screen size by density
+    const worldW = Math.floor(viewW / density);
+    const worldH = Math.floor(viewH / density);
+    if (this.state === 'OVERWORLD') {
+      this.camera.viewportCols = worldW;
+      this.camera.viewportRows = worldH;
+      this.camera.follow(this.player);
+      this.camera.x = this.camera.targetX;
+      this.camera.y = this.camera.targetY;
+    }
     if (this.state === 'LOCATION' && this.locationCamera) {
-      this.locationCamera.viewportCols = viewW;
-      this.locationCamera.viewportRows = viewH;
+      this.locationCamera.viewportCols = worldW;
+      this.locationCamera.viewportRows = worldH;
       this.locationCamera.follow(this.player);
       this.locationCamera.x = this.locationCamera.targetX;
       this.locationCamera.y = this.locationCamera.targetY;
     }
     if (this.state === 'DUNGEON') {
-      this.camera.viewportCols = viewW;
-      this.camera.viewportRows = viewH;
+      this.camera.viewportCols = worldW;
+      this.camera.viewportRows = worldH;
     }
     this.renderer.invalidate();
   }
@@ -1034,6 +1046,10 @@ class Game {
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
+
+    // Zoom controls
+    if (key === '+' || key === '=') { this._zoomIn(); return; }
+    if (key === '-') { this._zoomOut(); return; }
 
     // Movement (with night stumble penalty)
     let dir = this.getDirection(key);
@@ -3624,6 +3640,9 @@ class Game {
       if (this.state === 'OVERWORLD' && this.cloudSystem && !this.debug.disableClouds) {
         const camX = Math.floor(this.camera.x);
         const camY = Math.floor(this.camera.y);
+        const dLevel = this.renderer.densityLevel;
+        const cloudWorldW = Math.ceil(viewW / dLevel);
+        const cloudWorldH = Math.ceil(viewH / dLevel);
         const sunDir = this.timeSystem.getSunDirection();
         const isDay = this.timeSystem.isDaytime();
 
@@ -3634,24 +3653,40 @@ class Game {
         const shOffX = Math.round(sunDir.dx * shadowDist);
         const shOffY = Math.round(sunDir.dy * shadowDist);
 
-        for (let sy = 0; sy < viewH; sy++) {
-          for (let sx = 0; sx < viewW; sx++) {
-            const wx = camX + sx;
-            const wy = camY + sy;
-            const density = this.cloudSystem.getCloudDensity(wx, wy);
+        for (let wy_off = 0; wy_off < cloudWorldH; wy_off++) {
+          for (let wx_off = 0; wx_off < cloudWorldW; wx_off++) {
+            const wx = camX + wx_off;
+            const wy = camY + wy_off;
+            const cDensity = this.cloudSystem.getCloudDensity(wx, wy);
 
-            if (density > 0) {
-              // Cloud visual: white tint (brighter/whiter hue shift)
-              const cloudAlpha = isDay ? density * 0.18 : density * 0.06;
-              this.renderer.tintCell(viewLeft + sx, viewTop + sy, '#CCCCEE', cloudAlpha);
+            if (cDensity > 0) {
+              const cloudAlpha = isDay ? cDensity * 0.18 : cDensity * 0.06;
+              // Tint all screen cells for this world tile
+              for (let sdy = 0; sdy < dLevel; sdy++) {
+                for (let sdx = 0; sdx < dLevel; sdx++) {
+                  const screenX = wx_off * dLevel + sdx;
+                  const screenY = wy_off * dLevel + sdy;
+                  if (screenX < viewW && screenY < viewH) {
+                    this.renderer.tintCell(viewLeft + screenX, viewTop + screenY, '#CCCCEE', cloudAlpha);
+                  }
+                }
+              }
 
-              // Cloud shadow: darkened ground offset by sun direction
+              // Cloud shadow
               if (isDay && sunDir.elevation > 0.05) {
-                const shsx = sx + shOffX;
-                const shsy = sy + shOffY;
-                if (shsx >= 0 && shsx < viewW && shsy >= 0 && shsy < viewH) {
-                  const shadowAlpha = density * 0.20;
-                  this.renderer.darkenCell(viewLeft + shsx, viewTop + shsy, shadowAlpha);
+                const shwx = wx_off + shOffX;
+                const shwy = wy_off + shOffY;
+                if (shwx >= 0 && shwx < cloudWorldW && shwy >= 0 && shwy < cloudWorldH) {
+                  const shadowAlpha = cDensity * 0.20;
+                  for (let sdy = 0; sdy < dLevel; sdy++) {
+                    for (let sdx = 0; sdx < dLevel; sdx++) {
+                      const screenX = shwx * dLevel + sdx;
+                      const screenY = shwy * dLevel + sdy;
+                      if (screenX < viewW && screenY < viewH) {
+                        this.renderer.darkenCell(viewLeft + screenX, viewTop + screenY, shadowAlpha);
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3665,18 +3700,29 @@ class Game {
         if (lightInfo?.hasLight && this.state === 'OVERWORLD') {
           const camX = Math.floor(this.camera.x);
           const camY = Math.floor(this.camera.y);
+          const dLevel = this.renderer.densityLevel;
           const plx = this.player.position.x - camX;
           const ply = this.player.position.y - camY;
           const rad = lightInfo.radius;
-          for (let dy = -rad; dy <= rad; dy++) {
-            for (let dx = -rad; dx <= rad; dx++) {
-              const dist = Math.sqrt(dx * dx + dy * dy);
+          for (let ldy = -rad; ldy <= rad; ldy++) {
+            for (let ldx = -rad; ldx <= rad; ldx++) {
+              const dist = Math.sqrt(ldx * ldx + ldy * ldy);
               if (dist <= rad) {
                 const falloff = (1 - dist / rad) * 0.15;
-                const cx = plx + dx;
-                const cy = ply + dy;
-                if (cx >= 0 && cx < viewW && cy >= 0 && cy < viewH) {
-                  this.renderer.tintCell(viewLeft + cx, viewTop + cy, lightInfo.color, falloff);
+                const wx_off = plx + ldx;
+                const wy_off = ply + ldy;
+                const worldW = Math.ceil(viewW / dLevel);
+                const worldH = Math.ceil(viewH / dLevel);
+                if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
+                  for (let sdy = 0; sdy < dLevel; sdy++) {
+                    for (let sdx = 0; sdx < dLevel; sdx++) {
+                      const screenX = wx_off * dLevel + sdx;
+                      const screenY = wy_off * dLevel + sdy;
+                      if (screenX < viewW && screenY < viewH) {
+                        this.renderer.tintCell(viewLeft + screenX, viewTop + screenY, lightInfo.color, falloff);
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3773,25 +3819,40 @@ class Game {
       viewRange = lightInfo.hasLight ? (lightInfo.radius + 2) : 3;
     }
 
-    // Collect shadow cells if daytime or moonlit
+    const density = r.densityLevel;
+    const camX = Math.floor(this.camera.x);
+    const camY = Math.floor(this.camera.y);
+    const worldW = Math.ceil(viewW / density);
+    const worldH = Math.ceil(viewH / density);
+    // Center offset for entities within their expanded tile (0 for d=1, 0 for d=2, 1 for d=3)
+    const entityOff = Math.floor(density / 2);
+
+    // Collect shadow cells if daytime or moonlit (in screen coords)
     const shadowCells = new Map(); // "sx,sy" -> alpha
     if (!this.debug.disableShadows) {
-      for (let sy = 0; sy < viewH; sy++) {
-        for (let sx = 0; sx < viewW; sx++) {
-          const wx = Math.floor(this.camera.x) + sx;
-          const wy = Math.floor(this.camera.y) + sy;
+      for (let wy_off = 0; wy_off < worldH; wy_off++) {
+        for (let wx_off = 0; wx_off < worldW; wx_off++) {
+          const wx = camX + wx_off;
+          const wy = camY + wy_off;
           const tile = this.overworld.getTile(wx, wy);
           const height = Game.TILE_HEIGHTS[tile.type] || 0;
           if (height > 0) {
             const len = Math.min(height, Math.round(sunDir.shadowLength * height * 0.6));
             const shadowAlpha = sunDir.isDay ? 0.35 : 0.20;
             for (let i = 1; i <= len; i++) {
-              const shx = sx + sunDir.dx * i;
-              const shy = sy + Math.round(sunDir.dy) * i;
-              if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
-                const key = `${shx},${shy}`;
-                const existing = shadowCells.get(key) || 0;
-                shadowCells.set(key, Math.min(0.65, existing + shadowAlpha));
+              // Shadow in screen coords
+              const shBaseX = wx_off * density + sunDir.dx * i * density;
+              const shBaseY = wy_off * density + Math.round(sunDir.dy) * i * density;
+              for (let sdy = 0; sdy < density; sdy++) {
+                for (let sdx = 0; sdx < density; sdx++) {
+                  const shx = Math.floor(shBaseX) + sdx;
+                  const shy = Math.floor(shBaseY) + sdy;
+                  if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
+                    const key = `${shx},${shy}`;
+                    const existing = shadowCells.get(key) || 0;
+                    shadowCells.set(key, Math.min(0.65, existing + shadowAlpha));
+                  }
+                }
               }
             }
           }
@@ -3799,44 +3860,62 @@ class Game {
       }
     }
 
-    for (let sy = 0; sy < viewH; sy++) {
-      for (let sx = 0; sx < viewW; sx++) {
-        const wx = Math.floor(this.camera.x) + sx;
-        const wy = Math.floor(this.camera.y) + sy;
-
+    // Render tiles with density expansion
+    for (let wy_off = 0; wy_off < worldH; wy_off++) {
+      for (let wx_off = 0; wx_off < worldW; wx_off++) {
+        const wx = camX + wx_off;
+        const wy = camY + wy_off;
         const tile = this.overworld.getTile(wx, wy);
 
         // Fog of war
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
-        const fg = r.getAnimatedColor(tile.fg, tile.type);
-        if (dist > viewRange) {
-          r.drawChar(viewLeft + sx, viewTop + sy, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
+        const isFogged = dist > viewRange;
+
+        if (density === 1) {
+          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type);
+          const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
+          r.drawChar(viewLeft + wx_off, viewTop + wy_off, tile.char, fg, bg);
         } else {
-          r.drawChar(viewLeft + sx, viewTop + sy, tile.char, fg, tile.bg || COLORS.BLACK);
+          const expanded = expandTile(tile, density, wx, wy);
+          for (let dy = 0; dy < density; dy++) {
+            for (let dx = 0; dx < density; dx++) {
+              const screenX = viewLeft + wx_off * density + dx;
+              const screenY = viewTop + wy_off * density + dy;
+              if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
+                r.drawChar(screenX, screenY, expanded.chars[dy][dx], fg, bg);
+              }
+            }
+          }
         }
       }
     }
 
     // Draw locations
     for (const loc of this.overworld.getLoadedLocations()) {
-      const sx = loc.x - Math.floor(this.camera.x);
-      const sy = loc.y - Math.floor(this.camera.y);
-      if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+      const wx_off = loc.x - camX;
+      const wy_off = loc.y - camY;
+      if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
         const ch = loc.type === 'city' ? '▣' : loc.type === 'town' ? '□' :
           loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
             loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
               loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
         const isDungeon = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
         const glowCat = isDungeon ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
-        r.drawChar(viewLeft + sx, viewTop + sy, ch, this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE));
+        const screenX = viewLeft + wx_off * density + entityOff;
+        const screenY = viewTop + wy_off * density + entityOff;
+        r.drawChar(screenX, screenY, ch, this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE));
       }
     }
 
     // Draw player
-    const px = this.player.position.x - Math.floor(this.camera.x);
-    const py = this.player.position.y - Math.floor(this.camera.y);
-    if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
-      r.drawChar(viewLeft + px, viewTop + py, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+    const px = this.player.position.x - camX;
+    const py = this.player.position.y - camY;
+    if (px >= 0 && px < worldW && py >= 0 && py < worldH) {
+      const screenX = viewLeft + px * density + entityOff;
+      const screenY = viewTop + py * density + entityOff;
+      r.drawChar(screenX, screenY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
     }
 
     // Quest navigation line overlay
@@ -3847,29 +3926,27 @@ class Game {
         if (navTarget) {
           const playerX = this.player.position.x;
           const playerY = this.player.position.y;
-          const camX = Math.floor(this.camera.x);
-          const camY = Math.floor(this.camera.y);
           const navPoints = bresenhamLine(playerX, playerY, navTarget.x, navTarget.y);
           const now = Date.now();
 
           for (const pt of navPoints) {
             if (pt.x === playerX && pt.y === playerY) continue;
-            const sx = pt.x - camX;
-            const sy = pt.y - camY;
-            if (sx < 0 || sx >= viewW || sy < 0 || sy >= viewH) continue;
+            const wx_off = pt.x - camX;
+            const wy_off = pt.y - camY;
+            if (wx_off < 0 || wx_off >= worldW || wy_off < 0 || wy_off >= worldH) continue;
             const d = Math.abs(pt.x - playerX) + Math.abs(pt.y - playerY);
             const pulse = Math.sin(now / 400 + d * 0.4) * 0.5 + 0.5;
             const navChar = (d % 3 === 0) ? '\u00b7' : '\u2219';
             const navColor = pulse > 0.5 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-            r.drawChar(viewLeft + sx, viewTop + sy, navChar, navColor);
+            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, navChar, navColor);
           }
 
           // Draw target marker
           const tx = navTarget.x - camX;
           const ty = navTarget.y - camY;
-          if (tx >= 0 && tx < viewW && ty >= 0 && ty < viewH) {
+          if (tx >= 0 && tx < worldW && ty >= 0 && ty < worldH) {
             const tPulse = Math.sin(now / 250) * 0.5 + 0.5;
-            r.drawChar(viewLeft + tx, viewTop + ty, '\u2726',
+            r.drawChar(viewLeft + tx * density + entityOff, viewTop + ty * density + entityOff, '\u2726',
               tPulse > 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.YELLOW);
           }
         }
@@ -3878,14 +3955,12 @@ class Game {
 
     // Render structure light glow on overworld at night
     if (isNight && this.overworld.chunkManager) {
-      const camX = Math.floor(this.camera.x);
-      const camY = Math.floor(this.camera.y);
       const cm = this.overworld.chunkManager;
       // Check visible chunks for structures with lights
       const cx1 = Math.floor(camX / 32) - 1;
       const cy1 = Math.floor(camY / 32) - 1;
-      const cx2 = Math.floor((camX + viewW) / 32) + 1;
-      const cy2 = Math.floor((camY + viewH) / 32) + 1;
+      const cx2 = Math.floor((camX + worldW) / 32) + 1;
+      const cy2 = Math.floor((camY + worldH) / 32) + 1;
       for (let ccx = cx1; ccx <= cx2; ccx++) {
         for (let ccy = cy1; ccy <= cy2; ccy++) {
           const chunk = cm.chunks.get(`${ccx},${ccy}`);
@@ -3893,19 +3968,25 @@ class Game {
           for (const struct of chunk.structures) {
             for (const light of struct.lights) {
               const rad = light.radius;
-              for (let dy = -rad; dy <= rad; dy++) {
-                for (let dx = -rad; dx <= rad; dx++) {
-                  const dist = Math.sqrt(dx * dx + dy * dy);
+              for (let ldy = -rad; ldy <= rad; ldy++) {
+                for (let ldx = -rad; ldx <= rad; ldx++) {
+                  const dist = Math.sqrt(ldx * ldx + ldy * ldy);
                   if (dist > rad) continue;
-                  const sx = light.x + dx - camX;
-                  const sy = light.y + dy - camY;
-                  if (sx < 0 || sx >= viewW || sy < 0 || sy >= viewH) continue;
+                  const wx_off = light.x + ldx - camX;
+                  const wy_off = light.y + ldy - camY;
+                  if (wx_off < 0 || wx_off >= worldW || wy_off < 0 || wy_off >= worldH) continue;
                   const falloff = Math.max(0, 1 - dist / rad);
                   const alpha = falloff * falloff * light.intensity * 0.4;
                   const hexR = Math.round(light.r * 255).toString(16).padStart(2, '0');
                   const hexG = Math.round(light.g * 255).toString(16).padStart(2, '0');
                   const hexB = Math.round(light.b * 255).toString(16).padStart(2, '0');
-                  r.tintCell(viewLeft + sx, viewTop + sy, `#${hexR}${hexG}${hexB}`, alpha);
+                  const tintColor = `#${hexR}${hexG}${hexB}`;
+                  // Tint all screen cells for this world tile
+                  for (let sdy = 0; sdy < density; sdy++) {
+                    for (let sdx = 0; sdx < density; sdx++) {
+                      r.tintCell(viewLeft + wx_off * density + sdx, viewTop + wy_off * density + sdy, tintColor, alpha);
+                    }
+                  }
                 }
               }
             }
@@ -3917,7 +3998,7 @@ class Game {
     // Store shadow data for post-process tinting pass
     this._shadowCells = shadowCells;
 
-    // Render weather particles
+    // Render weather particles (screen-space, works at any density)
     const weatherEffect = this.weatherSystem.getVisualEffect();
     if (weatherEffect) {
       for (let sy = 0; sy < viewH; sy++) {
@@ -3931,7 +4012,7 @@ class Game {
 
     // Render particle effects
     this.particles.update();
-    this.particles.render(r, Math.floor(this.camera.x), Math.floor(this.camera.y));
+    this.particles.render(r, camX, camY);
   }
 
   renderDungeon() {
@@ -3943,9 +4024,14 @@ class Game {
     const viewW = r.cols - 2;
     const viewH = r.rows - LAYOUT.HUD_TOTAL;
 
-    // Center on player
-    const offsetX = this.player.position.x - Math.floor(viewW / 2);
-    const offsetY = this.player.position.y - Math.floor(viewH / 2);
+    const density = r.densityLevel;
+    const worldW = Math.ceil(viewW / density);
+    const worldH = Math.ceil(viewH / density);
+    const entityOff = Math.floor(density / 2);
+
+    // Center on player (in world tiles)
+    const offsetX = this.player.position.x - Math.floor(worldW / 2);
+    const offsetY = this.player.position.y - Math.floor(worldH / 2);
 
     const dw = this.currentDungeon.tiles[0]?.length || 0;
     const dh = this.currentDungeon.tiles.length;
@@ -3968,8 +4054,8 @@ class Game {
       });
 
       // Static light sources (fireplaces, lava, etc)
-      for (let ty = Math.max(0, offsetY); ty < Math.min(dh, offsetY + viewH); ty++) {
-        for (let tx = Math.max(0, offsetX); tx < Math.min(dw, offsetX + viewW); tx++) {
+      for (let ty = Math.max(0, offsetY); ty < Math.min(dh, offsetY + worldH); ty++) {
+        for (let tx = Math.max(0, offsetX); tx < Math.min(dw, offsetX + worldW); tx++) {
           const tile = this.currentDungeon.tiles[ty]?.[tx];
           if (!tile) continue;
           if (tile.type === 'FIREPLACE' || tile.type === 'CAMPFIRE') {
@@ -4020,10 +4106,11 @@ class Game {
       }
     }
 
-    for (let sy = 0; sy < viewH; sy++) {
-      for (let sx = 0; sx < viewW; sx++) {
-        const wx = offsetX + sx;
-        const wy = offsetY + sy;
+    // Render dungeon tiles with density expansion
+    for (let wy_off = 0; wy_off < worldH; wy_off++) {
+      for (let wx_off = 0; wx_off < worldW; wx_off++) {
+        const wx = offsetX + wx_off;
+        const wy = offsetY + wy_off;
 
         if (wy >= 0 && wy < dh && wx >= 0 && wx < dw) {
           const tile = this.currentDungeon.tiles[wy][wx];
@@ -4040,20 +4127,61 @@ class Game {
 
           if (isVisible) {
             let animFg = r.getAnimatedColor(tile.fg, tile.type);
-            // Apply glow to interactive dungeon tiles
             const iType = tile.type;
             if (iType === 'STAIRS_DOWN' || iType === 'STAIRS_UP' || iType === 'DOOR' || iType === 'CHEST' || iType === 'BRIDGE') {
               animFg = this.glow.getGlowColor('INTERACTIVE', animFg);
             }
-            // Dim fg/bg based on light brightness
-            const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
-            const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
-            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, dimFg, dimBg);
+
+            if (density === 1) {
+              const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
+              const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
+              r.drawChar(viewLeft + wx_off, viewTop + wy_off, tile.char, dimFg, dimBg);
+            } else {
+              const expanded = expandTile(tile, density, wx, wy);
+              for (let dy = 0; dy < density; dy++) {
+                for (let dx = 0; dx < density; dx++) {
+                  const screenX = viewLeft + wx_off * density + dx;
+                  const screenY = viewTop + wy_off * density + dy;
+                  if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                    const eFg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                    const dimFg = this._dimColor(eFg, Math.max(0.15, brightness));
+                    const dimBg = this._dimColor(expanded.bgs[dy][dx], brightness);
+                    r.drawChar(screenX, screenY, expanded.chars[dy][dx], dimFg, dimBg);
+                  }
+                }
+              }
+            }
           } else {
-            r.drawChar(viewLeft + sx, viewTop + sy, ' ', COLORS.BLACK, COLORS.BLACK);
+            // Not visible — draw black
+            if (density === 1) {
+              r.drawChar(viewLeft + wx_off, viewTop + wy_off, ' ', COLORS.BLACK, COLORS.BLACK);
+            } else {
+              for (let dy = 0; dy < density; dy++) {
+                for (let dx = 0; dx < density; dx++) {
+                  const screenX = viewLeft + wx_off * density + dx;
+                  const screenY = viewTop + wy_off * density + dy;
+                  if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                    r.drawChar(screenX, screenY, ' ', COLORS.BLACK, COLORS.BLACK);
+                  }
+                }
+              }
+            }
           }
         } else {
-          r.drawChar(viewLeft + sx, viewTop + sy, ' ', COLORS.BLACK, COLORS.BLACK);
+          // Out of bounds
+          if (density === 1) {
+            r.drawChar(viewLeft + wx_off, viewTop + wy_off, ' ', COLORS.BLACK, COLORS.BLACK);
+          } else {
+            for (let dy = 0; dy < density; dy++) {
+              for (let dx = 0; dx < density; dx++) {
+                const screenX = viewLeft + wx_off * density + dx;
+                const screenY = viewTop + wy_off * density + dy;
+                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                  r.drawChar(screenX, screenY, ' ', COLORS.BLACK, COLORS.BLACK);
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -4064,10 +4192,11 @@ class Game {
         const light = this.debug.disableLighting ? { brightness: visible.has(`${item.position.x},${item.position.y}`) ? 1 : 0 }
           : this.lighting.getLight(item.position.x, item.position.y);
         if (light.brightness > 0.02) {
-          const sx = item.position.x - offsetX;
-          const sy = item.position.y - offsetY;
-          if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
-            r.drawChar(viewLeft + sx, viewTop + sy, item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW));
+          const wx_off = item.position.x - offsetX;
+          const wy_off = item.position.y - offsetY;
+          if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
+            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff,
+              item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW));
           }
         }
       }
@@ -4078,17 +4207,18 @@ class Game {
       const light = this.debug.disableLighting ? { brightness: visible.has(`${enemy.position.x},${enemy.position.y}`) ? 1 : 0 }
         : this.lighting.getLight(enemy.position.x, enemy.position.y);
       if (light.brightness > 0.02) {
-        const sx = enemy.position.x - offsetX;
-        const sy = enemy.position.y - offsetY;
-        if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
-          r.drawChar(viewLeft + sx, viewTop + sy, enemy.char, enemy.color || COLORS.BRIGHT_RED);
+        const wx_off = enemy.position.x - offsetX;
+        const wy_off = enemy.position.y - offsetY;
+        if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
+          r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff,
+            enemy.char, enemy.color || COLORS.BRIGHT_RED);
         }
       }
     }
 
-    // Draw player
-    const playerScreenX = viewLeft + Math.floor(viewW / 2);
-    const playerScreenY = viewTop + Math.floor(viewH / 2);
+    // Draw player at center
+    const playerScreenX = viewLeft + Math.floor(worldW / 2) * density + entityOff;
+    const playerScreenY = viewTop + Math.floor(worldH / 2) * density + entityOff;
     r.drawChar(playerScreenX, playerScreenY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
 
     // Render particles in dungeon

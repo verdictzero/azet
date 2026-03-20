@@ -1,5 +1,6 @@
 import { COLORS, LAYOUT, wordWrap } from './engine.js';
 import { CRYSTAL_WIDTH, CRYSTAL_HEIGHT, CRYSTAL_FRAMES } from './crystal-frames.js';
+import { expandTile } from './tileExpansion.js';
 
 // ─── Color conversion helpers for hue-shifting effects ───
 function hexToHsl(hex) {
@@ -1394,28 +1395,39 @@ export class UIManager {
 
     // Draw settlement map tiles with camera
     if (settlement.tiles) {
-      const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - viewW) / 2));
-      const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - viewH) / 2));
+      const density = r.densityLevel;
+      const worldW = Math.ceil(viewW / density);
+      const worldH = Math.ceil(viewH / density);
+      const entityOff = Math.floor(density / 2);
 
-      // Collect shadows
+      const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - worldW) / 2));
+      const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - worldH) / 2));
+
+      // Collect shadows (in screen coords)
       const shadowCells = new Map();
       if (sunDir && sunDir.isDay) {
-        for (let sy = 0; sy < viewH; sy++) {
-          for (let sx = 0; sx < viewW; sx++) {
-            const wx = camX + sx;
-            const wy = camY + sy;
+        for (let wy_off = 0; wy_off < worldH; wy_off++) {
+          for (let wx_off = 0; wx_off < worldW; wx_off++) {
+            const wx = camX + wx_off;
+            const wy = camY + wy_off;
             if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
             const t = settlement.tiles[wy][wx];
             const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
             if (height > 0) {
               const len = Math.min(height, Math.round(sunDir.shadowLength * height * 0.5));
               for (let i = 1; i <= len; i++) {
-                const shx = sx + sunDir.dx * i;
-                const shy = sy + Math.round(sunDir.dy) * i;
-                if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
-                  const key = `${Math.floor(shx)},${Math.floor(shy)}`;
-                  const existing = shadowCells.get(key) || 0;
-                  shadowCells.set(key, Math.min(0.6, existing + 0.3));
+                const shBaseX = wx_off * density + sunDir.dx * i * density;
+                const shBaseY = wy_off * density + Math.round(sunDir.dy) * i * density;
+                for (let sdy = 0; sdy < density; sdy++) {
+                  for (let sdx = 0; sdx < density; sdx++) {
+                    const shx = Math.floor(shBaseX) + sdx;
+                    const shy = Math.floor(shBaseY) + sdy;
+                    if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
+                      const key = `${shx},${shy}`;
+                      const existing = shadowCells.get(key) || 0;
+                      shadowCells.set(key, Math.min(0.6, existing + 0.3));
+                    }
+                  }
                 }
               }
             }
@@ -1423,15 +1435,32 @@ export class UIManager {
         }
       }
 
-      for (let sy = 0; sy < viewH; sy++) {
-        for (let sx = 0; sx < viewW; sx++) {
-          const wx = camX + sx;
-          const wy = camY + sy;
+      // Render tiles with density expansion
+      for (let wy_off = 0; wy_off < worldH; wy_off++) {
+        for (let wx_off = 0; wx_off < worldW; wx_off++) {
+          const wx = camX + wx_off;
+          const wy = camY + wy_off;
           if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
             const tile = settlement.tiles[wy][wx];
-            const ch = r.getAnimatedChar(tile.char, tile.type);
-            const fg = r.getAnimatedColor(tile.fg, tile.type);
-            r.drawChar(viewLeft + sx, viewTop + sy, ch, fg, tile.bg || COLORS.BLACK);
+
+            if (density === 1) {
+              const ch = r.getAnimatedChar(tile.char, tile.type);
+              const fg = r.getAnimatedColor(tile.fg, tile.type);
+              r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, tile.bg || COLORS.BLACK);
+            } else {
+              const expanded = expandTile(tile, density, wx, wy);
+              for (let dy = 0; dy < density; dy++) {
+                for (let dx = 0; dx < density; dx++) {
+                  const screenX = viewLeft + wx_off * density + dx;
+                  const screenY = viewTop + wy_off * density + dy;
+                  if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                    const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type);
+                    const fg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                    r.drawChar(screenX, screenY, ch, fg, expanded.bgs[dy][dx]);
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1445,11 +1474,11 @@ export class UIManager {
       // Draw NPCs
       if (npcs) {
         for (const npc of npcs) {
-          const sx = npc.position.x - camX;
-          const sy = npc.position.y - camY;
-          if (sx >= 0 && sx < viewW && sy >= 0 && sy < viewH) {
+          const wx_off = npc.position.x - camX;
+          const wy_off = npc.position.y - camY;
+          if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
             const npcColor = this.glow ? this.glow.getGlowColor('NPC', npc.color || COLORS.BRIGHT_CYAN) : (npc.color || COLORS.BRIGHT_CYAN);
-            r.drawChar(viewLeft + sx, viewTop + sy, npc.char, npcColor);
+            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, npc.char, npcColor);
           }
         }
       }
@@ -1458,9 +1487,9 @@ export class UIManager {
       if (player) {
         const px = player.position.x - camX;
         const py = player.position.y - camY;
-        if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
+        if (px >= 0 && px < worldW && py >= 0 && py < worldH) {
           const playerColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
-          r.drawChar(viewLeft + px, viewTop + py, '@', playerColor);
+          r.drawChar(viewLeft + px * density + entityOff, viewTop + py * density + entityOff, '@', playerColor);
         }
       }
     }
