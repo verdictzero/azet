@@ -1116,7 +1116,7 @@ export class InputManager {
         [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
-        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
+        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'DBG', key: '`', type: 'debug' }],
       ],
     ]},
     DUNGEON: { pages: [
@@ -1130,7 +1130,7 @@ export class InputManager {
         [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
-        [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
+        [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'DBG', key: '`', type: 'debug' }],
       ],
     ]},
     COMBAT: { pages: [
@@ -1145,6 +1145,18 @@ export class InputManager {
         [{ label: 'AB3', key: '3', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'DBG', key: '`', type: 'debug' }],
       ],
     ]},
+    BATTLE_INTRO: { pages: [[
+      [null, null, null],
+      [null, null, null],
+      [null, null, null],
+      [{ label: 'SKIP', key: 'Enter', type: 'action-primary' }, null, null],
+    ]]},
+    BATTLE_SUMMARY: { pages: [[
+      [null, null, null],
+      [null, null, null],
+      [null, null, null],
+      [{ label: 'OK', key: 'Enter', type: 'action-primary' }, null, null],
+    ]]},
     DIALOGUE: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [null, null, null],

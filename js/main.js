@@ -20,7 +20,7 @@ class Game {
     this.ui = new UIManager(this.renderer);
 
     // Game state
-    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS
+    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS, BATTLE_INTRO, BATTLE_SUMMARY
 
     // Settings (persisted to localStorage)
     this.settings = {
@@ -126,6 +126,15 @@ class Game {
 
     // Combat state
     this.combatState = null;
+
+    // Battle intro state
+    this.battleIntroState = null; // { enemy, startTime }
+
+    // Tracks original state to return to after battle (DUNGEON, OVERWORLD, etc.)
+    this.battleReturnState = null;
+
+    // Battle summary state
+    this.battleSummaryState = null; // { enemyName, xp, loot, levelUps, goldGained, returnState }
 
     // Active dialogue/shop
     this.activeNPC = null;
@@ -763,6 +772,8 @@ class Game {
       case 'SETTINGS': return this.handleSettingsInput(key);
       case 'GAME_OVER': return this.handleGameOverInput(key);
       case 'COMBAT': return this.handleCombatInput(key);
+      case 'BATTLE_INTRO': return this.handleBattleIntroInput(key);
+      case 'BATTLE_SUMMARY': return this.handleBattleSummaryInput(key);
       case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
       case 'WORLD_GEN_PAUSE':
         this.setState('LOADING');
@@ -1688,8 +1699,12 @@ class Game {
     if (action === 'flee') {
       if (this.rng.chance(0.5)) {
         this.ui.addMessage('Escaped!', COLORS.BRIGHT_YELLOW);
+        const fleeReturn = this.battleReturnState || this.prevState || 'DUNGEON';
         this.combatState = null;
-        this.setState(this.prevState || 'DUNGEON');
+        this.battleReturnState = null;
+        this.startTransition(() => {
+          this.setState(fleeReturn);
+        });
       } else {
         this.ui.addMessage('Cannot escape!', COLORS.BRIGHT_RED);
         const result = this.combat.calculateAttack(this.combatState.enemy, this.player);
@@ -1736,14 +1751,33 @@ class Game {
             this.ui.addMessage(`${enemy.name} defeated!`, COLORS.BRIGHT_GREEN);
             const xp = this.combat.calculateXPReward(enemy);
             const leveled = this.player.addXP(xp);
-            this.ui.addMessage(`${xp} EXP gained!`, COLORS.BRIGHT_CYAN);
+            const loot = this.combat.calculateLoot(this.rng, enemy, this.currentFloor);
+            let goldGained = 0;
+            const itemsGained = [];
+            for (const item of loot) {
+              if (item.type === 'gold') {
+                this.player.gold += item.amount;
+                goldGained += item.amount;
+              } else {
+                this.player.addItem(item);
+                itemsGained.push(item);
+              }
+            }
             if (leveled.length > 0) {
-              this.ui.addMessage(`Level up! Lv ${leveled[leveled.length - 1]}!`, COLORS.BRIGHT_YELLOW);
               this.renderer.flash('#FFFF00', 0.5);
+              this.particles.emit(this.player.position.x, this.player.position.y, '*', COLORS.BRIGHT_YELLOW, 10, 4, 20);
             }
             this.enemies = this.enemies.filter(e => e !== enemy);
+            this.battleSummaryState = {
+              enemyName: enemy.name,
+              xp,
+              loot: itemsGained,
+              levelUps: leveled,
+              goldGained,
+              returnState: this.battleReturnState || this.prevState || 'DUNGEON',
+            };
             this.combatState = null;
-            this.setState(this.prevState || 'DUNGEON');
+            this.setState('BATTLE_SUMMARY');
             return;
           }
 
@@ -1837,13 +1871,25 @@ class Game {
 
           // Combat hit particles
           this.particles.emit(deadEnemy.position.x, deadEnemy.position.y, '*', COLORS.BRIGHT_RED, 5, 3, 12);
+
+          // Collect summary data and show battle summary screen
+          const goldGained = loot.filter(i => i.type === 'gold').reduce((sum, i) => sum + i.amount, 0);
+          const itemsGained = loot.filter(i => i.type !== 'gold');
+          this.battleSummaryState = {
+            enemyName: deadEnemy.name,
+            xp,
+            loot: itemsGained,
+            levelUps: leveled,
+            goldGained,
+            returnState: this.battleReturnState || this.prevState || 'DUNGEON',
+          };
+          this.combatState = null;
+          this.setState('BATTLE_SUMMARY');
+          return;
         } else {
           this.setState('GAME_OVER');
           return;
         }
-        this.combatState = null;
-        this.setState(this.prevState || 'DUNGEON');
-        return;
       }
     }
   }
@@ -2065,7 +2111,10 @@ class Game {
 
       this.combatState = { enemy };
       this.ui.addMessage(`${enemy.name} appeared!`, COLORS.BRIGHT_RED);
-      this.setState('COMBAT');
+      this.battleReturnState = this.state;
+      this.battleIntroState = { enemy, startTime: Date.now() };
+      this.renderer.flash('#FFFFFF', 0.6);
+      this.setState('BATTLE_INTRO');
     }
 
     // Consume torch uses at night
@@ -2236,7 +2285,10 @@ class Game {
     if (enemyAt) {
       this.combatState = { enemy: enemyAt };
       this.ui.addMessage(`${enemyAt.name} appeared!`, COLORS.BRIGHT_RED);
-      this.setState('COMBAT');
+      this.battleReturnState = this.state;
+      this.battleIntroState = { enemy: enemyAt, startTime: Date.now() };
+      this.renderer.flash('#FFFFFF', 0.6);
+      this.setState('BATTLE_INTRO');
       return;
     }
 
@@ -2890,6 +2942,14 @@ class Game {
         this.renderCombat();
         break;
 
+      case 'BATTLE_INTRO':
+        this.renderBattleIntro();
+        break;
+
+      case 'BATTLE_SUMMARY':
+        this.renderBattleSummary();
+        break;
+
       case 'SETTINGS':
         this.ui.drawSettings(this.settings);
         break;
@@ -3431,6 +3491,180 @@ class Game {
     }
   }
 
+  // ─── BATTLE INTRO ───
+
+  handleBattleIntroInput(key) {
+    // Any key skips the intro
+    if (key === 'Enter' || key === ' ' || key === 'Escape') {
+      this.battleIntroState = null;
+      this.setState('COMBAT');
+    }
+  }
+
+  renderBattleIntro() {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.BLACK;
+    r.clear();
+
+    if (!this.battleIntroState) return;
+
+    const enemy = this.battleIntroState.enemy;
+    const elapsed = Date.now() - this.battleIntroState.startTime;
+    const cx = Math.floor(cols / 2);
+    const cy = Math.floor(rows / 2);
+
+    // Dramatic black background with scan lines
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        if (y % 2 === 0) {
+          r.drawChar(x, y, ' ', bg, '#080808');
+        }
+      }
+    }
+
+    // Flash effect lines expanding from center
+    const flashProgress = Math.min(elapsed / 400, 1);
+    const flashWidth = Math.floor(cols * flashProgress);
+    const flashY = cy - 1;
+    for (let x = cx - Math.floor(flashWidth / 2); x < cx + Math.floor(flashWidth / 2); x++) {
+      if (x >= 0 && x < cols) {
+        r.drawChar(x, flashY, '\u2550', COLORS.BRIGHT_RED, bg); // ═
+      }
+    }
+    for (let x = cx - Math.floor(flashWidth / 2); x < cx + Math.floor(flashWidth / 2); x++) {
+      if (x >= 0 && x < cols) {
+        r.drawChar(x, flashY + 4, '\u2550', COLORS.BRIGHT_RED, bg); // ═
+      }
+    }
+
+    // "ENCOUNTER!" text with typewriter effect
+    if (elapsed > 200) {
+      const encounterText = '\u2605 ENCOUNTER! \u2605';
+      const visibleChars = Math.min(Math.floor((elapsed - 200) / 40), encounterText.length);
+      const shown = encounterText.substring(0, visibleChars);
+      r.drawString(cx - Math.floor(encounterText.length / 2), cy, shown, COLORS.BRIGHT_WHITE, bg);
+    }
+
+    // Enemy name appears after encounter text
+    if (elapsed > 700) {
+      const enemyName = enemy.name;
+      const nameProgress = Math.min((elapsed - 700) / 300, 1);
+      const nameColor = nameProgress < 1 ? COLORS.BRIGHT_RED : (Math.sin(Date.now() / 200) > 0 ? COLORS.BRIGHT_RED : COLORS.BRIGHT_YELLOW);
+      r.drawString(cx - Math.floor(enemyName.length / 2), cy + 2, enemyName, nameColor, bg);
+    }
+
+    // Enemy character art
+    if (elapsed > 900) {
+      const eChar = enemy.char || 'E';
+      const eColor = enemy.color || COLORS.BRIGHT_RED;
+      r.drawChar(cx, cy - 4, eChar, eColor, bg);
+      r.drawString(cx - 1, cy - 3, '/|\\', eColor, bg);
+      r.drawString(cx - 1, cy - 2, '/ \\', eColor, bg);
+    }
+
+    // "Press key to fight..." blinking at bottom
+    if (elapsed > 1000) {
+      if (Math.sin(Date.now() / 300) > 0) {
+        const skipText = 'Press any key...';
+        r.drawString(cx - Math.floor(skipText.length / 2), rows - 3, skipText, COLORS.BRIGHT_BLACK, bg);
+      }
+    }
+  }
+
+  // ─── BATTLE SUMMARY ───
+
+  handleBattleSummaryInput(key) {
+    if (key === 'Enter' || key === ' ' || key === 'Escape') {
+      const returnState = this.battleSummaryState ? this.battleSummaryState.returnState : 'DUNGEON';
+      this.battleSummaryState = null;
+      this.battleReturnState = null;
+      this.startTransition(() => {
+        this.setState(returnState);
+      });
+    }
+  }
+
+  renderBattleSummary() {
+    if (!this.battleSummaryState) return;
+
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.FF_BLUE_DARK;
+    const s = this.battleSummaryState;
+
+    r.clear();
+
+    const cx = Math.floor(cols / 2);
+    const cy = Math.floor(rows / 2);
+
+    // Main box
+    const boxW = Math.min(40, cols - 4);
+    const boxH = Math.min(18, rows - 4);
+    const bx = cx - Math.floor(boxW / 2);
+    const by = cy - Math.floor(boxH / 2);
+
+    r.drawBox(bx, by, boxW, boxH, COLORS.FF_BORDER, bg);
+
+    let y = by + 1;
+
+    // Victory header with glow
+    const victoryText = '\u2605 VICTORY! \u2605';
+    const glowColor = this.glow ? this.glow.getGlowColor('VICTORY', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
+    r.drawString(cx - Math.floor(victoryText.length / 2), y, victoryText, glowColor, bg);
+    y += 2;
+
+    // Enemy defeated
+    const defeatedText = `Defeated ${s.enemyName}`;
+    r.drawString(cx - Math.floor(defeatedText.length / 2), y, defeatedText, COLORS.WHITE, bg);
+    y += 2;
+
+    // Divider line
+    for (let x = bx + 1; x < bx + boxW - 1; x++) {
+      r.drawChar(x, y, '\u2500', COLORS.BRIGHT_BLACK, bg); // ─
+    }
+    y += 1;
+
+    // XP gained
+    const xpText = `EXP gained: +${s.xp}`;
+    r.drawString(bx + 3, y, xpText, COLORS.BRIGHT_CYAN, bg);
+    y += 1;
+
+    // Gold gained
+    if (s.goldGained > 0) {
+      const goldText = `Gold gained: +${s.goldGained}\u00A7`;
+      r.drawString(bx + 3, y, goldText, COLORS.BRIGHT_YELLOW, bg);
+      y += 1;
+    }
+
+    // Items found
+    if (s.loot.length > 0) {
+      y += 1;
+      r.drawString(bx + 3, y, 'Items found:', COLORS.WHITE, bg);
+      y += 1;
+      for (let i = 0; i < Math.min(s.loot.length, boxH - (y - by) - 4); i++) {
+        r.drawString(bx + 5, y, `\u2022 ${s.loot[i].name}`, COLORS.BRIGHT_GREEN, bg);
+        y += 1;
+      }
+    }
+
+    // Level-up notification
+    if (s.levelUps.length > 0) {
+      y += 1;
+      const lvlText = `\u2191 LEVEL UP! Now Lv ${s.levelUps[s.levelUps.length - 1]}!`;
+      const lvlColor = Math.sin(Date.now() / 200) > 0 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_WHITE;
+      r.drawString(cx - Math.floor(lvlText.length / 2), y, lvlText, lvlColor, bg);
+    }
+
+    // "Press Enter to continue" blinking at bottom of box
+    if (Math.sin(Date.now() / 600) > 0) {
+      const contText = 'Press Enter to continue';
+      r.drawString(cx - Math.floor(contText.length / 2), by + boxH - 2, contText, COLORS.BRIGHT_WHITE, bg);
+    }
+  }
+
   // ─── GAME LOOP ───
 
   gameLoop(timestamp) {
@@ -3440,7 +3674,7 @@ class Game {
     this.lastFrame = timestamp;
 
     // Advance real-time clock during gameplay states
-    const gameplayStates = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'DIALOGUE', 'SHOP', 'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'COMBAT', 'QUEST_COMPASS'];
+    const gameplayStates = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'DIALOGUE', 'SHOP', 'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'COMBAT', 'QUEST_COMPASS', 'BATTLE_INTRO', 'BATTLE_SUMMARY'];
     const isGameplay = gameplayStates.includes(this.state);
     if (this.timeSystem) {
       this.timeSystem.setRealTimePaused(!isGameplay);
@@ -3451,6 +3685,15 @@ class Game {
 
     // Update glow system
     this.glow.update(delta / 1000);
+
+    // Auto-advance battle intro after 1.5 seconds
+    if (this.state === 'BATTLE_INTRO' && this.battleIntroState) {
+      const elapsed = Date.now() - this.battleIntroState.startTime;
+      if (elapsed >= 1500) {
+        this.battleIntroState = null;
+        this.setState('COMBAT');
+      }
+    }
 
     // Update transitions
     this.updateTransition();
