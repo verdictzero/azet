@@ -30,28 +30,27 @@ html, body {
   border-radius: 6px;
 }
 
-/* Touch Controls — centered bottom grid */
+/* Touch Controls — locked to lower-left for natural thumb reach */
 #touch-controls {
   position: fixed;
   bottom: 0;
   left: 0;
-  right: 0;
   z-index: 10;
   pointer-events: none;
-  padding: 0 env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 8px) env(safe-area-inset-left, 0);
+  padding: 0 0 calc(env(safe-area-inset-bottom, 8px) + 80px) env(safe-area-inset-left, 12px);
 }
 
 #touch-controls.hidden {
   display: none;
 }
 
-/* 3-wide centered grid for all controls */
+/* 3-wide left-aligned grid for all controls */
 .touch-grid {
   display: grid;
-  grid-template-columns: repeat(3, clamp(52px, 14vw, 68px));
+  grid-template-columns: repeat(3, clamp(44px, 12vw, 56px));
   gap: 4px;
-  justify-content: center;
-  padding: 6px 10px;
+  justify-content: start;
+  padding: 6px 14px;
   pointer-events: auto;
 }
 
@@ -66,7 +65,7 @@ html, body {
   touch-action: manipulation;
   user-select: none;
   transition: background 0.08s, border-color 0.08s, transform 0.06s;
-  min-height: clamp(46px, 11vw, 58px);
+  min-height: clamp(40px, 9.5vw, 48px);
   font-family: 'Noto Sans Mono', monospace;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -81,7 +80,7 @@ html, body {
   background: rgba(0, 170, 0, 0.3);
   border: 1.5px solid rgba(0, 255, 0, 0.45);
   color: rgba(0, 255, 0, 0.8);
-  font-size: clamp(18px, 5vw, 26px);
+  font-size: clamp(16px, 4.5vw, 22px);
 }
 .grid-btn.dpad:active, .grid-btn.dpad.pressed {
   background: rgba(0, 255, 0, 0.45);
@@ -158,12 +157,15 @@ html, body {
 
 /* Landscape: tighten up for wider screens */
 @media (orientation: landscape) and (max-height: 500px) {
+  #touch-controls {
+    padding-bottom: calc(env(safe-area-inset-bottom, 8px) + 40px);
+  }
   .touch-grid {
-    grid-template-columns: repeat(3, 44px);
+    grid-template-columns: repeat(3, 38px);
     gap: 3px;
   }
   .grid-btn {
-    min-height: 40px;
+    min-height: 34px;
   }
 }
 
