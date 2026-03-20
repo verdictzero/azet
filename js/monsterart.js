@@ -21,7 +21,7 @@ const BOSS_ART = {
   ],
   'Reactor Guardian': [
     '    ╔═══╗    ',
-    '  ╔═╣⚡⚡╠═╗  ',
+    '  ╔═╣¤¤╠═╗  ',
     ' ║▓▓║███║▓▓║ ',
     '╔╝▒▒╠═══╣▒▒╚╗',
     '║█▓▒║●●●║▒▓█║',
@@ -36,8 +36,8 @@ const BOSS_ART = {
     '   ▓▓░░█░░▓▓   ',
     '  ▓░░▒▓▓▒░░▓  ',
     ' ░░▒▓████▓▒░░ ',
-    ' ░▒▓██⚡⚡██▓▒░',
-    ' ░▒▓██⚡⚡██▓▒░',
+    ' ░▒▓██¤¤██▓▒░',
+    ' ░▒▓██¤¤██▓▒░',
     ' ░░▒▓████▓▒░░ ',
     '  ▓░░▒▓▓▒░░▓  ',
     '   ▓▓░░█░░▓▓   ',
@@ -82,7 +82,7 @@ const BOSS_ART = {
     '░░▒▒░░░░▒▒░░░░░',
   ],
   'Artifact Guardian': [
-    '    ╔═✦═╗    ',
+    '    ╔═*═╗    ',
     '  ╔═╣◆◆◆╠═╗  ',
     ' ║▓█║●●●║█▓║ ',
     '╔╝▓█╠═══╣█▓╚╗',
@@ -112,7 +112,7 @@ const BOSS_ART = {
     '║▓▓║░▒▓▒║▓▓║',
     '╠══╣●══●╠══╣',
     '║░▒▓████▓▒░║',
-    '║░▒▓█⚡█▓▒░║',
+    '║░▒▓█¤█▓▒░║',
     '╠══╣●══●╠══╣',
     '║▓▓║░▒▓▒║▓▓║',
     '║▓▓╠════╣▓▓║',
@@ -735,14 +735,14 @@ export function getMonsterArt(creature) {
     if (l.length > maxEnd) maxEnd = l.length;
   }
   if (minLead === Infinity) minLead = 0;
-  // Step 3: strip common leading whitespace and recenter
+  // Step 3: strip common leading whitespace and left-align (preserving artist's spatial layout)
   const stripped = trimmed.map(l => l.length > 0 ? l.substring(minLead) : '');
   const contentW = Math.max(...stripped.map(l => l.length));
   // Add 2-char margin on each side for clean framing
   const totalW = contentW + 4;
   const normalized = stripped.map(l => {
-    const pad = Math.floor((contentW - l.length) / 2);
-    return ('  ' + ' '.repeat(pad) + l).padEnd(totalW);
+    // Left-align within bounding box — preserves intended character positions
+    return ('  ' + l).padEnd(totalW);
   });
   return { lines: normalized, color };
 }
