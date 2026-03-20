@@ -640,6 +640,7 @@ class Game {
     this.player.position.x = cx;
     this.player.position.y = cy + 5;
 
+    this.currentDungeonLocation = location;
     this.gameContext.currentLocationName = (location.name || 'Tower') + ` (Floor ${this.currentFloor + 1})`;
     this.setState('DUNGEON');
     this.ui.addMessage(`You enter the spire...`, COLORS.BRIGHT_MAGENTA);
@@ -696,6 +697,7 @@ class Game {
       }
     }
 
+    this.currentDungeonLocation = location;
     this.gameContext.currentLocationName = location.name || 'Ruins';
     this.setState('DUNGEON');
     this.ui.addMessage(`You explore the ancient ruins...`, COLORS.BRIGHT_YELLOW);
@@ -743,6 +745,7 @@ class Game {
       this.player.position.y = entrance.y + Math.floor(entrance.h / 2);
     }
 
+    this.currentDungeonLocation = location;
     this.gameContext.currentLocationName = (location.name || 'Dungeon') + ` (Floor ${this.currentFloor + 1})`;
     this.setState('DUNGEON');
     this.ui.addMessage('You descend into the dark depths...', COLORS.BRIGHT_RED);
@@ -779,7 +782,7 @@ class Game {
       case 'QUEST_LOG': return this.handleQuestLogInput(key);
       case 'MAP': return this.handleGenericClose(key);
       case 'HELP': return this.handleHelpInput(key);
-      case 'FACTION': return this.handleGenericClose(key);
+      case 'FACTION': return this.handleFactionInput(key);
       case 'SETTINGS': return this.handleSettingsInput(key);
       case 'GAME_OVER': return this.handleGameOverInput(key);
       case 'COMBAT': return this.handleCombatInput(key);
@@ -1293,8 +1296,12 @@ class Game {
     }
 
     if (option.action === 'bounty') {
+      const locData = this.currentSettlement?.locationData;
+      const questCtx = { ...this.gameContext,
+        settlementCoords: locData ? { x: locData.x, y: locData.y } : null,
+        nearbyLocations: this.overworld?.getLoadedLocations() || [] };
       const quest = this.questSystem.generateQuest(this.rng, this.activeNPC,
-        this.player.stats.level, this.gameContext);
+        this.player.stats.level, questCtx);
       this.questSystem.acceptQuest(quest.id);
       this.ui.addMessage(`Bounty accepted: ${quest.title}`, COLORS.BRIGHT_YELLOW);
       this.activeNPC = null;
@@ -1309,8 +1316,12 @@ class Game {
     }
 
     if (option.action === 'quest') {
+      const locData = this.currentSettlement?.locationData;
+      const questCtx = { ...this.gameContext,
+        settlementCoords: locData ? { x: locData.x, y: locData.y } : null,
+        nearbyLocations: this.overworld?.getLoadedLocations() || [] };
       const quest = this.questSystem.generateQuest(this.rng, this.activeNPC,
-        this.player.stats.level, this.gameContext);
+        this.player.stats.level, questCtx);
       this.questSystem.acceptQuest(quest.id);
       this.ui.addMessage(`Quest accepted: ${quest.title}`, COLORS.BRIGHT_YELLOW);
       this.ui.dialogueState.text = `Here are the details: ${quest.description}`;
@@ -2000,6 +2011,17 @@ class Game {
     }
   }
 
+  handleFactionInput(key) {
+    if (key === 'Escape') {
+      this.ui.factionScroll = 0;
+      this.setState(this.prevState || 'OVERWORLD');
+    } else if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      this.ui.factionScroll = Math.max(0, (this.ui.factionScroll || 0) - 1);
+    } else if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      this.ui.factionScroll = (this.ui.factionScroll || 0) + 1;
+    }
+  }
+
   // ─── QUEST LOG (with tracking) ───
 
   handleQuestLogInput(key) {
@@ -2079,14 +2101,16 @@ class Game {
   }
 
   _getQuestTargetCoords(quest) {
-    // Try to find the target location in loaded overworld locations
+    // Use stored coordinates if available (new quests)
+    if (quest.targetCoords) return quest.targetCoords;
+
+    // Legacy fallback: text matching for old saves
     if (!this.overworld) return null;
     const locations = this.overworld.getLoadedLocations();
 
     // Check quest objectives for location references
     for (const obj of (quest.objectives || [])) {
       const desc = obj.description || '';
-      // Try to match location name from the quest
       for (const loc of locations) {
         if (desc.includes(loc.name) || (quest.title && quest.title.includes(loc.name)) ||
             (quest.description && quest.description.includes(loc.name))) {
@@ -2101,23 +2125,6 @@ class Game {
       if (fullText.includes(loc.name)) {
         return { x: loc.x, y: loc.y };
       }
-    }
-
-    // Fallback: pick a random nearby location as a hint
-    if (locations.length > 0) {
-      // Pick closest non-current location
-      const playerX = this.player.position.x;
-      const playerY = this.player.position.y;
-      let closest = null;
-      let closestDist = Infinity;
-      for (const loc of locations) {
-        const d = Math.abs(loc.x - playerX) + Math.abs(loc.y - playerY);
-        if (d > 5 && d < closestDist) { // Not the location we're standing on
-          closestDist = d;
-          closest = loc;
-        }
-      }
-      if (closest) return { x: closest.x, y: closest.y };
     }
 
     return null;
@@ -3295,7 +3302,7 @@ class Game {
 
       case 'LOCATION':
         if (this.locationCamera) { this.locationCamera.follow(this.player); this.locationCamera.update(); }
-        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera);
+        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.timeSystem.getSunDirection());
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
         this._renderQuestNavIndicator();
         break;
@@ -3518,7 +3525,15 @@ class Game {
     if (!trackedQuest) return;
     const targetPos = this._getQuestTargetCoords(trackedQuest);
     if (!targetPos) return;
-    const playerPos = { x: this.player.position.x, y: this.player.position.y };
+    // Use world coordinates for player position regardless of state
+    let playerPos;
+    if (this.state === 'LOCATION' && this.currentSettlement?.locationData) {
+      playerPos = { x: this.currentSettlement.locationData.x, y: this.currentSettlement.locationData.y };
+    } else if (this.state === 'DUNGEON' && this.currentDungeonLocation) {
+      playerPos = { x: this.currentDungeonLocation.x, y: this.currentDungeonLocation.y };
+    } else {
+      playerPos = { x: this.player.position.x, y: this.player.position.y };
+    }
     this.ui.drawQuestNavIndicator(trackedQuest.title, playerPos, targetPos, Date.now());
   }
 
@@ -3552,15 +3567,15 @@ class Game {
           const tile = this.overworld.getTile(wx, wy);
           const height = Game.TILE_HEIGHTS[tile.type] || 0;
           if (height > 0) {
-            const len = Math.min(height, Math.round(sunDir.shadowLength * height * 0.4));
-            const shadowAlpha = sunDir.isDay ? 0.25 : 0.12;
+            const len = Math.min(height, Math.round(sunDir.shadowLength * height * 0.6));
+            const shadowAlpha = sunDir.isDay ? 0.35 : 0.20;
             for (let i = 1; i <= len; i++) {
               const shx = sx + sunDir.dx * i;
               const shy = sy + Math.round(sunDir.dy) * i;
               if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
                 const key = `${shx},${shy}`;
                 const existing = shadowCells.get(key) || 0;
-                shadowCells.set(key, Math.min(0.5, existing + shadowAlpha));
+                shadowCells.set(key, Math.min(0.65, existing + shadowAlpha));
               }
             }
           }

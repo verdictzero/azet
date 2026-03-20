@@ -502,8 +502,8 @@ export class QuestSystem {
     let description = rng.random(descTemplates);
     description = this._substitute(description, { npcName, item, monster, location, subject, criminal, destNpc, n });
 
-    // Build objectives
-    const objectives = this._buildObjectives(type, { item, monster, location, subject, criminal, destNpc, n, npcName }, rng);
+    // Build objectives (targetSettlementName resolved below, use location as placeholder)
+    const objectives = this._buildObjectives(type, { item, monster, location, subject, criminal, destNpc, n, npcName }, rng, worldContext);
 
     // Determine rewards
     const baseGold = Math.floor((10 + playerLevel * 5) * diffMultiplier);
@@ -537,6 +537,39 @@ export class QuestSystem {
       `${npcName} will seek another adventurer for the task.`,
     ];
 
+    // Determine actual target location from world data based on quest type
+    let targetCoords = null;
+    let targetSettlementName = location; // fallback to template location name
+    const nearbyLocs = worldContext?.nearbyLocations || [];
+    const currentCoords = worldContext?.settlementCoords;
+    if (nearbyLocs.length > 0 && currentCoords) {
+      const dungeonTypes = new Set(['dungeon', 'ruins', 'tower']);
+      const settlementTypes = new Set(['village', 'town', 'city', 'castle']);
+      let candidates;
+      if (type === 'KILL' || type === 'BOUNTY') {
+        // Prefer dungeons/ruins for combat quests
+        candidates = nearbyLocs.filter(l => dungeonTypes.has(l.type) && (Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5));
+        if (candidates.length === 0) candidates = nearbyLocs.filter(l => Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5);
+      } else if (type === 'ESCORT' || type === 'DELIVER') {
+        // Pick a different settlement
+        candidates = nearbyLocs.filter(l => settlementTypes.has(l.type) && (Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5));
+      } else {
+        // FETCH, INVESTIGATE — any nearby location
+        candidates = nearbyLocs.filter(l => Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5);
+      }
+      if (candidates.length > 0) {
+        // Sort by distance, pick one of the closest
+        candidates.sort((a, b) => {
+          const da = Math.abs(a.x - currentCoords.x) + Math.abs(a.y - currentCoords.y);
+          const db = Math.abs(b.x - currentCoords.x) + Math.abs(b.y - currentCoords.y);
+          return da - db;
+        });
+        const pick = rng.random(candidates.slice(0, Math.min(3, candidates.length)));
+        targetCoords = { x: pick.x, y: pick.y };
+        targetSettlementName = pick.name;
+      }
+    }
+
     const quest = {
       id: `quest_${this._nextId++}`,
       type,
@@ -553,7 +586,8 @@ export class QuestSystem {
       difficulty,
       status: 'available',
       timeLimit,
-      targetLocationName: location,
+      targetLocationName: targetSettlementName,
+      targetCoords,
       consequences: {
         success: rng.random(successConsequences),
         failure: rng.random(failureConsequences),
@@ -577,7 +611,33 @@ export class QuestSystem {
       .replace(/\{N\}/g, String(ctx.n));
   }
 
-  _buildObjectives(type, ctx, rng) {
+  _buildObjectives(type, ctx, rng, worldContext) {
+    // Resolve a real target location name if available
+    const nearbyLocs = worldContext?.nearbyLocations || [];
+    const currentCoords = worldContext?.settlementCoords;
+    let targetName = ctx.location;
+    if (nearbyLocs.length > 0 && currentCoords) {
+      const dungeonTypes = new Set(['dungeon', 'ruins', 'tower']);
+      const settlementTypes = new Set(['village', 'town', 'city', 'castle']);
+      let candidates;
+      if (type === 'KILL' || type === 'BOUNTY') {
+        candidates = nearbyLocs.filter(l => dungeonTypes.has(l.type) && (Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5));
+        if (candidates.length === 0) candidates = nearbyLocs.filter(l => Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5);
+      } else if (type === 'ESCORT' || type === 'DELIVER') {
+        candidates = nearbyLocs.filter(l => settlementTypes.has(l.type) && (Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5));
+      } else {
+        candidates = nearbyLocs.filter(l => Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5);
+      }
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => {
+          const da = Math.abs(a.x - currentCoords.x) + Math.abs(a.y - currentCoords.y);
+          const db = Math.abs(b.x - currentCoords.x) + Math.abs(b.y - currentCoords.y);
+          return da - db;
+        });
+        targetName = rng.random(candidates.slice(0, Math.min(3, candidates.length))).name;
+      }
+    }
+
     switch (type) {
       case 'FETCH':
         return [{
@@ -585,7 +645,7 @@ export class QuestSystem {
           target: ctx.item,
           current: 0,
           required: ctx.n,
-          description: `Collect ${ctx.n} ${ctx.item}`,
+          description: `Collect ${ctx.n} ${ctx.item} near ${targetName}`,
         }];
 
       case 'KILL': {
@@ -596,8 +656,8 @@ export class QuestSystem {
           current: 0,
           required: count,
           description: count === 1
-            ? `Slay the ${ctx.monster}`
-            : `Defeat ${count} ${ctx.monster}`,
+            ? `Slay the ${ctx.monster} near ${targetName}`
+            : `Defeat ${count} ${ctx.monster} near ${targetName}`,
         }];
       }
 
@@ -608,7 +668,7 @@ export class QuestSystem {
             target: ctx.npcName,
             current: 0,
             required: 1,
-            description: `Escort ${ctx.npcName} to ${ctx.location}`,
+            description: `Escort ${ctx.npcName} to ${targetName}`,
           },
           {
             type: 'protect',
@@ -626,7 +686,7 @@ export class QuestSystem {
           target: ctx.subject,
           current: 0,
           required: cluesNeeded,
-          description: `Find ${cluesNeeded} clues about ${ctx.subject}`,
+          description: `Find ${cluesNeeded} clues about ${ctx.subject} near ${targetName}`,
         }];
       }
 
@@ -636,7 +696,7 @@ export class QuestSystem {
           target: ctx.destNpc,
           current: 0,
           required: 1,
-          description: `Deliver ${ctx.item} to ${ctx.destNpc}`,
+          description: `Deliver ${ctx.item} to ${ctx.destNpc} at ${targetName}`,
         }];
 
       case 'BOUNTY':
@@ -646,7 +706,7 @@ export class QuestSystem {
             target: ctx.criminal,
             current: 0,
             required: 1,
-            description: `Track down ${ctx.criminal}`,
+            description: `Track down ${ctx.criminal} near ${targetName}`,
           },
           {
             type: 'kill',
