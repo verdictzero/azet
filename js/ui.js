@@ -545,14 +545,9 @@ export class UIManager {
 
     const titleBlockEnd = compact ? artStartY + 3 : artStartY + title.length;
 
-    const subtitle = '~ Colony Salvage Roguelike ~';
-    const subtitleY = titleBlockEnd + 2;
-    r.drawString(Math.floor((cols - subtitle.length) / 2), subtitleY,
-      subtitle, COLORS.BRIGHT_BLACK, COLORS.BLACK);
-
     if (this.versionString) {
       const vLabel = `[${this.versionString}]`;
-      r.drawString(Math.floor((cols - vLabel.length) / 2), subtitleY + 1,
+      r.drawString(Math.floor((cols - vLabel.length) / 2), rows - 1,
         vLabel, COLORS.BRIGHT_BLACK, COLORS.BLACK);
     }
 
@@ -561,7 +556,7 @@ export class UIManager {
     const menuW = 22;
     const menuH = menuItems.length * 2 + 3;
     const menuX = Math.floor((cols - menuW) / 2);
-    const menuY = subtitleY + 3;
+    const menuY = titleBlockEnd + 3;
 
     r.drawBox(menuX, menuY, menuW, menuH);
 

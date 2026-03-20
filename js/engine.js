@@ -654,33 +654,32 @@ export class Renderer {
   getAnimatedChar(baseChar, tileType) {
     const t = Date.now();
     switch (baseChar) {
-      // Trees: subtle sway every 2-3 seconds
+      // Trees: fast fluid sway
       case '\u2663': // ♣
       case '\u2660': // ♠
       case 'T': {
-        const cycle = Math.floor(t / 2500) % 6;
-        if (cycle === 0) return '\u2663'; // ♣
-        if (cycle === 3) return '\u2660'; // ♠
-        return baseChar;
+        const cycle = Math.floor(t / 800) % 4;
+        const trees = ['\u2663', '\u2663', '\u2660', '\u2660'];
+        return trees[cycle];
       }
-      // Flowers: gentle color doesn't change char, but slight animation
+      // Flowers: lively cycling
       case '\u273F': // ✿
       case '\u2740': // ❀
       case '\u273B': { // ✻
-        const cycle = Math.floor(t / 3000) % 3;
+        const cycle = Math.floor(t / 900) % 3;
         const flowers = ['\u273F', '\u2740', '\u273B'];
         return flowers[(flowers.indexOf(baseChar) + cycle) % 3];
       }
-      // Grass/low vegetation: wind ripple
+      // Grass/low vegetation: quick wind ripple
       case ',':
       case '`': {
-        const cycle = Math.floor(t / 1500) % 4;
+        const cycle = Math.floor(t / 600) % 4;
         const grass = [',', '`', '.', ','];
         return grass[cycle];
       }
       // Water features
       case '~': {
-        const cycle = Math.floor(t / 800) % 3;
+        const cycle = Math.floor(t / 400) % 3;
         const water = ['~', '\u2248', '~']; // ~ ≈ ~
         return water[cycle];
       }
@@ -1196,6 +1195,11 @@ export class InputManager {
         [{ label: 'FCTN', key: 'f', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'SAVE', key: 'p', type: 'action' }],
         [{ label: 'SET', key: 'o', type: 'action' }, { label: 'NAV', key: 'n', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
       ],
+      [
+        [{ label: 'ALM', key: 'l', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'HELP', key: '?', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'DBG', key: '`', type: 'debug' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      ],
     ]},
     LOCATION: { pages: [
       [
@@ -1210,6 +1214,11 @@ export class InputManager {
         [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
         [{ label: 'SET', key: 'o', type: 'action' }, { label: 'NAV', key: 'n', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }],
       ],
+      [
+        [{ label: 'ALM', key: 'l', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'HELP', key: '?', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'DBG', key: '`', type: 'debug' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      ],
     ]},
     DUNGEON: { pages: [
       [
@@ -1223,6 +1232,11 @@ export class InputManager {
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
         [{ label: 'NAV', key: 'n', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'MAP', key: 'm', type: 'action' }],
+      ],
+      [
+        [{ label: 'ALM', key: 'l', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'HELP', key: '?', type: 'action' }],
+        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
+        [{ label: 'DBG', key: '`', type: 'debug' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
       ],
     ]},
     COMBAT: { pages: [
@@ -1310,6 +1324,12 @@ export class InputManager {
     ]]},
     QUEST_COMPASS: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+    ]]},
+    ALMANAC: { pages: [[
+      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
       [null, null, null],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
       [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
