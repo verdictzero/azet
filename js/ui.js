@@ -1,6 +1,59 @@
 import { COLORS, LAYOUT, wordWrap } from './engine.js';
 import { CRYSTAL_WIDTH, CRYSTAL_HEIGHT, CRYSTAL_FRAMES } from './crystal-frames.js';
 
+// ─── Color conversion helpers for hue-shifting effects ───
+function hexToHsl(hex) {
+  const val = parseInt(hex.slice(1), 16);
+  const r = ((val >> 16) & 0xff) / 255;
+  const g = ((val >> 8) & 0xff) / 255;
+  const b = (val & 0xff) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  return { h, s, l };
+}
+
+function hslToHex(h, s, l) {
+  h = ((h % 1) + 1) % 1; // normalize
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  const toHex = v => {
+    const hex = Math.round(v * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return '#' + toHex(r) + toHex(g) + toHex(b);
+}
+
+function shiftHue(hex, amount) {
+  if (!hex || hex === '') return hex;
+  const hsl = hexToHsl(hex);
+  return hslToHex(hsl.h + amount, hsl.s, hsl.l);
+}
+
 // ─── FF-style Unicode Icon Constants ───
 const ICONS = {
   hp: '\u2665',         // ♥
@@ -310,7 +363,11 @@ export class UIManager {
     // ── Layer 0: Animated Voronoi cellular automata background ──
     const numSeeds = 10;
     const bgChars = [' ', '.', '·', ':', '∙', '░', '▒'];
-    const bgColors = ['#1a1a30', '#1e1e38', '#222244', '#1a2238', '#261e3c', '#1e1a34'];
+    // Brighter base colors with inverse hue shift (different rate from crystal)
+    const voronoiHueShift = t * (-13 / 360); // inverse direction, ~28s full cycle
+    const bgColorsBase = ['#2a2a50', '#303058', '#383868', '#2a3858', '#40305c', '#302a54'];
+    const bgColors = bgColorsBase.map(c => shiftHue(c, voronoiHueShift));
+    const bgBg = shiftHue('#0c0c20', voronoiHueShift);
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         let minDist = Infinity;
@@ -330,7 +387,7 @@ export class UIManager {
         const val = pulse * 0.6 + edgePulse * 0.4;
         const ci = Math.min(Math.floor(val * bgChars.length), bgChars.length - 1);
         const fi = Math.min(Math.floor((val * 0.7 + edge * 0.02) * bgColors.length), bgColors.length - 1);
-        r.drawChar(col, row, bgChars[ci], bgColors[fi], '#060610');
+        r.drawChar(col, row, bgChars[ci], bgColors[fi], bgBg);
       }
     }
 
@@ -364,7 +421,8 @@ export class UIManager {
           if (x < 0 || x >= cols) continue;
           const ch = frame.chars[row][col];
           if (ch === ' ') continue;
-          r.drawChar(x, y, ch, frame.colors[row][col], '#020204');
+          const crystalHueShift = t * (20 / 360); // slow rainbow: full cycle ~18s
+          r.drawChar(x, y, ch, shiftHue(frame.colors[row][col], crystalHueShift), '#020204');
         }
       }
     }
