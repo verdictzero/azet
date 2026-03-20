@@ -1038,14 +1038,27 @@ export class UIManager {
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Factions ');
 
-    let y = py + 2;
     const factionIds = ['COLONY_GUARD', 'SALVAGE_GUILD', 'ARCHIVE_KEEPERS', 'COLONY_COUNCIL',
       'SYNDICATE', 'RUST_RAIDERS', 'MALFUNCTIONING', 'MUTANT', 'ALIEN', 'ASSIMILATED'];
 
-    for (const id of factionIds) {
-      if (y >= py + panelH - 4) break;
+    // Filter to valid factions
+    const validFactions = factionIds.filter(id => factionSystem._factions.get(id));
+
+    // Scrolling
+    const contentH = panelH - 6; // space for header, footer
+    const maxVisible = Math.floor(contentH / 2); // each faction takes 2 rows
+    const scroll = this.factionScroll = Math.max(0, Math.min(this.factionScroll || 0, Math.max(0, validFactions.length - maxVisible)));
+    const visibleFactions = validFactions.slice(scroll, scroll + maxVisible);
+
+    let y = py + 2;
+
+    // Scroll-up indicator
+    if (scroll > 0) {
+      r.drawString(px + panelW - 4, py + 1, '\u25B2', COLORS.BRIGHT_WHITE, bg);
+    }
+
+    for (const id of visibleFactions) {
       const faction = factionSystem._factions.get(id);
-      if (!faction) continue;
       const standing = factionSystem.getPlayerStanding(id);
 
       const barW = Math.min(16, panelW - 32);
@@ -1068,8 +1081,13 @@ export class UIManager {
       y += 2;
     }
 
+    // Scroll-down indicator
+    if (scroll + maxVisible < validFactions.length) {
+      r.drawString(px + panelW - 4, py + panelH - 3, '\u25BC', COLORS.BRIGHT_WHITE, bg);
+    }
+
     r.drawString(px + 2, py + panelH - 2, 'Defeat enemies to raise standing.', COLORS.BRIGHT_BLACK, bg, panelW - 4);
-    r.drawString(px + 2, py + panelH - 1, 'Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+    r.drawString(px + 2, py + panelH - 1, 'Esc:Close  \u2191\u2193:Scroll', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
   // ─── QUEST LOG (FF-style Quests menu) ───
@@ -1086,44 +1104,83 @@ export class UIManager {
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Quests ');
 
-    let y = py + 2;
     const active = questSystem.getActiveQuests();
     const completed = questSystem.getCompletedQuests();
 
-    r.drawString(px + 2, y, 'Active', COLORS.BRIGHT_WHITE, bg); y++;
-    r.drawString(px + 1, y, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg); y++;
+    // Build all content lines with metadata
+    const lines = [];
+    lines.push({ type: 'header', text: 'Active' });
+    lines.push({ type: 'separator' });
 
     if (active.length === 0) {
-      r.drawString(px + 4, y, 'No active quests.', COLORS.BRIGHT_BLACK, bg); y++;
+      lines.push({ type: 'text', text: '  No active quests.', color: COLORS.BRIGHT_BLACK });
     }
-    for (let i = 0; i < active.length && y < py + panelH - 8; i++) {
+    for (let i = 0; i < active.length; i++) {
       const q = active[i];
       const sel = i === this.selectedIndex;
       const tracked = q.id === trackedQuestId;
       const cursor = sel ? ICONS.cursor : ' ';
       const trackIcon = tracked ? ' \u25CE' : '';
       const titleColor = tracked ? COLORS.BRIGHT_CYAN : (sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE);
-      r.drawString(px + 2, y, cursor + ' ' + q.title + trackIcon,
-        titleColor, bg, panelW - 4);
-      y++;
+      lines.push({ type: 'quest', text: cursor + ' ' + q.title + trackIcon, color: titleColor, questIdx: i });
       for (const obj of q.objectives) {
         const progress = `${obj.current}/${obj.required}`;
         const objMaxW = panelW - 8;
         const descMax = objMaxW - progress.length - 2;
         const desc = obj.description.length > descMax ? obj.description.substring(0, descMax) : obj.description;
-        r.drawString(px + 6, y, desc + '  ' + progress,
-          COLORS.BRIGHT_BLACK, bg, objMaxW);
-        y++;
+        lines.push({ type: 'objective', text: '    ' + desc + '  ' + progress, color: COLORS.BRIGHT_BLACK });
       }
     }
 
-    y++;
-    r.drawString(px + 2, y, 'Completed', COLORS.BRIGHT_WHITE, bg); y++;
-    r.drawString(px + 1, y, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg); y++;
+    lines.push({ type: 'blank' });
+    lines.push({ type: 'header', text: 'Completed' });
+    lines.push({ type: 'separator' });
 
-    for (let i = 0; i < Math.min(completed.length, 3); i++) {
-      r.drawString(px + 4, y, ICONS.check + ' ' + completed[i].title, COLORS.BRIGHT_GREEN, bg, panelW - 6);
+    for (let i = 0; i < completed.length; i++) {
+      lines.push({ type: 'completed', text: '  ' + ICONS.check + ' ' + completed[i].title, color: COLORS.BRIGHT_GREEN });
+    }
+    if (completed.length === 0) {
+      lines.push({ type: 'text', text: '  None yet.', color: COLORS.BRIGHT_BLACK });
+    }
+
+    // Auto-scroll to keep selected quest visible
+    const contentH = panelH - 4; // 2 top border + 1 footer + 1 bottom border
+    let selectedLineIdx = lines.findIndex(l => l.type === 'quest' && l.questIdx === this.selectedIndex);
+    if (selectedLineIdx < 0) selectedLineIdx = 0;
+
+    if (!this.questLogScroll) this.questLogScroll = 0;
+    if (selectedLineIdx < this.questLogScroll) {
+      this.questLogScroll = selectedLineIdx;
+    } else if (selectedLineIdx >= this.questLogScroll + contentH) {
+      this.questLogScroll = selectedLineIdx - contentH + 1;
+    }
+    this.questLogScroll = Math.max(0, Math.min(this.questLogScroll, Math.max(0, lines.length - contentH)));
+
+    // Render visible lines
+    const visibleLines = lines.slice(this.questLogScroll, this.questLogScroll + contentH);
+    let y = py + 2;
+
+    // Scroll-up indicator
+    if (this.questLogScroll > 0) {
+      r.drawString(px + panelW - 4, py + 1, '\u25B2', COLORS.BRIGHT_WHITE, bg);
+    }
+
+    for (const line of visibleLines) {
+      if (line.type === 'header') {
+        r.drawString(px + 2, y, line.text, COLORS.BRIGHT_WHITE, bg);
+      } else if (line.type === 'separator') {
+        r.drawString(px + 1, y, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+      } else if (line.type === 'blank') {
+        // empty line
+      } else {
+        r.drawString(px + 2, y, line.text, line.color, bg, panelW - 4);
+      }
       y++;
+    }
+
+    // Scroll-down indicator
+    if (this.questLogScroll + contentH < lines.length) {
+      r.drawString(px + panelW - 4, py + panelH - 2, '\u25BC', COLORS.BRIGHT_WHITE, bg);
     }
 
     r.drawString(px + 2, py + panelH - 1, 'Esc:Close  Enter:Track  \u2191\u2193:Select', COLORS.BRIGHT_BLACK, bg);
@@ -1318,7 +1375,7 @@ export class UIManager {
 
   // ─── LOCATION VIEW ───
 
-  drawLocationOverview(settlement, npcs, player, camera) {
+  drawLocationOverview(settlement, npcs, player, camera, sunDir) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -1327,10 +1384,49 @@ export class UIManager {
     const viewW = cols - 2;
     const viewH = rows - LAYOUT.HUD_TOTAL;
 
+    // Tile height lookup for settlement shadow casting
+    const SETTLEMENT_HEIGHTS = {
+      WALL: 3, BUILDING_WALL: 3, FENCE: 1, COLUMN: 2,
+    };
+    // Character-based heights for decorations
+    const CHAR_HEIGHTS = {
+      '\u2663': 2, '\u2660': 2, 'T': 2, // trees: ♣ ♠ T
+      '\u263C': 1, // lamp ☼
+      '\u03A9': 2, // statue Ω
+      '\u25D9': 3, // castle corner ◙
+      '\u2565': 2, // battlement ╥
+    };
+
     // Draw settlement map tiles with camera
     if (settlement.tiles) {
       const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - viewW) / 2));
       const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - viewH) / 2));
+
+      // Collect shadows
+      const shadowCells = new Map();
+      if (sunDir && sunDir.isDay) {
+        for (let sy = 0; sy < viewH; sy++) {
+          for (let sx = 0; sx < viewW; sx++) {
+            const wx = camX + sx;
+            const wy = camY + sy;
+            if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
+            const t = settlement.tiles[wy][wx];
+            const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
+            if (height > 0) {
+              const len = Math.min(height, Math.round(sunDir.shadowLength * height * 0.5));
+              for (let i = 1; i <= len; i++) {
+                const shx = sx + sunDir.dx * i;
+                const shy = sy + Math.round(sunDir.dy) * i;
+                if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
+                  const key = `${Math.floor(shx)},${Math.floor(shy)}`;
+                  const existing = shadowCells.get(key) || 0;
+                  shadowCells.set(key, Math.min(0.6, existing + 0.3));
+                }
+              }
+            }
+          }
+        }
+      }
 
       for (let sy = 0; sy < viewH; sy++) {
         for (let sx = 0; sx < viewW; sx++) {
@@ -1338,9 +1434,17 @@ export class UIManager {
           const wy = camY + sy;
           if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
             const tile = settlement.tiles[wy][wx];
-            r.drawChar(viewLeft + sx, viewTop + sy, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+            const ch = r.getAnimatedChar(tile.char, tile.type);
+            const fg = r.getAnimatedColor(tile.fg, tile.type);
+            r.drawChar(viewLeft + sx, viewTop + sy, ch, fg, tile.bg || COLORS.BLACK);
           }
         }
+      }
+
+      // Apply shadows after rendering tiles
+      for (const [key, alpha] of shadowCells) {
+        const [sx, sy] = key.split(',').map(Number);
+        r.darkenCell(viewLeft + sx, viewTop + sy, alpha);
       }
 
       // Draw NPCs

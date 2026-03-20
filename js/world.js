@@ -1554,9 +1554,9 @@ export class SettlementGenerator {
 
     // Determine building count based on type
     const buildingCounts = {
-      village: { house: 3, tavern: 1, shop: 1 },
-      town: { house: 6, tavern: 1, shop: 2, blacksmith: 1, temple: 1, market_stall: 2 },
-      city: { house: 10, tavern: 2, shop: 3, blacksmith: 2, temple: 1, guild_hall: 1, barracks: 1, market_stall: 4 },
+      village: { house: 3, tavern: 1, shop: 1, garden: 1 },
+      town: { house: 6, tavern: 1, shop: 2, blacksmith: 1, temple: 1, market_stall: 2, watchtower: 1, garden: 1 },
+      city: { house: 10, tavern: 2, shop: 3, blacksmith: 2, temple: 1, guild_hall: 1, barracks: 1, market_stall: 4, watchtower: 2, warehouse: 1, garden: 2 },
     };
 
     const counts = buildingCounts[type] || buildingCounts.village;
@@ -1573,8 +1573,16 @@ export class SettlementGenerator {
 
     // Place buildings around the plaza
     for (const bType of shuffled) {
-      const bw = bType === 'market_stall' ? rng.nextInt(3, 4) : rng.nextInt(5, 8);
-      const bh = bType === 'market_stall' ? rng.nextInt(3, 3) : rng.nextInt(5, 7);
+      const bw = bType === 'market_stall' ? rng.nextInt(3, 4) :
+        bType === 'watchtower' ? rng.nextInt(3, 4) :
+        bType === 'warehouse' ? rng.nextInt(7, 10) :
+        bType === 'garden' ? rng.nextInt(5, 7) :
+        rng.nextInt(5, 8);
+      const bh = bType === 'market_stall' ? rng.nextInt(3, 3) :
+        bType === 'watchtower' ? rng.nextInt(3, 4) :
+        bType === 'warehouse' ? rng.nextInt(5, 7) :
+        bType === 'garden' ? rng.nextInt(5, 7) :
+        rng.nextInt(5, 7);
 
       let bestX = -1, bestY = -1;
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -1602,13 +1610,27 @@ export class SettlementGenerator {
       if (bestX === -1) continue;
 
       const bid = buildings.length;
-      this._carveBuilding(tiles, bestX, bestY, bw, bh, bid);
+      if (bType === 'garden') {
+        // Garden: open fenced area with dense foliage
+        this._carveGarden(rng, tiles, bestX, bestY, bw, bh, bid);
+      } else if (bType === 'watchtower') {
+        // Watchtower: small building with roof and battlement markers
+        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid);
+        this._decorateWatchtower(tiles, bestX, bestY, bw, bh, bid);
+      } else if (bType === 'warehouse') {
+        // Warehouse: large building with crates inside
+        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid);
+        this._decorateWarehouse(rng, tiles, bestX, bestY, bw, bh, bid);
+      } else {
+        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid);
+      }
       placed.push({ x: bestX - 1, y: bestY - 1, w: bw + 2, h: bh + 2 });
 
       const nameMap = {
         tavern: 'Tavern', shop: 'General Store', blacksmith: 'Smithy',
         temple: 'Temple', house: 'Dwelling', guild_hall: 'Guild Hall',
         barracks: 'Guard Post', market_stall: 'Market Stall',
+        watchtower: 'Watchtower', warehouse: 'Warehouse', garden: 'Garden',
       };
 
       buildings.push({
@@ -1622,6 +1644,7 @@ export class SettlementGenerator {
         tavern: 'innkeeper', shop: 'merchant', blacksmith: 'blacksmith',
         temple: 'priest', house: 'villager', guild_hall: 'guildmaster',
         barracks: 'guard', market_stall: 'merchant',
+        watchtower: 'guard', warehouse: 'merchant', garden: 'villager',
       };
       npcSlots.push({
         buildingId: bid,
@@ -1643,26 +1666,53 @@ export class SettlementGenerator {
   }
 
   _carveBuilding(tiles, bx, by, bw, bh, buildingId) {
+    // Vary wall style based on building hash
+    const hash = (typeof buildingId === 'string' ? buildingId.charCodeAt(0) : buildingId) || 0;
+    const useDouble = (hash % 3) === 0; // ~33% of buildings use double-line walls
+    const wallColor = ['#cccccc', '#bbbbaa', '#aabbcc', '#ccbbaa'][hash % 4];
+    const wallBg = ['#333333', '#2a2a33', '#33332a', '#2a332a'][hash % 4];
+
     for (let y = by; y < by + bh; y++) {
       for (let x = bx; x < bx + bw; x++) {
         if (y === by || y === by + bh - 1 || x === bx || x === bx + bw - 1) {
-          // Use box-drawing for building walls
-          let ch = '#';
-          if (y === by && x === bx) ch = '\u250C';           // ┌
-          else if (y === by && x === bx + bw - 1) ch = '\u2510'; // ┐
-          else if (y === by + bh - 1 && x === bx) ch = '\u2514'; // └
-          else if (y === by + bh - 1 && x === bx + bw - 1) ch = '\u2518'; // ┘
-          else if (y === by || y === by + bh - 1) ch = '\u2500'; // ─
-          else ch = '\u2502'; // │
-          tiles[y][x] = tile('WALL', ch, '#cccccc', '#333333', false, { solid: true, buildingId });
+          let ch;
+          if (useDouble) {
+            // Double-line box drawing
+            if (y === by && x === bx) ch = '\u2554';           // ╔
+            else if (y === by && x === bx + bw - 1) ch = '\u2557'; // ╗
+            else if (y === by + bh - 1 && x === bx) ch = '\u255A'; // ╚
+            else if (y === by + bh - 1 && x === bx + bw - 1) ch = '\u255D'; // ╝
+            else if (y === by || y === by + bh - 1) ch = '\u2550'; // ═
+            else ch = '\u2551'; // ║
+          } else {
+            // Single-line box drawing
+            if (y === by && x === bx) ch = '\u250C';           // ┌
+            else if (y === by && x === bx + bw - 1) ch = '\u2510'; // ┐
+            else if (y === by + bh - 1 && x === bx) ch = '\u2514'; // └
+            else if (y === by + bh - 1 && x === bx + bw - 1) ch = '\u2518'; // ┘
+            else if (y === by || y === by + bh - 1) ch = '\u2500'; // ─
+            else ch = '\u2502'; // │
+          }
+          tiles[y][x] = tile('WALL', ch, wallColor, wallBg, false, { solid: true, buildingId });
         } else {
           tiles[y][x] = tile('FLOOR', '.', '#999999', '#222222', true, { solid: false, buildingId });
         }
       }
     }
-    // Door at bottom center
+
+    // Windows every 3 tiles on side walls
+    for (let y = by + 1; y < by + bh - 1; y++) {
+      if ((y - by) % 3 === 0) {
+        tiles[y][bx] = tile('WINDOW', '\u25AF', '#AADDFF', wallBg, false, { solid: true, buildingId }); // ▯
+        tiles[y][bx + bw - 1] = tile('WINDOW', '\u25AF', '#AADDFF', wallBg, false, { solid: true, buildingId });
+      }
+    }
+
+    // Door at bottom center with building-type-varied color
+    const doorColors = ['#aa6622', '#cc4444', '#4466aa', '#44aa44', '#aa44aa'];
+    const doorColor = doorColors[hash % doorColors.length];
     const doorX = bx + Math.floor(bw / 2);
-    tiles[by + bh - 1][doorX] = tile('DOOR', '\u25AF', '#aa6622', '#222222', true, { solid: false, buildingId }); // ▯
+    tiles[by + bh - 1][doorX] = tile('DOOR', '\u25AF', doorColor, '#222222', true, { solid: false, buildingId }); // ▯
   }
 
   _carveRoad(tiles, sx, sy, ex, ey, w, h) {
@@ -1705,8 +1755,87 @@ export class SettlementGenerator {
     }
   }
 
+  _carveGarden(rng, tiles, bx, by, bw, bh, buildingId) {
+    // Fence perimeter
+    for (let y = by; y < by + bh; y++) {
+      for (let x = bx; x < bx + bw; x++) {
+        if (y === by || y === by + bh - 1 || x === bx || x === bx + bw - 1) {
+          tiles[y][x] = tile('FENCE', '\u2502', '#aa6622', '#112211', false, { solid: true, buildingId });
+        } else {
+          // Dense interior foliage
+          const pick = rng.random([
+            tile('FLOWER_BED', '\u273F', '#44AA44', '#112211', true, { buildingId }), // ✿
+            tile('FLOWER_BED', '\u2740', '#FF88AA', '#112211', true, { buildingId }), // ❀
+            tile('FLOWER_BED', '\u2740', '#FFAA44', '#112211', true, { buildingId }), // ❀ orange
+            tile('GARDEN', '\u273B', '#66CC66', '#112211', true, { buildingId }),     // ✻
+            tile('GARDEN', '\u2698', '#88DD88', '#112211', true, { buildingId }),     // ⚘
+            tile('TREE', '\u2663', '#228822', '#112211', false, { buildingId }),      // ♣
+            tile('FLOOR', '.', '#557744', '#112211', true, { buildingId }),           // path
+            tile('FLOOR', '.', '#557744', '#112211', true, { buildingId }),           // path (weighted)
+          ]);
+          tiles[y][x] = pick;
+        }
+      }
+    }
+    // Horizontal fences for top/bottom
+    for (let x = bx; x < bx + bw; x++) {
+      tiles[by][x] = tile('FENCE', '\u2500', '#aa6622', '#112211', false, { solid: true, buildingId });
+      tiles[by + bh - 1][x] = tile('FENCE', '\u2500', '#aa6622', '#112211', false, { solid: true, buildingId });
+    }
+    // Corner posts
+    tiles[by][bx] = tile('FENCE', '\u250C', '#aa6622', '#112211', false, { solid: true, buildingId });
+    tiles[by][bx + bw - 1] = tile('FENCE', '\u2510', '#aa6622', '#112211', false, { solid: true, buildingId });
+    tiles[by + bh - 1][bx] = tile('FENCE', '\u2514', '#aa6622', '#112211', false, { solid: true, buildingId });
+    tiles[by + bh - 1][bx + bw - 1] = tile('FENCE', '\u2518', '#aa6622', '#112211', false, { solid: true, buildingId });
+    // Gate
+    const doorX = bx + Math.floor(bw / 2);
+    tiles[by + bh - 1][doorX] = tile('DOOR', '\u25AF', '#44aa44', '#112211', true, { solid: false, buildingId });
+    // Center bench and fountain
+    const cx = bx + Math.floor(bw / 2);
+    const cy = by + Math.floor(bh / 2);
+    if (tiles[cy][cx]) tiles[cy][cx] = tile('FOUNTAIN', '\u00A4', '#4488FF', '#112211', false, { buildingId });
+    if (tiles[cy + 1] && tiles[cy + 1][cx - 1]) tiles[cy + 1][cx - 1] = tile('BENCH', '\u2564', '#886644', '#112211', false, { buildingId });
+  }
+
+  _decorateWatchtower(tiles, bx, by, bw, bh, buildingId) {
+    // Roof marker (triangle) on top wall
+    const cx = bx + Math.floor(bw / 2);
+    tiles[by][cx] = tile('ROOF', '\u25B2', '#886644', '#333333', false, { solid: true, buildingId }); // ▲
+    // Arrow slits on walls
+    for (let y = by + 1; y < by + bh - 1; y++) {
+      tiles[y][bx] = tile('ARROW_SLIT', '\u25AB', '#AAAAAA', '#333333', false, { solid: true, buildingId }); // ▫
+      tiles[y][bx + bw - 1] = tile('ARROW_SLIT', '\u25AB', '#AAAAAA', '#333333', false, { solid: true, buildingId });
+    }
+  }
+
+  _decorateWarehouse(rng, tiles, bx, by, bw, bh, buildingId) {
+    // Fill interior with crates and barrels
+    for (let y = by + 1; y < by + bh - 1; y++) {
+      for (let x = bx + 1; x < bx + bw - 1; x++) {
+        if (tiles[y][x].type !== 'FLOOR') continue;
+        // Leave a walkable aisle down the center
+        if (x === bx + Math.floor(bw / 2)) continue;
+        if (rng.chance(0.5)) {
+          const pick = rng.random([
+            tile('CRATE', '\u25AA', '#886644', '#222222', false, { buildingId }), // ▪
+            tile('CRATE', '\u2592', '#776633', '#222222', false, { buildingId }), // ▒
+            tile('BARREL', '\u25CB', '#886644', '#222222', false, { buildingId }), // ○
+            tile('CRATE', '\u25A0', '#776644', '#222222', false, { buildingId }), // ■
+          ]);
+          tiles[y][x] = pick;
+        }
+      }
+    }
+    // Roof marking: ≡ on top edge
+    for (let x = bx + 1; x < bx + bw - 1; x++) {
+      if (x % 2 === 0) {
+        tiles[by][x] = tile('ROOF', '\u2261', '#888888', '#333333', false, { solid: true, buildingId }); // ≡
+      }
+    }
+  }
+
   _scatterDecorations(rng, tiles, w, h, biome, placed) {
-    const decorCount = Math.floor(w * h * 0.035);
+    const decorCount = Math.floor(w * h * 0.06);
     for (let i = 0; i < decorCount; i++) {
       const x = rng.nextInt(1, w - 2);
       const y = rng.nextInt(1, h - 2);
@@ -1721,21 +1850,43 @@ export class SettlementGenerator {
       if (inside) continue;
 
       const decor = rng.random([
+        // Trees (weighted more heavily)
         tile('TREE', '\u2663', '#228822', '#112211', false, { buildingId: null }),      // ♣
+        tile('TREE', '\u2663', '#338833', '#112211', false, { buildingId: null }),      // ♣ lighter
         tile('TREE', '\u2660', '#116611', '#112211', false, { buildingId: null }),      // ♠
         tile('TREE', 'T', '#116611', '#112211', false, { buildingId: null }),
+        tile('TREE', '\u2660', '#227722', '#0D1A0D', false, { buildingId: null }),      // ♠ variant
+        // Flowers & bushes
         tile('BUSH', '\u273F', '#44AA44', '#112211', false, { buildingId: null }),      // ✿
         tile('FLOWER_BED', '\u2740', '#FF88AA', '#112211', true, { buildingId: null }), // ❀
+        tile('FLOWER_BED', '\u2740', '#FFAA44', '#112211', true, { buildingId: null }), // ❀ orange
         tile('GARDEN', '\u273B', '#66CC66', '#112211', true, { buildingId: null }),     // ✻
+        tile('GARDEN', '\u2698', '#88DD88', '#112211', true, { buildingId: null }),     // ⚘ potted flower
+        // Infrastructure
         tile('LAMP_POST', '\u263C', '#FFDD44', '#112211', false, { buildingId: null }), // ☼
+        tile('LAMP_POST', '\u00A4', '#FFcc33', '#112211', false, { buildingId: null }), // ¤ hanging lantern
         tile('BENCH', '\u2564', '#886644', '#112211', false, { buildingId: null }),     // ╤
         tile('FENCE', '\u2502', '#aa6622', '#112211', false, { buildingId: null }),     // │
+        tile('FENCE', '\u2500', '#aa6622', '#112211', false, { buildingId: null }),     // ─ horizontal fence
+        // Containers & objects
         tile('CRATE', '\u25AA', '#886644', '#112211', false, { buildingId: null }),     // ▪
+        tile('CRATE', '\u2592', '#776633', '#112211', false, { buildingId: null }),     // ▒ cargo
         tile('WELL', '\u25CE', '#4488ff', '#112211', false, { buildingId: null }),      // ◎
         tile('BARREL', '\u25CB', '#886644', '#112211', false, { buildingId: null }),    // ○
         tile('HAY_BALE', '\u2593', '#CCAA44', '#112211', false, { buildingId: null }),  // ▓
         tile('WAGON', '\u25D8', '#886644', '#112211', false, { buildingId: null }),     // ◘
         tile('STATUE', '\u03A9', '#AAAAAA', '#112211', false, { buildingId: null }),    // Ω
+        // New decorations
+        tile('MARKET_STALL', '\u256A', '#AA7744', '#112211', false, { buildingId: null }), // ╪ market post
+        tile('SIGN_POST', '\u2561', '#886644', '#112211', false, { buildingId: null }),    // ╡ sign
+        tile('CHIMNEY', '\u2261', '#888888', '#112211', false, { buildingId: null }),       // ≡ chimney
+        tile('ARCH', '\u2552', '#AAAAAA', '#112211', false, { buildingId: null }),          // ╒ stone arch
+        tile('AWNING', '\u2550', '#CC6633', '#112211', false, { buildingId: null }),        // ═ awning
+        tile('WINDOW_BOX', '\u2740', '#FF6688', '#556622', true, { buildingId: null }),     // ❀ on green bg
+        tile('RAIN_BARREL', '\u25C9', '#4466AA', '#112211', false, { buildingId: null }),   // ◉ rain barrel
+        tile('WOOD_PILE', '\u2261', '#AA6633', '#112211', false, { buildingId: null }),     // ≡ wood pile
+        tile('TRELLIS', '\u256C', '#44AA44', '#112211', false, { buildingId: null }),       // ╬ vine trellis
+        tile('ROCK', '\u25C6', '#888888', '#112211', false, { buildingId: null }),          // ◆ decorative rock
       ]);
       tiles[y][x] = decor;
     }

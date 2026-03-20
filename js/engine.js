@@ -645,6 +645,50 @@ export class Renderer {
     }
   }
 
+  /**
+   * Return an animated character for foliage/decorative tiles.
+   * @param {string} baseChar - the tile's static character
+   * @param {string} tileType - optional tile type hint
+   * @returns {string} the current animated character
+   */
+  getAnimatedChar(baseChar, tileType) {
+    const t = Date.now();
+    switch (baseChar) {
+      // Trees: subtle sway every 2-3 seconds
+      case '\u2663': // ♣
+      case '\u2660': // ♠
+      case 'T': {
+        const cycle = Math.floor(t / 2500) % 6;
+        if (cycle === 0) return '\u2663'; // ♣
+        if (cycle === 3) return '\u2660'; // ♠
+        return baseChar;
+      }
+      // Flowers: gentle color doesn't change char, but slight animation
+      case '\u273F': // ✿
+      case '\u2740': // ❀
+      case '\u273B': { // ✻
+        const cycle = Math.floor(t / 3000) % 3;
+        const flowers = ['\u273F', '\u2740', '\u273B'];
+        return flowers[(flowers.indexOf(baseChar) + cycle) % 3];
+      }
+      // Grass/low vegetation: wind ripple
+      case ',':
+      case '`': {
+        const cycle = Math.floor(t / 1500) % 4;
+        const grass = [',', '`', '.', ','];
+        return grass[cycle];
+      }
+      // Water features
+      case '~': {
+        const cycle = Math.floor(t / 800) % 3;
+        const water = ['~', '\u2248', '~']; // ~ ≈ ~
+        return water[cycle];
+      }
+      default:
+        return baseChar;
+    }
+  }
+
   // ── CRT Post-processing ────────────────────
 
   /**
@@ -1130,7 +1174,7 @@ export class InputManager {
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [null, null, null],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'SEL', key: 'Enter', type: 'action-primary' }, null, { label: 'ESC', key: 'Escape', type: 'action' }],
+      [{ label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
     ]]},
     CHAR_CREATE: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
@@ -1213,9 +1257,9 @@ export class InputManager {
       [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
     ]]},
     CHARACTER: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [null, null, null],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [null, null, null],
+      [null, null, null],
       [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
     ]]},
     QUEST_LOG: { pages: [[
@@ -1225,22 +1269,22 @@ export class InputManager {
       [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
     ]]},
     MAP: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [null, null, null],
+      [null, null, null],
+      [null, null, null],
       [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
     ]]},
     HELP: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
       [null, null, null],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
       [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
     ]]},
     SETTINGS: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [null, null, null],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'SEL', key: 'Enter', type: 'action-primary' }, null, { label: 'BACK', key: 'Escape', type: 'action' }],
+      [{ label: '1', key: '1', type: 'action' }, { label: '2', key: '2', type: 'action' }, { label: '3', key: '3', type: 'action' }],
+      [{ label: '4', key: '4', type: 'action' }, { label: '5', key: '5', type: 'action' }, { label: '6', key: '6', type: 'action' }],
+      [{ label: '7', key: '7', type: 'action' }, { label: '8', key: '8', type: 'action' }, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
     ]]},
     GAME_OVER: { pages: [[
       [null, null, null],
@@ -1259,6 +1303,12 @@ export class InputManager {
       [{ label: 'HOME', key: 'Home', type: 'action' }, { label: 'END', key: 'End', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
     ]]},
     FACTION: { pages: [[
+      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
+      [null, null, null],
+      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+    ]]},
+    QUEST_COMPASS: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [null, null, null],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
