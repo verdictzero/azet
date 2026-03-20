@@ -190,7 +190,7 @@ export class Renderer {
     for (let r = 0; r < this.rows; r++) {
       const row = [];
       for (let c = 0; c < this.cols; c++) {
-        row.push({ char: ' ', fg: COLORS.WHITE, bg: COLORS.BLACK });
+        row.push({ char: ' ', fg: COLORS.WHITE, bg: COLORS.BLACK, safety: false });
       }
       this.buffer.push(row);
     }
@@ -208,6 +208,7 @@ export class Renderer {
         cell.char = ' ';
         cell.fg = COLORS.WHITE;
         cell.bg = COLORS.BLACK;
+        cell.safety = false;
       }
     }
   }
@@ -262,8 +263,8 @@ export class Renderer {
         // Foreground character
         if (cell.char !== ' ') {
           ctx.fillStyle = cell.fg;
-          // Safety: check if non-ASCII char is wider than cell and skip if so
-          if (cell.char.charCodeAt(0) > 127) {
+          // Safety: check if non-ASCII char is wider than cell (enemy art only)
+          if (cell.safety && cell.char.charCodeAt(0) > 127) {
             const w = this._charWidthCache[cell.char];
             if (w === undefined) {
               this._charWidthCache[cell.char] = ctx.measureText(cell.char).width;
@@ -310,12 +311,13 @@ export class Renderer {
   /**
    * Set a single cell in the buffer.
    */
-  drawChar(col, row, char, fg = COLORS.WHITE, bg = COLORS.BLACK) {
+  drawChar(col, row, char, fg = COLORS.WHITE, bg = COLORS.BLACK, safety = false) {
     if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
     const cell = this.buffer[row][col];
     cell.char = char;
     cell.fg = fg;
     cell.bg = bg;
+    cell.safety = safety;
   }
 
   /**
