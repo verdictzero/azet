@@ -1,4 +1,5 @@
 import { COLORS, LAYOUT, wordWrap } from './engine.js';
+import { CRYSTAL_WIDTH, CRYSTAL_HEIGHT, CRYSTAL_FRAMES } from './crystal-frames.js';
 
 // ─── FF-style Unicode Icon Constants ───
 const ICONS = {
@@ -341,6 +342,25 @@ export class UIManager {
     const artStartY = startY;
     const waveColors = [COLORS.BLUE, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_WHITE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
 
+    // ── Layer 0.5: Animated spinning crystal behind title card ──
+    if (!compact && CRYSTAL_FRAMES.length > 0) {
+      const frameIndex = Math.floor(t / 0.12) % CRYSTAL_FRAMES.length;
+      const frame = CRYSTAL_FRAMES[frameIndex];
+      const cx = Math.floor((cols - CRYSTAL_WIDTH) / 2);
+      const cy = startY + Math.floor(title.length / 2) - Math.floor(CRYSTAL_HEIGHT / 2);
+      for (let row = 0; row < CRYSTAL_HEIGHT; row++) {
+        const y = cy + row;
+        if (y < 0 || y >= rows) continue;
+        for (let col = 0; col < CRYSTAL_WIDTH; col++) {
+          const x = cx + col;
+          if (x < 0 || x >= cols) continue;
+          const ch = frame.chars[row][col];
+          if (ch === ' ') continue;
+          r.drawChar(x, y, ch, frame.colors[row][col], '#020204');
+        }
+      }
+    }
+
     // ── Layer 1: Title block with red pulsating border on black bg ──
     if (!compact) {
       const boxW = titleWidth + 4;
@@ -423,33 +443,14 @@ export class UIManager {
 
     const titleBlockEnd = compact ? artStartY + 3 : artStartY + title.length;
 
-    // Crystal emblem (on black bg to occlude background)
-    const crystal = [
-      '    /\\    ',
-      '   /  \\   ',
-      '  / ** \\  ',
-      '  \\ ** /  ',
-      '   \\  /   ',
-      '    \\/    ',
-    ];
-    const crystalX = Math.floor((cols - 10) / 2);
-    const crystalY = titleBlockEnd + 1;
-    for (let i = 0; i < crystal.length; i++) {
-      for (let j = 0; j < crystal[i].length; j++) {
-        const ch = crystal[i][j];
-        if (ch === ' ') continue;
-        const shimmer = Math.sin(t * 2 + i * 0.5 + j * 0.3) > 0 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_BLUE;
-        r.drawChar(crystalX + j, crystalY + i, ch, ch === '*' ? COLORS.BRIGHT_WHITE : shimmer, COLORS.BLACK);
-      }
-    }
-
     const subtitle = '~ Colony Salvage Roguelike ~';
-    r.drawString(Math.floor((cols - subtitle.length) / 2), crystalY + crystal.length + 1,
+    const subtitleY = titleBlockEnd + 2;
+    r.drawString(Math.floor((cols - subtitle.length) / 2), subtitleY,
       subtitle, COLORS.BRIGHT_BLACK, COLORS.BLACK);
 
     if (this.versionString) {
       const vLabel = `[${this.versionString}]`;
-      r.drawString(Math.floor((cols - vLabel.length) / 2), crystalY + crystal.length + 2,
+      r.drawString(Math.floor((cols - vLabel.length) / 2), subtitleY + 1,
         vLabel, COLORS.BRIGHT_BLACK, COLORS.BLACK);
     }
 
@@ -458,7 +459,7 @@ export class UIManager {
     const menuW = 22;
     const menuH = menuItems.length * 2 + 3;
     const menuX = Math.floor((cols - menuW) / 2);
-    const menuY = crystalY + crystal.length + 3;
+    const menuY = subtitleY + 3;
 
     r.drawBox(menuX, menuY, menuW, menuH);
 
