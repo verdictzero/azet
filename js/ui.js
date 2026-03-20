@@ -674,7 +674,45 @@ export class UIManager {
     }
   }
 
-  // ─── DIALOGUE (FF-style bottom text box) ───
+  // ─── DIALOGUE (FF-style centered text box with animated background) ───
+
+  drawDialogueBackground() {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const now = Date.now();
+
+    // Slow-drifting digital rain / comm-static background
+    const glyphs = '.:;|!¦╎╏┆┇·∙°⁘⁙';
+    const baseBg = '#06060e';
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        // Layered sine waves for gentle movement
+        const drift = Math.sin((x * 0.12) + (now * 0.0004)) * 0.5
+                    + Math.cos((y * 0.18) + (now * 0.0003)) * 0.5;
+        const col = Math.sin((x * 0.08) + (y * 0.15) + (now * 0.0006));
+
+        // Sparse character rain — only ~15% of cells get a glyph
+        const hash = ((x * 2654435761) ^ (y * 2246822519)) >>> 0;
+        const phase = ((hash % 3000) / 3000) + drift * 0.3;
+        const cycle = Math.sin(phase * Math.PI * 2 + now * 0.001);
+
+        if (cycle > 0.65) {
+          const gi = (hash + Math.floor(now * 0.002 + y * 0.5)) % glyphs.length;
+          const brightness = Math.floor(25 + 20 * col);
+          const g = Math.floor(brightness * 0.7);
+          const b = Math.floor(brightness * 1.2);
+          const fg = `rgb(${Math.floor(brightness * 0.4)},${g},${Math.max(b, brightness)})`;
+          r.drawChar(x, y, glyphs[gi], fg, baseBg);
+        } else {
+          // Dark background with subtle variation
+          const v = 6 + Math.floor(4 * Math.sin(x * 0.3 + y * 0.2 + now * 0.0002));
+          r.drawChar(x, y, ' ', baseBg, `rgb(${v},${v},${v + 4})`);
+        }
+      }
+    }
+  }
 
   drawDialogue(dialogueState) {
     const r = this.renderer;
@@ -682,29 +720,36 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
 
-    // FF dialogue: wide bottom panel like FF text boxes
+    // FF dialogue: wide centered panel
     const panelW = Math.min(cols - 4, 64);
     const px = Math.floor((cols - panelW) / 2);
+
+    // Calculate total height to center vertically
+    const textH = 6;
+    const dialogH = textH + 2;
+    const nameH = 3;
+    const options = dialogueState.options;
+    const optH = options.length > 0 ? options.length + 2 : 0;
+    const totalH = nameH + dialogH + optH;
+    const startY = Math.max(1, Math.floor((rows - totalH) / 2));
 
     // Name plate box (small box above the dialogue)
     const nameStr = dialogueState.npcName;
     const nameBoxW = Math.min(nameStr.length + 4, panelW - 8);
     const nameBoxX = px;
-    const nameBoxY = rows - 18;
-    r.drawBox(nameBoxX, nameBoxY, nameBoxW, 3, COLORS.FF_BORDER, bg);
+    const nameBoxY = startY;
+    r.drawBox(nameBoxX, nameBoxY, nameBoxW, nameH, COLORS.FF_BORDER, bg);
     r.drawString(nameBoxX + 2, nameBoxY + 1, nameStr, COLORS.BRIGHT_WHITE, bg, nameBoxW - 4);
 
     // Rep indicator next to name — only if it fits within panel
     const repStr = `${dialogueState.reputation >= 0 ? '+' : ''}${dialogueState.reputation}`;
     const repColor = dialogueState.reputation >= 0 ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED;
     if (nameBoxX + nameBoxW + 1 + repStr.length < px + panelW) {
-      r.drawString(nameBoxX + nameBoxW + 1, nameBoxY + 1, repStr, repColor);
+      r.drawString(nameBoxX + nameBoxW + 1, nameBoxY + 1, repStr, repColor, bg);
     }
 
-    // Main dialogue box at bottom
-    const textH = 6;
-    const dialogH = textH + 2;
-    const dialogY = nameBoxY + 3;
+    // Main dialogue box centered
+    const dialogY = nameBoxY + nameH;
     r.drawBox(px, dialogY, panelW, dialogH, COLORS.FF_BORDER, bg);
 
     // Dialogue text with word wrap
@@ -720,20 +765,22 @@ export class UIManager {
     }
 
     // Options box below dialogue
-    const options = dialogueState.options;
     if (options.length > 0) {
-      const optH = options.length + 2;
+      const optBoxH = options.length + 2;
       const optW = Math.min(panelW, 40);
       const optX = px + panelW - optW;
       const optY = dialogY + dialogH;
-      r.drawBox(optX, optY, optW, optH, COLORS.FF_BORDER, bg);
+
+      // Clamp to screen bounds
+      const clampedOptY = Math.min(optY, rows - optBoxH);
+      r.drawBox(optX, clampedOptY, optW, optBoxH, COLORS.FF_BORDER, bg);
 
       for (let i = 0; i < options.length; i++) {
         const sel = i === this.selectedIndex;
         const cursor = sel ? ICONS.cursor : ' ';
         const text = options[i].text;
         const truncated = text.length > optW - 6 ? text.substring(0, optW - 7) + '\u2026' : text;
-        r.drawString(optX + 2, optY + 1 + i, cursor + ' ' + truncated,
+        r.drawString(optX + 2, clampedOptY + 1 + i, cursor + ' ' + truncated,
           sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
       }
     }
@@ -1236,7 +1283,7 @@ export class UIManager {
         }
       }
 
-      // Draw locations
+      // Draw locations with street grids for cities/towns
       const locations = overworld.getLoadedLocations ? overworld.getLoadedLocations() : [];
       for (const loc of locations) {
         const sx = Math.floor((loc.x - worldMinX) / scaleX) + 2;
@@ -1247,6 +1294,28 @@ export class UIManager {
             loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
               loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
                 loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
+
+          // Draw street grid around cities and towns
+          if (known && (loc.type === 'city' || loc.type === 'town')) {
+            const gridColor = COLORS.BRIGHT_BLACK;
+            const gridSize = loc.type === 'city' ? 2 : 1;
+            for (let gy = -gridSize; gy <= gridSize; gy++) {
+              for (let gx = -gridSize; gx <= gridSize; gx++) {
+                if (gx === 0 && gy === 0) continue; // center is the icon
+                const gsx = sx + gx;
+                const gsy = sy + gy;
+                if (gsx >= 2 && gsx < cols - 2 && gsy >= 2 && gsy < rows - 2) {
+                  // Grid pattern: streets on axis lines, buildings in between
+                  if (gx === 0 || gy === 0) {
+                    r.drawChar(gsx, gsy, gx === 0 ? '║' : '═', gridColor);
+                  } else {
+                    r.drawChar(gsx, gsy, '·', gridColor);
+                  }
+                }
+              }
+            }
+          }
+
           if (known && this.glow) {
             const isDng = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
             const glowCat = isDng ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
@@ -1292,6 +1361,22 @@ export class UIManager {
               loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
                 loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
                   loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
+            // Street grid for cities/towns
+            if (known && (loc.type === 'city' || loc.type === 'town')) {
+              const gridColor = COLORS.BRIGHT_BLACK;
+              const gridSize = loc.type === 'city' ? 2 : 1;
+              for (let gy = -gridSize; gy <= gridSize; gy++) {
+                for (let gx = -gridSize; gx <= gridSize; gx++) {
+                  if (gx === 0 && gy === 0) continue;
+                  const gsx = sx + gx;
+                  const gsy = sy + gy;
+                  if (gsx >= 2 && gsx < cols - 2 && gsy >= 2 && gsy < rows - 2) {
+                    if (gx === 0 || gy === 0) r.drawChar(gsx, gsy, gx === 0 ? '║' : '═', gridColor);
+                    else r.drawChar(gsx, gsy, '·', gridColor);
+                  }
+                }
+              }
+            }
             if (known && this.glow) {
               const isDng = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
               const glowCat = isDng ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';

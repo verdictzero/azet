@@ -35,6 +35,7 @@ export class OverworldGenerator {
     const moistureNoise = new PerlinNoise(rng);
     const anomalyNoise = new PerlinNoise(rng);
     const detailNoise = new PerlinNoise(rng);
+    const temperatureNoise = new PerlinNoise(rng);
 
     // Generate base terrain
     const tiles = makeTileGrid(width, height, (x, y) => {
@@ -44,7 +45,9 @@ export class OverworldGenerator {
       const m = (moistureNoise.fbm(nx * 4 + 100, ny * 4 + 100, 5) + 1) / 2;
       const a = (anomalyNoise.fbm(nx * 2, ny * 2, 4) + 1) / 2;
       const d = (detailNoise.fbm(nx * 8, ny * 8, 3) + 1) / 2;
-      return this._terrainFromNoise(h, m, a, d);
+      // Low-frequency temperature noise for large contiguous biome regions
+      const t = (temperatureNoise.fbm(nx * 1.5 + 200, ny * 1.5 + 200, 3) + 1) / 2;
+      return this._terrainFromNoise(h, m, a, d, t);
     });
 
     // Place locations
@@ -56,7 +59,7 @@ export class OverworldGenerator {
     return { tiles, width, height, locations, roads, getLocation: (x, y) => this._getLocation(locations, x, y) };
   }
 
-  _terrainFromNoise(h, m, a = 0, d = 0.5) {
+  _terrainFromNoise(h, m, a = 0, d = 0.5, t = 0.5) {
     // === ANOMALY BIOMES — checked first; high 'a' threshold keeps them rare ===
 
     // Void Rift: tears in reality (very rare)
@@ -83,6 +86,32 @@ export class OverworldGenerator {
     if (a > 0.6 && h < 0.3) return tile('TOXIC_SUMP', '~', '#44FF00', '#112200', false, { biome: 'toxic_sump' });
     // Hydroponic Jungle: agri-domes gone wild
     if (a > 0.5 && h >= 0.4 && h <= 0.65 && m > 0.75) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { biome: 'hydro_jungle' });
+
+    // === TEMPERATURE GRADIENT BIOMES — large contiguous regions ===
+
+    // ── EXTREME COLD (colony hull breach → vacuum exposure) ──
+    // Void Exposure: near hull breach edge, stars visible through force field
+    if (t < 0.08 && h < 0.45) return tile('VOID_EXPOSURE', '*', '#FFFFFF', '#000008', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
+    // Structural Grid: exposed colony substructure below damaged habitat layer
+    if (t < 0.10 && h >= 0.45) return tile('STRUCTURAL_GRID', '+', '#667788', '#0A0A15', true, { biome: 'structural_grid', temperature: 'extreme_cold' });
+    // Permafrost: deep frozen ground, cryogenics cascade failure
+    if (t < 0.15 && h > 0.3) return tile('PERMAFROST', '#', '#88BBDD', '#0A1A2A', true, { biome: 'permafrost', temperature: 'extreme_cold' });
+    // Tundra: frozen grassland, creeping cold from hull damage
+    if (t < 0.22 && h > 0.3) return tile('TUNDRA', '.', '#AACCDD', '#112233', true, { biome: 'tundra', temperature: 'cold' });
+    // Frost Margin: transition zone, patchy ice
+    if (t < 0.28 && h > 0.35) return tile('FROST_MARGIN', ',', '#99BBCC', '#112228', true, { biome: 'tundra', temperature: 'cold' });
+
+    // ── EXTREME HEAT (reactor meltdown → thermal cascade) ──
+    // Inferno Core: hellish reactor meltdown zone, rivers of molten metal
+    if (t > 0.93 && h > 0.3) return tile('INFERNO_CORE', '#', '#FF2200', '#440000', true, { biome: 'inferno_core', temperature: 'extreme_hot' });
+    // Magma Fields: pools and streams of molten material
+    if (t > 0.88 && h > 0.3) return tile('MAGMA_FIELDS', '~', '#FF4400', '#550000', true, { biome: 'magma_fields', temperature: 'extreme_hot' });
+    // Scorched Waste: super-heated, cracked earth, shimmering air
+    if (t > 0.82 && h > 0.3) return tile('SCORCHED_WASTE', ':', '#FF8844', '#441100', true, { biome: 'scorched_waste', temperature: 'hot' });
+    // Desert: arid heated terrain, dunes of synthetic soil
+    if (t > 0.75 && h >= 0.3 && h <= 0.65) return tile('DESERT', '~', '#DDBB44', '#332200', true, { biome: 'desert', temperature: 'hot' });
+    // Heat Margin: transition zone, dry and warm
+    if (t > 0.72 && h >= 0.3 && h <= 0.6) return tile('HEAT_MARGIN', '.', '#CCAA55', '#2A1A00', true, { biome: 'desert', temperature: 'hot' });
 
     // === EXPANDED NATURAL BIOMES — finer height/moisture subdivisions ===
 
@@ -361,14 +390,14 @@ const NAME_SUFFIXES = {
 };
 
 const LOCATION_DEFS = [
-  { type: 'village', weight: 40, population: [30, 120], difficulty: 1 },
-  { type: 'town', weight: 15, population: [200, 600], difficulty: 2 },
+  { type: 'village', weight: 50, population: [30, 120], difficulty: 1 },
+  { type: 'town', weight: 10, population: [200, 600], difficulty: 2 },
   { type: 'dungeon', weight: 15, population: [0, 0], difficulty: 5 },
   { type: 'temple', weight: 8, population: [10, 50], difficulty: 3 },
   { type: 'ruins', weight: 8, population: [0, 10], difficulty: 4 },
   { type: 'camp', weight: 6, population: [10, 40], difficulty: 2 },
   { type: 'castle', weight: 3, population: [50, 200], difficulty: 4 },
-  { type: 'city', weight: 3, population: [800, 2000], difficulty: 1 },
+  { type: 'city', weight: 2, population: [800, 2000], difficulty: 1 },
   { type: 'tower', weight: 2, population: [5, 20], difficulty: 5 },
 ];
 const TOTAL_WEIGHT = LOCATION_DEFS.reduce((s, d) => s + d.weight, 0);
@@ -381,6 +410,7 @@ export class ChunkManager {
     this.moistureNoise = new PerlinNoise(initRng);
     this.anomalyNoise = new PerlinNoise(initRng);
     this.detailNoise = new PerlinNoise(initRng);
+    this.temperatureNoise = new PerlinNoise(initRng);
     this._terrainGen = new OverworldGenerator(); // reuse _terrainFromNoise
 
     this.chunks = new Map();       // "cx,cy" -> { tiles: [][], locations: [] }
@@ -401,7 +431,9 @@ export class ChunkManager {
     const m = (this.moistureNoise.fbm(wx * TERRAIN_SCALE + 100, wy * TERRAIN_SCALE + 100, 5) + 1) / 2;
     const a = (this.anomalyNoise.fbm(wx * TERRAIN_SCALE * 0.5, wy * TERRAIN_SCALE * 0.5, 4) + 1) / 2;
     const d = (this.detailNoise.fbm(wx * TERRAIN_SCALE * 2, wy * TERRAIN_SCALE * 2, 3) + 1) / 2;
-    return this._terrainGen._terrainFromNoise(h, m, a, d);
+    // Low-frequency temperature noise for large contiguous hot/cold regions
+    const t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.25 + 200, wy * TERRAIN_SCALE * 0.25 + 200, 3) + 1) / 2;
+    return this._terrainGen._terrainFromNoise(h, m, a, d, t);
   }
 
   // ── Megalithic surface structure definitions ──
@@ -819,6 +851,146 @@ export class ChunkManager {
             { x: ox + sx + 5, y: oy + sy + 2, radius: 6, r: 0.9, g: 0.9, b: 1, intensity: 0.7 },
             { x: ox + sx + 5, y: oy + sy + 7, radius: 5, r: 1, g: 0.5, b: 0.1, intensity: 0.7 },
           ];
+        },
+      },
+      // ── Temperature-biome structures ──
+      {
+        type: 'collapsed_habitat_dome', w: 8, h: 6, biomes: ['tundra', 'permafrost', 'desert', 'scorched_waste'],
+        build(tiles, sx, sy) {
+          const bg = '#0A0A10';
+          // Dome outline
+          for (let dx = 2; dx <= 5; dx++) tiles[sy][sx + dx] = tile('DOME_ARC', '\u2500', '#889999', bg, false, { structure: true });
+          tiles[sy + 1][sx + 1] = tile('DOME_ARC', '/', '#889999', bg, false, { structure: true });
+          tiles[sy + 1][sx + 6] = tile('DOME_ARC', '\\', '#889999', bg, false, { structure: true });
+          for (let dy = 2; dy <= 4; dy++) {
+            tiles[sy + dy][sx] = tile('DOME_WALL', '|', '#778888', bg, false, { structure: true });
+            tiles[sy + dy][sx + 7] = tile('DOME_WALL', '|', '#778888', bg, false, { structure: true });
+          }
+          // Dome interior (rubble)
+          for (let dy = 2; dy <= 4; dy++) for (let dx = 1; dx <= 6; dx++) {
+            const r = Math.random();
+            if (r < 0.3) tiles[sy + dy][sx + dx] = tile('DOME_RUBBLE', '.', '#556666', bg, true, { structure: true });
+            else tiles[sy + dy][sx + dx] = tile('DOME_FLOOR', ',', '#445555', bg, true, { structure: true });
+          }
+          // Base
+          for (let dx = 0; dx <= 7; dx++) tiles[sy + 5][sx + dx] = tile('DOME_BASE', '=', '#667777', bg, false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 4, y: oy + sy + 3, radius: 7, r: 0.5, g: 0.7, b: 0.9, intensity: 0.6 }];
+        },
+      },
+      {
+        type: 'frozen_transport', w: 6, h: 3, biomes: ['tundra', 'permafrost', 'frozen_deck'],
+        build(tiles, sx, sy) {
+          const bg = '#0A1520';
+          tiles[sy][sx + 1] = tile('TRANSPORT_CAB', '[', '#6688AA', bg, false, { structure: true });
+          tiles[sy][sx + 2] = tile('TRANSPORT_CAB', '=', '#5577AA', bg, false, { structure: true });
+          tiles[sy][sx + 3] = tile('TRANSPORT_CAB', '=', '#5577AA', bg, false, { structure: true });
+          tiles[sy][sx + 4] = tile('TRANSPORT_CAB', ']', '#6688AA', bg, false, { structure: true });
+          for (let dx = 0; dx <= 5; dx++) tiles[sy + 1][sx + dx] = tile('TRANSPORT_BODY', '#', '#4466AA', bg, false, { structure: true });
+          tiles[sy + 2][sx + 1] = tile('TRANSPORT_WHEEL', 'o', '#334488', bg, false, { structure: true });
+          tiles[sy + 2][sx + 4] = tile('TRANSPORT_WHEEL', 'o', '#334488', bg, false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 3, y: oy + sy + 1, radius: 4, r: 0.3, g: 0.5, b: 1, intensity: 0.4 }];
+        },
+      },
+      {
+        type: 'magma_drill', w: 5, h: 7, biomes: ['magma_fields', 'inferno_core', 'scorched_waste'],
+        build(tiles, sx, sy) {
+          const bg = '#2A0800';
+          // Drill tower
+          for (let dy = 0; dy < 5; dy++) {
+            tiles[sy + dy][sx + 2] = tile('DRILL_SHAFT', '|', '#CC6622', bg, false, { structure: true });
+          }
+          tiles[sy][sx + 2] = tile('DRILL_TOP', '*', '#FF8844', bg, false, { structure: true });
+          // Platform
+          for (let dx = 0; dx <= 4; dx++) tiles[sy + 5][sx + dx] = tile('DRILL_PLATFORM', '=', '#AA5522', bg, false, { structure: true });
+          // Lava pool
+          for (let dx = 1; dx <= 3; dx++) tiles[sy + 6][sx + dx] = tile('DRILL_POOL', '~', '#FF4400', '#330000', false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 2, y: oy + sy + 6, radius: 10, r: 1, g: 0.3, b: 0, intensity: 0.9 }];
+        },
+      },
+      {
+        type: 'exposed_conduit_grid', w: 6, h: 6, biomes: ['structural_grid', 'void_exposure'],
+        build(tiles, sx, sy) {
+          const bg = '#060610';
+          for (let dy = 0; dy < 6; dy++) for (let dx = 0; dx < 6; dx++) {
+            if (dy % 2 === 0 || dx % 2 === 0)
+              tiles[sy + dy][sx + dx] = tile('CONDUIT', '+', '#556677', bg, false, { structure: true });
+            else
+              tiles[sy + dy][sx + dx] = tile('CONDUIT_GAP', '.', '#334455', bg, true, { structure: true });
+          }
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 3, y: oy + sy + 3, radius: 5, r: 0.3, g: 0.4, b: 0.8, intensity: 0.5 }];
+        },
+      },
+      {
+        type: 'observation_deck', w: 7, h: 5, biomes: ['void_exposure'],
+        build(tiles, sx, sy) {
+          const bg = '#000005';
+          // Viewport wall
+          for (let dx = 0; dx <= 6; dx++) {
+            tiles[sy][sx + dx] = tile('OBS_WALL', '=', '#556677', bg, false, { structure: true });
+            tiles[sy + 4][sx + dx] = tile('OBS_WALL', '=', '#556677', bg, false, { structure: true });
+          }
+          for (let dy = 1; dy <= 3; dy++) {
+            tiles[sy + dy][sx] = tile('OBS_WALL', '|', '#556677', bg, false, { structure: true });
+            tiles[sy + dy][sx + 6] = tile('OBS_WALL', '|', '#556677', bg, false, { structure: true });
+          }
+          // Stars visible through viewport
+          for (let dy = 1; dy <= 3; dy++) for (let dx = 1; dx <= 5; dx++) {
+            if (Math.random() < 0.15) tiles[sy + dy][sx + dx] = tile('VIEWPORT_STAR', '*', '#FFFFFF', '#000000', false, { structure: true });
+            else tiles[sy + dy][sx + dx] = tile('VIEWPORT', ' ', '#000000', '#000000', false, { structure: true });
+          }
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 3, y: oy + sy + 2, radius: 4, r: 0.8, g: 0.8, b: 1, intensity: 0.3 }];
+        },
+      },
+      {
+        type: 'ruined_cooling_tower', w: 5, h: 6, biomes: null,
+        build(tiles, sx, sy) {
+          const bg = '#111111';
+          for (let dy = 0; dy < 6; dy++) {
+            tiles[sy + dy][sx] = tile('TOWER_WALL', '|', '#777777', bg, false, { structure: true });
+            tiles[sy + dy][sx + 4] = tile('TOWER_WALL', '|', '#777777', bg, false, { structure: true });
+          }
+          for (let dx = 1; dx <= 3; dx++) {
+            tiles[sy][sx + dx] = tile('TOWER_TOP', '=', '#888888', bg, false, { structure: true });
+            tiles[sy + 5][sx + dx] = tile('TOWER_BASE', '=', '#666666', bg, false, { structure: true });
+          }
+          tiles[sy + 1][sx + 2] = tile('TOWER_VENT', '~', '#AABBCC', bg, false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 2, y: oy + sy + 1, radius: 5, r: 0.6, g: 0.6, b: 0.7, intensity: 0.5 }];
+        },
+      },
+      {
+        type: 'abandoned_checkpoint', w: 7, h: 3, biomes: null,
+        build(tiles, sx, sy) {
+          const bg = '#111108';
+          // Fence/barriers
+          for (let dx = 0; dx <= 6; dx++) {
+            tiles[sy][sx + dx] = tile('CHECKPOINT_FENCE', '-', '#887744', bg, false, { structure: true });
+            tiles[sy + 2][sx + dx] = tile('CHECKPOINT_FENCE', '-', '#887744', bg, false, { structure: true });
+          }
+          // Guard booth
+          tiles[sy + 1][sx] = tile('CHECKPOINT_WALL', '[', '#776633', bg, false, { structure: true });
+          tiles[sy + 1][sx + 1] = tile('CHECKPOINT_BOOTH', '#', '#665522', bg, false, { structure: true });
+          tiles[sy + 1][sx + 2] = tile('CHECKPOINT_WALL', ']', '#776633', bg, false, { structure: true });
+          // Gate opening
+          tiles[sy + 1][sx + 3] = tile('CHECKPOINT_GATE', '.', '#554422', bg, true, { structure: true });
+          tiles[sy + 1][sx + 4] = tile('CHECKPOINT_GATE', '.', '#554422', bg, true, { structure: true });
+          // Barrier
+          tiles[sy + 1][sx + 5] = tile('CHECKPOINT_BARRIER', '|', '#AA6633', bg, false, { structure: true });
+          tiles[sy + 1][sx + 6] = tile('CHECKPOINT_BARRIER', '|', '#AA6633', bg, false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [{ x: ox + sx + 3, y: oy + sy + 1, radius: 5, r: 0.8, g: 0.7, b: 0.3, intensity: 0.5 }];
         },
       },
     ];
@@ -1332,6 +1504,42 @@ export class SettlementGenerator {
         if (r < 0.35) return tile('ASSIMILATED', '.', '#882244', '#110000', true, { buildingId: null });
         return tile('BARREN_WASTE', '.', '#664444', '#110000', true, { buildingId: null });
       },
+      // Temperature gradient biomes — cold
+      tundra: () => {
+        if (r < 0.15) return tile('TUNDRA', '#', '#88BBDD', '#0A1A2A', false, { buildingId: null });
+        if (r < 0.25) return tile('TUNDRA', '*', '#77AACC', '#112233', false, { buildingId: null });
+        return tile('TUNDRA', '.', '#AACCDD', '#112233', true, { buildingId: null });
+      },
+      permafrost: () => {
+        if (r < 0.20) return tile('PERMAFROST', '#', '#77AACC', '#081018', false, { buildingId: null });
+        return tile('PERMAFROST', '.', '#88BBDD', '#0A1A2A', true, { buildingId: null });
+      },
+      void_exposure: () => {
+        if (r < 0.10) return tile('VOID_EXPOSURE', '*', '#FFFFFF', '#000008', true, { buildingId: null });
+        return tile('STRUCTURAL_GRID', '+', '#556677', '#060610', true, { buildingId: null });
+      },
+      structural_grid: () => {
+        if (r < 0.25) return tile('STRUCTURAL_GRID', '+', '#667788', '#0A0A15', true, { buildingId: null });
+        return tile('STRUCTURAL_GRID', '.', '#556677', '#060610', true, { buildingId: null });
+      },
+      // Temperature gradient biomes — hot
+      desert: () => {
+        if (r < 0.10) return tile('DESERT', '~', '#CCAA33', '#332200', true, { buildingId: null });
+        if (r < 0.20) return tile('BARREN_WASTE', '.', '#AA8844', '#2A1A00', true, { buildingId: null });
+        return tile('DESERT', '.', '#DDBB44', '#332200', true, { buildingId: null });
+      },
+      scorched_waste: () => {
+        if (r < 0.15) return tile('SCORCHED_WASTE', ':', '#DD7733', '#441100', true, { buildingId: null });
+        return tile('SCORCHED_WASTE', '.', '#FF8844', '#441100', true, { buildingId: null });
+      },
+      magma_fields: () => {
+        if (r < 0.20) return tile('MAGMA_FIELDS', '~', '#FF4400', '#550000', false, { buildingId: null });
+        return tile('SCORCHED_WASTE', '.', '#CC5522', '#330800', true, { buildingId: null });
+      },
+      inferno_core: () => {
+        if (r < 0.25) return tile('INFERNO_CORE', '~', '#FF2200', '#440000', false, { buildingId: null });
+        return tile('MAGMA_FIELDS', '.', '#DD3300', '#330000', true, { buildingId: null });
+      },
     };
 
     const gen = biomeTerrains[biome] || biomeTerrains.grassland;
@@ -1508,6 +1716,9 @@ export class SettlementGenerator {
   }
 
   _generateSettlement(rng, tiles, w, h, type, population, buildings, npcSlots, biome) {
+    // Get biome-specific building theme
+    const biomeTheme = this._getBiomeTheme(biome);
+
     // Central plaza
     const plazaW = type === 'city' ? 8 : type === 'town' ? 6 : 4;
     const plazaH = type === 'city' ? 6 : type === 'town' ? 5 : 3;
@@ -1615,14 +1826,14 @@ export class SettlementGenerator {
         this._carveGarden(rng, tiles, bestX, bestY, bw, bh, bid);
       } else if (bType === 'watchtower') {
         // Watchtower: small building with roof and battlement markers
-        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid);
+        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid, biomeTheme);
         this._decorateWatchtower(tiles, bestX, bestY, bw, bh, bid);
       } else if (bType === 'warehouse') {
         // Warehouse: large building with crates inside
-        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid);
+        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid, biomeTheme);
         this._decorateWarehouse(rng, tiles, bestX, bestY, bw, bh, bid);
       } else {
-        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid);
+        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid, biomeTheme);
       }
       placed.push({ x: bestX - 1, y: bestY - 1, w: bw + 2, h: bh + 2 });
 
@@ -1665,12 +1876,40 @@ export class SettlementGenerator {
     this._scatterDecorations(rng, tiles, w, h, biome, placed);
   }
 
-  _carveBuilding(tiles, bx, by, bw, bh, buildingId) {
+  _getBiomeTheme(biome) {
+    const themes = {
+      // Cold biomes
+      tundra:          { wallFg: '#88BBDD', wallBg: '#112233', floorFg: '#6699BB', floorBg: '#0A1A2A', windowFg: '#AADDFF', doorFg: '#4488AA' },
+      permafrost:      { wallFg: '#77AACC', wallBg: '#0A1520', floorFg: '#5588AA', floorBg: '#081018', windowFg: '#88CCEE', doorFg: '#3377AA' },
+      frozen_deck:     { wallFg: '#88BBDD', wallBg: '#112233', floorFg: '#6699BB', floorBg: '#0A1A2A', windowFg: '#AADDFF', doorFg: '#4488AA' },
+      void_exposure:   { wallFg: '#8899AA', wallBg: '#060610', floorFg: '#667788', floorBg: '#040408', windowFg: '#AABBCC', doorFg: '#556688' },
+      structural_grid: { wallFg: '#778899', wallBg: '#0A0A15', floorFg: '#556677', floorBg: '#060610', windowFg: '#99AABB', doorFg: '#667788' },
+      // Hot biomes
+      desert:          { wallFg: '#CCAA66', wallBg: '#332200', floorFg: '#AA8844', floorBg: '#2A1A00', windowFg: '#DDBB88', doorFg: '#BB8833' },
+      scorched_waste:  { wallFg: '#DD8844', wallBg: '#441100', floorFg: '#CC6633', floorBg: '#330800', windowFg: '#FF9955', doorFg: '#CC6622' },
+      magma_fields:    { wallFg: '#DD5522', wallBg: '#330800', floorFg: '#CC4411', floorBg: '#220500', windowFg: '#FF6633', doorFg: '#DD4411' },
+      inferno_core:    { wallFg: '#DD3311', wallBg: '#330500', floorFg: '#CC2200', floorBg: '#220000', windowFg: '#FF4422', doorFg: '#DD2200' },
+      reactor_slag:    { wallFg: '#CC5522', wallBg: '#331100', floorFg: '#AA4411', floorBg: '#220800', windowFg: '#FF7733', doorFg: '#CC5511' },
+      // Organic biomes
+      fungal_net:      { wallFg: '#AA66DD', wallBg: '#1A0022', floorFg: '#8844BB', floorBg: '#120018', windowFg: '#CC88FF', doorFg: '#9955CC' },
+      hydro_jungle:    { wallFg: '#44AA66', wallBg: '#002211', floorFg: '#338855', floorBg: '#001A0A', windowFg: '#66CC88', doorFg: '#338844' },
+      toxic_sump:      { wallFg: '#88AA44', wallBg: '#112200', floorFg: '#668833', floorBg: '#0A1800', windowFg: '#AACC55', doorFg: '#88AA33' },
+      // Anomaly biomes
+      hull_breach:     { wallFg: '#8899AA', wallBg: '#111122', floorFg: '#667788', floorBg: '#0A0A18', windowFg: '#99AABB', doorFg: '#778899' },
+      crystal_zone:    { wallFg: '#44DDEE', wallBg: '#002222', floorFg: '#33BBCC', floorBg: '#001818', windowFg: '#66EEFF', doorFg: '#44CCDD' },
+      alien_crash:     { wallFg: '#CC44DD', wallBg: '#220022', floorFg: '#AA33BB', floorBg: '#180018', windowFg: '#EE66FF', doorFg: '#BB33CC' },
+    };
+    return themes[biome] || null;
+  }
+
+  _carveBuilding(tiles, bx, by, bw, bh, buildingId, biomeTheme) {
     // Vary wall style based on building hash
     const hash = (typeof buildingId === 'string' ? buildingId.charCodeAt(0) : buildingId) || 0;
     const useDouble = (hash % 3) === 0; // ~33% of buildings use double-line walls
-    const wallColor = ['#cccccc', '#bbbbaa', '#aabbcc', '#ccbbaa'][hash % 4];
-    const wallBg = ['#333333', '#2a2a33', '#33332a', '#2a332a'][hash % 4];
+    const wallColor = biomeTheme ? biomeTheme.wallFg : ['#cccccc', '#bbbbaa', '#aabbcc', '#ccbbaa'][hash % 4];
+    const wallBg = biomeTheme ? biomeTheme.wallBg : ['#333333', '#2a2a33', '#33332a', '#2a332a'][hash % 4];
+    const floorFg = biomeTheme ? biomeTheme.floorFg : '#999999';
+    const floorBg = biomeTheme ? biomeTheme.floorBg : '#222222';
 
     for (let y = by; y < by + bh; y++) {
       for (let x = bx; x < bx + bw; x++) {
@@ -1695,24 +1934,24 @@ export class SettlementGenerator {
           }
           tiles[y][x] = tile('WALL', ch, wallColor, wallBg, false, { solid: true, buildingId });
         } else {
-          tiles[y][x] = tile('FLOOR', '.', '#999999', '#222222', true, { solid: false, buildingId });
+          tiles[y][x] = tile('FLOOR', '.', floorFg, floorBg, true, { solid: false, buildingId });
         }
       }
     }
 
     // Windows every 3 tiles on side walls
+    const windowFg = biomeTheme ? biomeTheme.windowFg : '#AADDFF';
     for (let y = by + 1; y < by + bh - 1; y++) {
       if ((y - by) % 3 === 0) {
-        tiles[y][bx] = tile('WINDOW', '\u25AF', '#AADDFF', wallBg, false, { solid: true, buildingId }); // ▯
-        tiles[y][bx + bw - 1] = tile('WINDOW', '\u25AF', '#AADDFF', wallBg, false, { solid: true, buildingId });
+        tiles[y][bx] = tile('WINDOW', '\u25AF', windowFg, wallBg, false, { solid: true, buildingId }); // ▯
+        tiles[y][bx + bw - 1] = tile('WINDOW', '\u25AF', windowFg, wallBg, false, { solid: true, buildingId });
       }
     }
 
-    // Door at bottom center with building-type-varied color
-    const doorColors = ['#aa6622', '#cc4444', '#4466aa', '#44aa44', '#aa44aa'];
-    const doorColor = doorColors[hash % doorColors.length];
+    // Door at bottom center with biome-varied color
+    const doorFg = biomeTheme ? biomeTheme.doorFg : ['#aa6622', '#cc4444', '#4466aa', '#44aa44', '#aa44aa'][hash % 5];
     const doorX = bx + Math.floor(bw / 2);
-    tiles[by + bh - 1][doorX] = tile('DOOR', '\u25AF', doorColor, '#222222', true, { solid: false, buildingId }); // ▯
+    tiles[by + bh - 1][doorX] = tile('DOOR', '\u25AF', doorFg, floorBg, true, { solid: false, buildingId }); // ▯
   }
 
   _carveRoad(tiles, sx, sy, ex, ey, w, h) {
