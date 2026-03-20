@@ -41,12 +41,12 @@ export class OverworldGenerator {
     const tiles = makeTileGrid(width, height, (x, y) => {
       const nx = x / width;
       const ny = y / height;
-      const h = (heightNoise.fbm(nx * 4, ny * 4, 6) + 1) / 2;
-      const m = (moistureNoise.fbm(nx * 4 + 100, ny * 4 + 100, 5) + 1) / 2;
-      const a = (anomalyNoise.fbm(nx * 2, ny * 2, 4) + 1) / 2;
-      const d = (detailNoise.fbm(nx * 8, ny * 8, 3) + 1) / 2;
-      // Low-frequency temperature noise for large contiguous biome regions
-      const t = (temperatureNoise.fbm(nx * 1.5 + 200, ny * 1.5 + 200, 3) + 1) / 2;
+      const h = (heightNoise.fbm(nx * 2, ny * 2, 6) + 1) / 2;
+      const m = (moistureNoise.fbm(nx * 2 + 100, ny * 2 + 100, 5) + 1) / 2;
+      const a = (anomalyNoise.fbm(nx * 1, ny * 1, 4) + 1) / 2;
+      const d = (detailNoise.fbm(nx * 4, ny * 4, 3) + 1) / 2;
+      // Very low-frequency temperature noise for massive contiguous biome regions
+      const t = (temperatureNoise.fbm(nx * 0.5 + 200, ny * 0.5 + 200, 3) + 1) / 2;
       return this._terrainFromNoise(h, m, a, d, t);
     });
 
@@ -87,31 +87,46 @@ export class OverworldGenerator {
     // Hydroponic Jungle: agri-domes gone wild
     if (a > 0.5 && h >= 0.4 && h <= 0.65 && m > 0.75) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { biome: 'hydro_jungle' });
 
-    // === TEMPERATURE GRADIENT BIOMES — large contiguous regions ===
+    // === TEMPERATURE GRADIENT BIOMES — massive contiguous regions ===
 
     // ── EXTREME COLD (colony hull breach → vacuum exposure) ──
-    // Void Exposure: near hull breach edge, stars visible through force field
-    if (t < 0.08 && h < 0.45) return tile('VOID_EXPOSURE', '*', '#FFFFFF', '#000008', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
+    // Void Exposure: near hull breach edge, stars visible through cracks, force field shimmering
+    if (t < 0.05 && h < 0.45) {
+      // Dynamic visual: cracks show space, force field shimmers between them
+      if (d > 0.7) return tile('VOID_EXPOSURE', '*', '#FFFFFF', '#000004', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
+      if (d > 0.5) return tile('VOID_EXPOSURE', '~', '#6644CC', '#000008', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
+      return tile('VOID_EXPOSURE', '.', '#334466', '#000008', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
+    }
     // Structural Grid: exposed colony substructure below damaged habitat layer
-    if (t < 0.10 && h >= 0.45) return tile('STRUCTURAL_GRID', '+', '#667788', '#0A0A15', true, { biome: 'structural_grid', temperature: 'extreme_cold' });
+    if (t < 0.08 && h >= 0.45) return tile('STRUCTURAL_GRID', '+', '#667788', '#0A0A15', true, { biome: 'structural_grid', temperature: 'extreme_cold' });
     // Permafrost: deep frozen ground, cryogenics cascade failure
-    if (t < 0.15 && h > 0.3) return tile('PERMAFROST', '#', '#88BBDD', '#0A1A2A', true, { biome: 'permafrost', temperature: 'extreme_cold' });
+    if (t < 0.14 && h > 0.3) return tile('PERMAFROST', '#', '#88BBDD', '#0A1A2A', true, { biome: 'permafrost', temperature: 'extreme_cold' });
+    // Frozen Waste: blizzard wasteland, ice sheets and howling wind
+    if (t < 0.20 && h > 0.3) return tile('FROZEN_WASTE', ':', '#99CCEE', '#0E1E2E', true, { biome: 'frozen_waste', temperature: 'cold' });
     // Tundra: frozen grassland, creeping cold from hull damage
-    if (t < 0.22 && h > 0.3) return tile('TUNDRA', '.', '#AACCDD', '#112233', true, { biome: 'tundra', temperature: 'cold' });
-    // Frost Margin: transition zone, patchy ice
-    if (t < 0.28 && h > 0.35) return tile('FROST_MARGIN', ',', '#99BBCC', '#112228', true, { biome: 'tundra', temperature: 'cold' });
+    if (t < 0.24 && h > 0.3) return tile('TUNDRA', '.', '#AACCDD', '#112233', true, { biome: 'tundra', temperature: 'cold' });
+    // Taiga: dense evergreen cold forest, snow-dusted conifers
+    if (t < 0.28 && h > 0.35) return tile('TAIGA', '\u2660', '#447766', '#0A1A15', true, { biome: 'taiga', temperature: 'cold' });
+    // Boreal Forest: cold coniferous forest, birch and spruce
+    if (t < 0.32 && h > 0.35) return tile('BOREAL_FOREST', '\u2663', '#558855', '#0A1A0A', true, { biome: 'boreal_forest', temperature: 'cold' });
+    // Frost Margin: transition zone, patchy ice on temperate ground
+    if (t < 0.35 && h > 0.35) return tile('FROST_MARGIN', ',', '#99BBCC', '#112228', true, { biome: 'boreal_forest', temperature: 'cold' });
 
     // ── EXTREME HEAT (reactor meltdown → thermal cascade) ──
     // Inferno Core: hellish reactor meltdown zone, rivers of molten metal
-    if (t > 0.93 && h > 0.3) return tile('INFERNO_CORE', '#', '#FF2200', '#440000', true, { biome: 'inferno_core', temperature: 'extreme_hot' });
-    // Magma Fields: pools and streams of molten material
-    if (t > 0.88 && h > 0.3) return tile('MAGMA_FIELDS', '~', '#FF4400', '#550000', true, { biome: 'magma_fields', temperature: 'extreme_hot' });
+    if (t > 0.95 && h > 0.3) return tile('INFERNO_CORE', '#', '#FF2200', '#440000', true, { biome: 'inferno_core', temperature: 'extreme_hot' });
+    // Magma Fields: molten hull plating, pools and streams of metal
+    if (t > 0.90 && h > 0.3) return tile('MAGMA_FIELDS', '~', '#FF4400', '#550000', true, { biome: 'magma_fields', temperature: 'extreme_hot' });
     // Scorched Waste: super-heated, cracked earth, shimmering air
-    if (t > 0.82 && h > 0.3) return tile('SCORCHED_WASTE', ':', '#FF8844', '#441100', true, { biome: 'scorched_waste', temperature: 'hot' });
+    if (t > 0.85 && h > 0.3) return tile('SCORCHED_WASTE', ':', '#FF8844', '#441100', true, { biome: 'scorched_waste', temperature: 'hot' });
     // Desert: arid heated terrain, dunes of synthetic soil
-    if (t > 0.75 && h >= 0.3 && h <= 0.65) return tile('DESERT', '~', '#DDBB44', '#332200', true, { biome: 'desert', temperature: 'hot' });
+    if (t > 0.80 && h >= 0.3 && h <= 0.65) return tile('DESERT', '~', '#DDBB44', '#332200', true, { biome: 'desert', temperature: 'hot' });
+    // Savannah: dry grassland with scattered drought-resistant trees
+    if (t > 0.74 && h >= 0.3 && h <= 0.65) return tile('SAVANNAH', ';', '#BBAA44', '#2A2200', true, { biome: 'savannah', temperature: 'warm' });
+    // Dry Woodland: thinning forest, warm and dry, sparse canopy
+    if (t > 0.68 && h >= 0.35 && h <= 0.65) return tile('DRY_WOODLAND', '\u03C4', '#888833', '#1A1A0A', true, { biome: 'dry_woodland', temperature: 'warm' });
     // Heat Margin: transition zone, dry and warm
-    if (t > 0.72 && h >= 0.3 && h <= 0.6) return tile('HEAT_MARGIN', '.', '#CCAA55', '#2A1A00', true, { biome: 'desert', temperature: 'hot' });
+    if (t > 0.65 && h >= 0.3 && h <= 0.6) return tile('HEAT_MARGIN', '.', '#CCAA55', '#2A1A00', true, { biome: 'dry_woodland', temperature: 'warm' });
 
     // === EXPANDED NATURAL BIOMES — finer height/moisture subdivisions ===
 
@@ -369,7 +384,7 @@ export class OverworldGenerator {
 // ============================================================================
 
 const CHUNK_SIZE = 32;
-const TERRAIN_SCALE = 0.04;
+const TERRAIN_SCALE = 0.02;
 
 // Procedural name generator using syllable combination
 const NAME_PREFIXES = [
@@ -431,8 +446,8 @@ export class ChunkManager {
     const m = (this.moistureNoise.fbm(wx * TERRAIN_SCALE + 100, wy * TERRAIN_SCALE + 100, 5) + 1) / 2;
     const a = (this.anomalyNoise.fbm(wx * TERRAIN_SCALE * 0.5, wy * TERRAIN_SCALE * 0.5, 4) + 1) / 2;
     const d = (this.detailNoise.fbm(wx * TERRAIN_SCALE * 2, wy * TERRAIN_SCALE * 2, 3) + 1) / 2;
-    // Low-frequency temperature noise for large contiguous hot/cold regions
-    const t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.25 + 200, wy * TERRAIN_SCALE * 0.25 + 200, 3) + 1) / 2;
+    // Very low-frequency temperature noise for massive contiguous hot/cold regions
+    const t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.1 + 200, wy * TERRAIN_SCALE * 0.1 + 200, 3) + 1) / 2;
     return this._terrainGen._terrainFromNoise(h, m, a, d, t);
   }
 

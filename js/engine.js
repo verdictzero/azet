@@ -95,6 +95,9 @@ export class Renderer {
     this.buffer = [];      // current frame being built
     this.prevBuffer = [];  // last rendered frame
 
+    // Cache measured widths for non-ASCII characters to detect overly wide glyphs
+    this._charWidthCache = {};
+
     this.effectsEnabled = false; // visual FX disabled for now (toggle with settings)
     this.zoomLevel = 1;       // legacy compat
     this.densityLevel = 1;    // density zoom: 1, 2, or 3
@@ -259,6 +262,17 @@ export class Renderer {
         // Foreground character
         if (cell.char !== ' ') {
           ctx.fillStyle = cell.fg;
+          // Safety: check if non-ASCII char is wider than cell and skip if so
+          if (cell.char.charCodeAt(0) > 127) {
+            const w = this._charWidthCache[cell.char];
+            if (w === undefined) {
+              this._charWidthCache[cell.char] = ctx.measureText(cell.char).width;
+            }
+            if ((this._charWidthCache[cell.char] || 0) > cw * 1.3) {
+              ctx.fillText('?', x, y); // replace overly wide chars
+              continue;
+            }
+          }
           ctx.fillText(cell.char, x, y);
         }
       }
@@ -1190,6 +1204,7 @@ export class InputManager {
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'REST', key: 'r', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'TALK', key: 't', type: 'action' }],
         [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'CHR', key: 'c', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
+        [{ label: 'ZM+', key: '+', type: 'action' }, null, { label: 'ZM-', key: '-', type: 'action' }],
       ],
       [
         [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],

@@ -1243,6 +1243,7 @@ export class UIManager {
     const mapW = cols - 4;
     const mapH = rows - 4;
     const CHUNK_SIZE = 32;
+    const zoom = r.densityLevel || 1;
 
     // Chunk-based overworld: compute bounding box from explored chunks
     if (overworld.exploredChunks && overworld.exploredChunks.size > 0) {
@@ -1256,10 +1257,24 @@ export class UIManager {
       }
 
       // World-coordinate bounding box (with 1-chunk padding)
-      const worldMinX = (minCx - 1) * CHUNK_SIZE;
-      const worldMaxX = (maxCx + 2) * CHUNK_SIZE;
-      const worldMinY = (minCy - 1) * CHUNK_SIZE;
-      const worldMaxY = (maxCy + 2) * CHUNK_SIZE;
+      let worldMinX = (minCx - 1) * CHUNK_SIZE;
+      let worldMaxX = (maxCx + 2) * CHUNK_SIZE;
+      let worldMinY = (minCy - 1) * CHUNK_SIZE;
+      let worldMaxY = (maxCy + 2) * CHUNK_SIZE;
+
+      // When zoomed in, center on player and show a smaller area
+      if (zoom > 1 && player && player.position) {
+        const fullW = worldMaxX - worldMinX;
+        const fullH = worldMaxY - worldMinY;
+        const viewW = fullW / zoom;
+        const viewH = fullH / zoom;
+        const cx = player.position.x;
+        const cy = player.position.y;
+        worldMinX = Math.max(worldMinX, Math.floor(cx - viewW / 2));
+        worldMaxX = Math.min(worldMaxX, Math.ceil(cx + viewW / 2));
+        worldMinY = Math.max(worldMinY, Math.floor(cy - viewH / 2));
+        worldMaxY = Math.min(worldMaxY, Math.ceil(cy + viewH / 2));
+      }
 
       const worldW = worldMaxX - worldMinX;
       const worldH = worldMaxY - worldMinY;
@@ -1399,7 +1414,7 @@ export class UIManager {
       }
     }
 
-    r.drawString(2, rows - 1, 'Esc:Close  -/=:Zoom  O:Outpost  H:Habitat  *:Hub  +:Garrison  v:Sealed  ^:Spire', COLORS.BRIGHT_BLACK, COLORS.FF_BLUE_DARK);
+    r.drawString(2, rows - 1, `Esc:Close  -/=:Zoom(${zoom}x)  O:Outpost  H:Habitat  *:Hub  +:Garrison  v:Sealed  ^:Spire`, COLORS.BRIGHT_BLACK, COLORS.FF_BLUE_DARK);
   }
 
   // ─── GAME OVER (FF-style) ───
