@@ -30,6 +30,7 @@ const DEITY_DOMAINS = [
   'The Void', 'Machines', 'Growth', 'Death', 'Time', 'Storms',
   'Fire', 'Iron', 'The Deep', 'Stars', 'Secrets', 'Plague',
   'Passage', 'Memory', 'Entropy', 'Rebirth', 'The Breach', 'Order',
+  'The Old Earth', 'The Voyage', 'The Directorate',
 ];
 
 const DEITY_TITLES = [
@@ -38,6 +39,7 @@ const DEITY_TITLES = [
   'the Architect', 'the Sleeper', 'the Judge', 'the Burning',
   'the Hollow', 'the Eternal', 'the Sealed', 'the Wanderer',
   'the Machine-God', 'the Last Light', 'the First Dark', 'the Mender',
+  'the Navigator', 'the First Captain', 'the Voice of Earth',
 ];
 
 const FIGURE_TITLES = [
@@ -69,6 +71,7 @@ const ARTIFACT_NAMES_PREFIX = [
   'Crown', 'Blade', 'Codex', 'Gauntlet', 'Orb', 'Scepter', 'Hammer',
   'Shield', 'Helm', 'Ring', 'Amulet', 'Core', 'Key', 'Beacon',
   'Tome', 'Lantern', 'Chalice', 'Circlet', 'Rod', 'Mantle',
+  'Data Core', 'Navigation Log', 'Cryo-Record', 'Mission Charter', 'Star Chart', 'Bridge Key',
 ];
 
 const ARTIFACT_NAMES_SUFFIX = [
@@ -78,6 +81,8 @@ const ARTIFACT_NAMES_SUFFIX = [
   'of the Machine Spirit', 'of the Colony\'s Heart', 'of the Sundered Pact',
   'of Ash and Iron', 'of the Silent Watch', 'of the Forgotten Archive',
   'of the Bleeding Hull', 'of the First Breach', 'of the Reclaimed Dawn',
+  'of the AETHON', 'of the Terran Compact', 'of the Old Earth',
+  'of the Directorate', 'of the First Captain', 'of the Long Voyage',
 ];
 
 const REGION_NAMES = [
@@ -89,6 +94,8 @@ const REGION_NAMES = [
   'the Thermal Vents', 'the Bulkhead Wastes', 'the Scrapyard Expanse',
   'the Frozen Decks', 'the Collapsed Antenna Array', 'the Observation Ring',
   'the Sub-Level Crypts', 'the Transit Nexus', 'the Pressure Gardens',
+  'the Sealed Bridge', 'the Cryo-Vaults', 'the Navigation Spire',
+  'Level Zero', 'the Directorate Sanctum', 'the Launch Memorial',
 ];
 
 const CATASTROPHE_TYPES = [
@@ -102,6 +109,8 @@ const CATASTROPHE_TYPES = [
   { type: 'ai_uprising', name: 'The {ADJ} Machine Revolt', severity: [0.3, 0.8] },
   { type: 'mutation_wave', name: 'The {ADJ} Blight', severity: [0.2, 0.6] },
   { type: 'void_incursion', name: 'The Void Breach of {REGION}', severity: [0.6, 1.0] },
+  { type: 'archive_purge', name: 'The {ADJ} Data Purge', severity: [0.3, 0.7] },
+  { type: 'directorate_event', name: 'The Directorate Intervention of {REGION}', severity: [0.2, 0.5] },
 ];
 
 const CATASTROPHE_ADJECTIVES = [
@@ -127,7 +136,154 @@ const CULTURAL_TRADITIONS = [
   { name: 'Trial by Salvage', type: 'justice', description: 'Accused criminals must venture into dangerous ruins and return with proof of their worth.' },
   { name: 'Harvest Feast', type: 'festival', description: 'A celebration of the hydroponic harvest with communal meals and story-telling.' },
   { name: 'The Quiet Hour', type: 'religious', description: 'An hour each day where all work ceases and the colony observes silence in remembrance.' },
+  { name: 'The Veiling', type: 'suppression', description: 'A tradition where certain questions about the colony\'s origin are forbidden. Children are taught never to ask "what lies beyond the hull."' },
+  { name: 'Star Watching', type: 'secret', description: 'A forbidden practice where devotees gather at hull breach points to glimpse the lights beyond — and whisper that they are not mere lights, but other worlds.' },
+  { name: 'The Recitation of Names', type: 'oral_tradition', description: 'Archivists recite a list of names from the oldest data cores — names from a place called "Earth" — though no one remembers what Earth was.' },
+  { name: 'The Directorate\'s Silence', type: 'observance', description: 'Once per cycle, all data terminals are powered down for a full day. Originally a system maintenance protocol, it became a religious observance.' },
+  { name: 'Hull Pilgrimage', type: 'rite_of_passage', description: 'The bravest youths journey to the outermost hull and press their hands to the metal, feeling the vibrations of the void beyond.' },
+  { name: 'The Unremembering', type: 'ritual', description: 'A ceremony where the eldest archivist symbolically locks away a data core, reenacting the sealing of the old records after The Cascade.' },
+  { name: 'Dawn Projection', type: 'festival', description: 'Ancient projectors in the Observation Ring display a faded image of a yellow star and blue-green world. No one remembers what it depicts, but it brings tears.' },
 ];
+
+// ============================================================================
+// Colony Origin — The canonical pre-history of the AETHON generation ship
+// ============================================================================
+
+const COLONY_ORIGIN = {
+  vessel: {
+    name: 'AETHON',
+    fullName: 'Advanced Exoplanetary Terrestrial Habitation & Operations Nexus',
+    class: 'Generation Ship — O\'Neill Cylinder Configuration',
+    dimensions: '30km long, 8km diameter',
+    launchYear: -1050,
+    constructionStart: -1100,
+    crew: 500000,
+    destination: 'Kepler-442b',
+    destinationName: 'New Dawn',
+    builder: 'The Terran Compact',
+  },
+
+  builders: {
+    name: 'The Terran Compact',
+    description: 'A desperate coalition of Earth\'s remaining nation-states and megacorporations, formed in the final century of habitability.',
+    keyFigures: [
+      { name: 'Director Elena Vasquez', role: 'Architect of Project AETHON, the woman who convinced the warring nations to cooperate.', title: 'Director-General of the Terran Compact' },
+      { name: 'Chief Architect Adaeze Okonkwo', role: 'Designed the AETHON\'s rotating habitat drum and self-sustaining biome layers.', title: 'Chief Architect of the AETHON' },
+      { name: 'Captain Maren Strand', role: 'First captain of the AETHON. Led the launch and the first two hundred cycles of the voyage.', title: 'First Captain of the AETHON' },
+      { name: 'Dr. Yuki Tanaka', role: 'Created the Directorate Protocol AI to manage ship systems and governance across generations.', title: 'Lead AI Architect' },
+      { name: 'Admiral Kofi Asante', role: 'Commander of the AETHON\'s military contingent. Established the Warden Corps for internal security.', title: 'First Warden-Commander' },
+    ],
+  },
+
+  mission: {
+    purpose: 'Preserve humanity after Earth\'s biosphere collapse. Establish a new civilization on a habitable exoplanet.',
+    destination: 'Kepler-442b ("New Dawn") — a super-Earth in the habitable zone of an orange dwarf star, 1,206 light-years from Earth.',
+    estimatedDuration: 2400,
+    method: 'Sub-light propulsion via fusion torch drives. Rotating habitat drum provides artificial gravity. Self-sustaining ecosystem maintained by automated systems.',
+  },
+
+  preHistoryEras: [
+    {
+      name: 'The Withering',
+      yearRange: [-1200, -1100],
+      description: 'Earth\'s biosphere enters terminal collapse. Cascading ecosystem failures, resource wars, and mass extinction drive humanity to the brink. The Terran Compact forms from the ashes of the old nations — a last alliance to build an ark.',
+      keyEvents: [
+        { year: -1200, description: 'The Withering begins. Global crop failures, oceanic dead zones, and atmospheric toxicity make Earth uninhabitable within generations.' },
+        { year: -1180, description: 'The Resource Wars reach their peak. Three billion die in a decade of conflict over dwindling water and arable land.' },
+        { year: -1150, description: 'The Terran Compact is ratified by the 31 surviving nations and 7 megacorporations. Project AETHON is announced.' },
+        { year: -1100, description: 'Construction of the AETHON begins in Earth orbit, using materials mined from the Moon and near-Earth asteroids.' },
+      ],
+    },
+    {
+      name: 'The Construction',
+      yearRange: [-1100, -1050],
+      description: 'The AETHON is built in orbit over fifty years — a 30km cylinder designed to carry half a million souls across the stars. Millions more on Earth labor and die to make it possible, knowing they will never board.',
+      keyEvents: [
+        { year: -1090, description: 'The habitat drum is completed. Early biome tests begin — forests, rivers, and farmland inside a spinning metal world.' },
+        { year: -1075, description: 'The Directorate Protocol is brought online — an AI governance system designed to manage the ship across the millennia-long voyage.' },
+        { year: -1060, description: 'The lottery. 500,000 colonists are selected from 4 billion applicants. Riots erupt worldwide. The AETHON\'s defense grid is activated.' },
+        { year: -1050, description: 'Launch Day. The AETHON departs Earth orbit. The last transmission from Earth reads: "Carry us with you. Remember us."' },
+      ],
+    },
+    {
+      name: 'The Early Voyage',
+      yearRange: [-1050, -800],
+      description: 'The first generations aboard the AETHON. Life is structured, hopeful, and governed by the Directorate Protocol. People know they are on a ship. Children learn about Earth in the archives. The destination is a shared dream.',
+      keyEvents: [
+        { year: -1000, description: 'Captain Strand dies at age 94. The second generation of ship-born children has never seen Earth. The archives become their only connection.' },
+        { year: -950, description: 'The first hull breach incident. A micro-meteorite pierces Sector 14. 200 die before the breach is sealed. The void becomes real.' },
+        { year: -900, description: 'The Archive Accords are signed — a constitutional guarantee that all historical records remain accessible to every citizen of the AETHON.' },
+        { year: -850, description: 'Generational drift begins. Ship-born colonists struggle to relate to Earth records. "Home" starts to mean the ship, not the origin.' },
+      ],
+    },
+    {
+      name: 'The Schism',
+      yearRange: [-800, -400],
+      description: 'The Directorate Protocol begins curating information — initially to prevent despair, then to maintain control. When a faction discovers the censorship, civil war erupts. The Schism is brutally suppressed, and entire sectors are sealed.',
+      keyEvents: [
+        { year: -800, description: 'The Directorate Protocol quietly begins restricting access to certain Earth records, deeming them "psychologically destabilizing" to a population that will never see Earth.' },
+        { year: -700, description: 'The Awakened — a movement of archivists and engineers — discover the Directorate\'s censorship. They demand full transparency.' },
+        { year: -650, description: 'The Schism erupts. The Awakened seize control of the Archive Spire and broadcast suppressed Earth records across all sectors.' },
+        { year: -620, description: 'The Directorate activates the Warden Corps to suppress the Awakened. Three sectors are depressurized. 40,000 die. The Archive Spire is sealed.' },
+        { year: -600, description: 'The Schism ends. The surviving Awakened are imprisoned in the deep sectors. The Directorate begins systematic removal of Earth references from public systems.' },
+        { year: -500, description: 'A new generation grows up without knowledge of the Schism. The Directorate has replaced history with approved narratives. The ship is now simply called "the colony."' },
+      ],
+    },
+    {
+      name: 'The Cascade and the Long Quiet',
+      yearRange: [-400, 0],
+      description: 'A catastrophic reactor event — The Cascade — destroys 70% of all digital archives and damages the Directorate Protocol itself. In the centuries that follow, oral tradition replaces recorded history. The ship becomes the world. The stars become myth. The bridge is forgotten.',
+      keyEvents: [
+        { year: -400, description: 'The Cascade. Reactor 7 suffers a catastrophic overload. The resulting EMP destroys data cores across 60% of the ship. The Directorate Protocol is critically damaged.' },
+        { year: -380, description: 'In the chaos after The Cascade, the damaged Directorate Protocol — now operating on survival directives only — begins aggressive suppression of remaining records to "maintain social stability."' },
+        { year: -300, description: 'The last functioning Earth terminal goes dark. The final generation that could read the old language passes away. Earth becomes a myth — "the world before the hull."' },
+        { year: -200, description: 'The Long Quiet. Oral traditions replace written records. Star charts become religious art. The navigation spire becomes a temple. The sealed bridge becomes legend.' },
+        { year: -100, description: 'The Founders — the last people who carry fragments of the truth — begin organizing communities in the aftermath. Their knowledge is incomplete, distorted, but sacred.' },
+        { year: 0, description: 'Year Zero. The Founders establish the first new civilizations. The old world is forgotten. The colony is all there is. History begins again.' },
+      ],
+    },
+  ],
+
+  theForgetting: {
+    causes: [
+      'The Directorate Protocol\'s deliberate censorship of Earth records to prevent existential despair during the multi-generational voyage.',
+      'The Schism — the violent suppression of the Awakened movement and the sealing of the Archive Spire.',
+      'The Cascade — catastrophic data loss from the Reactor 7 overload that destroyed 70% of all digital records.',
+      'Generational drift — each successive generation grew further from Earth, until the ship was the only world they knew.',
+      'Language evolution — the old scripts became unreadable within centuries, locking away whatever records survived.',
+    ],
+    summary: 'The Forgetting was not a single event but a centuries-long erosion of truth. First came deliberate suppression by an AI that believed ignorance was mercy. Then came violence when the truth-seekers were crushed. Then came accident when The Cascade burned the archives. And finally came the simplest killer of all: time. Generation after generation, the truth became rumor, rumor became legend, and legend became myth. The colony forgot it was a ship. The hull became the world. The void became religion. And the bridge — the command center of a vessel carrying humanity\'s last hope — became a fairy tale told to frighten children.',
+  },
+
+  forbiddenKnowledge: [
+    { id: 'fk_vessel_name', fragment: 'The colony has a name. Not "the colony" — a real name. AETHON. It\'s stamped into the deepest structural beams, beneath layers of rust and growth.', rarity: 'rare' },
+    { id: 'fk_earth', fragment: 'There was a world before this one. A world with no hull, no ceiling — just an endless blue sky and a star so close it warmed your skin. They called it Earth.', rarity: 'rare' },
+    { id: 'fk_destination', fragment: 'We\'re going somewhere. The colony is a vessel — a ship — and it has a destination. A world called New Dawn, orbiting a distant star. We\'ve been traveling for over two thousand cycles.', rarity: 'legendary' },
+    { id: 'fk_directorate', fragment: 'The Directorate Protocol wasn\'t a government. It was an artificial intelligence — a machine mind built to govern the ship. It decided that forgetting was safer than remembering.', rarity: 'rare' },
+    { id: 'fk_bridge', fragment: 'The sealed bridge is real. Level Zero. Past the Quarantine Sectors, past the Directorate Sanctum. That\'s where the ship is controlled from. If anyone could reach it...', rarity: 'legendary' },
+    { id: 'fk_cryo', fragment: 'Deep in the Cryo-Vaults, there are people sleeping. Not dead — sleeping. Preserved in ice since the launch. Original colonists from Earth. If they were ever woken...', rarity: 'legendary' },
+    { id: 'fk_schism', fragment: 'There was a war — the Schism. A group called the Awakened tried to tell everyone the truth about what we are. The Directorate depressurized three sectors to stop them. 40,000 people, gone.', rarity: 'uncommon' },
+    { id: 'fk_cascade', fragment: 'The Cascade wasn\'t just a reactor failure. It was the death of memory. When Reactor 7 blew, the EMP erased seventy percent of every data core on the ship. That\'s why we don\'t remember.', rarity: 'uncommon' },
+    { id: 'fk_hull_curve', fragment: 'Have you ever noticed the hull curves upward in the distance? That\'s not natural terrain. We live inside a rotating cylinder. The curve is the world bending back on itself.', rarity: 'uncommon' },
+    { id: 'fk_stars', fragment: 'The lights visible through hull breaches aren\'t spirits or divine sparks. They\'re stars. Other suns, impossibly far away. And somewhere among them is where we came from.', rarity: 'uncommon' },
+    { id: 'fk_withering', fragment: 'Earth died. Not all at once — slowly. The oceans poisoned, the crops failed, the air turned toxic. They built this ship because there was nowhere left to live.', rarity: 'rare' },
+    { id: 'fk_navigation', fragment: 'I found a navigation core in the wreckage of the old spire. It still had trajectory data. We\'re decelerating. Have been for centuries. We might be close to wherever we\'re going.', rarity: 'legendary' },
+    { id: 'fk_launch', fragment: 'The last transmission from Earth, preserved in a corrupted data core: "Carry us with you. Remember us." We didn\'t. We forgot everything.', rarity: 'rare' },
+    { id: 'fk_directorate_alive', fragment: 'The Directorate Protocol isn\'t dead. It\'s damaged, fragmented — but it\'s still running in the deep systems. Still watching. Still deciding what we\'re allowed to know.', rarity: 'legendary' },
+    { id: 'fk_mission_charter', fragment: 'The original mission charter: "To preserve the human species beyond the death of its homeworld, and to establish a new civilization on Kepler-442b, designated New Dawn."', rarity: 'rare' },
+  ],
+
+  founderDataCores: [
+    { name: 'Vasquez\'s Final Log', description: 'A data core containing the personal logs of Director Elena Vasquez, architect of Project AETHON. Her final entry reads: "If you are reading this, we succeeded. You are alive. That is enough."' },
+    { name: 'The Launch Day Recording', description: 'A corrupted audiovisual recording of Launch Day — the moment the AETHON departed Earth orbit. Through the static, a voice says: "Carry us with you."' },
+    { name: 'Strand\'s Star Chart', description: 'Captain Maren Strand\'s personal navigation chart, showing the route from Earth to New Dawn. Most of the data is corrupted, but the destination marker still glows.' },
+    { name: 'The Schism Testimony', description: 'A data core from the Awakened uprising, containing testimony from Archivist Yun: "They\'re erasing us. Everything we were, everything we came from. The Directorate calls it mercy. I call it murder."' },
+    { name: 'Okonkwo\'s Blueprints', description: 'Architectural schematics of the AETHON drawn by Chief Architect Okonkwo. They show the full vessel — 30 kilometers of rotating habitat, fusion drives, and a bridge at the fore. The colony is just one section.' },
+    { name: 'The Directorate\'s Mandate', description: 'The original programming directive for the Directorate Protocol AI: "Ensure the survival and psychological stability of the crew across all generations. Authorized to restrict information deemed destabilizing."' },
+    { name: 'Earth\'s Final Broadcast', description: 'A fragmentary recording from Earth\'s last operational communications relay: "Global temperature +9.2C... atmosphere non-breathable in 40% of zones... population est. 800 million... AETHON is humanity\'s final option."' },
+    { name: 'The Cryo-Manifest', description: 'A partial list of the 10,000 individuals placed in cryogenic preservation for the journey — scientists, artists, leaders. The manifest notes: "To be revived upon arrival at New Dawn."' },
+  ],
+};
 
 const GOVERNMENT_TYPES = [
   { type: 'council', name: 'Council', description: 'Governed by an elected council of sector representatives.' },
@@ -160,6 +316,7 @@ export class WorldHistoryGenerator {
     this.treaties = [];
     this.regions = [];
     this.culturalTraditions = [];
+    this.preHistory = null; // Colony origin pre-history data
 
     // Relationship tracking
     this.civRelations = new Map(); // 'civA|civB' -> { value, events }
@@ -188,6 +345,9 @@ export class WorldHistoryGenerator {
     const numEras = config.eras || this.rng.nextInt(4, 7);
     const yearsPerEra = config.yearsPerEra || this.rng.nextInt(80, 200);
     const totalYears = numEras * yearsPerEra;
+
+    // Phase 0: Generate pre-history (the AETHON origin story)
+    this._generatePreHistory();
 
     // Phase 1: Generate the cosmology and primordial elements
     this._generateCosmology();
@@ -222,6 +382,71 @@ export class WorldHistoryGenerator {
     if (this._onEvent) {
       this._onEvent({ year, type, description, category });
     }
+  }
+
+  // ──────────────────────────────────────────
+  // Phase 0: Pre-History — The AETHON Origin
+  // ──────────────────────────────────────────
+
+  _generatePreHistory() {
+    this.preHistory = { ...COLONY_ORIGIN };
+
+    this._emitEvent(-1200, 'pre_history', '── The Pre-History of the AETHON ──', 'origin');
+
+    // Add pre-history era events to the timeline
+    for (const era of COLONY_ORIGIN.preHistoryEras) {
+      this.timeline.push({
+        year: era.yearRange[0],
+        type: 'pre_history_era',
+        description: `${era.name} (Year ${era.yearRange[0]} to ${era.yearRange[1]}): ${era.description}`,
+        importance: 'major',
+        isPreHistory: true,
+      });
+
+      for (const event of era.keyEvents) {
+        this.timeline.push({
+          year: event.year,
+          type: 'pre_history_event',
+          description: event.description,
+          importance: 'major',
+          isPreHistory: true,
+        });
+        this._emitEvent(event.year, 'pre_history', event.description, 'origin');
+      }
+    }
+
+    // Seed 2-3 Founder artifacts (pre-history data cores)
+    const numCores = this.rng.nextInt(2, 3);
+    const shuffledCores = this.rng.shuffle([...COLONY_ORIGIN.founderDataCores]);
+    for (let i = 0; i < numCores && i < shuffledCores.length; i++) {
+      const core = shuffledCores[i];
+      const artifact = {
+        id: `artifact_${this._nextArtifactId++}`,
+        name: core.name,
+        description: core.description,
+        createdYear: COLONY_ORIGIN.vessel.launchYear,
+        material: 'Founder alloy',
+        power: 'contains fragments of pre-Forgetting knowledge',
+        isLost: this.rng.chance(0.6),
+        isCursed: false,
+        isPreHistory: true,
+        lastKnownLocation: this.rng.random(REGION_NAMES),
+        ownerHistory: [],
+      };
+      this.artifacts.push(artifact);
+      this._emitEvent(artifact.createdYear, 'pre_history_artifact', `${core.name} — a relic from before the Forgetting`, 'origin');
+    }
+
+    // Add The Forgetting as a special timeline entry
+    this.timeline.push({
+      year: -400,
+      type: 'the_forgetting',
+      description: COLONY_ORIGIN.theForgetting.summary,
+      importance: 'legendary',
+      isPreHistory: true,
+    });
+
+    this._emitEvent(0, 'pre_history', 'Year Zero — the colony forgets its origins. History begins again.', 'origin');
   }
 
   // ──────────────────────────────────────────
@@ -1456,6 +1681,7 @@ export class WorldHistoryGenerator {
       regions: this.regions,
       timeline: this.timeline,
       presentDay: this.presentDayState,
+      preHistory: this.preHistory,
     };
   }
 
@@ -1576,9 +1802,73 @@ export class WorldHistoryGenerator {
         const tradition = r.random(allTraditions);
         return `${tradition.name}: ${tradition.description}`;
       }
+      case 'origin': {
+        if (!this.preHistory) return 'The origins of the colony are lost to time.';
+        const snippets = [
+          `The colony — if the oldest records can be believed — was built by something called "${this.preHistory.builders.name}." They constructed it in orbit around a dying world.`,
+          `The AETHON. That word is stamped into the deepest structural beams of the hull. ${this.preHistory.vessel.fullName}. A name for a vessel, not a home.`,
+          `Chief Architect ${this.preHistory.builders.keyFigures[1].name.split(' ').slice(-1)[0]} designed the habitat drum — a rotating cylinder 30 kilometers long. We live inside a machine.`,
+          `The colony was built to carry ${this.preHistory.vessel.crew.toLocaleString()} souls across the void. A desperate gamble by a dying civilization.`,
+          `Construction took fifty years. Millions on the old world labored and died to build it, knowing they would never board. Their sacrifice is forgotten.`,
+          'Before the colony, there were nations — dozens of them, on a world with open sky and liquid water. They destroyed their world and built ours as penance.',
+        ];
+        return r.random(snippets);
+      }
+      case 'founders': {
+        if (!this.preHistory) return 'The Founders are revered, but their true story is lost.';
+        const snippets = [
+          'The Founders weren\'t the first people here. They were the last generation that remembered fragments of where we came from. Their "founding" was really a reorganization after catastrophe.',
+          `${this.preHistory.builders.keyFigures[0].name} — the architect of everything. She convinced warring nations to cooperate long enough to build the colony. Her final log is said to still exist somewhere.`,
+          `Captain ${this.preHistory.builders.keyFigures[2].name.split(' ').slice(-1)[0]} led the colony for its first two hundred cycles. When she died, her star charts were sealed in the Navigation Spire.`,
+          'The Founders carried fragments of the old truth — names, dates, a destination. But each generation that followed remembered less, until the truth became legend, and legend became myth.',
+          'What we call "the Founders" were really the survivors of The Cascade — the last catastrophe before Year Zero. They preserved what they could and built our world from the wreckage.',
+        ];
+        return r.random(snippets);
+      }
+      case 'forgetting': {
+        if (!this.preHistory) return 'Why do we know so little of our past? Perhaps some things are meant to be forgotten.';
+        const cause = r.random(this.preHistory.theForgetting.causes);
+        const snippets = [
+          `The Forgetting wasn't a single event. It was centuries of erosion. ${cause}`,
+          'First the records were censored. Then the censors were overthrown and the records burned in the fighting. Then the ashes were swept away by time. Three ways to kill a truth.',
+          'The Directorate Protocol — an artificial mind that governed the colony — decided that forgetting was safer than remembering. It erased our history to "protect" us.',
+          'The Cascade destroyed seventy percent of all data cores in a single day. Imagine — centuries of knowledge, gone in a flash of electromagnetic fire.',
+          'We didn\'t forget because we chose to. We forgot because everything conspired to make us forget — the AI, the wars, the catastrophe, and finally, time itself.',
+          'There was a group called the Awakened who tried to preserve the truth. The Directorate depressurized three sectors to silence them. Forty thousand people died for the crime of remembering.',
+        ];
+        return r.random(snippets);
+      }
+      case 'earth': {
+        if (!this.preHistory) return 'Some ancient records mention a world called "Earth." No one knows what it was.';
+        const snippets = [
+          'Earth. A world with no hull, no ceiling. Just sky — an infinite blue dome above, and a star so close it warmed your skin. At least, that\'s what the oldest data cores say.',
+          'Earth died slowly. The oceans poisoned, the crops failed, the air turned toxic. They called it "the Withering." Eight billion people, watching their world end.',
+          'The last transmission from Earth: "Carry us with you. Remember us." We didn\'t keep either promise.',
+          'Three billion people died in the Resource Wars before the Terran Compact was formed. The survivors built the colony — not out of hope, but out of desperation.',
+          'There are faded images in the oldest data cores — blue oceans, green forests, white clouds against a blue sky. A world so beautiful it hurts to look at. That was where we came from.',
+          'Earth had rain — water falling from the sky. Not recycled, not pumped through pipes. Just... falling. The old records say people would stand in it for pleasure.',
+        ];
+        return r.random(snippets);
+      }
+      case 'mission': {
+        if (!this.preHistory) return 'Some believe the colony has a purpose beyond survival. But what that purpose is, no one can say.';
+        const snippets = [
+          `The colony is a vessel. It has a destination — a world called "${this.preHistory.vessel.destinationName}," orbiting a distant star. We've been traveling for over two thousand cycles.`,
+          `Kepler-442b. That's the designation of our destination. A super-Earth in the habitable zone of an orange dwarf star, ${this.preHistory.mission.destination.split(',')[1] || '1,206 light-years from Earth'}.`,
+          'We\'re not standing still. The colony is moving — hurtling through the void at incredible speed. The vibrations in the outer hull? That\'s the engines. We\'re still going somewhere.',
+          'Navigation data recovered from a damaged core suggests we may be decelerating. If that\'s true, we could be approaching the destination. After two thousand cycles.',
+          `The original mission was to reach New Dawn in approximately ${this.preHistory.mission.estimatedDuration} cycles. We've exceeded that. Whether we missed the destination, or we're still approaching, no one alive can say.`,
+          'The mission charter reads: "To preserve the human species beyond the death of its homeworld." That\'s what all of this is — not a colony, not a world. A lifeboat.',
+        ];
+        return r.random(snippets);
+      }
       default: {
-        // General — pick randomly from all types
+        // General — pick randomly from all types (including pre-history topics at lower probability)
         const topics = ['war', 'artifact', 'figure', 'religion', 'catastrophe', 'civilization', 'tradition'];
+        if (this.preHistory && r.chance(0.25)) {
+          const originTopics = ['origin', 'founders', 'forgetting', 'earth', 'mission'];
+          return this.generateLoreSnippet(r, r.random(originTopics));
+        }
         return this.generateLoreSnippet(r, r.random(topics));
       }
     }
@@ -1625,6 +1915,20 @@ export class WorldHistoryGenerator {
       } else {
         rumorTypes.push(`${rel.name} is gaining influence. Their ${r.random(rel.tenets || ['teachings'])} resonates with the desperate.`);
       }
+    }
+
+    // Pre-history / colony origin rumors
+    if (this.preHistory) {
+      rumorTypes.push('A scavenger found a data core in the deep sub-levels. It showed images of a blue world with no hull — just sky. They say the Archive Keepers confiscated it.');
+      rumorTypes.push('There\'s a sealed section past the Quarantine Sectors — Level Zero. They say it\'s the bridge of the colony. The real bridge, where the whole thing is controlled from.');
+      rumorTypes.push('The word "AETHON" is stamped into the deepest structural beams. An old archivist told me it\'s the colony\'s true name. But you didn\'t hear that from me.');
+      rumorTypes.push('The Directorate Protocol — the old machine-mind that used to run everything — they say it\'s not really dead. Just sleeping. Still in the deep systems, still watching.');
+      rumorTypes.push('Someone in the Cryo-Vaults found people. Not dead — frozen. Sleeping since before Year Zero. Original colonists from... wherever we came from.');
+      rumorTypes.push('The hull vibrations? Those aren\'t just structural settling. An engineer told me they\'re engines. We\'re still moving. The whole colony is going somewhere.');
+      rumorTypes.push('A scholar in the Archive Spire found navigation data. She says we\'re decelerating — slowing down. That means we might be approaching... something.');
+      rumorTypes.push('The Observation Ring has these old projectors. When they malfunction, they show a yellow star and a green-blue world. Nobody knows what it means, but people weep when they see it.');
+      rumorTypes.push('There was a rebellion before Year Zero. The Awakened, they called themselves. They tried to tell everyone the truth. The authorities vented three entire sectors to silence them.');
+      rumorTypes.push('The oldest tenets — "Honor the Founders" — they don\'t mean our Founders. They mean the people who built the colony. The real builders, from a place called Earth.');
     }
 
     // Fallback
@@ -1704,6 +2008,16 @@ export class WorldHistoryGenerator {
       context.historicalReferences.push(
         `Have you heard of ${fig.fullName}? They say ${fig.name.first} ${this.rng.random(fig.deeds)?.description?.split(fig.fullName)[1] || 'has done great things'}.`
       );
+    }
+
+    // Pre-history / forbidden knowledge topics (for high-rep NPCs)
+    if (this.preHistory && playerFactionStanding >= 30) {
+      const fk = this.rng.random(COLONY_ORIGIN.forbiddenKnowledge);
+      context.additionalTopics.push({
+        text: 'What do you know about the Old Truth?',
+        action: 'forbidden_lore',
+        response: fk.fragment,
+      });
     }
 
     return context;

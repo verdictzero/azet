@@ -757,6 +757,15 @@ export class DialogueSystem {
           consequence: null,
         });
       }
+
+      // Forbidden history — colony origin lore at high reputation
+      if (playerRep >= 30 && (npc.role === 'scholar' || npc.role === 'priest')) {
+        options.push({
+          text: 'What do you know about the Old Truth?',
+          action: 'forbiddenLore',
+          consequence: null,
+        });
+      }
     }
 
     options.push({
@@ -870,6 +879,12 @@ const WORLD_HISTORY_TEMPLATES = [
   'Legends speak of a Founder who sealed the First Breach at {LOCATION}, but scholars debate whether it truly happened.',
   'A cult of rogue engineers nearly reactivated a dormant defense system before they were stopped by {FACTION1}.',
   'The trade corridors were established {YEARS} cycles ago, bringing prosperity but also new dangers.',
+  'Before Year Zero, they say the colony had a different name — a designation, like a vessel. But such talk is considered heresy.',
+  'The Directorate Protocol once governed everything — an intelligence that managed the colony across centuries. What remains of it sleeps in the deep systems.',
+  'The Cascade destroyed seventy percent of all data cores in a single day. Everything we knew before that moment is fragments and hearsay.',
+  'A group called the Awakened once tried to reveal a forbidden truth about the colony. They were silenced, and three sectors were lost.',
+  'The oldest structural beams bear a word stamped in pre-collapse script: AETHON. Archivists argue endlessly about what it means.',
+  'In the Observation Ring, ancient projectors sometimes flicker to life, displaying an image of a blue-green world beneath a yellow star.',
 ];
 
 const ARTIFACT_TEMPLATES = [
@@ -941,6 +956,8 @@ const LORE_ENEMIES = [
   'a corrupted maintenance AI', 'mutated hull parasites', 'alien infiltrators from the outer hull',
   'nano-fungal growths consuming Sector 7', 'assimilated colonists from the quarantine zone',
   'an awakened reactor guardian', 'void sentinels patrolling the breach points',
+  'Directorate enforcement drones reactivated from before the Forgetting',
+  'corrupted Warden Corps automatons still executing centuries-old suppression orders',
 ];
 
 const LORE_REGIONS = [
@@ -957,11 +974,15 @@ const LORE_POWERS = [
 const LORE_SMITHS = [
   'Chief Engineer Durin', 'Founder Vasquez', 'the Blind Fabricator', 'Director Isolde',
   'Kira Steelhand', 'the ancient Founders', 'an unnamed Enhanced artisan',
+  'Director Elena Vasquez', 'Architect Okonkwo', 'the Terran Compact engineers',
+  'the Directorate Protocol', 'Dr. Yuki Tanaka, the AI Architect',
 ];
 
 const LORE_HEROES = [
   'Administrator Aldric the Bold', 'the Champion of the Colony', 'Selene the Wanderer',
   'Commander Roderick Ashford', 'the last Warden', 'the legendary Bolt Ironcore',
+  'Captain Maren Strand, First Captain of the AETHON', 'the First Warden of the AETHON',
+  'Archivist Yun, Keeper of the Old Truth', 'Admiral Kofi Asante, founder of the Warden Corps',
 ];
 
 const LORE_MOUNTAINS = [
@@ -971,6 +992,8 @@ const LORE_MOUNTAINS = [
 const LORE_PURPOSES = [
   'sector garrison', 'data archive', 'trade depot', 'mining outpost', 'watch station',
   "engineer's workshop", 'containment cell', "administrator's office", 'med-bay', 'server vault',
+  'cryo-vault', 'navigation array', 'bridge access corridor', 'Directorate monitoring station',
+  'colony ship manifest archive', 'launch memorial hall',
 ];
 
 const LORE_PROFESSIONS = [
@@ -982,6 +1005,45 @@ const LORE_PLACES = [
   'the central hub', 'a small agri-sector', 'the frontier beyond the outer hull',
   'the sealed sections', 'the Enhanced quarters', 'the Cyborg workshops', 'a distant sector',
   'the border checkpoints', 'the scorched reactor district', 'the upper deck passages',
+  'the sealed bridge on Level Zero', 'the Cryo-Vaults', 'the Navigation Spire',
+  'the Directorate Sanctum', 'the Launch Memorial', 'the ruins of the Archive Spire',
+];
+
+// ============================================================================
+// Colony Origin & Forbidden Knowledge lore templates
+// ============================================================================
+
+const COLONY_ORIGIN_TEMPLATES = [
+  'The oldest data cores speak of a place called "Earth" — a world under an open sky, whatever that means.',
+  'The Founders didn\'t build the colony. They merely inherited it. The true builders are lost to time.',
+  'Have you ever wondered why the hull curves upward in the distance? The old schematics show a cylinder — a vessel. But that\'s heresy to say aloud.',
+  'There\'s a word etched into the deepest bulkheads: AETHON. No one knows what it means anymore.',
+  'The Directorate Protocol — some say it was an AI that governed the colony before the factions arose. Others say it still watches from the deep systems.',
+  'My grandmother told me her grandmother spoke of "stars" — not the patterns on the archive walls, but lights in an infinite darkness outside the hull.',
+  'The colony wasn\'t always called "the colony." It had a name once. A designation. Like a vessel has a designation.',
+  'Before the Forgetting, people knew where they came from and where they were going. Can you imagine? Having a destination?',
+  'The Terran Compact — that\'s who built all of this. A coalition of nations from a dying world. They built a ship to carry their children to the stars.',
+  'The reactors aren\'t just power sources. They\'re engines. The whole colony is a vessel, and it\'s still moving. Listen to the hull — you can feel it.',
+  'There\'s a memorial near Level Zero. Faded names, thousands of them. People who built the colony but never got to board. They knew they were building their own grave.',
+  'The sealed bridge — some say it\'s where the colony is actually controlled from. Not by any faction. By the ship itself.',
+  'Five hundred thousand souls boarded the AETHON when it launched. That was over two thousand cycles ago. Everything since has been the voyage.',
+  'The old archives mention something called "rain" — water falling from the sky, not recycled through pipes. Imagine a world where water just... falls on you.',
+  'Chief Architect Okonkwo designed the habitat drum. A rotating cylinder 30 kilometers long. We don\'t live in a world. We live inside a machine she built.',
+];
+
+const FORBIDDEN_KNOWLEDGE_TEMPLATES = [
+  'I found a data core in the sub-levels. It showed images — a blue sphere with white swirls. Oceans of water under a burning light. They called it "home."',
+  'The sealed bridge — it\'s real. Level Zero, past the Quarantine Sectors. The Directorate locked it after The Cascade. No one\'s been there in centuries.',
+  'We\'re moving. The whole colony. I ran the numbers from a salvaged navigation core — we\'ve been moving for over two thousand cycles. We\'re a ship.',
+  'The Directorate Protocol wasn\'t a government. It was a machine — an artificial intelligence built to manage the colony across millennia. It decided we were better off not knowing.',
+  'There are people in the Cryo-Vaults. Frozen, not dead. Preserved since before Year Zero. Original passengers from Earth. Ten thousand of them, sleeping.',
+  'The Cascade wasn\'t just a reactor failure. It was an EMP that erased seventy percent of every data core on the ship. That\'s why we don\'t remember who we are.',
+  'The Schism — before Year Zero, a group called the Awakened tried to tell everyone the truth. The Directorate vented three sectors to stop them. Forty thousand people, dead for knowing too much.',
+  'I found the original mission charter: "To preserve the human species beyond the death of its homeworld, and to establish a new civilization on Kepler-442b, designated New Dawn."',
+  'Earth didn\'t just decline. It died. Global temperature up nine degrees, oceans acidified, atmosphere toxic. Eight hundred million people left when the AETHON launched. They\'re all dead now.',
+  'The last transmission from Earth: "Carry us with you. Remember us." That was over two thousand cycles ago. We forgot. We forgot everything.',
+  'Navigation data from the old spire shows we\'re decelerating. We\'ve been slowing down for centuries. Whatever destination the builders chose — we might be close.',
+  'The word "AETHON" — it\'s an acronym. Advanced Exoplanetary Terrestrial Habitation and Operations Nexus. It\'s not a colony. It\'s a generation ship.',
 ];
 
 export class LoreGenerator {
@@ -1172,6 +1234,29 @@ export class LoreGenerator {
       return this._worldHistory.generateLoreSnippet(rng, topic);
     }
     return this._fillTemplate(rng, rng.random(WORLD_HISTORY_TEMPLATES), [], []);
+  }
+
+  // Generate a forbidden knowledge fragment about the colony's true origins
+  generateForbiddenKnowledge(rng) {
+    // Use deep world history pre-history data if available
+    if (this._worldHistory && this._worldHistory.preHistory) {
+      const fk = rng.random(this._worldHistory.preHistory.forbiddenKnowledge);
+      return fk.fragment;
+    }
+    // Fallback to template
+    return rng.random(FORBIDDEN_KNOWLEDGE_TEMPLATES);
+  }
+
+  // Generate a colony origin lore snippet (less secret than forbidden knowledge)
+  generateColonyOriginLore(rng) {
+    // Use deep world history if available for richer content
+    if (this._worldHistory && this._worldHistory.preHistory) {
+      if (rng.chance(0.5)) {
+        return this._worldHistory.generateLoreSnippet(rng, rng.random(['origin', 'founders', 'forgetting', 'earth', 'mission']));
+      }
+    }
+    // Fallback to template
+    return rng.random(COLONY_ORIGIN_TEMPLATES);
   }
 }
 

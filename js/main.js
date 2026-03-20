@@ -1511,6 +1511,56 @@ class Game {
       return;
     }
 
+    if (option.action === 'forbiddenLore') {
+      let text;
+      if (this.worldHistoryGen && this.worldHistoryGen.preHistory) {
+        const fk = this.rng.random(this.worldHistoryGen.preHistory.forbiddenKnowledge);
+        text = fk.fragment;
+      } else if (this.loreGen) {
+        text = this.loreGen.generateForbiddenKnowledge(this.rng);
+      } else {
+        text = 'Some truths are too dangerous to speak aloud.';
+      }
+      this.ui.dialogueState.text = `*lowers voice* "${text}"`;
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more about the Old Truth.', action: 'forbiddenLore' },
+        { text: 'What about the colony\'s origins?', action: 'colonyOriginLore' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
+    if (option.action === 'colonyOriginLore') {
+      let text;
+      if (this.worldHistoryGen) {
+        const topic = this.rng.random(['origin', 'founders', 'forgetting', 'earth', 'mission']);
+        text = this.worldHistoryGen.generateLoreSnippet(this.rng, topic);
+      } else if (this.loreGen) {
+        text = this.loreGen.generateColonyOriginLore(this.rng);
+      } else {
+        text = 'The origins of the colony are lost to time.';
+      }
+      this.ui.dialogueState.text = `"${text}"`;
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more about the Old Truth.', action: 'forbiddenLore' },
+        { text: 'What about the colony\'s origins?', action: 'colonyOriginLore' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
+    if (option.action === 'forbidden_lore' && option._historyResponse) {
+      this.ui.dialogueState.text = `*lowers voice* "${option._historyResponse}"`;
+      this.ui.dialogueState.options = [
+        { text: 'Tell me more about the Old Truth.', action: 'forbiddenLore' },
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
     if (option.action === 'religion_lore' && option._historyResponse) {
       this.ui.dialogueState.text = `"${option._historyResponse}"`;
       this.ui.dialogueState.options = [
