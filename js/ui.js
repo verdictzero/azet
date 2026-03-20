@@ -1270,7 +1270,7 @@ export class UIManager {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
-    const panelW = Math.min(cols - 4, 62);
+    const panelW = Math.min(cols - 4, 76);
     const panelH = Math.min(rows - 2, 40);
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
@@ -1280,23 +1280,45 @@ export class UIManager {
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, COLORS.FF_BLUE_DARK, ' Help ');
 
-    // Tab bar — clip to panel bounds
+    // Tab bar — wrap to multiple rows, center each row
     const bg = COLORS.FF_BLUE_DARK;
-    const tabMaxX = px + panelW - 2; // right edge inside border
-    let tx = px + 2;
-    for (let i = 0; i < tabs.length; i++) {
-      const active = i === tab;
-      const label = `[${i + 1}]${tabs[i]}`;
-      const color = active ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
-      const avail = tabMaxX - tx;
-      if (avail <= 0) break;
-      r.drawString(tx, py + 1, label, color, bg, avail);
-      tx += label.length + 1;
-    }
-    r.drawString(px + 1, py + 2, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+    const usableW = panelW - 4;
+    const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
 
-    const contentY = py + 3;
-    const contentH = panelH - 5;
+    const tabRows = [];
+    let currentRow = [];
+    let currentRowLen = 0;
+    for (let i = 0; i < tabLabels.length; i++) {
+      const labelLen = tabLabels[i].length;
+      const needed = currentRow.length > 0 ? labelLen + 1 : labelLen;
+      if (currentRowLen + needed > usableW && currentRow.length > 0) {
+        tabRows.push(currentRow);
+        currentRow = [i];
+        currentRowLen = labelLen;
+      } else {
+        currentRow.push(i);
+        currentRowLen += needed;
+      }
+    }
+    if (currentRow.length > 0) tabRows.push(currentRow);
+
+    for (let rowIdx = 0; rowIdx < tabRows.length; rowIdx++) {
+      const rowIndices = tabRows[rowIdx];
+      const totalLen = rowIndices.reduce((sum, i) => sum + tabLabels[i].length, 0) + (rowIndices.length - 1);
+      const startX = px + 2 + Math.floor((usableW - totalLen) / 2);
+      let tx = startX;
+      for (const i of rowIndices) {
+        const label = tabLabels[i];
+        const color = i === tab ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
+        r.drawString(tx, py + 1 + rowIdx, label, color, bg);
+        tx += label.length + 1;
+      }
+    }
+    const tabBarHeight = tabRows.length;
+    r.drawString(px + 1, py + 1 + tabBarHeight, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+
+    const contentY = py + 2 + tabBarHeight;
+    const contentH = panelH - 4 - tabBarHeight;
     const w = panelW - 4;
 
     const pages = [
