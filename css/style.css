@@ -30,26 +30,26 @@ html, body {
   border-radius: 6px;
 }
 
-/* Touch Controls — locked to lower-left for natural thumb reach */
+/* Touch Controls — locked to lower-right for natural thumb reach */
 #touch-controls {
   position: fixed;
   bottom: 0;
-  left: 0;
+  right: 0;
   z-index: 10;
   pointer-events: none;
-  padding: 0 0 calc(env(safe-area-inset-bottom, 8px) + 80px) env(safe-area-inset-left, 12px);
+  padding: 0 env(safe-area-inset-right, 12px) calc(env(safe-area-inset-bottom, 8px) + 80px) 0;
 }
 
 #touch-controls.hidden {
   display: none;
 }
 
-/* 3-wide left-aligned grid for all controls */
+/* 3-wide right-aligned grid for all controls */
 .touch-grid {
   display: grid;
   grid-template-columns: repeat(3, clamp(44px, 12vw, 56px));
   gap: 4px;
-  justify-content: start;
+  justify-content: end;
   padding: 6px 14px;
   pointer-events: auto;
 }
