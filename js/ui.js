@@ -412,41 +412,22 @@ export class UIManager {
     const artStartY = startY;
     const waveColors = [COLORS.BLUE, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_WHITE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
 
-    // ── Layer 0.5: Animated spinning crystal behind title card ──
-    // Existing frame animation + slow 2D rotation (spin in place facing player)
+    // ── Layer 0.5: Animated crystal behind title card ──
     if (!compact && CRYSTAL_FRAMES.length > 0) {
       const frameIndex = Math.floor(t / 0.12) % CRYSTAL_FRAMES.length;
       const frame = CRYSTAL_FRAMES[frameIndex];
       const cx = Math.floor((cols - CRYSTAL_WIDTH) / 2);
       const cy = startY + Math.floor(title.length / 2) - Math.floor(CRYSTAL_HEIGHT / 2);
-      // Slow 2D spin: full rotation every 25 seconds
-      const spinAngle = t * (2 * Math.PI / 25);
-      const cosA = Math.cos(spinAngle);
-      const sinA = Math.sin(spinAngle);
-      // Center of crystal frame for rotation pivot
-      const pivotCol = CRYSTAL_WIDTH / 2;
-      const pivotRow = CRYSTAL_HEIGHT / 2;
-      // Expand render area to accommodate rotation (diagonal of crystal rect)
-      const diagW = Math.ceil(Math.sqrt(CRYSTAL_WIDTH * CRYSTAL_WIDTH + CRYSTAL_HEIGHT * CRYSTAL_HEIGHT));
-      const diagH = Math.ceil(Math.sqrt(CRYSTAL_WIDTH * CRYSTAL_WIDTH + CRYSTAL_HEIGHT * CRYSTAL_HEIGHT));
-      const padX = Math.floor((diagW - CRYSTAL_WIDTH) / 2);
-      const padY = Math.floor((diagH - CRYSTAL_HEIGHT) / 2);
-      for (let row = -padY; row < CRYSTAL_HEIGHT + padY; row++) {
+      for (let row = 0; row < CRYSTAL_HEIGHT; row++) {
         const y = cy + row;
         if (y < 0 || y >= rows) continue;
-        for (let col = -padX; col < CRYSTAL_WIDTH + padX; col++) {
+        for (let col = 0; col < CRYSTAL_WIDTH; col++) {
           const x = cx + col;
           if (x < 0 || x >= cols) continue;
-          // Inverse-rotate to find source position
-          const dcol = col - pivotCol;
-          const drow = row - pivotRow;
-          const srcCol = Math.round(cosA * dcol + sinA * drow + pivotCol);
-          const srcRow = Math.round(-sinA * dcol + cosA * drow + pivotRow);
-          if (srcRow < 0 || srcRow >= CRYSTAL_HEIGHT || srcCol < 0 || srcCol >= CRYSTAL_WIDTH) continue;
-          const ch = frame.chars[srcRow][srcCol];
+          const ch = frame.chars[row][col];
           if (ch === ' ') continue;
-          const crystalHueShift = t * (20 / 360);
-          r.drawChar(x, y, ch, shiftHue(frame.colors[srcRow][srcCol], crystalHueShift), '#020204');
+          const crystalHueShift = t * (20 / 360); // slow rainbow: full cycle ~18s
+          r.drawChar(x, y, ch, shiftHue(frame.colors[row][col], crystalHueShift), '#020204');
         }
       }
     }
