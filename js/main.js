@@ -31,9 +31,13 @@ class Game {
       fontSize: 16,
       touchControls: true,
       autoSaveInterval: 100, // turns
+      showQuestNav: true, // quest navigation overlay
     };
     this._loadSettings();
     this.prevState = null;
+
+    // Quest navigation tracking
+    this._trackedQuestId = null;
     this.running = true;
     this.lastFrame = 0;
     this.turnCount = 0;
@@ -756,7 +760,7 @@ class Game {
       case 'SHOP': return this.handleShopInput(key);
       case 'INVENTORY': return this.handleInventoryInput(key);
       case 'CHARACTER': return this.handleGenericClose(key);
-      case 'QUEST_LOG': return this.handleGenericClose(key);
+      case 'QUEST_LOG': return this.handleQuestLogInput(key);
       case 'MAP': return this.handleGenericClose(key);
       case 'HELP': return this.handleHelpInput(key);
       case 'FACTION': return this.handleGenericClose(key);
@@ -915,6 +919,7 @@ class Game {
     if (key === 'm' || key === 'M') { this.setState('MAP'); return; }
     if (key === 'f' || key === 'F') { this.setState('FACTION'); return; }
     if (key === 'j' || key === 'J') { this._openQuestCompass(); return; }
+    if (key === 'n' || key === 'N') { this._toggleQuestNav(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
@@ -980,6 +985,7 @@ class Game {
     if (key === 'm' || key === 'M') { this.setState('MAP'); return; }
     if (key === 'f' || key === 'F') { this.setState('FACTION'); return; }
     if (key === 'j' || key === 'J') { this._openQuestCompass(); return; }
+    if (key === 'n' || key === 'N') { this._toggleQuestNav(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
@@ -1032,6 +1038,7 @@ class Game {
     if (key === 'c' || key === 'C') { this.setState('CHARACTER'); return; }
     if (key === 'q' || key === 'Q') { this.setState('QUEST_LOG'); return; }
     if (key === 'j' || key === 'J') { this._openQuestCompass(); return; }
+    if (key === 'n' || key === 'N') { this._toggleQuestNav(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
 
@@ -1511,6 +1518,11 @@ class Game {
 
     if (option.action === 'turnInQuest') {
       if (option.questId) {
+        // Clear tracking if this was the tracked quest
+        if (this._trackedQuestId === option.questId) {
+          this._trackedQuestId = null;
+          this.ui.addMessage('Quest completed! Navigation cleared.', COLORS.BRIGHT_CYAN);
+        }
         const rewards = this.questSystem.completeQuest(option.questId);
         if (rewards) {
           if (rewards.gold) {
@@ -1854,6 +1866,56 @@ class Game {
     }
   }
 
+  // ─── QUEST LOG (with tracking) ───
+
+  handleQuestLogInput(key) {
+    const active = this.questSystem.getActiveQuests();
+    const itemCount = active.length;
+
+    if (key === 'Escape') {
+      this.setState(this.prevState || 'OVERWORLD');
+      return;
+    }
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      if (itemCount > 0) {
+        this.ui.selectedIndex = (this.ui.selectedIndex - 1 + itemCount) % itemCount;
+      }
+      return;
+    }
+    if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      if (itemCount > 0) {
+        this.ui.selectedIndex = (this.ui.selectedIndex + 1) % itemCount;
+      }
+      return;
+    }
+    if (key === 'Enter' || key === 't' || key === 'T') {
+      if (itemCount > 0 && this.ui.selectedIndex < itemCount) {
+        const quest = active[this.ui.selectedIndex];
+        if (this._trackedQuestId === quest.id) {
+          // Untrack
+          this._trackedQuestId = null;
+          this.ui.addMessage('Quest tracking cleared.', COLORS.BRIGHT_BLACK);
+        } else {
+          // Track
+          this._trackedQuestId = quest.id;
+          this.ui.addMessage(`Tracking: ${quest.title}`, COLORS.BRIGHT_CYAN);
+        }
+      }
+      return;
+    }
+  }
+
+  // ─── QUEST NAVIGATION TOGGLE ───
+
+  _toggleQuestNav() {
+    this.settings.showQuestNav = !this.settings.showQuestNav;
+    this._saveSettings();
+    this.ui.addMessage(
+      `Quest navigation: ${this.settings.showQuestNav ? 'ON' : 'OFF'}`,
+      this.settings.showQuestNav ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_BLACK
+    );
+  }
+
   // ─── QUEST COMPASS ───
 
   _openQuestCompass() {
@@ -1976,11 +2038,15 @@ class Game {
       this.settings.autoSaveInterval = intervals[(idx + 1) % intervals.length];
       this._saveSettings();
     }
+    if (key === '5') {
+      this.settings.showQuestNav = !this.settings.showQuestNav;
+      this._saveSettings();
+    }
     // CRT sub-options
     if (this.settings.crtEffects) {
-      if (key === '5') { this.settings.crtGlow = !this.settings.crtGlow; this._saveSettings(); }
-      if (key === '6') { this.settings.crtScanlines = !this.settings.crtScanlines; this._saveSettings(); }
-      if (key === '7') { this.settings.crtAberration = !this.settings.crtAberration; this._saveSettings(); }
+      if (key === '6') { this.settings.crtGlow = !this.settings.crtGlow; this._saveSettings(); }
+      if (key === '7') { this.settings.crtScanlines = !this.settings.crtScanlines; this._saveSettings(); }
+      if (key === '8') { this.settings.crtAberration = !this.settings.crtAberration; this._saveSettings(); }
     }
   }
 
@@ -2629,7 +2695,8 @@ class Game {
         statusEffects: this.statusEffects,
         activeEffects: this.activeEffects,
         turnCount: this.turnCount,
-        state: this.state
+        state: this.state,
+        trackedQuestId: this._trackedQuestId
       };
 
       // Compress dungeon tiles with RLE if in dungeon
@@ -2781,6 +2848,7 @@ class Game {
       }
 
       this.turnCount = save.turnCount;
+      this._trackedQuestId = save.trackedQuestId || null;
 
       // Generate chunks around player position
       this.overworld.ensureChunksAround(this.player.position.x, this.player.position.y);
@@ -2822,18 +2890,21 @@ class Game {
       case 'OVERWORLD':
         this.renderOverworld();
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
+        this._renderQuestNavIndicator();
         break;
 
       case 'LOCATION':
         if (this.locationCamera) { this.locationCamera.follow(this.player); this.locationCamera.update(); }
         this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera);
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
+        this._renderQuestNavIndicator();
         break;
 
       case 'DUNGEON':
         this.renderDungeon();
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
         this.ui.drawMinimap(this.renderer, this.currentDungeon, this.player, this.enemies);
+        this._renderQuestNavIndicator();
         break;
 
       case 'DIALOGUE':
@@ -2857,7 +2928,7 @@ class Game {
         break;
 
       case 'QUEST_LOG':
-        this.ui.drawQuestLog(this.questSystem);
+        this.ui.drawQuestLog(this.questSystem, this._trackedQuestId);
         break;
 
       case 'MAP':
@@ -2994,6 +3065,16 @@ class Game {
     CAVE_MOUTH: 3,
   };
 
+  _renderQuestNavIndicator() {
+    if (!this._trackedQuestId || !this.settings.showQuestNav || !this.player) return;
+    const trackedQuest = this.questSystem._activeQuests.get(this._trackedQuestId);
+    if (!trackedQuest) return;
+    const targetPos = this._getQuestTargetCoords(trackedQuest);
+    if (!targetPos) return;
+    const playerPos = { x: this.player.position.x, y: this.player.position.y };
+    this.ui.drawQuestNavIndicator(trackedQuest.title, playerPos, targetPos, Date.now());
+  }
+
   renderOverworld() {
     if (!this.overworld) return;
 
@@ -3078,6 +3159,43 @@ class Game {
     const py = this.player.position.y - Math.floor(this.camera.y);
     if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
       r.drawChar(viewLeft + px, viewTop + py, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+    }
+
+    // Quest navigation line overlay
+    if (this._trackedQuestId && this.settings.showQuestNav) {
+      const trackedQuest = this.questSystem._activeQuests.get(this._trackedQuestId);
+      if (trackedQuest) {
+        const navTarget = this._getQuestTargetCoords(trackedQuest);
+        if (navTarget) {
+          const playerX = this.player.position.x;
+          const playerY = this.player.position.y;
+          const camX = Math.floor(this.camera.x);
+          const camY = Math.floor(this.camera.y);
+          const navPoints = bresenhamLine(playerX, playerY, navTarget.x, navTarget.y);
+          const now = Date.now();
+
+          for (const pt of navPoints) {
+            if (pt.x === playerX && pt.y === playerY) continue;
+            const sx = pt.x - camX;
+            const sy = pt.y - camY;
+            if (sx < 0 || sx >= viewW || sy < 0 || sy >= viewH) continue;
+            const d = Math.abs(pt.x - playerX) + Math.abs(pt.y - playerY);
+            const pulse = Math.sin(now / 400 + d * 0.4) * 0.5 + 0.5;
+            const navChar = (d % 3 === 0) ? '\u00b7' : '\u2219';
+            const navColor = pulse > 0.5 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
+            r.drawChar(viewLeft + sx, viewTop + sy, navChar, navColor);
+          }
+
+          // Draw target marker
+          const tx = navTarget.x - camX;
+          const ty = navTarget.y - camY;
+          if (tx >= 0 && tx < viewW && ty >= 0 && ty < viewH) {
+            const tPulse = Math.sin(now / 250) * 0.5 + 0.5;
+            r.drawChar(viewLeft + tx, viewTop + ty, '\u2726',
+              tPulse > 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.YELLOW);
+          }
+        }
+      }
     }
 
     // Render structure light glow on overworld at night

@@ -173,6 +173,48 @@ export class UIManager {
     this.drawMessageLog(rows);
   }
 
+  // ─── QUEST NAV INDICATOR (compact HUD compass) ───
+
+  drawQuestNavIndicator(questTitle, playerPos, targetPos, time) {
+    if (!targetPos) return;
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.FF_BLUE_DARK;
+
+    const dx = targetPos.x - playerPos.x;
+    const dy = targetPos.y - playerPos.y;
+    const dist = Math.round(Math.sqrt(dx * dx + dy * dy));
+    const angle = Math.atan2(dy, dx);
+
+    // Direction arrow based on angle
+    const arrows = ['\u2192', '\u2198', '\u2193', '\u2199', '\u2190', '\u2196', '\u2191', '\u2197']; // →↘↓↙←↖↑↗
+    const idx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+    const arrow = arrows[idx];
+    const dirNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+    const dir = dirNames[idx];
+
+    // Truncate quest title to fit
+    const maxTitleLen = Math.min(20, cols - 30);
+    const title = questTitle.length > maxTitleLen ? questTitle.substring(0, maxTitleLen - 1) + '\u2026' : questTitle;
+
+    // Draw on the separator row just above the message log
+    const indicatorY = rows - LAYOUT.HUD_BOTTOM + 2;
+    const pulse = Math.sin(time / 350) * 0.5 + 0.5;
+    const arrowColor = pulse > 0.5 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
+
+    const label = `\u25CE ${title} ${arrow} ${dir} ${dist}t`;
+    const startX = Math.floor((cols - label.length) / 2);
+    if (startX < 1) return;
+
+    // Draw indicator centered below the stats bar
+    r.drawChar(startX, indicatorY, '\u25CE', COLORS.BRIGHT_CYAN, bg);
+    r.drawString(startX + 2, indicatorY, title, COLORS.WHITE, bg, maxTitleLen);
+    const arrowX = startX + 2 + title.length + 1;
+    r.drawChar(arrowX, indicatorY, arrow, arrowColor, bg);
+    r.drawString(arrowX + 2, indicatorY, `${dir} ${dist}t`, COLORS.BRIGHT_YELLOW, bg);
+  }
+
   /**
    * Draw a minimap in the top-right corner during sealed zone exploration.
    */
@@ -922,7 +964,7 @@ export class UIManager {
 
   // ─── QUEST LOG (FF-style Quests menu) ───
 
-  drawQuestLog(questSystem) {
+  drawQuestLog(questSystem, trackedQuestId) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -947,9 +989,12 @@ export class UIManager {
     for (let i = 0; i < active.length && y < py + panelH - 8; i++) {
       const q = active[i];
       const sel = i === this.selectedIndex;
+      const tracked = q.id === trackedQuestId;
       const cursor = sel ? ICONS.cursor : ' ';
-      r.drawString(px + 2, y, cursor + ' ' + q.title,
-        sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg, panelW - 4);
+      const trackIcon = tracked ? ' \u25CE' : '';
+      const titleColor = tracked ? COLORS.BRIGHT_CYAN : (sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE);
+      r.drawString(px + 2, y, cursor + ' ' + q.title + trackIcon,
+        titleColor, bg, panelW - 4);
       y++;
       for (const obj of q.objectives) {
         const progress = `${obj.current}/${obj.required}`;
@@ -971,7 +1016,7 @@ export class UIManager {
       y++;
     }
 
-    r.drawString(px + 2, py + panelH - 1, 'Esc:Close', COLORS.BRIGHT_BLACK, bg);
+    r.drawString(px + 2, py + panelH - 1, 'Esc:Close  Enter:Track  \u2191\u2193:Select', COLORS.BRIGHT_BLACK, bg);
   }
 
   // ─── MAP VIEW (FF-style) ───
@@ -1554,7 +1599,7 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 50);
-    const panelH = settings.crtEffects ? 22 : 14;
+    const panelH = settings.crtEffects ? 24 : 16;
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
@@ -1565,6 +1610,7 @@ export class UIManager {
       { key: '2', label: 'Font Size', value: `${settings.fontSize}px`, color: COLORS.BRIGHT_YELLOW },
       { key: '3', label: 'Touch Controls', value: settings.touchControls ? 'ON' : 'OFF', color: settings.touchControls ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
       { key: '4', label: 'Auto-Save', value: `${settings.autoSaveInterval} turns`, color: COLORS.BRIGHT_YELLOW },
+      { key: '5', label: 'Quest Nav', value: settings.showQuestNav !== false ? 'ON' : 'OFF', color: settings.showQuestNav !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
     ];
 
     let curY = py + 2;
@@ -1583,9 +1629,9 @@ export class UIManager {
       curY += 1;
 
       const subItems = [
-        { key: '5', label: 'Phosphor Glow', value: settings.crtGlow !== false ? 'ON' : 'OFF', color: settings.crtGlow !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
-        { key: '6', label: 'Scanlines', value: settings.crtScanlines !== false ? 'ON' : 'OFF', color: settings.crtScanlines !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
-        { key: '7', label: 'Chroma Aberr.', value: settings.crtAberration !== false ? 'ON' : 'OFF', color: settings.crtAberration !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+        { key: '6', label: 'Phosphor Glow', value: settings.crtGlow !== false ? 'ON' : 'OFF', color: settings.crtGlow !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+        { key: '7', label: 'Scanlines', value: settings.crtScanlines !== false ? 'ON' : 'OFF', color: settings.crtScanlines !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+        { key: '8', label: 'Chroma Aberr.', value: settings.crtAberration !== false ? 'ON' : 'OFF', color: settings.crtAberration !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
       ];
 
       for (const item of subItems) {

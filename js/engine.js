@@ -1102,7 +1102,7 @@ export class InputManager {
         [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'FCTN', key: 'f', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'SAVE', key: 'p', type: 'action' }],
-        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'DBG', key: '`', type: 'debug' }],
+        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'NAV', key: 'n', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
       ],
     ]},
     LOCATION: { pages: [
@@ -1116,7 +1116,7 @@ export class InputManager {
         [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
-        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
+        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'NAV', key: 'n', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }],
       ],
     ]},
     DUNGEON: { pages: [
@@ -1130,7 +1130,7 @@ export class InputManager {
         [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
-        [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
+        [{ label: 'NAV', key: 'n', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'MAP', key: 'm', type: 'action' }],
       ],
     ]},
     COMBAT: { pages: [
@@ -1172,7 +1172,7 @@ export class InputManager {
     ]]},
     QUEST_LOG: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [null, null, null],
+      [null, { label: 'TRK', key: 'Enter', type: 'action-primary' }, null],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
       [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
     ]]},
