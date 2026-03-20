@@ -22,7 +22,7 @@ class Game {
     this._loadVersion();
 
     // Game state
-    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS
+    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG
 
     // Settings (persisted to localStorage)
     this.settings = {
@@ -89,8 +89,9 @@ class Game {
       infiniteAttack: false,
       infiniteMana: false,
     };
-    this._debugPanel = null;
-    this._debugVisible = false;
+    this._debugPanel = null;      // legacy HTML panel (unused)
+    this._debugVisible = false;    // legacy (unused)
+    this._debugReturnState = null; // state to return to when closing debug menu
 
     // World history (deep procedural history engine)
     this.worldHistoryGen = null;
@@ -752,7 +753,17 @@ class Game {
   handleInput(key) {
     // Debug menu toggle
     if (key === '`') {
-      this.toggleDebugPanel();
+      if (this.state === 'DEBUG_MENU') {
+        this.setState(this._debugReturnState || 'OVERWORLD');
+      } else if (this.state === 'CONSOLE_LOG') {
+        this.setState('DEBUG_MENU');
+      } else {
+        this._debugReturnState = this.state;
+        this.ui.debugTab = 0;
+        this.ui.debugCursor = 0;
+        this.ui.debugScroll = 0;
+        this.setState('DEBUG_MENU');
+      }
       return;
     }
     switch (this.state) {
@@ -773,6 +784,8 @@ class Game {
       case 'GAME_OVER': return this.handleGameOverInput(key);
       case 'COMBAT': return this.handleCombatInput(key);
       case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
+      case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
+      case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
       case 'WORLD_GEN_PAUSE':
         this.setState('LOADING');
         this._worldGenRunStep(this._worldGenResumeStep);
@@ -2171,6 +2184,244 @@ class Game {
     }
   }
 
+  handleDebugMenuInput(key) {
+    const ui = this.ui;
+    const tab = ui.debugTab || 0;
+    const entries = ui.getDebugEntries(this.debug, this.timeSystem, this.weatherSystem, this.renderer);
+    const entryCount = entries.length;
+
+    if (key === 'Escape') {
+      this.setState(this._debugReturnState || 'OVERWORLD');
+      return;
+    }
+
+    // Tab switching
+    if (key >= '1' && key <= '4') {
+      ui.debugTab = parseInt(key) - 1;
+      ui.debugCursor = 0;
+      ui.debugScroll = 0;
+      return;
+    }
+    if (key === 'ArrowRight' || key === 'Tab') {
+      ui.debugTab = (tab + 1) % 4;
+      ui.debugCursor = 0;
+      ui.debugScroll = 0;
+      return;
+    }
+    if (key === 'ArrowLeft') {
+      ui.debugTab = (tab - 1 + 4) % 4;
+      ui.debugCursor = 0;
+      ui.debugScroll = 0;
+      return;
+    }
+
+    // Console log shortcut
+    if (key === 'l' || key === 'L') {
+      ui.consoleLogScroll = Math.max(0, this.ui.messageLog.length - (Math.min(this.renderer.rows - 2, 40) - 3));
+      this.setState('CONSOLE_LOG');
+      return;
+    }
+
+    // Info tab has no selectable entries
+    if (tab === 3) return;
+
+    // Cursor navigation
+    if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      ui.debugCursor = Math.min((ui.debugCursor || 0) + 1, entryCount - 1);
+      return;
+    }
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      ui.debugCursor = Math.max((ui.debugCursor || 0) - 1, 0);
+      return;
+    }
+
+    // Activate current entry
+    if (key === 'Enter' || key === ' ') {
+      const entry = entries[ui.debugCursor || 0];
+      if (!entry) return;
+      this._executeDebugAction(entry);
+      return;
+    }
+  }
+
+  _executeDebugAction(entry) {
+    if (entry.type === 'toggle') {
+      switch (entry.key) {
+        case 'invincible': this.debug.invincible = !this.debug.invincible; break;
+        case 'noEncounters': this.debug.noEncounters = !this.debug.noEncounters; break;
+        case 'infiniteAttack':
+          this.debug.infiniteAttack = !this.debug.infiniteAttack;
+          if (this.player) this.player._debugInfiniteAttack = this.debug.infiniteAttack;
+          break;
+        case 'infiniteMana': this.debug.infiniteMana = !this.debug.infiniteMana; break;
+        case 'noClip': this.debug.noClip = !this.debug.noClip; break;
+        case 'disableShadows': this.debug.disableShadows = !this.debug.disableShadows; break;
+        case 'disableLighting': this.debug.disableLighting = !this.debug.disableLighting; break;
+        case 'disableClouds': this.debug.disableClouds = !this.debug.disableClouds; break;
+        case 'crtEffects':
+          this.renderer.enableCRT = !this.renderer.enableCRT;
+          this.settings.crtEffects = this.renderer.enableCRT;
+          break;
+      }
+    } else if (entry.type === 'action') {
+      switch (entry.key) {
+        case 'fullHeal':
+          if (this.player) {
+            this.player.stats.hp = this.player.stats.maxHp;
+            this.player.stats.mana = this.player.stats.maxMana;
+            this.ui.addMessage('[DEBUG] Full heal!', COLORS.BRIGHT_GREEN);
+          }
+          break;
+        case 'giveXP':
+          if (this.player) {
+            const leveled = this.player.addXP(100);
+            if (leveled.length) this.ui.addMessage(`[DEBUG] Level up! Lv ${leveled[leveled.length - 1]}`, COLORS.BRIGHT_YELLOW);
+            else this.ui.addMessage('[DEBUG] +100 XP', COLORS.BRIGHT_CYAN);
+          }
+          break;
+        case 'giveGold':
+          if (this.player) { this.player.gold += 100; this.ui.addMessage('[DEBUG] +100 Gold', COLORS.BRIGHT_YELLOW); }
+          break;
+        case 'levelUp':
+          if (this.player) {
+            const needed = this.player.stats.xpToNext - this.player.stats.xp;
+            this.player.addXP(needed);
+            this.ui.addMessage(`[DEBUG] Level up! Lv ${this.player.stats.level}`, COLORS.BRIGHT_YELLOW);
+          }
+          break;
+        case 'giveTorch':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'light', 'common'));
+          break;
+        case 'giveLantern':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'light', 'uncommon'));
+          break;
+        case 'giveWeapon':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'weapon', 'rare', 5));
+          break;
+        case 'givePotion':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'potion', 'uncommon'));
+          break;
+        case 'giveScroll':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'scroll', 'rare', 5));
+          break;
+        case 'giveFood':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'food', 'common'));
+          break;
+        case 'giveHelmet': this._giveDebugArmor('helmet'); break;
+        case 'giveChest': this._giveDebugArmor('chestplate'); break;
+        case 'giveGloves': this._giveDebugArmor('gloves'); break;
+        case 'giveLegs': this._giveDebugArmor('leggings'); break;
+        case 'giveBoots': this._giveDebugArmor('boots'); break;
+        case 'giveShield': this._giveDebugArmor('shield'); break;
+        case 'giveRing':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'ring', 'rare', 5));
+          break;
+        case 'giveAmulet':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'amulet', 'rare', 5));
+          break;
+        case 'giveArtifact':
+          if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'artifact', 'rare', 5));
+          break;
+        case 'clearInv':
+          if (this.player) { this.player.inventory = []; this.ui.addMessage('[DEBUG] Inventory cleared', COLORS.BRIGHT_RED); }
+          break;
+        case 'revealMap':
+          if (this.overworld) {
+            for (const loc of this.overworld.getLoadedLocations()) {
+              this.player.knownLocations.add(loc.id);
+            }
+            this.debug.revealMap = true;
+            this.ui.addMessage('[DEBUG] Map revealed', COLORS.BRIGHT_GREEN);
+          }
+          break;
+        case 'advanceDay':
+          this.timeSystem.advance(24);
+          this.ui.addMessage('[DEBUG] Advanced 24 hours', COLORS.BRIGHT_CYAN);
+          break;
+        case 'teleport':
+          if (this.player) {
+            this.player.position.x = 50;
+            this.player.position.y = 30;
+            if (this.overworld) this.overworld.ensureChunksAround(50, 30);
+            this.camera.follow(this.player);
+            this.ui.addMessage('[DEBUG] Teleported to 50,30', COLORS.BRIGHT_CYAN);
+          }
+          break;
+      }
+    } else if (entry.type === 'slider') {
+      if (entry.key === 'hour' && this.timeSystem) {
+        this.timeSystem.hour = (this.timeSystem.hour + 1) % 24;
+        this.debug.forceTimeOfDay = null;
+      }
+    } else if (entry.type === 'select') {
+      if (entry.key === 'weather' && this.weatherSystem) {
+        const opts = entry.options;
+        const cur = this.weatherSystem.current;
+        let idx = opts.indexOf(cur);
+        idx = (idx + 1) % opts.length;
+        const val = opts[idx];
+        if (val === 'auto') {
+          this.weatherSystem.duration = 0;
+        } else {
+          this.weatherSystem.current = val;
+          this.weatherSystem.intensity = 0.7;
+          this.weatherSystem.duration = 999;
+        }
+      }
+    }
+  }
+
+  _giveDebugArmor(subtypeKey) {
+    if (!this.player) return;
+    const ARMOR_SUBTYPES = {
+      helmet: { char: '^', name: 'Helmet' }, chestplate: { char: '[', name: 'Chestplate' },
+      gloves: { char: '{', name: 'Gloves' }, leggings: { char: '=', name: 'Leggings' },
+      boots: { char: '_', name: 'Boots' }, shield: { char: ']', name: 'Shield' },
+    };
+    const item = this.itemGen.generate(this.rng, 'armor', 'rare', 5);
+    const st = ARMOR_SUBTYPES[subtypeKey];
+    item.name = item.name.replace(/Helmet|Chestplate|Gloves|Leggings|Boots|Shield/, st.name);
+    item.subtype = subtypeKey;
+    item.char = st.char;
+    this.player.addItem(item);
+  }
+
+  handleConsoleLogInput(key) {
+    const total = this.ui.messageLog.length;
+    const panelH = Math.min(this.renderer.rows - 2, 40);
+    const contentH = panelH - 3;
+    const maxScroll = Math.max(0, total - contentH);
+
+    if (key === 'Escape') {
+      this.setState('DEBUG_MENU');
+      return;
+    }
+    if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      this.ui.consoleLogScroll = Math.min((this.ui.consoleLogScroll || 0) + 1, maxScroll);
+      return;
+    }
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      this.ui.consoleLogScroll = Math.max((this.ui.consoleLogScroll || 0) - 1, 0);
+      return;
+    }
+    if (key === 'PageDown') {
+      this.ui.consoleLogScroll = Math.min((this.ui.consoleLogScroll || 0) + contentH, maxScroll);
+      return;
+    }
+    if (key === 'PageUp') {
+      this.ui.consoleLogScroll = Math.max((this.ui.consoleLogScroll || 0) - contentH, 0);
+      return;
+    }
+    if (key === 'Home') {
+      this.ui.consoleLogScroll = 0;
+      return;
+    }
+    if (key === 'End') {
+      this.ui.consoleLogScroll = maxScroll;
+      return;
+    }
+  }
+
   handleGameOverInput(key) {
     if (key === 'Enter') {
       this.setState('MENU');
@@ -3113,6 +3364,14 @@ class Game {
       case 'SETTINGS':
         this.ui.drawSettings(this.settings);
         break;
+
+      case 'DEBUG_MENU':
+        this.ui.drawDebugMenu(this.debug, this.player, this.timeSystem, this.weatherSystem, this._debugReturnState || 'MENU', this.turnCount);
+        break;
+
+      case 'CONSOLE_LOG':
+        this.ui.drawConsoleLog();
+        break;
     }
 
     // Force full redraw when post-processing, transitions, or flash
@@ -3905,265 +4164,24 @@ class Game {
     requestAnimationFrame((ts) => this.gameLoop(ts));
   }
 
-  // ─── DEBUG PANEL ───
+  // ─── DEBUG PANEL (legacy stub — now uses in-game canvas screen) ───
 
   toggleDebugPanel() {
-    this._debugVisible = !this._debugVisible;
-    if (!this._debugPanel) {
-      this._initDebugPanel();
+    // Hide old HTML panel if it exists
+    if (this._debugPanel) {
+      this._debugPanel.style.display = 'none';
+      this._debugVisible = false;
     }
-    this._debugPanel.style.display = this._debugVisible ? 'block' : 'none';
-    if (this._debugVisible) this._refreshDebugPanel();
-  }
-
-  _initDebugPanel() {
-    const panel = document.createElement('div');
-    panel.id = 'debug-panel';
-    panel.innerHTML = `
-      <div class="debug-header">DEBUG MENU <span class="debug-close">[X]</span></div>
-      <div class="debug-section">
-        <div class="debug-title">TIME & WEATHER</div>
-        <label>Hour: <input type="range" id="dbg-hour" min="0" max="23" step="1" value="8"> <span id="dbg-hour-val">8</span></label>
-        <button id="dbg-advance-day">Advance Day</button>
-        <label>Weather: <select id="dbg-weather">
-          <option value="">Auto</option>
-          <option value="clear">Clear</option><option value="rain">Rain</option>
-          <option value="storm">Storm</option><option value="fog">Fog</option>
-          <option value="snow">Snow</option><option value="sandstorm">Sandstorm</option>
-          <option value="acid_rain">Acid Rain</option><option value="coolant_mist">Coolant Mist</option>
-          <option value="spore_fall">Spore Fall</option><option value="ember_rain">Ember Rain</option>
-          <option value="data_storm">Data Storm</option><option value="nano_haze">Nano Haze</option>
-          <option value="ion_storm">Ion Storm</option><option value="blood_rain">Blood Rain</option>
-        </select></label>
-      </div>
-      <div class="debug-section">
-        <div class="debug-title">PLAYER</div>
-        <label><input type="checkbox" id="dbg-invincible"> Invincible</label>
-        <label><input type="checkbox" id="dbg-no-encounters"> No Encounters</label>
-        <label><input type="checkbox" id="dbg-infinite-attack"> Infinite Attack</label>
-        <label><input type="checkbox" id="dbg-infinite-mana"> Infinite Mana</label>
-        <button id="dbg-full-heal">Full Heal</button>
-        <button id="dbg-give-xp">+100 XP</button>
-        <button id="dbg-give-gold">+100 Gold</button>
-        <button id="dbg-level-up">Level Up</button>
-      </div>
-      <div class="debug-section">
-        <div class="debug-title">INVENTORY</div>
-        <button id="dbg-give-torch">Give Torch</button>
-        <button id="dbg-give-lantern">Give Lantern</button>
-        <button id="dbg-give-weapon">Give Weapon</button>
-        <button id="dbg-give-potion">Give Potion</button>
-        <button id="dbg-give-scroll">Give Scroll</button>
-        <button id="dbg-give-food">Give Food</button>
-        <button id="dbg-give-helmet">Give Helmet</button>
-        <button id="dbg-give-chest">Give Chestplate</button>
-        <button id="dbg-give-gloves">Give Gloves</button>
-        <button id="dbg-give-legs">Give Leggings</button>
-        <button id="dbg-give-boots">Give Boots</button>
-        <button id="dbg-give-shield">Give Shield</button>
-        <button id="dbg-give-ring">Give Ring</button>
-        <button id="dbg-give-amulet">Give Amulet</button>
-        <button id="dbg-give-artifact">Give Artifact</button>
-        <button id="dbg-clear-inv">Clear Inventory</button>
-      </div>
-      <div class="debug-section">
-        <div class="debug-title">WORLD</div>
-        <button id="dbg-reveal-map">Reveal Map</button>
-        <label>Teleport X: <input type="number" id="dbg-tp-x" value="50" style="width:50px"></label>
-        <label>Y: <input type="number" id="dbg-tp-y" value="30" style="width:50px"></label>
-        <button id="dbg-teleport">Teleport</button>
-      </div>
-      <div class="debug-section">
-        <div class="debug-title">VISUAL</div>
-        <label><input type="checkbox" id="dbg-no-shadows"> Disable Shadows</label>
-        <label><input type="checkbox" id="dbg-no-lighting"> Disable Lighting</label>
-        <label><input type="checkbox" id="dbg-crt"> CRT Effects</label>
-      </div>
-      <div class="debug-section">
-        <div class="debug-title">INFO</div>
-        <div id="dbg-info" style="font-size:11px;color:#8f8;white-space:pre"></div>
-      </div>
-    `;
-    document.body.appendChild(panel);
-    this._debugPanel = panel;
-
-    // Close button
-    panel.querySelector('.debug-close').addEventListener('click', () => this.toggleDebugPanel());
-
-    // Time controls
-    const hourSlider = panel.querySelector('#dbg-hour');
-    const hourVal = panel.querySelector('#dbg-hour-val');
-    hourSlider.addEventListener('input', () => {
-      const h = parseInt(hourSlider.value);
-      hourVal.textContent = h;
-      this.timeSystem.hour = h;
-      this.debug.forceTimeOfDay = null;
-    });
-    panel.querySelector('#dbg-advance-day').addEventListener('click', () => {
-      this.timeSystem.advance(24);
-      hourSlider.value = this.timeSystem.hour;
-      hourVal.textContent = this.timeSystem.hour;
-    });
-    panel.querySelector('#dbg-weather').addEventListener('change', (e) => {
-      if (e.target.value) {
-        this.weatherSystem.current = e.target.value;
-        this.weatherSystem.intensity = 0.7;
-        this.weatherSystem.duration = 999;
-      } else {
-        this.weatherSystem.duration = 0;
-      }
-    });
-
-    // Player controls
-    panel.querySelector('#dbg-invincible').addEventListener('change', (e) => {
-      this.debug.invincible = e.target.checked;
-    });
-    panel.querySelector('#dbg-no-encounters').addEventListener('change', (e) => {
-      this.debug.noEncounters = e.target.checked;
-    });
-    panel.querySelector('#dbg-infinite-attack').addEventListener('change', (e) => {
-      this.debug.infiniteAttack = e.target.checked;
-      if (this.player) this.player._debugInfiniteAttack = e.target.checked;
-    });
-    panel.querySelector('#dbg-infinite-mana').addEventListener('change', (e) => {
-      this.debug.infiniteMana = e.target.checked;
-    });
-    panel.querySelector('#dbg-full-heal').addEventListener('click', () => {
-      if (this.player) {
-        this.player.stats.hp = this.player.stats.maxHp;
-        this.player.stats.mana = this.player.stats.maxMana;
-      }
-    });
-    panel.querySelector('#dbg-give-xp').addEventListener('click', () => {
-      if (this.player) {
-        const leveled = this.player.addXP(100);
-        if (leveled.length) this.ui.addMessage(`[DEBUG] Level up! Lv ${leveled[leveled.length - 1]}`, COLORS.BRIGHT_YELLOW);
-      }
-    });
-    panel.querySelector('#dbg-give-gold').addEventListener('click', () => {
-      if (this.player) this.player.gold += 100;
-    });
-    panel.querySelector('#dbg-level-up').addEventListener('click', () => {
-      if (this.player) {
-        const needed = this.player.stats.xpToNext - this.player.stats.xp;
-        this.player.addXP(needed);
-      }
-    });
-
-    // Inventory controls
-    panel.querySelector('#dbg-give-torch').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'light', 'common'));
-    });
-    panel.querySelector('#dbg-give-lantern').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'light', 'uncommon'));
-    });
-    panel.querySelector('#dbg-give-weapon').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'weapon', 'rare', 5));
-    });
-    panel.querySelector('#dbg-give-potion').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'potion', 'uncommon'));
-    });
-    panel.querySelector('#dbg-give-scroll').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'scroll', 'rare', 5));
-    });
-    panel.querySelector('#dbg-give-food').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'food', 'common'));
-    });
-    // Armor helpers — generate armor then override subtype to the desired piece
-    const ARMOR_SUBTYPES = {
-      helmet: { char: '^', name: 'Helmet' }, chestplate: { char: '[', name: 'Chestplate' },
-      gloves: { char: '{', name: 'Gloves' }, leggings: { char: '=', name: 'Leggings' },
-      boots: { char: '_', name: 'Boots' }, shield: { char: ']', name: 'Shield' },
-    };
-    const giveArmor = (subtypeKey) => {
-      if (!this.player) return;
-      const item = this.itemGen.generate(this.rng, 'armor', 'rare', 5);
-      const st = ARMOR_SUBTYPES[subtypeKey];
-      item.name = item.name.replace(/Helmet|Chestplate|Gloves|Leggings|Boots|Shield/, st.name);
-      item.subtype = subtypeKey;
-      item.char = st.char;
-      this.player.addItem(item);
-    };
-    panel.querySelector('#dbg-give-helmet').addEventListener('click', () => giveArmor('helmet'));
-    panel.querySelector('#dbg-give-chest').addEventListener('click', () => giveArmor('chestplate'));
-    panel.querySelector('#dbg-give-gloves').addEventListener('click', () => giveArmor('gloves'));
-    panel.querySelector('#dbg-give-legs').addEventListener('click', () => giveArmor('leggings'));
-    panel.querySelector('#dbg-give-boots').addEventListener('click', () => giveArmor('boots'));
-    panel.querySelector('#dbg-give-shield').addEventListener('click', () => giveArmor('shield'));
-    panel.querySelector('#dbg-give-ring').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'ring', 'rare', 5));
-    });
-    panel.querySelector('#dbg-give-amulet').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'amulet', 'rare', 5));
-    });
-    panel.querySelector('#dbg-give-artifact').addEventListener('click', () => {
-      if (this.player) this.player.addItem(this.itemGen.generate(this.rng, 'artifact', 'rare', 5));
-    });
-    panel.querySelector('#dbg-clear-inv').addEventListener('click', () => {
-      if (this.player) this.player.inventory = [];
-    });
-
-    // World controls
-    panel.querySelector('#dbg-reveal-map').addEventListener('click', () => {
-      if (this.overworld) {
-        for (const loc of this.overworld.getLoadedLocations()) {
-          this.player.knownLocations.add(loc.id);
-        }
-        this.debug.revealMap = true;
-      }
-    });
-    panel.querySelector('#dbg-teleport').addEventListener('click', () => {
-      if (this.player) {
-        const x = parseInt(panel.querySelector('#dbg-tp-x').value) || 0;
-        const y = parseInt(panel.querySelector('#dbg-tp-y').value) || 0;
-        this.player.position.x = x;
-        this.player.position.y = y;
-        if (this.overworld) this.overworld.ensureChunksAround(x, y);
-        this.camera.follow(this.player);
-      }
-    });
-
-    // Visual controls
-    panel.querySelector('#dbg-no-shadows').addEventListener('change', (e) => {
-      this.debug.disableShadows = e.target.checked;
-    });
-    panel.querySelector('#dbg-no-lighting').addEventListener('change', (e) => {
-      this.debug.disableLighting = e.target.checked;
-    });
-    panel.querySelector('#dbg-crt').addEventListener('change', (e) => {
-      this.renderer.enableCRT = e.target.checked;
-      this.settings.crtEffects = e.target.checked;
-    });
-
-    // Update info periodically
-    this._debugInfoInterval = setInterval(() => {
-      if (this._debugVisible) this._refreshDebugPanel();
-    }, 500);
-  }
-
-  _refreshDebugPanel() {
-    const info = this._debugPanel?.querySelector('#dbg-info');
-    if (!info) return;
-    const p = this.player;
-    const t = this.timeSystem;
-    const lines = [
-      `State: ${this.state}`,
-      `Turn: ${this.turnCount}`,
-      `Time: ${t.getTimeString()} (${t.getTimeOfDay()})`,
-      `Weather: ${this.weatherSystem.current}`,
-    ];
-    if (p) {
-      lines.push(`Pos: (${p.position.x}, ${p.position.y})`);
-      lines.push(`HP: ${p.stats.hp}/${p.stats.maxHp} MP: ${p.stats.mana}/${p.stats.maxMana}`);
-      lines.push(`Lv: ${p.stats.level} XP: ${p.stats.xp}/${p.stats.xpToNext}`);
-      lines.push(`Gold: ${p.gold} Items: ${p.inventory.length}/20`);
-      lines.push(`Light: ${p.hasLightSource().hasLight ? p.hasLightSource().type : 'none'}`);
+    // Route to the new in-game debug menu state
+    if (this.state === 'DEBUG_MENU') {
+      this.setState(this._debugReturnState || 'OVERWORLD');
+    } else {
+      this._debugReturnState = this.state;
+      this.ui.debugTab = 0;
+      this.ui.debugCursor = 0;
+      this.ui.debugScroll = 0;
+      this.setState('DEBUG_MENU');
     }
-    lines.push(`Invincible: ${this.debug.invincible}`);
-    lines.push(`No Encounters: ${this.debug.noEncounters}`);
-    lines.push(`Inf Attack: ${this.debug.infiniteAttack}`);
-    lines.push(`Inf Mana: ${this.debug.infiniteMana}`);
-    info.textContent = lines.join('\n');
   }
 }
 
