@@ -1081,9 +1081,9 @@ export class TimeSystem {
     this.day = 1;
     this.year = 1;
     this.onDayChange = null;
-    // Real-time advancement: 1 game minute = 2 real seconds
-    // => 1 game hour = 120 real seconds = 120000 ms
-    this._hoursPerMs = 1 / 120000;
+    // Real-time advancement: 1 game minute = 0.5 real seconds
+    // => 1 game hour = 30 real seconds = 30000 ms
+    this._hoursPerMs = 1 / 30000;
     this._lastRealTime = null;
     this._paused = false;
   }
