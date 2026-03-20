@@ -592,6 +592,54 @@ export class Renderer {
         const voids = ['#220044', '#110033', '#330055'];
         return voids[Math.floor(t * 0.4) % voids.length];
       }
+      // ── Mechanical structure types ──
+      case 'MANUFACTORY_FURNACE': {
+        const r = Math.floor(200 + phase * 55);
+        const g = Math.floor(70 + phase * 50);
+        return `rgb(${r},${g},10)`;
+      }
+      case 'MANUFACTORY_GEAR':
+      case 'CLOCKWORK_GEAR':
+      case 'BORE_GEAR':
+      case 'MECH_GEAR': {
+        const gears = ['#CCAA44', '#BB9933', '#DDBB55'];
+        return gears[Math.floor(t * 0.4) % gears.length];
+      }
+      case 'CLOCKWORK_FLYWHEEL': {
+        const r = Math.floor(220 + phase * 35);
+        const g = Math.floor(180 + phase * 40);
+        return `rgb(${r},${g},40)`;
+      }
+      case 'BORE_SLAG': {
+        const r = Math.floor(180 + phase * 50);
+        const g = Math.floor(40 + phase * 30);
+        return `rgb(${r},${g},0)`;
+      }
+      case 'BORE_DRILL': {
+        const drills = ['#AABBCC', '#BBCCDD', '#99AABB', '#CCDDEE'];
+        return drills[Math.floor(t * 3) % drills.length];
+      }
+      case 'PIPE_VALVE':
+      case 'MECH_VALVE': {
+        const valves = ['#FF4444', '#EE3333', '#FF5555', '#DD2222'];
+        return valves[Math.floor(t * 1.5) % valves.length];
+      }
+      case 'TURBINE_NACELLE': {
+        const nacelles = ['#EEDDAA', '#DDCC99', '#FFEEBB'];
+        return nacelles[Math.floor(t * 2) % nacelles.length];
+      }
+      case 'TURBINE_BLADE': {
+        const blades = ['#BBDDFF', '#AACCEE', '#CCEEFF', '#99BBDD'];
+        return blades[Math.floor(t * 4) % blades.length];
+      }
+      case 'CRANE_BASIN': {
+        const basin = ['#224466', '#1A3355', '#2A5577'];
+        return basin[Math.floor(t * 0.7) % basin.length];
+      }
+      case 'MECH_CONDUIT': {
+        const conduits = ['#44AAFF', '#3399EE', '#55BBFF'];
+        return conduits[Math.floor(t * 2) % conduits.length];
+      }
       default:
         return baseColor;
     }

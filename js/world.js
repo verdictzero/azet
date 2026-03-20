@@ -357,6 +357,7 @@ const NAME_SUFFIXES = {
   ruins: [' Wreckage', ' Remnants', ' Debris', ' Rubble', ' Scrapheap'],
   tower: [' Spire', ' Antenna', ' Beacon', ' Relay', ' Watchtower'],
   camp: [' Camp', ' Den', ' Crossing', ' Lodge', ' Waypost'],
+  mechanical_ruin: [' Manufactory', ' Bore Shaft', ' Gearworks', ' Pipe Nexus', ' Turbine Hall', ' Crane Dock'],
 };
 
 const LOCATION_DEFS = [
@@ -512,6 +513,314 @@ export class ChunkManager {
           return [{ x: ox + sx + 2, y: oy + sy + 1, radius: 10, r: 0.4, g: 0, b: 0.8, intensity: 0.9 }];
         },
       },
+      // ── Mechanical mega-structures ──
+      {
+        type: 'collapsed_manufactory', w: 10, h: 8, biomes: null, mega: true,
+        entrance: { dx: 5, dy: 7 }, locationType: 'mechanical_ruin', difficulty: 5,
+        build(tiles, sx, sy) {
+          const bg = '#1A1008';
+          // Smokestacks (columns 1-2 and 7-8)
+          for (let dy = 0; dy < 6; dy++) {
+            tiles[sy + dy][sx + 1] = tile('MANUFACTORY_STACK', '\u2551', '#AA7744', bg, false, { structure: true });
+            tiles[sy + dy][sx + 2] = tile('MANUFACTORY_STACK', '\u2551', '#AA7744', bg, false, { structure: true });
+            tiles[sy + dy][sx + 7] = tile('MANUFACTORY_STACK', '\u2551', '#AA7744', bg, false, { structure: true });
+            tiles[sy + dy][sx + 8] = tile('MANUFACTORY_STACK', '\u2551', '#AA7744', bg, false, { structure: true });
+          }
+          // Stack tops
+          tiles[sy][sx + 1] = tile('MANUFACTORY_STACK_TOP', '\u2593', '#CC8844', bg, false, { structure: true });
+          tiles[sy][sx + 2] = tile('MANUFACTORY_STACK_TOP', '\u2593', '#CC8844', bg, false, { structure: true });
+          tiles[sy][sx + 7] = tile('MANUFACTORY_STACK_TOP', '\u2593', '#CC8844', bg, false, { structure: true });
+          tiles[sy][sx + 8] = tile('MANUFACTORY_STACK_TOP', '\u2593', '#CC8844', bg, false, { structure: true });
+          // Walls
+          for (let dy = 1; dy < 7; dy++) {
+            tiles[sy + dy][sx] = tile('MANUFACTORY_WALL', '[', '#886644', bg, false, { structure: true });
+            tiles[sy + dy][sx + 9] = tile('MANUFACTORY_WALL', ']', '#886644', bg, false, { structure: true });
+          }
+          // Roof beam
+          for (let dx = 3; dx <= 6; dx++) tiles[sy + 1][sx + dx] = tile('MANUFACTORY_CONVEYOR', '\u2550', '#887766', bg, false, { structure: true });
+          // Gear housings
+          tiles[sy + 2][sx + 3] = tile('MANUFACTORY_GEAR', '\u2699', '#CCAA44', bg, false, { structure: true });
+          tiles[sy + 2][sx + 6] = tile('MANUFACTORY_GEAR', '\u2699', '#CCAA44', bg, false, { structure: true });
+          tiles[sy + 5][sx + 3] = tile('MANUFACTORY_GEAR', '\u2699', '#CCAA44', bg, false, { structure: true });
+          tiles[sy + 5][sx + 6] = tile('MANUFACTORY_GEAR', '\u2699', '#CCAA44', bg, false, { structure: true });
+          // Conveyor lines
+          for (let dx = 3; dx <= 6; dx++) {
+            tiles[sy + 3][sx + dx] = tile('MANUFACTORY_CONVEYOR', '\u2550', '#887766', bg, false, { structure: true });
+            tiles[sy + 6][sx + dx] = tile('MANUFACTORY_CONVEYOR', '\u2550', '#887766', bg, false, { structure: true });
+          }
+          // Furnace cores
+          for (let dx = 4; dx <= 5; dx++) {
+            tiles[sy + 4][sx + dx] = tile('MANUFACTORY_FURNACE', '\u25CA', '#FF6622', '#331100', false, { structure: true });
+          }
+          // Interior floor
+          for (let dx = 3; dx <= 6; dx++) {
+            for (const dy of [2, 4, 5]) {
+              if (tiles[sy + dy][sx + dx].type.startsWith('MANUFACTORY_')) continue;
+              tiles[sy + dy][sx + dx] = tile('MANUFACTORY_FLOOR', '.', '#665544', bg, true, { structure: true });
+            }
+          }
+          // Base / entrance
+          for (let dx = 0; dx <= 9; dx++) tiles[sy + 7][sx + dx] = tile('MANUFACTORY_CONVEYOR', '\u2550', '#887766', bg, false, { structure: true });
+          tiles[sy + 7][sx + 4] = tile('MANUFACTORY_FLOOR', '\u25A3', '#CCAA44', bg, true, { structure: true });
+          tiles[sy + 7][sx + 5] = tile('MANUFACTORY_FLOOR', '\u25A3', '#CCAA44', bg, true, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [
+            { x: ox + sx + 4, y: oy + sy + 4, radius: 6, r: 1, g: 0.4, b: 0, intensity: 0.8 },
+            { x: ox + sx + 5, y: oy + sy + 4, radius: 6, r: 1, g: 0.4, b: 0, intensity: 0.8 },
+            { x: ox + sx + 5, y: oy + sy + 4, radius: 10, r: 0.8, g: 0.5, b: 0.1, intensity: 0.5 },
+          ];
+        },
+      },
+      {
+        type: 'bore_engine', w: 8, h: 10, biomes: ['reactor_slag', 'hull_breach'], mega: true,
+        entrance: { dx: 4, dy: 9 }, locationType: 'mechanical_ruin', difficulty: 6,
+        build(tiles, sx, sy) {
+          const bg = '#0A0A11';
+          // Drill heads
+          tiles[sy][sx + 3] = tile('BORE_DRILL', '\u25BC', '#AABBCC', bg, false, { structure: true });
+          tiles[sy][sx + 4] = tile('BORE_DRILL', '\u25BC', '#AABBCC', bg, false, { structure: true });
+          // Drill housing
+          tiles[sy + 1][sx + 2] = tile('BORE_HOUSING', '[', '#889999', bg, false, { structure: true });
+          tiles[sy + 1][sx + 3] = tile('BORE_CROSSBRACE', '\u256C', '#889999', bg, false, { structure: true });
+          tiles[sy + 1][sx + 4] = tile('BORE_CROSSBRACE', '\u256C', '#889999', bg, false, { structure: true });
+          tiles[sy + 1][sx + 5] = tile('BORE_HOUSING', ']', '#889999', bg, false, { structure: true });
+          // Shaft
+          for (let dy = 2; dy <= 3; dy++) {
+            tiles[sy + dy][sx + 2] = tile('BORE_HOUSING', '[', '#889999', bg, false, { structure: true });
+            tiles[sy + dy][sx + 3] = tile('BORE_SHAFT', '\u2551', '#778888', bg, false, { structure: true });
+            tiles[sy + dy][sx + 4] = tile('BORE_SHAFT', '\u2551', '#778888', bg, false, { structure: true });
+            tiles[sy + dy][sx + 5] = tile('BORE_HOUSING', ']', '#889999', bg, false, { structure: true });
+          }
+          // Cross-brace platform
+          for (let dx = 0; dx <= 7; dx++) tiles[sy + 4][sx + dx] = tile('BORE_PLATFORM', '\u2550', '#778888', bg, false, { structure: true });
+          tiles[sy + 4][sx + 3] = tile('BORE_CROSSBRACE', '\u256C', '#889999', bg, false, { structure: true });
+          tiles[sy + 4][sx + 4] = tile('BORE_CROSSBRACE', '\u256C', '#889999', bg, false, { structure: true });
+          // Gear assembly
+          tiles[sy + 5][sx + 1] = tile('BORE_HOUSING', '[', '#889999', bg, false, { structure: true });
+          tiles[sy + 5][sx + 2] = tile('BORE_GEAR', '\u2699', '#CCAA44', bg, false, { structure: true });
+          tiles[sy + 5][sx + 5] = tile('BORE_GEAR', '\u2699', '#CCAA44', bg, false, { structure: true });
+          tiles[sy + 5][sx + 6] = tile('BORE_HOUSING', ']', '#889999', bg, false, { structure: true });
+          // Support columns
+          tiles[sy + 6][sx + 1] = tile('BORE_HOUSING', '[', '#889999', bg, false, { structure: true });
+          tiles[sy + 6][sx + 3] = tile('BORE_SHAFT', '\u2551', '#778888', bg, false, { structure: true });
+          tiles[sy + 6][sx + 4] = tile('BORE_SHAFT', '\u2551', '#778888', bg, false, { structure: true });
+          tiles[sy + 6][sx + 6] = tile('BORE_HOUSING', ']', '#889999', bg, false, { structure: true });
+          // Base platform
+          for (let dx = 0; dx <= 7; dx++) tiles[sy + 7][sx + dx] = tile('BORE_PLATFORM', '\u2550', '#778888', bg, false, { structure: true });
+          // Exhaust vents
+          for (let dx = 3; dx <= 5; dx++) tiles[sy + 8][sx + dx] = tile('BORE_EXHAUST', '\u2593', '#AA6633', '#221100', false, { structure: true });
+          // Slag pool
+          for (let dx = 3; dx <= 5; dx++) tiles[sy + 9][sx + dx] = tile('BORE_SLAG', '~', '#FF4400', '#331100', false, { structure: true });
+          // Entrance
+          tiles[sy + 9][sx + 4] = tile('BORE_SLAG', '\u25A3', '#CCAA44', '#331100', true, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [
+            { x: ox + sx + 3, y: oy + sy, radius: 8, r: 0.5, g: 0.7, b: 1, intensity: 0.85 },
+            { x: ox + sx + 4, y: oy + sy + 9, radius: 6, r: 1, g: 0.3, b: 0, intensity: 0.9 },
+          ];
+        },
+      },
+      {
+        type: 'clockwork_citadel', w: 12, h: 10, biomes: null, mega: true,
+        entrance: { dx: 5, dy: 9 }, locationType: 'mechanical_ruin', difficulty: 7,
+        build(tiles, sx, sy) {
+          const bg = '#0F0D0A';
+          // Corner turrets
+          for (const [tx, ty] of [[0, 0], [11, 0], [0, 9], [11, 9]]) {
+            tiles[sy + ty][sx + tx] = tile('CLOCKWORK_TURRET', '\u25B2', '#99AABB', bg, false, { structure: true });
+          }
+          // Tower columns at corners
+          for (let dy = 1; dy <= 8; dy++) {
+            tiles[sy + dy][sx + 0] = tile('CLOCKWORK_TOWER', '\u2551', '#99AABB', bg, false, { structure: true });
+            tiles[sy + dy][sx + 11] = tile('CLOCKWORK_TOWER', '\u2551', '#99AABB', bg, false, { structure: true });
+          }
+          // Gear-wall facade (top and bottom)
+          for (let dx = 2; dx <= 9; dx++) {
+            tiles[sy + 1][sx + dx] = tile('CLOCKWORK_GEAR', '\u2699', '#CCAA44', bg, false, { structure: true });
+            tiles[sy + 8][sx + dx] = tile('CLOCKWORK_GEAR', '\u2699', '#CCAA44', bg, false, { structure: true });
+          }
+          // Inner walls
+          for (let dy = 2; dy <= 7; dy++) {
+            tiles[sy + dy][sx + 2] = tile('CLOCKWORK_WALL', '#', '#887766', bg, false, { structure: true });
+            tiles[sy + dy][sx + 9] = tile('CLOCKWORK_WALL', '#', '#887766', bg, false, { structure: true });
+          }
+          for (let dx = 3; dx <= 8; dx++) {
+            tiles[sy + 2][sx + dx] = tile('CLOCKWORK_WALL', '#', '#887766', bg, false, { structure: true });
+            tiles[sy + 7][sx + dx] = tile('CLOCKWORK_WALL', '#', '#887766', bg, false, { structure: true });
+          }
+          // Side platforms
+          for (const dy of [4, 5]) {
+            tiles[sy + dy][sx + 1] = tile('CLOCKWORK_PLATFORM', '\u2550', '#887766', bg, false, { structure: true });
+            tiles[sy + dy][sx + 10] = tile('CLOCKWORK_PLATFORM', '\u2550', '#887766', bg, false, { structure: true });
+          }
+          // Flywheel cores (center)
+          for (let dy = 4; dy <= 5; dy++) {
+            tiles[sy + dy][sx + 5] = tile('CLOCKWORK_FLYWHEEL', '\u2295', '#FFCC44', '#221100', false, { structure: true });
+            tiles[sy + dy][sx + 6] = tile('CLOCKWORK_FLYWHEEL', '\u2295', '#FFCC44', '#221100', false, { structure: true });
+          }
+          // Interior floor
+          for (let dy = 3; dy <= 6; dy++) {
+            for (let dx = 3; dx <= 8; dx++) {
+              if (tiles[sy + dy][sx + dx].type.startsWith('CLOCKWORK_')) continue;
+              tiles[sy + dy][sx + dx] = tile('CLOCKWORK_FLOOR', '.', '#665544', bg, true, { structure: true });
+            }
+          }
+          // Base / gate entrance
+          for (let dx = 1; dx <= 10; dx++) tiles[sy + 9][sx + dx] = tile('CLOCKWORK_PLATFORM', '\u2550', '#887766', bg, false, { structure: true });
+          tiles[sy + 9][sx + 5] = tile('CLOCKWORK_GATE', '\u25A3', '#FFCC44', bg, true, { structure: true });
+          tiles[sy + 9][sx + 6] = tile('CLOCKWORK_GATE', '\u25A3', '#FFCC44', bg, true, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [
+            { x: ox + sx + 0, y: oy + sy, radius: 8, r: 0.6, g: 0.7, b: 1, intensity: 0.7 },
+            { x: ox + sx + 11, y: oy + sy, radius: 8, r: 0.6, g: 0.7, b: 1, intensity: 0.7 },
+            { x: ox + sx + 5, y: oy + sy + 4, radius: 6, r: 1, g: 0.8, b: 0.2, intensity: 0.9 },
+            { x: ox + sx + 6, y: oy + sy + 5, radius: 6, r: 1, g: 0.8, b: 0.2, intensity: 0.9 },
+          ];
+        },
+      },
+      {
+        type: 'pipeline_junction', w: 10, h: 8, biomes: ['hull_breach', 'reactor_slag', 'nano_plague'], mega: true,
+        entrance: { dx: 5, dy: 4 }, locationType: 'mechanical_ruin', difficulty: 5,
+        build(tiles, sx, sy) {
+          const bg = '#0A0A11';
+          // Top pipes
+          for (let dx = 0; dx <= 2; dx++) tiles[sy][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+          tiles[sy][sx + 3] = tile('PIPE_JUNCTION', '\u2557', '#778899', bg, false, { structure: true });
+          tiles[sy][sx + 6] = tile('PIPE_JUNCTION', '\u2554', '#778899', bg, false, { structure: true });
+          for (let dx = 7; dx <= 9; dx++) tiles[sy][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+          // Vertical pipes
+          for (let dy = 1; dy <= 6; dy++) {
+            tiles[sy + dy][sx + 3] = tile('PIPE_VERTICAL', '\u2551', '#778899', bg, false, { structure: true });
+            tiles[sy + dy][sx + 6] = tile('PIPE_VERTICAL', '\u2551', '#778899', bg, false, { structure: true });
+          }
+          // Cross junctions
+          tiles[sy + 2][sx + 3] = tile('PIPE_JUNCTION', '\u2560', '#778899', bg, false, { structure: true });
+          tiles[sy + 2][sx + 6] = tile('PIPE_JUNCTION', '\u2563', '#778899', bg, false, { structure: true });
+          tiles[sy + 5][sx + 3] = tile('PIPE_JUNCTION', '\u2560', '#778899', bg, false, { structure: true });
+          tiles[sy + 5][sx + 6] = tile('PIPE_JUNCTION', '\u2563', '#778899', bg, false, { structure: true });
+          // Horizontal cross pipes
+          for (let dx = 4; dx <= 5; dx++) {
+            tiles[sy + 2][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+            tiles[sy + 5][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+          }
+          // Side pipes
+          for (let dx = 0; dx <= 2; dx++) {
+            tiles[sy + 3][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+            tiles[sy + 4][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+          }
+          tiles[sy + 3][sx + 3] = tile('PIPE_JUNCTION', '\u2563', '#778899', bg, false, { structure: true });
+          tiles[sy + 4][sx + 3] = tile('PIPE_JUNCTION', '\u2563', '#778899', bg, false, { structure: true });
+          for (let dx = 7; dx <= 9; dx++) {
+            tiles[sy + 3][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+            tiles[sy + 4][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+          }
+          tiles[sy + 3][sx + 6] = tile('PIPE_JUNCTION', '\u2560', '#778899', bg, false, { structure: true });
+          tiles[sy + 4][sx + 6] = tile('PIPE_JUNCTION', '\u2560', '#778899', bg, false, { structure: true });
+          // Central valves
+          tiles[sy + 3][sx + 4] = tile('PIPE_VALVE', '\u25C9', '#FF4444', '#110000', false, { structure: true });
+          tiles[sy + 3][sx + 5] = tile('PIPE_VALVE', '\u25C9', '#FF4444', '#110000', false, { structure: true });
+          tiles[sy + 4][sx + 4] = tile('PIPE_VALVE', '\u25C9', '#FF4444', '#110000', false, { structure: true });
+          tiles[sy + 4][sx + 5] = tile('PIPE_VALVE', '\u25C9', '#FF4444', '#110000', true, { structure: true });
+          // Bottom pipes
+          tiles[sy + 7][sx + 3] = tile('PIPE_JUNCTION', '\u255A', '#778899', bg, false, { structure: true });
+          tiles[sy + 7][sx + 6] = tile('PIPE_JUNCTION', '\u255D', '#778899', bg, false, { structure: true });
+          for (let dx = 0; dx <= 2; dx++) tiles[sy + 7][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+          for (let dx = 7; dx <= 9; dx++) tiles[sy + 7][sx + dx] = tile('PIPE_HORIZONTAL', '\u2550', '#778899', bg, false, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [
+            { x: ox + sx + 5, y: oy + sy + 3, radius: 8, r: 1, g: 0.2, b: 0.1, intensity: 0.85 },
+            { x: ox + sx + 4, y: oy + sy + 4, radius: 4, r: 0.1, g: 0.8, b: 0.2, intensity: 0.6 },
+          ];
+        },
+      },
+      {
+        type: 'turbine_array', w: 12, h: 6, biomes: ['hull_breach', 'frozen_deck'], mega: true,
+        entrance: { dx: 6, dy: 5 }, locationType: 'mechanical_ruin', difficulty: 5,
+        build(tiles, sx, sy) {
+          const bg = '#0A0A11';
+          // 4 turbines at columns 1, 4, 7, 10
+          const turbineCols = [1, 4, 7, 10];
+          for (const tc of turbineCols) {
+            // Blade tip
+            tiles[sy][sx + tc] = tile('TURBINE_BLADE', '*', '#BBDDFF', bg, false, { structure: true });
+            // Nacelle with brackets
+            tiles[sy + 1][sx + tc - 1] = tile('TURBINE_BRACKET', '[', '#667788', bg, false, { structure: true });
+            tiles[sy + 1][sx + tc] = tile('TURBINE_NACELLE', '\u25CE', '#EEDDAA', bg, false, { structure: true });
+            tiles[sy + 1][sx + tc + 1] = tile('TURBINE_BRACKET', ']', '#667788', bg, false, { structure: true });
+            // Tower shaft
+            tiles[sy + 2][sx + tc] = tile('TURBINE_TOWER', '\u2551', '#667788', bg, false, { structure: true });
+            tiles[sy + 3][sx + tc] = tile('TURBINE_TOWER', '\u2551', '#667788', bg, false, { structure: true });
+            // Base housing with brackets
+            tiles[sy + 4][sx + tc - 1] = tile('TURBINE_BRACKET', '[', '#667788', bg, false, { structure: true });
+            tiles[sy + 4][sx + tc] = tile('TURBINE_HOUSING', '\u256C', '#778899', bg, false, { structure: true });
+            tiles[sy + 4][sx + tc + 1] = tile('TURBINE_BRACKET', ']', '#667788', bg, false, { structure: true });
+          }
+          // Foundation
+          for (let dx = 0; dx < 12; dx++) tiles[sy + 5][sx + dx] = tile('TURBINE_PLATFORM', '\u2550', '#555566', bg, false, { structure: true });
+          // Entrance
+          tiles[sy + 5][sx + 6] = tile('TURBINE_PLATFORM', '\u25A3', '#CCAA44', bg, true, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [1, 4, 7, 10].map(tc => ({
+            x: ox + sx + tc, y: oy + sy + 1, radius: 5, r: 0.8, g: 0.85, b: 1, intensity: 0.4,
+          }));
+        },
+      },
+      {
+        type: 'crane_yard', w: 10, h: 10, biomes: ['hull_breach', 'reactor_slag'], mega: true,
+        entrance: { dx: 5, dy: 9 }, locationType: 'mechanical_ruin', difficulty: 6,
+        build(tiles, sx, sy) {
+          const bg = '#0A0A11';
+          // Crane boom (top)
+          tiles[sy][sx + 2] = tile('CRANE_BOOM', '\u2564', '#BBAA44', bg, false, { structure: true });
+          for (let dx = 3; dx <= 7; dx++) tiles[sy][sx + dx] = tile('CRANE_BOOM', '\u2550', '#BBAA44', bg, false, { structure: true });
+          tiles[sy][sx + 8] = tile('CRANE_BOOM', '\u2564', '#BBAA44', bg, false, { structure: true });
+          // Vertical supports
+          for (let dy = 1; dy <= 5; dy++) {
+            tiles[sy + dy][sx + 2] = tile('CRANE_SUPPORT', '\u2551', '#778888', bg, false, { structure: true });
+            tiles[sy + dy][sx + 8] = tile('CRANE_SUPPORT', '\u2551', '#778888', bg, false, { structure: true });
+          }
+          // Hook / cable
+          tiles[sy + 2][sx + 5] = tile('CRANE_HOOK', '\u2193', '#BBAA44', bg, false, { structure: true });
+          tiles[sy + 3][sx + 5] = tile('CRANE_HOOK', '\u2193', '#BBAA44', bg, false, { structure: true });
+          // Cross beam
+          tiles[sy + 4][sx + 2] = tile('CRANE_CROSSBEAM', '\u256C', '#889988', bg, false, { structure: true });
+          for (let dx = 3; dx <= 7; dx++) tiles[sy + 4][sx + dx] = tile('CRANE_CROSSBEAM', '\u2550', '#889988', bg, false, { structure: true });
+          tiles[sy + 4][sx + 8] = tile('CRANE_CROSSBEAM', '\u256C', '#889988', bg, false, { structure: true });
+          // Base frame
+          tiles[sy + 6][sx + 0] = tile('CRANE_FRAME', '[', '#778888', bg, false, { structure: true });
+          for (let dx = 1; dx <= 2; dx++) tiles[sy + 6][sx + dx] = tile('CRANE_CROSSBEAM', '\u2550', '#889988', bg, false, { structure: true });
+          tiles[sy + 6][sx + 3] = tile('CRANE_CROSSBEAM', '\u256C', '#889988', bg, false, { structure: true });
+          tiles[sy + 6][sx + 7] = tile('CRANE_CROSSBEAM', '\u256C', '#889988', bg, false, { structure: true });
+          for (let dx = 8; dx <= 8; dx++) tiles[sy + 6][sx + dx] = tile('CRANE_CROSSBEAM', '\u2550', '#889988', bg, false, { structure: true });
+          tiles[sy + 6][sx + 9] = tile('CRANE_FRAME', ']', '#778888', bg, false, { structure: true });
+          // Machinery
+          tiles[sy + 7][sx + 0] = tile('CRANE_FRAME', '[', '#778888', bg, false, { structure: true });
+          tiles[sy + 7][sx + 2] = tile('CRANE_MACHINERY', '\u2593', '#AA6633', '#221100', false, { structure: true });
+          tiles[sy + 7][sx + 3] = tile('CRANE_MACHINERY', '\u2593', '#AA6633', '#221100', false, { structure: true });
+          tiles[sy + 7][sx + 7] = tile('CRANE_MACHINERY', '\u2593', '#AA6633', '#221100', false, { structure: true });
+          tiles[sy + 7][sx + 8] = tile('CRANE_MACHINERY', '\u2593', '#AA6633', '#221100', false, { structure: true });
+          tiles[sy + 7][sx + 9] = tile('CRANE_FRAME', ']', '#778888', bg, false, { structure: true });
+          // Basin
+          tiles[sy + 8][sx + 0] = tile('CRANE_FRAME', '[', '#778888', bg, false, { structure: true });
+          for (let dx = 3; dx <= 7; dx++) tiles[sy + 8][sx + dx] = tile('CRANE_BASIN', '\u2248', '#224466', '#001122', false, { structure: true });
+          tiles[sy + 8][sx + 9] = tile('CRANE_FRAME', ']', '#778888', bg, false, { structure: true });
+          // Dock floor
+          for (let dx = 0; dx <= 9; dx++) tiles[sy + 9][sx + dx] = tile('CRANE_PLATFORM', '\u2550', '#555566', bg, false, { structure: true });
+          // Entrance
+          tiles[sy + 9][sx + 5] = tile('CRANE_PLATFORM', '\u25A3', '#CCAA44', bg, true, { structure: true });
+        },
+        lights(sx, sy, ox, oy) {
+          return [
+            { x: ox + sx + 5, y: oy + sy + 2, radius: 6, r: 0.9, g: 0.9, b: 1, intensity: 0.7 },
+            { x: ox + sx + 5, y: oy + sy + 7, radius: 5, r: 1, g: 0.5, b: 0.1, intensity: 0.7 },
+          ];
+        },
+      },
     ];
   }
 
@@ -564,6 +873,56 @@ export class ChunkManager {
       const lights = def.lights(sx, sy, ox, oy);
       structures.push({ type: def.type, x: ox + sx, y: oy + sy, w: def.w, h: def.h, lights });
       break;
+    }
+
+    // Mega-structure pass (rarer, larger mechanical features)
+    if (structRng.next() < 0.05) {
+      const megaDefs = this._structureDefs().filter(d => d.mega);
+      const megaCandidates = megaDefs.filter(d => {
+        if (!d.biomes) return true;
+        return d.biomes.some(b => (biomeCounts[b] || 0) > 10);
+      });
+      if (megaCandidates.length > 0) {
+        const megaDef = structRng.random(megaCandidates);
+        for (let attempt = 0; attempt < 60; attempt++) {
+          const msx = structRng.nextInt(2, CHUNK_SIZE - megaDef.w - 2);
+          const msy = structRng.nextInt(2, CHUNK_SIZE - megaDef.h - 2);
+          let ok = true;
+          for (let dy = 0; dy < megaDef.h && ok; dy++) {
+            for (let dx = 0; dx < megaDef.w && ok; dx++) {
+              const t = tiles[msy + dy][msx + dx];
+              if (t.type === 'LOCATION' || t.structure) ok = false;
+            }
+          }
+          if (!ok) continue;
+
+          megaDef.build(tiles, msx, msy);
+          const megaLights = megaDef.lights(msx, msy, ox, oy);
+          structures.push({ type: megaDef.type, x: ox + msx, y: oy + msy, w: megaDef.w, h: megaDef.h, lights: megaLights });
+
+          // Register explorable location at entrance
+          if (megaDef.entrance && megaDef.locationType) {
+            const ex = msx + megaDef.entrance.dx;
+            const ey = msy + megaDef.entrance.dy;
+            const wx = ox + ex;
+            const wy = oy + ey;
+            const id = (cx + 50000) * 100000 + (cy + 50000) * 10 + 9;
+            const loc = {
+              id,
+              name: this._generateName(structRng, megaDef.locationType),
+              type: megaDef.locationType,
+              x: wx, y: wy,
+              population: 0,
+              difficulty: megaDef.difficulty || 5,
+            };
+            this.locationMap.set(`${wx},${wy}`, loc);
+            // Mark the entrance tile as a location
+            tiles[ey][ex] = tile('LOCATION', '\u2699', '#FFCC44', '#221100', true,
+              { biome: tiles[ey][ex]?.biome || 'mechanical', locationId: id, structure: true });
+          }
+          break;
+        }
+      }
     }
 
     return structures;
@@ -1761,7 +2120,7 @@ export class DungeonGenerator {
     }
 
     // Add decorative features to rooms
-    this._decorateRooms(rng, tiles, rooms, depth, width, height, useCaves);
+    this._decorateRooms(rng, tiles, rooms, depth, width, height, useCaves, biome);
 
     return { tiles, width, height, rooms, corridors, entitySpots, depth };
   }
@@ -2275,7 +2634,9 @@ export class DungeonGenerator {
 
   // --- Room and corridor decorations ---
 
-  _decorateRooms(rng, tiles, rooms, depth, width, height, isCave) {
+  _decorateRooms(rng, tiles, rooms, depth, width, height, isCave, biome = 'standard') {
+    const isMechanical = biome === 'mechanical';
+
     for (const room of rooms) {
       const isLargeRoom = room.w >= 7 && room.h >= 7;
 
@@ -2285,18 +2646,22 @@ export class DungeonGenerator {
           for (let y = room.y + 2; y < room.y + room.h - 2; y += 3) {
             for (let x = room.x + 2; x < room.x + room.w - 2; x += 3) {
               if (tiles[y][x].type === 'FLOOR') {
-                tiles[y][x] = tile('PILLAR', '\u25CB', '#AAAAAA', tiles[y][x].bg, false);
+                tiles[y][x] = isMechanical
+                  ? tile('MECH_GEAR', '\u2699', '#CCAA44', tiles[y][x].bg, false)
+                  : tile('PILLAR', '\u25CB', '#AAAAAA', tiles[y][x].bg, false);
               }
             }
           }
         }
 
-        // Torches on walls adjacent to rooms
+        // Torches / conduits on walls adjacent to rooms
         for (let x = room.x; x < room.x + room.w; x++) {
           for (const wy of [room.y - 1, room.y + room.h]) {
             if (wy < 0 || wy >= height) continue;
             if (tiles[wy][x].type === 'WALL' && (x - room.x) % 5 === 2 && rng.chance(0.6)) {
-              tiles[wy][x] = tile('TORCH', '\u263C', '#FFAA22', tiles[wy][x].bg, false);
+              tiles[wy][x] = isMechanical
+                ? tile('MECH_CONDUIT', '\u26A1', '#44AAFF', tiles[wy][x].bg, false)
+                : tile('TORCH', '\u263C', '#FFAA22', tiles[wy][x].bg, false);
             }
           }
         }
@@ -2304,19 +2669,45 @@ export class DungeonGenerator {
           for (const wx of [room.x - 1, room.x + room.w]) {
             if (wx < 0 || wx >= width) continue;
             if (tiles[y][wx].type === 'WALL' && (y - room.y) % 5 === 2 && rng.chance(0.6)) {
-              tiles[y][wx] = tile('TORCH', '\u263C', '#FFAA22', tiles[y][wx].bg, false);
+              tiles[y][wx] = isMechanical
+                ? tile('MECH_CONDUIT', '\u26A1', '#44AAFF', tiles[y][wx].bg, false)
+                : tile('TORCH', '\u263C', '#FFAA22', tiles[y][wx].bg, false);
             }
           }
         }
 
-        // Cobwebs in corners
+        // Cobwebs / oil stains in corners
         const corners = [
           [room.x, room.y], [room.x + room.w - 1, room.y],
           [room.x, room.y + room.h - 1], [room.x + room.w - 1, room.y + room.h - 1],
         ];
         for (const [cx, cy] of corners) {
           if (cx >= 0 && cy >= 0 && cx < width && cy < height && tiles[cy][cx].type === 'FLOOR' && rng.chance(0.3)) {
-            tiles[cy][cx] = tile('COBWEB', '\u224B', '#777777', tiles[cy][cx].bg, true);
+            tiles[cy][cx] = isMechanical
+              ? tile('PUDDLE', '~', '#333322', tiles[cy][cx].bg, true)
+              : tile('COBWEB', '\u224B', '#777777', tiles[cy][cx].bg, true);
+          }
+        }
+
+        // Mechanical rooms: pipes along walls
+        if (isMechanical) {
+          // Horizontal pipes along top and bottom walls
+          for (let x = room.x + 1; x < room.x + room.w - 1; x++) {
+            if (room.y > 0 && tiles[room.y][x].type === 'FLOOR' && rng.chance(0.3)) {
+              tiles[room.y][x] = tile('MECH_PIPE', '\u2550', '#778899', tiles[room.y][x].bg, true);
+            }
+            if (room.y + room.h - 1 < height && tiles[room.y + room.h - 1][x].type === 'FLOOR' && rng.chance(0.3)) {
+              tiles[room.y + room.h - 1][x] = tile('MECH_PIPE', '\u2550', '#778899', tiles[room.y + room.h - 1][x].bg, true);
+            }
+          }
+          // Vertical pipes along left and right walls
+          for (let y = room.y + 1; y < room.y + room.h - 1; y++) {
+            if (tiles[y][room.x].type === 'FLOOR' && rng.chance(0.3)) {
+              tiles[y][room.x] = tile('MECH_PIPE', '\u2551', '#778899', tiles[y][room.x].bg, true);
+            }
+            if (room.x + room.w - 1 < width && tiles[y][room.x + room.w - 1].type === 'FLOOR' && rng.chance(0.3)) {
+              tiles[y][room.x + room.w - 1] = tile('MECH_PIPE', '\u2551', '#778899', tiles[y][room.x + room.w - 1].bg, true);
+            }
           }
         }
       }
@@ -2348,6 +2739,23 @@ export class DungeonGenerator {
               }
             } else if (r < 0.12) {
               tiles[y][x] = tile('FUNGAL_PATCH', '\u2234', '#88CC44', tiles[y][x].bg, true);
+            }
+          } else if (isMechanical) {
+            // Mechanical dungeon decorations
+            if (r < 0.03) {
+              tiles[y][x] = tile('MECH_GEAR', '\u2699', '#CCAA44', tiles[y][x].bg, false);
+            } else if (r < 0.05) {
+              tiles[y][x] = tile('MECH_VALVE', '\u25C9', '#FF4444', tiles[y][x].bg, false);
+            } else if (r < 0.08) {
+              // Coolant puddle
+              tiles[y][x] = tile('PUDDLE', '\u2248', '#22AAAA', tiles[y][x].bg, true);
+            } else if (r < 0.10) {
+              // Scrap metal
+              tiles[y][x] = tile('RUBBLE', '%', '#889988', tiles[y][x].bg, true);
+            } else if (r < 0.12) {
+              // Pipe segment
+              const pipeChar = rng.chance(0.5) ? '\u2550' : '\u2551';
+              tiles[y][x] = tile('MECH_PIPE', pipeChar, '#778899', tiles[y][x].bg, true);
             }
           } else {
             // Constructed dungeon decorations
