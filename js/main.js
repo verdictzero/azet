@@ -2,7 +2,7 @@ import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSys
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator } from './entities.js';
-import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem } from './systems.js';
+import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
 
@@ -71,6 +71,7 @@ class Game {
     this.glow = new GlowSystem();
     this.ui.glow = this.glow;
     this.lighting = new LightingSystem();
+    this.cloudSystem = new CloudSystem(this.seed);
 
     // Debug state
     this.debug = {
@@ -82,6 +83,7 @@ class Game {
       showLightMap: false,
       disableShadows: false,
       disableLighting: false,
+      disableClouds: false,
       noEncounters: false,
       infiniteAttack: false,
       infiniteMana: false,
@@ -309,6 +311,7 @@ class Game {
       () => {
         this.seed = Date.now();
         this.rng = new SeededRNG(this.seed);
+        this.cloudSystem = new CloudSystem(this.seed);
         addWorldGenEvent({ year: 0, type: 'init', description: `World seed: ${this.seed}`, category: 'misc' });
         addWorldGenEvent({ year: 0, type: 'init', description: `History depth: ${depthKey} (${depthCfg.eras} eras, ~${depthCfg.eras * depthCfg.yearsPerEra} years)`, category: 'era' });
         flushWorldGen('Awakening...');
@@ -2799,6 +2802,7 @@ class Game {
       const save = JSON.parse(data);
       this.seed = save.seed;
       this.rng = new SeededRNG(this.seed);
+      this.cloudSystem = new CloudSystem(this.seed);
 
       // Regenerate world from seed using chunk manager
       this.overworld = new ChunkManager(this.seed);
@@ -3011,6 +3015,45 @@ class Game {
         for (const [key, alpha] of this._shadowCells) {
           const [sx, sy] = key.split(',').map(Number);
           this.renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+        }
+      }
+
+      // Apply cloud overlay and cloud shadows in overworld
+      if (this.state === 'OVERWORLD' && this.cloudSystem && !this.debug.disableClouds) {
+        const camX = Math.floor(this.camera.x);
+        const camY = Math.floor(this.camera.y);
+        const sunDir = this.timeSystem.getSunDirection();
+        const isDay = this.timeSystem.isDaytime();
+
+        // Shadow offset: high sun → close shadow, low sun → far shadow
+        const shadowDist = sunDir.elevation > 0.05
+          ? Math.min(8, Math.round(2.0 / sunDir.elevation))
+          : 8;
+        const shOffX = Math.round(sunDir.dx * shadowDist);
+        const shOffY = Math.round(sunDir.dy * shadowDist);
+
+        for (let sy = 0; sy < viewH; sy++) {
+          for (let sx = 0; sx < viewW; sx++) {
+            const wx = camX + sx;
+            const wy = camY + sy;
+            const density = this.cloudSystem.getCloudDensity(wx, wy);
+
+            if (density > 0) {
+              // Cloud visual: white tint (brighter/whiter hue shift)
+              const cloudAlpha = isDay ? density * 0.18 : density * 0.06;
+              this.renderer.tintCell(viewLeft + sx, viewTop + sy, '#CCCCEE', cloudAlpha);
+
+              // Cloud shadow: darkened ground offset by sun direction
+              if (isDay && sunDir.elevation > 0.05) {
+                const shsx = sx + shOffX;
+                const shsy = sy + shOffY;
+                if (shsx >= 0 && shsx < viewW && shsy >= 0 && shsy < viewH) {
+                  const shadowAlpha = density * 0.20;
+                  this.renderer.darkenCell(viewLeft + shsx, viewTop + shsy, shadowAlpha);
+                }
+              }
+            }
+          }
         }
       }
 
@@ -3581,6 +3624,11 @@ class Game {
 
     // Update glow system
     this.glow.update(delta / 1000);
+
+    // Update cloud drift
+    if (this.cloudSystem) {
+      this.cloudSystem.update(delta / 1000, this.weatherSystem.current);
+    }
 
     // Update transitions
     this.updateTransition();
