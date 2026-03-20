@@ -1669,6 +1669,16 @@ export class WeatherSystem {
       glitch_zone:  ['data_storm', 'data_storm', 'data_storm', 'data_storm'],
       nano_plague:  ['nano_haze', 'nano_haze', 'fog', 'nano_haze'],
       assimilated:  ['blood_rain', 'spore_fall', 'fog', 'blood_rain'],
+      // Temperature gradient biomes — cold
+      tundra:          ['snow', 'snow', 'storm', 'clear', 'snow'],
+      permafrost:      ['snow', 'coolant_mist', 'storm', 'snow', 'snow'],
+      void_exposure:   ['clear', 'ion_storm', 'clear', 'clear'],
+      structural_grid: ['clear', 'ion_storm', 'coolant_mist', 'clear'],
+      // Temperature gradient biomes — hot
+      desert:          ['clear', 'clear', 'sandstorm', 'clear', 'clear'],
+      scorched_waste:  ['ember_rain', 'clear', 'sandstorm', 'clear'],
+      magma_fields:    ['ember_rain', 'ember_rain', 'clear', 'ember_rain'],
+      inferno_core:    ['ember_rain', 'ember_rain', 'ember_rain', 'clear'],
     };
   }
 

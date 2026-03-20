@@ -2631,6 +2631,52 @@ class Game {
       this.ui.addMessage(`Discovered: ${loc.name}! (Press Enter to visit)`, COLORS.BRIGHT_YELLOW);
     }
 
+    // ── Temperature damage check ──
+    const tileTemp = tile.temperature;
+    if (tileTemp) {
+      // Sum player's temperature resistance from equipped items
+      let heatResist = 0, coldResist = 0;
+      const equipped = this.player.equipment || {};
+      for (const slotKey of Object.keys(equipped)) {
+        const item = equipped[slotKey];
+        if (item && item.stats) {
+          heatResist += item.stats.heatResist || 0;
+          coldResist += item.stats.coldResist || 0;
+        }
+      }
+      let tempDmg = 0;
+      let tempMsg = '';
+      if (tileTemp === 'extreme_cold') {
+        tempDmg = Math.max(1, 5 - coldResist);
+        if (coldResist < 5) tempMsg = `The extreme cold bites into you! (-${tempDmg} HP)`;
+      } else if (tileTemp === 'cold') {
+        tempDmg = Math.max(0, 2 - coldResist);
+        if (tempDmg > 0) tempMsg = `The freezing air chills you! (-${tempDmg} HP)`;
+      } else if (tileTemp === 'extreme_hot') {
+        tempDmg = Math.max(1, 5 - heatResist);
+        if (heatResist < 5) tempMsg = `The scorching heat burns you! (-${tempDmg} HP)`;
+      } else if (tileTemp === 'hot') {
+        tempDmg = Math.max(0, 2 - heatResist);
+        if (tempDmg > 0) tempMsg = `The intense heat saps your strength! (-${tempDmg} HP)`;
+      }
+      if (tempDmg > 0) {
+        this.player.stats.hp = Math.max(1, this.player.stats.hp - tempDmg);
+        this.ui.addMessage(tempMsg, tileTemp.includes('cold') ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_RED);
+        if (this.player.stats.hp <= 1) {
+          this.ui.addMessage('You need protective gear to survive here!', COLORS.BRIGHT_YELLOW);
+        }
+      }
+      // First-entry warning
+      if (!this.player._tempWarnings) this.player._tempWarnings = new Set();
+      if (!this.player._tempWarnings.has(tileTemp)) {
+        this.player._tempWarnings.add(tileTemp);
+        const warnMsg = tileTemp.includes('cold')
+          ? 'WARNING: You are entering a dangerously cold zone. Equip cold-resistant gear!'
+          : 'WARNING: You are entering a dangerously hot zone. Equip heat-resistant gear!';
+        this.ui.addMessage(warnMsg, COLORS.BRIGHT_YELLOW);
+      }
+    }
+
     // Random encounter on overworld (modified by events, weather, and night/light)
     const baseEncounterRate = 0.03 * this.activeEffects.encounterRateMultiplier;
     const isNight = !this.timeSystem.isDaytime();
@@ -3540,10 +3586,8 @@ class Game {
         break;
 
       case 'DIALOGUE':
-        // Render background
-        if (this.currentSettlement) {
-          this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera);
-        }
+        // Animated dialogue background
+        this.ui.drawDialogueBackground();
         if (this.ui.dialogueState) this.ui.drawDialogue(this.ui.dialogueState);
         break;
 
@@ -4324,16 +4368,31 @@ class Game {
       cs.hitTimer--;
     }
 
-    // Draw monster art - spaces show fire bg through
+    // Draw monster art - internal spaces filled, external spaces show fire bg
+    const monsterBg = '#0a0500';
     for (let row = 0; row < artH; row++) {
       const line = artLines[row];
+      // Find internal bounds (leftmost and rightmost non-space)
+      let firstNonSpace = -1, lastNonSpace = -1;
+      for (let col = 0; col < line.length; col++) {
+        if (line[col] !== ' ') {
+          if (firstNonSpace === -1) firstNonSpace = col;
+          lastNonSpace = col;
+        }
+      }
       for (let col = 0; col < line.length; col++) {
         const ch = line[col];
         const dx = artX + col;
         const dy = artY + row;
         if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
-        if (ch === ' ') continue; // fire bg shows through
-        r.drawChar(dx, dy, ch, drawColor, '#0a0500');
+        if (ch === ' ') {
+          // Internal space: fill with monster bg so fire doesn't bleed through
+          if (col > firstNonSpace && col < lastNonSpace) {
+            r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
+          }
+          continue; // External space: fire bg shows through
+        }
+        r.drawChar(dx, dy, ch, drawColor, monsterBg);
       }
     }
 

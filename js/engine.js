@@ -1288,7 +1288,7 @@ export class InputManager {
       [null, null, null],
       [null, null, null],
       [null, null, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+      [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'BACK', key: 'Escape', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }],
     ]]},
     HELP: { pages: [[
       [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
