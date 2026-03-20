@@ -531,6 +531,7 @@ class Game {
         const loadedLocs = this.overworld.getLoadedLocations();
         const startLoc = loadedLocs.find(l => l.type === 'village') || loadedLocs[0];
         if (startLoc) {
+          startLoc.name = 'Broken Arm';
           this.player.position.x = startLoc.x;
           this.player.position.y = startLoc.y;
           this.player.knownLocations = new Set([startLoc.id]);
