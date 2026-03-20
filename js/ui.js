@@ -553,7 +553,7 @@ export class UIManager {
     }
 
     // FF-style menu box (draws on top of background)
-    const menuItems = ['New Game', 'Quick Start', 'Continue', 'Export Save', 'Import Save', 'Settings', 'Help'];
+    const menuItems = ['New Game', 'Quick Start', 'Continue', 'Import Save', 'Settings', 'Help'];
     const menuW = 22;
     const menuH = menuItems.length * 2 + 3;
     const menuX = Math.floor((cols - menuW) / 2);

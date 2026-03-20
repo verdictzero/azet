@@ -1316,8 +1316,8 @@ export class InputManager {
     SETTINGS: { pages: [[
       [{ label: '1', key: '1', type: 'action' }, { label: '2', key: '2', type: 'action' }, { label: '3', key: '3', type: 'action' }],
       [{ label: '4', key: '4', type: 'action' }, { label: '5', key: '5', type: 'action' }, { label: '6', key: '6', type: 'action' }],
-      [{ label: '7', key: '7', type: 'action' }, { label: '8', key: '8', type: 'action' }, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+      [{ label: '7', key: '7', type: 'action' }, { label: '8', key: '8', type: 'action' }, { label: 'EXP', key: '9', type: 'action' }],
+      [{ label: 'IMP', key: '0', type: 'action' }, { label: 'BACK', key: 'Escape', type: 'action' }, null],
     ]]},
     GAME_OVER: { pages: [[
       [null, null, null],

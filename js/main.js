@@ -893,7 +893,7 @@ class Game {
   }
 
   handleMenuInput(key) {
-    const result = this.ui.handleMenuInput(key, 7);
+    const result = this.ui.handleMenuInput(key, 6);
     if (result === 'select') {
       switch (this.ui.selectedIndex) {
         case 0: // New Game
@@ -920,16 +920,13 @@ class Game {
             this.ui.addMessage('No save found.', COLORS.BRIGHT_RED);
           }
           break;
-        case 3: // Export Save
-          this.exportSave();
-          break;
-        case 4: // Import Save
+        case 3: // Import Save
           this.importSave();
           break;
-        case 5: // Settings
+        case 4: // Settings
           this.setState('SETTINGS');
           break;
-        case 6: // Help
+        case 5: // Help
           this.setState('HELP');
           break;
       }
