@@ -413,21 +413,40 @@ export class UIManager {
     const waveColors = [COLORS.BLUE, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_WHITE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
 
     // ── Layer 0.5: Animated spinning crystal behind title card ──
+    // Existing frame animation + slow 2D rotation (spin in place facing player)
     if (!compact && CRYSTAL_FRAMES.length > 0) {
       const frameIndex = Math.floor(t / 0.12) % CRYSTAL_FRAMES.length;
       const frame = CRYSTAL_FRAMES[frameIndex];
       const cx = Math.floor((cols - CRYSTAL_WIDTH) / 2);
       const cy = startY + Math.floor(title.length / 2) - Math.floor(CRYSTAL_HEIGHT / 2);
-      for (let row = 0; row < CRYSTAL_HEIGHT; row++) {
+      // Slow 2D spin: full rotation every 25 seconds
+      const spinAngle = t * (2 * Math.PI / 25);
+      const cosA = Math.cos(spinAngle);
+      const sinA = Math.sin(spinAngle);
+      // Center of crystal frame for rotation pivot
+      const pivotCol = CRYSTAL_WIDTH / 2;
+      const pivotRow = CRYSTAL_HEIGHT / 2;
+      // Expand render area to accommodate rotation (diagonal of crystal rect)
+      const diagW = Math.ceil(Math.sqrt(CRYSTAL_WIDTH * CRYSTAL_WIDTH + CRYSTAL_HEIGHT * CRYSTAL_HEIGHT));
+      const diagH = Math.ceil(Math.sqrt(CRYSTAL_WIDTH * CRYSTAL_WIDTH + CRYSTAL_HEIGHT * CRYSTAL_HEIGHT));
+      const padX = Math.floor((diagW - CRYSTAL_WIDTH) / 2);
+      const padY = Math.floor((diagH - CRYSTAL_HEIGHT) / 2);
+      for (let row = -padY; row < CRYSTAL_HEIGHT + padY; row++) {
         const y = cy + row;
         if (y < 0 || y >= rows) continue;
-        for (let col = 0; col < CRYSTAL_WIDTH; col++) {
+        for (let col = -padX; col < CRYSTAL_WIDTH + padX; col++) {
           const x = cx + col;
           if (x < 0 || x >= cols) continue;
-          const ch = frame.chars[row][col];
+          // Inverse-rotate to find source position
+          const dcol = col - pivotCol;
+          const drow = row - pivotRow;
+          const srcCol = Math.round(cosA * dcol + sinA * drow + pivotCol);
+          const srcRow = Math.round(-sinA * dcol + cosA * drow + pivotRow);
+          if (srcRow < 0 || srcRow >= CRYSTAL_HEIGHT || srcCol < 0 || srcCol >= CRYSTAL_WIDTH) continue;
+          const ch = frame.chars[srcRow][srcCol];
           if (ch === ' ') continue;
-          const crystalHueShift = t * (20 / 360); // slow rainbow: full cycle ~18s
-          r.drawChar(x, y, ch, shiftHue(frame.colors[row][col], crystalHueShift), '#020204');
+          const crystalHueShift = t * (20 / 360);
+          r.drawChar(x, y, ch, shiftHue(frame.colors[srcRow][srcCol], crystalHueShift), '#020204');
         }
       }
     }
@@ -1544,8 +1563,8 @@ export class UIManager {
             const tile = settlement.tiles[wy][wx];
 
             if (density === 1) {
-              const ch = r.getAnimatedChar(tile.char, tile.type);
-              const fg = r.getAnimatedColor(tile.fg, tile.type);
+              const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+              const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
               r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, tile.bg || COLORS.BLACK);
             } else {
               const expanded = expandTile(tile, density, wx, wy);
@@ -1554,8 +1573,8 @@ export class UIManager {
                   const screenX = viewLeft + wx_off * density + dx;
                   const screenY = viewTop + wy_off * density + dy;
                   if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                    const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type);
-                    const fg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                    const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx, wy);
+                    const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(expanded.fgs[dy][dx], tile.type, wx, wy) : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
                     r.drawChar(screenX, screenY, ch, fg, expanded.bgs[dy][dx]);
                   }
                 }
@@ -1569,6 +1588,32 @@ export class UIManager {
       for (const [key, alpha] of shadowCells) {
         const [sx, sy] = key.split(',').map(Number);
         r.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+      }
+
+      // God rays in unshadowed areas
+      if (sunDir && sunDir.isDay && r._godRayNoise && shadowCells.size > 0) {
+        const perpX = -(sunDir.dy || 0);
+        const perpY = sunDir.dx || 0;
+        const ts = Date.now() / 1000;
+        for (let sy = 0; sy < viewH; sy++) {
+          for (let sx = 0; sx < viewW; sx++) {
+            const key = `${sx},${sy}`;
+            if (shadowCells.has(key)) continue;
+            // Check adjacency to shadow for edge glow
+            let nearShadow = false;
+            for (let nd = 1; nd <= 2; nd++) {
+              const checkX = sx + Math.round((sunDir.dx || 0) * nd);
+              const checkY = sy + Math.round((sunDir.dy || 0) * nd);
+              if (shadowCells.has(`${checkX},${checkY}`)) { nearShadow = true; break; }
+            }
+            const proj = sx * perpX + sy * perpY;
+            const rayNoise = r._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
+            if (rayNoise > 0.05) {
+              const intensity = (rayNoise - 0.05) / 0.95 * 0.12 + (nearShadow ? 0.06 : 0);
+              r.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.18, intensity), '#FFEEAA');
+            }
+          }
+        }
       }
 
       // Draw NPCs
@@ -1680,6 +1725,7 @@ export class UIManager {
         { t: '?                    This help screen' },
         { t: 'Escape               Close current menu / go back' },
         { t: '`                    Toggle debug panel' },
+        { t: 'F2                   Toggle debug button bar' },
       ],
       // 1: Inventory & Shop
       [
@@ -2637,6 +2683,73 @@ export class UIManager {
       ];
     }
     return [];
+  }
+
+  // ─── DEBUG BUTTON BAR ───
+
+  /**
+   * Draw a compact debug button bar at the bottom of the viewport.
+   * Returns array of {x, y, w, h, action} rects for click hit testing.
+   */
+  drawDebugButtons(debug, timeSystem, weatherSystem, renderer) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const barY = rows - 2; // one row above bottom border
+    const bg = '#1A1A2A';
+    const onColor = '#44FF44';
+    const offColor = '#FF4444';
+    const actionColor = '#AAAAFF';
+
+    const buttons = [
+      { label: 'H-', action: 'hourDec', type: 'action' },
+      { label: 'H+', action: 'hourInc', type: 'action' },
+      { label: 'W<', action: 'weatherPrev', type: 'action' },
+      { label: 'W>', action: 'weatherNext', type: 'action' },
+      { label: 'Shd', action: 'disableShadows', type: 'toggle', value: debug.disableShadows },
+      { label: 'Lit', action: 'disableLighting', type: 'toggle', value: debug.disableLighting },
+      { label: 'Cld', action: 'disableClouds', type: 'toggle', value: debug.disableClouds },
+      { label: 'CRT', action: 'crtEffects', type: 'toggle', value: renderer.effectsEnabled },
+      { label: 'Enc', action: 'noEncounters', type: 'toggle', value: debug.noEncounters },
+      { label: 'Clp', action: 'noClip', type: 'toggle', value: debug.noClip },
+      { label: 'Inv', action: 'invincible', type: 'toggle', value: debug.invincible },
+    ];
+
+    // Background bar
+    for (let x = 0; x < cols; x++) {
+      r.drawChar(x, barY, ' ', bg, bg);
+    }
+
+    const rects = [];
+    let cx = 1;
+    for (const btn of buttons) {
+      const label = `[${btn.label}]`;
+      const w = label.length;
+      if (cx + w >= cols - 1) break;
+
+      let fg;
+      if (btn.type === 'toggle') {
+        fg = btn.value ? onColor : offColor;
+      } else {
+        fg = actionColor;
+      }
+
+      r.drawString(cx, barY, label, fg, bg);
+      rects.push({ x: cx, y: barY, w, h: 1, action: btn.action });
+      cx += w + 1;
+    }
+
+    // Show current hour and weather on the bar
+    if (timeSystem && cx + 10 < cols) {
+      const info = `H:${timeSystem.hour}`;
+      r.drawString(cols - 16, barY, info, '#888888', bg);
+    }
+    if (weatherSystem && cx + 10 < cols) {
+      const wInfo = weatherSystem.current.slice(0, 6);
+      r.drawString(cols - 8, barY, wInfo, '#888888', bg);
+    }
+
+    return rects;
   }
 
   // ─── ALMANAC (World History Viewer) ───

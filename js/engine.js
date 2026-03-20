@@ -1,6 +1,8 @@
 // engine.js - Retro ASCII roguelike rendering engine
 // ES module: exports COLORS, LAYOUT, wordWrap, Renderer, Camera, InputManager
 
+import { PerlinNoise, SeededRNG } from './utils.js';
+
 // ─────────────────────────────────────────────
 // Layout Constants
 // ─────────────────────────────────────────────
@@ -102,6 +104,11 @@ export class Renderer {
     this.zoomLevel = 1;       // legacy compat
     this.densityLevel = 1;    // density zoom: 1, 2, or 3
     this._baseFontSize = null; // stored when zoom is applied
+
+    // Noise for grass wind animation & god rays
+    this._grassNoise = new PerlinNoise(new SeededRNG(42));
+    this._grassNoise2 = new PerlinNoise(new SeededRNG(137));
+    this._godRayNoise = new PerlinNoise(new SeededRNG(256));
 
     // Perform initial sizing
     this.resize();
@@ -502,6 +509,23 @@ export class Renderer {
   }
 
   /**
+   * Brighten a specific cell with a warm tint (for god rays).
+   */
+  brightenCell(col, row, alpha, tintColor) {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
+    if (alpha <= 0) return;
+    const ctx = this.ctx;
+    const x = col * this.cellWidth;
+    const y = row * this.cellHeight;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = tintColor || '#FFEEAA';
+    ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
+    ctx.restore();
+  }
+
+  /**
    * Apply light color tinting to a cell (for colored light sources).
    */
   tintCell(col, row, color, alpha) {
@@ -663,9 +687,11 @@ export class Renderer {
    * Return an animated character for foliage/decorative tiles.
    * @param {string} baseChar - the tile's static character
    * @param {string} tileType - optional tile type hint
+   * @param {number} [worldX] - world x coordinate for position-based animation
+   * @param {number} [worldY] - world y coordinate for position-based animation
    * @returns {string} the current animated character
    */
-  getAnimatedChar(baseChar, tileType) {
+  getAnimatedChar(baseChar, tileType, worldX, worldY) {
     const t = Date.now();
     switch (baseChar) {
       // Trees: fast fluid sway
@@ -684,12 +710,31 @@ export class Renderer {
         const flowers = ['\u273F', '\u2740', '\u273B'];
         return flowers[(flowers.indexOf(baseChar) + cycle) % 3];
       }
-      // Grass/low vegetation: quick wind ripple
+      // Grass/low vegetation: noise-based wind waves
       case ',':
-      case '`': {
+      case '`':
+      case '.': {
+        if (worldX !== undefined && worldY !== undefined) {
+          const ts = t / 1000;
+          // Wind direction ~17° from east with slight south component
+          const windAngle = 0.3;
+          const cosW = Math.cos(windAngle), sinW = Math.sin(windAngle);
+          const along = worldX * cosW + worldY * sinW;
+          const perp = -worldX * sinW + worldY * cosW;
+          // Primary traveling wave
+          const n = this._grassNoise.noise2D(along * 0.15 - ts * 1.2, perp * 0.08);
+          // Secondary chaos noise
+          const n2 = this._grassNoise2.noise2D(worldX * 0.25 + ts * 0.5, worldY * 0.25 - ts * 0.3);
+          const combined = n * 0.7 + n2 * 0.3;
+          if (combined > 0.35) return '/';
+          if (combined > 0.1) return '`';
+          if (combined < -0.35) return '\\';
+          if (combined < -0.1) return '.';
+          return ',';
+        }
+        // Fallback: original uniform animation
         const cycle = Math.floor(t / 600) % 4;
-        const grass = [',', '`', '.', ','];
-        return grass[cycle];
+        return [',', '`', '.', ','][cycle];
       }
       // Water features
       case '~': {
@@ -700,6 +745,40 @@ export class Renderer {
       default:
         return baseChar;
     }
+  }
+
+  /**
+   * Return an animated color for grass tiles based on wind noise.
+   * @param {string} baseColor
+   * @param {string} tileType
+   * @param {number} [worldX]
+   * @param {number} [worldY]
+   * @returns {string}
+   */
+  getAnimatedColorWithPos(baseColor, tileType, worldX, worldY) {
+    if (tileType === 'GRASSLAND' && worldX !== undefined && worldY !== undefined) {
+      const ts = Date.now() / 1000;
+      const windAngle = 0.3;
+      const cosW = Math.cos(windAngle), sinW = Math.sin(windAngle);
+      const along = worldX * cosW + worldY * sinW;
+      const perp = -worldX * sinW + worldY * cosW;
+      const n = this._grassNoise.noise2D(along * 0.15 - ts * 1.2, perp * 0.08);
+      // Brighten on wind gusts, darken in calm
+      const boost = n * 0.15; // -0.15 to +0.15
+      return this._adjustBrightness(baseColor, boost);
+    }
+    return this.getAnimatedColor(baseColor, tileType);
+  }
+
+  _adjustBrightness(hex, amount) {
+    if (!hex || hex.charAt(0) !== '#' || hex.length < 7) return hex;
+    const val = parseInt(hex.slice(1), 16);
+    let r = (val >> 16) & 0xff, g = (val >> 8) & 0xff, b = val & 0xff;
+    const shift = Math.round(amount * 255);
+    r = Math.max(0, Math.min(255, r + shift));
+    g = Math.max(0, Math.min(255, g + shift));
+    b = Math.max(0, Math.min(255, b + shift));
+    return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
   }
 
   // ── CRT Post-processing ────────────────────

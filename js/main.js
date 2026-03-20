@@ -59,7 +59,7 @@ class Game {
     this._loadVersion();
 
     // Game state
-    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC
+    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC
 
     // Settings (persisted to localStorage)
     this.settings = {
@@ -129,6 +129,8 @@ class Game {
     this._debugPanel = null;      // legacy HTML panel (unused)
     this._debugVisible = false;    // legacy (unused)
     this._debugReturnState = null; // state to return to when closing debug menu
+    this.showDebugButtons = false; // toggle debug button bar
+    this._debugButtonRects = [];   // hit areas for debug buttons
 
     // World history (deep procedural history engine)
     this.worldHistoryGen = null;
@@ -172,6 +174,9 @@ class Game {
 
     // Combat state
     this.combatState = null;
+    this.battleEnterTimer = 0;  // frames for battle enter animation
+    this.battleResults = null;  // stored results for BATTLE_RESULTS screen
+    this.battleResultsTimer = 0; // animation timer for results screen
 
     // Active dialogue/shop
     this.activeNPC = null;
@@ -179,6 +184,15 @@ class Game {
     // Resize handler
     window.addEventListener('resize', () => this.handleResize());
     this.handleResize();
+
+    // Canvas click handler for debug buttons
+    this.canvas.addEventListener('click', (e) => this._handleCanvasClick(e));
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (this._debugButtonRects && this._debugButtonRects.length > 0) {
+        const touch = e.touches[0];
+        if (touch) this._handleCanvasClickAt(touch.clientX, touch.clientY, e);
+      }
+    }, { passive: false });
   }
 
   handleResize() {
@@ -188,6 +202,65 @@ class Game {
     if (this.locationCamera) {
       this.locationCamera.viewportCols = this.renderer.cols - 2;
       this.locationCamera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    }
+  }
+
+  _handleCanvasClick(e) {
+    this._handleCanvasClickAt(e.clientX, e.clientY, e);
+  }
+
+  _handleCanvasClickAt(clientX, clientY, e) {
+    if (!this._debugButtonRects || this._debugButtonRects.length === 0) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const cellW = this.renderer.cellWidth;
+    const cellH = this.renderer.cellHeight;
+    if (!cellW || !cellH) return;
+    const col = Math.floor((clientX - rect.left) / cellW);
+    const row = Math.floor((clientY - rect.top) / cellH);
+
+    for (const btn of this._debugButtonRects) {
+      if (col >= btn.x && col < btn.x + btn.w && row === btn.y) {
+        e.preventDefault();
+        this._executeDebugButton(btn.action);
+        return;
+      }
+    }
+  }
+
+  _executeDebugButton(action) {
+    const weatherOptions = ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','spore_fall','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'];
+    switch (action) {
+      case 'hourInc':
+        if (this.timeSystem) this.timeSystem.hour = (this.timeSystem.hour + 1) % 24;
+        break;
+      case 'hourDec':
+        if (this.timeSystem) this.timeSystem.hour = (this.timeSystem.hour + 23) % 24;
+        break;
+      case 'weatherNext': {
+        if (this.weatherSystem) {
+          const idx = weatherOptions.indexOf(this.weatherSystem.current);
+          const next = weatherOptions[(idx + 1) % weatherOptions.length];
+          if (next === 'auto') { this.debug.forceWeather = null; this.weatherSystem.current = 'clear'; }
+          else { this.debug.forceWeather = next; this.weatherSystem.current = next; }
+        }
+        break;
+      }
+      case 'weatherPrev': {
+        if (this.weatherSystem) {
+          const idx = weatherOptions.indexOf(this.weatherSystem.current);
+          const prev = weatherOptions[(idx - 1 + weatherOptions.length) % weatherOptions.length];
+          if (prev === 'auto') { this.debug.forceWeather = null; this.weatherSystem.current = 'clear'; }
+          else { this.debug.forceWeather = prev; this.weatherSystem.current = prev; }
+        }
+        break;
+      }
+      case 'disableShadows': this.debug.disableShadows = !this.debug.disableShadows; break;
+      case 'disableLighting': this.debug.disableLighting = !this.debug.disableLighting; break;
+      case 'disableClouds': this.debug.disableClouds = !this.debug.disableClouds; break;
+      case 'crtEffects': this.renderer.effectsEnabled = !this.renderer.effectsEnabled; break;
+      case 'noEncounters': this.debug.noEncounters = !this.debug.noEncounters; break;
+      case 'noClip': this.debug.noClip = !this.debug.noClip; break;
+      case 'invincible': this.debug.invincible = !this.debug.invincible; break;
     }
   }
 
@@ -287,6 +360,73 @@ class Game {
     }
     if (alpha > 0.01) {
       this.renderer.tintOverlay('black', alpha);
+    }
+  }
+
+  // Start battle with enter animation
+  startBattleTransition(enemy) {
+    this.combatState = {
+      enemy,
+      selectedAction: 0,
+      shake: { intensity: 0, decay: 0.85 },
+      hitTimer: 0,
+      hitRecoil: 0,
+      combatParticles: [],
+      damageNumbers: [],
+    };
+    this.ui.addMessage(`${enemy.name} appeared!`, COLORS.BRIGHT_RED);
+    this.battleEnterTimer = 0;
+    this.setState('BATTLE_ENTER');
+  }
+
+  renderBattleEnter() {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const frame = this.battleEnterTimer;
+
+    if (frame < 4) {
+      // Phase 1: white flash
+      const alpha = 0.6 - frame * 0.1;
+      r.tintOverlay('#FFFFFF', alpha);
+    } else if (frame < 14) {
+      // Phase 2: horizontal swoosh wipe
+      const progress = (frame - 4) / 10; // 0 to 1
+      const wipeRow = Math.floor(progress * rows);
+      // Black below wipe line
+      for (let sy = 0; sy < rows; sy++) {
+        for (let sx = 0; sx < cols; sx++) {
+          if (sy < wipeRow) {
+            r.drawChar(sx, sy, ' ', '#000000', '#000000');
+          }
+        }
+      }
+      // Bright swoosh line
+      const lineY = wipeRow;
+      if (lineY >= 0 && lineY < rows) {
+        for (let sx = 0; sx < cols; sx++) {
+          const sparkChar = Math.random() < 0.3 ? '*' : Math.random() < 0.5 ? '=' : '-';
+          r.drawChar(sx, lineY, sparkChar, '#FFFFFF', '#4488FF');
+        }
+      }
+      // Secondary trailing line
+      if (lineY - 1 >= 0) {
+        for (let sx = 0; sx < cols; sx++) {
+          r.drawChar(sx, lineY - 1, '~', '#88BBFF', '#001133');
+        }
+      }
+    } else {
+      // Phase 3: fade from black into battle
+      const fadeProgress = (frame - 14) / 6; // 0 to 1 over 6 frames
+      this.renderCombat();
+      if (fadeProgress < 1) {
+        r.tintOverlay('#000000', 1 - fadeProgress);
+      }
+    }
+
+    this.battleEnterTimer++;
+    if (this.battleEnterTimer >= 20) {
+      this.setState('COMBAT');
     }
   }
 
@@ -849,6 +989,11 @@ class Game {
   // ─── INPUT HANDLING ───
 
   handleInput(key) {
+    // Toggle debug button bar with F2
+    if (key === 'F2') {
+      this.showDebugButtons = !this.showDebugButtons;
+      return;
+    }
     // Debug menu toggle
     if (key === '`') {
       if (this.state === 'DEBUG_MENU') {
@@ -881,6 +1026,8 @@ class Game {
       case 'SETTINGS': return this.handleSettingsInput(key);
       case 'GAME_OVER': return this.handleGameOverInput(key);
       case 'COMBAT': return this.handleCombatInput(key);
+      case 'BATTLE_ENTER': return; // no input during enter animation
+      case 'BATTLE_RESULTS': return this.handleBattleResultsInput(key);
       case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
       case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
       case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
@@ -2102,12 +2249,24 @@ class Game {
 
           // Combat hit particles
           this.particles.emit(deadEnemy.position.x, deadEnemy.position.y, '*', COLORS.BRIGHT_RED, 5, 3, 12);
+
+          // Store results for display and go to results screen
+          this.battleResults = {
+            enemyName: deadEnemy.name,
+            xp,
+            gold: loot.filter(i => i.type === 'gold').reduce((s, i) => s + i.amount, 0),
+            items: loot.filter(i => i.type !== 'gold'),
+            leveled,
+          };
+          this.battleResultsTimer = 0;
+          this._battleReturnState = this.prevState || 'DUNGEON';
+          this.combatState = null;
+          this.setState('BATTLE_RESULTS');
         } else {
           this.setState('GAME_OVER');
           return;
         }
-        this.combatState = null;
-        this.setState(this.prevState || 'DUNGEON');
+        return;
         return;
       }
     }
@@ -2702,17 +2861,7 @@ class Game {
         enemy.stats.maxHp = enemy.stats.hp;
       }
 
-      this.combatState = {
-        enemy,
-        selectedAction: 0,
-        shake: { intensity: 0, decay: 0.85 },
-        hitTimer: 0,
-        hitRecoil: 0,
-        combatParticles: [],
-        damageNumbers: [],
-      };
-      this.ui.addMessage(`${enemy.name} appeared!`, COLORS.BRIGHT_RED);
-      this.setState('COMBAT');
+      this.startBattleTransition(enemy);
     }
 
     // Consume torch uses at night
@@ -2881,17 +3030,7 @@ class Game {
     // Check enemy collision -> combat
     const enemyAt = this.enemies.find(e => e.position.x === nx && e.position.y === ny);
     if (enemyAt) {
-      this.combatState = {
-        enemy: enemyAt,
-        selectedAction: 0,
-        shake: { intensity: 0, decay: 0.85 },
-        hitTimer: 0,
-        hitRecoil: 0,
-        combatParticles: [],
-        damageNumbers: [],
-      };
-      this.ui.addMessage(`${enemyAt.name} appeared!`, COLORS.BRIGHT_RED);
-      this.setState('COMBAT');
+      this.startBattleTransition(enemyAt);
       return;
     }
 
@@ -3635,6 +3774,14 @@ class Game {
         this.renderCombat();
         break;
 
+      case 'BATTLE_ENTER':
+        this.renderBattleEnter();
+        break;
+
+      case 'BATTLE_RESULTS':
+        this.renderBattleResults();
+        break;
+
       case 'SETTINGS':
         this.ui.drawSettings(this.settings);
         break;
@@ -3652,11 +3799,18 @@ class Game {
         break;
     }
 
+    // Debug button bar overlay (when toggled with F2)
+    if (this.showDebugButtons && this.state !== 'MENU' && this.state !== 'DEBUG_MENU') {
+      this._debugButtonRects = this.ui.drawDebugButtons(this.debug, this.timeSystem, this.weatherSystem, this.renderer);
+    } else {
+      this._debugButtonRects = [];
+    }
+
     // Force full redraw when post-processing, transitions, or flash
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
     const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON'].includes(this.state);
-    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT';
+    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'BATTLE_RESULTS';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
       || hasTimeTint
@@ -3685,6 +3839,32 @@ class Game {
         for (const [key, alpha] of this._shadowCells) {
           const [sx, sy] = key.split(',').map(Number);
           this.renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+        }
+
+        // God rays in unshadowed areas
+        const owSunDir = this.timeSystem.getSunDirection();
+        if (owSunDir.isDay && this._shadowCells.size > 0 && this.renderer._godRayNoise) {
+          const perpX = -(owSunDir.dy || 0);
+          const perpY = owSunDir.dx || 0;
+          const ts = Date.now() / 1000;
+          for (let sy = 0; sy < viewH; sy++) {
+            for (let sx = 0; sx < viewW; sx++) {
+              const key = `${sx},${sy}`;
+              if (this._shadowCells.has(key)) continue;
+              let nearShadow = false;
+              for (let nd = 1; nd <= 2; nd++) {
+                const ckx = sx + Math.round((owSunDir.dx || 0) * nd);
+                const cky = sy + Math.round((owSunDir.dy || 0) * nd);
+                if (this._shadowCells.has(`${ckx},${cky}`)) { nearShadow = true; break; }
+              }
+              const proj = sx * perpX + sy * perpY;
+              const rayN = this.renderer._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
+              if (rayN > 0.05) {
+                const intensity = (rayN - 0.05) / 0.95 * 0.12 + (nearShadow ? 0.06 : 0);
+                this.renderer.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.18, intensity), '#FFEEAA');
+              }
+            }
+          }
         }
       }
 
@@ -3924,9 +4104,10 @@ class Game {
         const isFogged = dist > viewRange;
 
         if (density === 1) {
-          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type);
+          const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+          const fg = isFogged ? COLORS.BRIGHT_BLACK : (r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type));
           const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
-          r.drawChar(viewLeft + wx_off, viewTop + wy_off, tile.char, fg, bg);
+          r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, bg);
         } else {
           const expanded = expandTile(tile, density, wx, wy);
           for (let dy = 0; dy < density; dy++) {
@@ -3934,9 +4115,10 @@ class Game {
               const screenX = viewLeft + wx_off * density + dx;
               const screenY = viewTop + wy_off * density + dy;
               if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx, wy);
+                const fg = isFogged ? COLORS.BRIGHT_BLACK : (r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(expanded.fgs[dy][dx], tile.type, wx, wy) : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type));
                 const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
-                r.drawChar(screenX, screenY, expanded.chars[dy][dx], fg, bg);
+                r.drawChar(screenX, screenY, ch, fg, bg);
               }
             }
           }
@@ -4276,6 +4458,98 @@ class Game {
     // Render particles in dungeon
     this.particles.update();
     this.particles.render(r, offsetX, offsetY);
+  }
+
+  renderBattleResults() {
+    if (!this.battleResults) return;
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const res = this.battleResults;
+    this.battleResultsTimer++;
+
+    // Dark background
+    for (let sy = 0; sy < rows; sy++) {
+      for (let sx = 0; sx < cols; sx++) {
+        r.drawChar(sx, sy, ' ', '#000000', '#0A0A1A');
+      }
+    }
+
+    const panelW = Math.min(cols - 4, 50);
+    const panelH = Math.min(rows - 4, 18);
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.floor((rows - panelH) / 2);
+
+    // FF-style bordered window
+    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER || '#AAAAFF', COLORS.FF_BLUE_DARK || '#000044', ' Victory! ');
+
+    let line = py + 2;
+    const bg = COLORS.FF_BLUE_DARK || '#000044';
+    const w = panelW - 4;
+
+    // Victory header with pulse
+    const pulse = Math.sin(this.battleResultsTimer * 0.15) * 0.3 + 0.7;
+    const victoryColor = pulse > 0.8 ? '#FFFFFF' : '#FFDD44';
+    const victoryText = '*** VICTORY! ***';
+    r.drawString(px + Math.floor((panelW - victoryText.length) / 2), line, victoryText, victoryColor, bg);
+    line += 2;
+
+    // Enemy defeated
+    r.drawString(px + 2, line, `Defeated: ${res.enemyName}`, '#FFAAAA', bg, w);
+    line += 2;
+
+    // EXP with animated count-up
+    const maxCountFrames = 30;
+    const countProgress = Math.min(1, this.battleResultsTimer / maxCountFrames);
+    const displayXP = Math.floor(res.xp * countProgress);
+    r.drawString(px + 2, line, `EXP: +${displayXP}`, COLORS.BRIGHT_CYAN || '#00FFFF', bg, w);
+    line++;
+
+    // Gold
+    if (res.gold > 0) {
+      const displayGold = Math.floor(res.gold * countProgress);
+      r.drawString(px + 2, line, `Gold: +${displayGold}\u00A7`, COLORS.BRIGHT_YELLOW || '#FFFF00', bg, w);
+      line++;
+    }
+
+    // Loot items
+    if (res.items && res.items.length > 0) {
+      line++;
+      r.drawString(px + 2, line, 'Loot:', '#AAAAAA', bg, w);
+      line++;
+      for (const item of res.items) {
+        if (line >= py + panelH - 3) break;
+        r.drawString(px + 3, line, `\u2022 ${item.name}`, COLORS.BRIGHT_GREEN || '#00FF00', bg, w - 1);
+        line++;
+      }
+    }
+
+    // Level up
+    if (res.leveled && res.leveled.length > 0) {
+      line++;
+      if (line < py + panelH - 2) {
+        r.drawString(px + 2, line, `LEVEL UP! Lv ${res.leveled[res.leveled.length - 1]}!`, '#FFFF00', bg, w);
+      }
+    }
+
+    // Press enter prompt (blink)
+    if (this.battleResultsTimer > 20) {
+      const blink = Math.floor(this.battleResultsTimer / 15) % 2 === 0;
+      if (blink) {
+        const promptText = 'Press Enter to continue';
+        r.drawString(px + Math.floor((panelW - promptText.length) / 2), py + panelH - 2, promptText, '#888888', bg);
+      }
+    }
+  }
+
+  handleBattleResultsInput(key) {
+    if (key === 'Enter' || key === ' ' || key === 'Escape') {
+      const returnState = this._battleReturnState || 'DUNGEON';
+      this.battleResults = null;
+      this.startTransition(() => {
+        this.setState(returnState);
+      });
+    }
   }
 
   renderCombat() {
