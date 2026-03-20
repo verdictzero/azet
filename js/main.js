@@ -5,6 +5,7 @@ import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, Ite
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
+import { getMonsterArt } from './monsterart.js';
 
 // ═══════════════════════════════════════════
 //  GAME - Main controller
@@ -1664,6 +1665,40 @@ class Game {
     }
   }
 
+  // Helper: spawn screen-space combat particles at monster center
+  spawnCombatParticles(count, chars, color) {
+    if (!this.combatState || !this.combatState.combatParticles) return;
+    const cols = this.renderer.cols;
+    const rows = this.renderer.rows;
+    const cx = Math.floor(cols / 2);
+    const cy = Math.floor(rows * 0.55 / 2) - 1;
+    for (let i = 0; i < count; i++) {
+      this.combatState.combatParticles.push({
+        x: cx + (Math.random() - 0.5) * 4,
+        y: cy + (Math.random() - 0.5) * 2,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 1.5 - 0.5,
+        char: chars[Math.floor(Math.random() * chars.length)],
+        color,
+        life: 10 + Math.floor(Math.random() * 10),
+      });
+    }
+  }
+
+  // Helper: spawn floating damage number at monster center
+  spawnDamageNumber(text, color) {
+    if (!this.combatState || !this.combatState.damageNumbers) return;
+    const cols = this.renderer.cols;
+    const rows = this.renderer.rows;
+    this.combatState.damageNumbers.push({
+      x: Math.floor(cols / 2 - text.length / 2) + Math.floor((Math.random() - 0.5) * 4),
+      y: Math.floor(rows * 0.55 / 2) - 2,
+      text,
+      color,
+      life: 20,
+    });
+  }
+
   handleCombatInput(key) {
     if (!this.combatState) return;
 
@@ -1712,6 +1747,8 @@ class Game {
         if (result.hit && !this.debug.invincible) {
           this.player.stats.hp -= result.damage;
           this.ui.addMessage(result.message, COLORS.BRIGHT_RED);
+          this.combatState.shake.intensity = 3;
+          this.renderer.flash('#FF0000', 0.3);
         } else if (result.hit && this.debug.invincible) {
           this.ui.addMessage(`[DEBUG] Blocked ${result.damage} damage`, COLORS.BRIGHT_CYAN);
         }
@@ -1735,11 +1772,17 @@ class Game {
             const healAmount = ability.damage || 15;
             this.player.heal(healAmount);
             this.ui.addMessage(`${ability.name}! Restored ${healAmount} HP.`, COLORS.BRIGHT_GREEN);
+            this.renderer.flash('#00FF44', 0.2);
           } else if (ability.damage > 0) {
             const damage = ability.damage + Math.floor(this.player.stats.int / 3);
             enemy.stats.hp -= damage;
             this.ui.addMessage(`${ability.name}! ${damage} damage to ${enemy.name}!`, COLORS.BRIGHT_MAGENTA);
             this.renderer.flash('#FF4400', 0.3);
+            this.combatState.hitTimer = 3;
+            this.combatState.hitRecoil = 6;
+            this.combatState.shake.intensity = 2;
+            this.spawnCombatParticles(8, ['*', '+', '\u00B7', '\u2219'], '#FF88FF');
+            this.spawnDamageNumber(`${damage}`, '#FF88FF');
             this.particles.emit(enemy.position.x, enemy.position.y, '*', COLORS.BRIGHT_MAGENTA, 5, 3, 10);
           } else if (ability.type === 'buff') {
             this.addStatusEffect('shielded', 5, { defenseBoost: 5 });
@@ -1750,6 +1793,8 @@ class Game {
 
           if (enemy.stats.hp <= 0) {
             this.ui.addMessage(`${enemy.name} defeated!`, COLORS.BRIGHT_GREEN);
+            this.renderer.flash('#FFFFFF', 0.4);
+            this.spawnCombatParticles(15, ['\u2588', '\u2593', '\u2592', '\u2591', '*'], '#FFAA00');
             const xp = this.combat.calculateXPReward(enemy);
             const leveled = this.player.addXP(xp);
             this.ui.addMessage(`${xp} EXP gained!`, COLORS.BRIGHT_CYAN);
@@ -1767,6 +1812,8 @@ class Game {
           if (counterResult.hit && !this.debug.invincible) {
             this.player.stats.hp -= counterResult.damage;
             this.ui.addMessage(counterResult.message, COLORS.BRIGHT_RED);
+            this.combatState.shake.intensity = 3;
+            this.renderer.flash('#FF0000', 0.3);
             if (this.player.isDead()) {
               this.setState('GAME_OVER');
               return;
@@ -1786,9 +1833,29 @@ class Game {
         this.ui.addMessage(msg, COLORS.BRIGHT_RED);
       }
 
+      // Visual effects for player hitting enemy
+      if (result.playerAction && result.playerAction.hit) {
+        this.combatState.hitTimer = 3;
+        this.combatState.hitRecoil = 6;
+        this.renderer.flash(result.playerAction.critical ? '#FFFFFF' : '#FF4400',
+          result.playerAction.critical ? 0.4 : 0.2);
+        this.spawnCombatParticles(6, ['*', '+', '\u00B7'], '#FF8844');
+        this.spawnDamageNumber(`${result.playerAction.damage}`, result.playerAction.critical ? '#FFFFFF' : '#FFAA00');
+      }
+
+      // Visual effects for enemy hitting player
+      if (result.enemyAction && result.enemyAction.hit) {
+        this.combatState.shake.intensity = result.enemyAction.critical ? 5 : 3;
+        this.renderer.flash('#FF0000', result.enemyAction.critical ? 0.4 : 0.3);
+      }
+
       if (result.battleOver) {
         if (result.winner === 'player') {
           const deadEnemy = this.combatState.enemy;
+          // Death burst effect
+          this.renderer.flash('#FFFFFF', 0.4);
+          this.spawnCombatParticles(15, ['\u2588', '\u2593', '\u2592', '\u2591', '*'], '#FFAA00');
+
           const xp = this.combat.calculateXPReward(deadEnemy);
           const leveled = this.player.addXP(xp);
           const loot = this.combat.calculateLoot(this.rng, deadEnemy, this.currentFloor);
@@ -2133,7 +2200,15 @@ class Game {
         enemy.stats.maxHp = enemy.stats.hp;
       }
 
-      this.combatState = { enemy };
+      this.combatState = {
+        enemy,
+        selectedAction: 0,
+        shake: { intensity: 0, decay: 0.85 },
+        hitTimer: 0,
+        hitRecoil: 0,
+        combatParticles: [],
+        damageNumbers: [],
+      };
       this.ui.addMessage(`${enemy.name} appeared!`, COLORS.BRIGHT_RED);
       this.setState('COMBAT');
     }
@@ -2304,7 +2379,15 @@ class Game {
     // Check enemy collision -> combat
     const enemyAt = this.enemies.find(e => e.position.x === nx && e.position.y === ny);
     if (enemyAt) {
-      this.combatState = { enemy: enemyAt };
+      this.combatState = {
+        enemy: enemyAt,
+        selectedAction: 0,
+        shake: { intensity: 0, decay: 0.85 },
+        hitTimer: 0,
+        hitRecoil: 0,
+        combatParticles: [],
+        damageNumbers: [],
+      };
       this.ui.addMessage(`${enemyAt.name} appeared!`, COLORS.BRIGHT_RED);
       this.setState('COMBAT');
       return;
@@ -2986,7 +3069,7 @@ class Game {
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
     const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON'].includes(this.state);
-    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE';
+    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
       || hasTimeTint
@@ -3479,63 +3562,175 @@ class Game {
     const rows = r.rows;
     const enemy = this.combatState.enemy;
     const bg = COLORS.FF_BLUE_DARK;
+    const cs = this.combatState;
 
     r.clear();
 
-    // ── FF-style battle layout ──
-    // Top half: battlefield with enemy sprite
-    // Bottom half: status + command windows
-
+    // ── Earthbound-style battle layout ──
     const battleH = Math.floor(rows * 0.55);
     const statusH = rows - battleH;
 
-    // Battlefield area (dark background with enemy)
-    r.fillRect(0, 0, cols, battleH, ' ', COLORS.WHITE, COLORS.BLACK);
+    // ── Fire Voronoi animated background ──
+    const t = Date.now() / 1000;
+    const fireChars = [' ', '.', '\u00B7', ':', '\u2219', '\u2591', '\u2592', '\u2593'];
+    const fireFg = ['#FF2200', '#FF4400', '#FF6600', '#FF8800', '#FFAA00', '#FFCC00', '#FFDD44'];
+    const fireBg = ['#1a0800', '#2a0e00', '#3a1500', '#4a1a00', '#5a2200', '#6a2800'];
+    const numSeeds = 10;
 
-    // Ground line
-    const groundY = battleH - 2;
-    for (let x = 0; x < cols; x++) {
-      r.drawChar(x, groundY, '\u2500', COLORS.BRIGHT_BLACK, COLORS.BLACK); // ─
+    // Screen shake offset
+    let shakeX = 0, shakeY = 0;
+    if (cs.shake && cs.shake.intensity > 0.1) {
+      shakeX = Math.round((Math.random() - 0.5) * cs.shake.intensity * 2);
+      shakeY = Math.round((Math.random() - 0.5) * cs.shake.intensity);
+      cs.shake.intensity *= cs.shake.decay;
+    } else if (cs.shake) {
+      cs.shake.intensity = 0;
     }
 
-    // Enemy sprite (left-center of battlefield)
-    const enemyX = Math.floor(cols * 0.3);
-    const enemyY = Math.floor(battleH * 0.3);
+    // Store bg colors for compositing
+    const bgColors = [];
+    for (let row = 0; row < battleH; row++) {
+      bgColors[row] = [];
+      for (let col = 0; col < cols; col++) {
+        let minDist = Infinity;
+        let secondDist = Infinity;
+        for (let s = 0; s < numSeeds; s++) {
+          const sx = (cols / 2) + Math.sin(t * 0.45 + s * 2.09) * (cols * 0.4) + Math.sin(t * 0.26 + s * 1.3) * (cols * 0.15);
+          const sy = (battleH / 2) + Math.cos(t * 0.375 + s * 1.88) * (battleH * 0.4) + Math.cos(t * 0.195 + s * 0.9) * (battleH * 0.15);
+          const dx = col - sx;
+          const dy = (row - sy) * 2;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < minDist) { secondDist = minDist; minDist = d; }
+          else if (d < secondDist) { secondDist = d; }
+        }
+        const edge = secondDist - minDist;
+        const pulse = Math.sin(minDist * 0.15 - t * 1.8) * 0.5 + 0.5;
+        const edgePulse = Math.sin(edge * 0.5 - t * 1.2) * 0.5 + 0.5;
+        const val = pulse * 0.6 + edgePulse * 0.4;
+        const ci = Math.min(Math.floor(val * fireChars.length), fireChars.length - 1);
+        const fi = Math.min(Math.floor((val * 0.7 + edge * 0.02) * fireFg.length), fireFg.length - 1);
+        const bi = Math.min(Math.floor(val * fireBg.length), fireBg.length - 1);
+        const drawCol = col + shakeX;
+        const drawRow = row + shakeY;
+        if (drawCol >= 0 && drawCol < cols && drawRow >= 0 && drawRow < battleH) {
+          r.drawChar(drawCol, drawRow, fireChars[ci], fireFg[fi], fireBg[bi]);
+        }
+        bgColors[row][col] = fireBg[bi];
+      }
+    }
 
-    // Enemy name plate
+    // ── Centered Monster Art ──
+    const art = getMonsterArt(enemy);
+    const artLines = art.lines;
+    const artH = artLines.length;
+    const artW = Math.max(...artLines.map(l => l.length));
+
+    // Hit recoil offset
+    let recoilX = 0;
+    if (cs.hitRecoil > 0) {
+      recoilX = cs.hitRecoil > 3 ? 1 : 0;
+      cs.hitRecoil--;
+    }
+
+    const artX = Math.floor(cols / 2 - artW / 2) + shakeX + recoilX;
+    const artY = Math.floor(battleH / 2 - artH / 2) - 1 + shakeY;
+
+    // Determine monster draw color (flash white on hit)
+    let drawColor = art.color;
+    if (cs.hitTimer > 0) {
+      drawColor = '#FFFFFF';
+      cs.hitTimer--;
+    }
+
+    // Draw monster art - spaces show fire bg through
+    for (let row = 0; row < artH; row++) {
+      const line = artLines[row];
+      for (let col = 0; col < line.length; col++) {
+        const ch = line[col];
+        const dx = artX + col;
+        const dy = artY + row;
+        if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
+        if (ch === ' ') continue; // fire bg shows through
+        const cellBg = (bgColors[dy - shakeY] && bgColors[dy - shakeY][dx - shakeX]) || '#1a0800';
+        r.drawChar(dx, dy, ch, drawColor, cellBg);
+      }
+    }
+
+    // Monster name plate centered above art
     const eName = enemy.name;
-    r.drawString(enemyX - Math.floor(eName.length / 2), enemyY - 2, eName, COLORS.BRIGHT_WHITE, COLORS.BLACK);
-
-    // Larger enemy art
-    const eChar = enemy.char || 'E';
-    const eColor = enemy.color || COLORS.BRIGHT_RED;
-    const enemyArt = [
-      `  ${eChar}  `,
-      ' /|\\ ',
-      ' / \\ ',
-    ];
-    for (let i = 0; i < enemyArt.length; i++) {
-      r.drawString(enemyX - 2, enemyY + i, enemyArt[i], eColor, COLORS.BLACK);
+    const nameX = Math.floor(cols / 2 - eName.length / 2) + shakeX;
+    const nameY = artY - 2;
+    if (nameY >= 0 && nameY < battleH) {
+      // Dark background strip for readability
+      for (let i = -1; i <= eName.length; i++) {
+        const nx = nameX + i;
+        if (nx >= 0 && nx < cols) r.drawChar(nx, nameY, ' ', '#000000', '#0a0500');
+      }
+      r.drawString(Math.max(0, nameX), nameY, eName, COLORS.BRIGHT_WHITE, '#0a0500');
     }
 
-    // Enemy HP bar below sprite
-    const eHpW = 16;
-    const eHpX = enemyX - Math.floor(eHpW / 2);
-    const eHpFrac = enemy.stats.hp / enemy.stats.maxHp;
-    const eHpFilled = Math.round(eHpFrac * eHpW);
-    const eHpColor = eHpFrac < 0.25 ? COLORS.BRIGHT_RED : eHpFrac < 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_GREEN;
-    for (let i = 0; i < eHpW; i++) {
-      r.drawChar(eHpX + i, enemyY + 4, i < eHpFilled ? '\u2588' : '\u2591', eHpColor, COLORS.BLACK);
+    // Monster HP bar centered below art
+    const eHpW = Math.min(20, artW + 4);
+    const eHpX = Math.floor(cols / 2 - eHpW / 2) + shakeX;
+    const eHpY = artY + artH + 1;
+    if (eHpY < battleH) {
+      const eHpFrac = Math.max(0, enemy.stats.hp / enemy.stats.maxHp);
+      const eHpFilled = Math.round(eHpFrac * eHpW);
+      const eHpColor = eHpFrac < 0.25 ? COLORS.BRIGHT_RED : eHpFrac < 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_GREEN;
+      for (let i = 0; i < eHpW; i++) {
+        const hx = eHpX + i;
+        if (hx >= 0 && hx < cols) {
+          r.drawChar(hx, eHpY, i < eHpFilled ? '\u2588' : '\u2591', eHpColor, '#0a0500');
+        }
+      }
+      const eHpStr = `${enemy.stats.hp}/${enemy.stats.maxHp}`;
+      const hpStrX = Math.floor(cols / 2 - eHpStr.length / 2) + shakeX;
+      if (eHpY + 1 < battleH) {
+        r.drawString(Math.max(0, hpStrX), eHpY + 1, eHpStr, COLORS.WHITE, '#0a0500');
+      }
     }
-    const eHpStr = `${enemy.stats.hp}/${enemy.stats.maxHp}`;
-    r.drawString(eHpX + Math.floor((eHpW - eHpStr.length) / 2), enemyY + 5, eHpStr, COLORS.WHITE, COLORS.BLACK);
 
-    // Player character (right side of battlefield)
-    const playerX = Math.floor(cols * 0.7);
-    const playerY = Math.floor(battleH * 0.4);
-    r.drawChar(playerX, playerY, '@', COLORS.BRIGHT_WHITE, COLORS.BLACK);
-    r.drawString(playerX - 1, playerY + 1, '/|\\', COLORS.BRIGHT_WHITE, COLORS.BLACK);
-    r.drawString(playerX - 1, playerY + 2, '/ \\', COLORS.BRIGHT_WHITE, COLORS.BLACK);
+    // ── Combat Particles ──
+    if (cs.combatParticles) {
+      for (let i = cs.combatParticles.length - 1; i >= 0; i--) {
+        const p = cs.combatParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.05; // gravity
+        p.life--;
+        if (p.life <= 0) {
+          cs.combatParticles.splice(i, 1);
+          continue;
+        }
+        const px = Math.round(p.x) + shakeX;
+        const py = Math.round(p.y) + shakeY;
+        if (px >= 0 && px < cols && py >= 0 && py < battleH) {
+          const alpha = Math.min(1, p.life / 10);
+          const color = alpha > 0.5 ? p.color : '#666666';
+          r.drawChar(px, py, p.char, color, null);
+        }
+      }
+    }
+
+    // ── Floating Damage Numbers ──
+    if (cs.damageNumbers) {
+      for (let i = cs.damageNumbers.length - 1; i >= 0; i--) {
+        const dn = cs.damageNumbers[i];
+        dn.y -= 0.15;
+        dn.life--;
+        if (dn.life <= 0) {
+          cs.damageNumbers.splice(i, 1);
+          continue;
+        }
+        const dx = Math.round(dn.x) + shakeX;
+        const dy = Math.round(dn.y) + shakeY;
+        if (dx >= 0 && dx < cols && dy >= 0 && dy < battleH) {
+          const alpha = dn.life / 20;
+          const color = alpha > 0.5 ? dn.color : '#888888';
+          r.drawString(Math.max(0, dx), dy, dn.text, color, null);
+        }
+      }
+    }
 
     // ── Bottom status area (FF-style windows) ──
 
