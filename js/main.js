@@ -874,7 +874,7 @@ class Game {
       case 'INVENTORY': return this.handleInventoryInput(key);
       case 'CHARACTER': return this.handleGenericClose(key);
       case 'QUEST_LOG': return this.handleQuestLogInput(key);
-      case 'MAP': return this.handleGenericClose(key);
+      case 'MAP': return this.handleMapInput(key);
       case 'HELP': return this.handleHelpInput(key);
       case 'FACTION': return this.handleFactionInput(key);
       case 'SETTINGS': return this.handleSettingsInput(key);
@@ -2118,6 +2118,16 @@ class Game {
   handleGenericClose(key) {
     if (key === 'Escape') {
       this.setState(this.prevState || 'OVERWORLD');
+    }
+  }
+
+  handleMapInput(key) {
+    if (key === 'Escape') {
+      this.setState(this.prevState || 'OVERWORLD');
+    } else if (key === '+' || key === '=') {
+      this._zoomIn();
+    } else if (key === '-') {
+      this._zoomOut();
     }
   }
 

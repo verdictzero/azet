@@ -515,44 +515,49 @@ export function getMonsterArt(creature) {
   // Strip "Elite " prefix for lookup
   const baseName = name.startsWith('Elite ') ? name.slice(6) : name;
 
+  let lines;
+
   // Tier 1: exact boss match
   if (BOSS_ART[baseName]) {
-    return { lines: BOSS_ART[baseName], color };
+    lines = BOSS_ART[baseName];
   }
-
   // Tier 2: name-based archetype lookup
-  if (NAME_TO_ARCHETYPE[baseName]) {
-    return { lines: ARCHETYPE_ART[NAME_TO_ARCHETYPE[baseName]], color };
+  else if (NAME_TO_ARCHETYPE[baseName]) {
+    lines = ARCHETYPE_ART[NAME_TO_ARCHETYPE[baseName]];
+  }
+  // Fallback: keyword-based guessing
+  else {
+    const lower = baseName.toLowerCase();
+    if (lower.includes('drone') || lower.includes('bot')) lines = ARCHETYPE_ART.drone;
+    else if (lower.includes('mech') || lower.includes('automaton') || lower.includes('harvester')) lines = ARCHETYPE_ART.mech;
+    else if (lower.includes('vine') || lower.includes('tendril') || lower.includes('root')) lines = ARCHETYPE_ART.vine;
+    else if (lower.includes('slime') || lower.includes('gel') || lower.includes('sludge') || lower.includes('ooze')) lines = ARCHETYPE_ART.slime;
+    else if (lower.includes('rat') || lower.includes('cat') || lower.includes('amphibian') || lower.includes('livestock')) lines = ARCHETYPE_ART.critter;
+    else if (lower.includes('swarm') || lower.includes('moth') || lower.includes('pollinator')) lines = ARCHETYPE_ART.swarm;
+    else if (lower.includes('wraith') || lower.includes('specter') || lower.includes('phantom') || lower.includes('ghost') || lower.includes('shade')) lines = ARCHETYPE_ART.wraith;
+    else if (lower.includes('scorpion') || lower.includes('borer')) lines = ARCHETYPE_ART.scorpion;
+    else if (lower.includes('sentinel') || lower.includes('sentry') || lower.includes('guardian')) lines = ARCHETYPE_ART.sentinel;
+    else if (lower.includes('golem') || lower.includes('titan') || lower.includes('colossus')) lines = ARCHETYPE_ART.golem;
+    else if (lower.includes('wisp') || lower.includes('fragment') || lower.includes('plasma')) lines = ARCHETYPE_ART.wisp;
+    else if (lower.includes('spider') || lower.includes('stalker')) lines = ARCHETYPE_ART.spider;
+    else if (lower.includes('parasite') || lower.includes('leech') || lower.includes('worm') || lower.includes('sensor')) lines = ARCHETYPE_ART.parasite;
+    else if (lower.includes('wall') || lower.includes('node') || lower.includes('process') || lower.includes('carrier')) lines = ARCHETYPE_ART.wall;
+    else if (lower.includes('walker') || lower.includes('xenomorph') || lower.includes('scout')) lines = ARCHETYPE_ART.walker;
+    else if (lower.includes('colonist') || lower.includes('scavenger') || lower.includes('raider') || lower.includes('marine') || lower.includes('host')) lines = ARCHETYPE_ART.humanoid;
+    else if (lower.includes('jellyfish')) lines = ARCHETYPE_ART.jellyfish;
+    else if (lower.includes('centipede') || lower.includes('pipe worm')) lines = ARCHETYPE_ART.centipede;
+    else if (lower.includes('eye') || lower.includes('watcher')) lines = ARCHETYPE_ART.eye;
+    else if (lower.includes('turret') || lower.includes('junction') || lower.includes('sentry')) lines = ARCHETYPE_ART.turret;
+    else if (lower.includes('amalgam') || lower.includes('cluster')) lines = ARCHETYPE_ART.amalgam;
+    else if (lower.includes('hound')) lines = ARCHETYPE_ART.hound;
+    else if (lower.includes('shimmer') || lower.includes('loop') || lower.includes('recursive') || lower.includes('overflow') || lower.includes('pixel storm') || lower.includes('gravity maw')) lines = ARCHETYPE_ART.swirl;
+    else if (lower.includes('mimic')) lines = ARCHETYPE_ART.wall;
+    else if (lower.includes('echo') || lower.includes('grief')) lines = ARCHETYPE_ART.wraith;
+    else lines = ARCHETYPE_ART.humanoid; // Ultimate fallback
   }
 
-  // Fallback: keyword-based guessing
-  const lower = baseName.toLowerCase();
-  if (lower.includes('drone') || lower.includes('bot')) return { lines: ARCHETYPE_ART.drone, color };
-  if (lower.includes('mech') || lower.includes('automaton') || lower.includes('harvester')) return { lines: ARCHETYPE_ART.mech, color };
-  if (lower.includes('vine') || lower.includes('tendril') || lower.includes('root')) return { lines: ARCHETYPE_ART.vine, color };
-  if (lower.includes('slime') || lower.includes('gel') || lower.includes('sludge') || lower.includes('ooze')) return { lines: ARCHETYPE_ART.slime, color };
-  if (lower.includes('rat') || lower.includes('cat') || lower.includes('amphibian') || lower.includes('livestock')) return { lines: ARCHETYPE_ART.critter, color };
-  if (lower.includes('swarm') || lower.includes('moth') || lower.includes('pollinator')) return { lines: ARCHETYPE_ART.swarm, color };
-  if (lower.includes('wraith') || lower.includes('specter') || lower.includes('phantom') || lower.includes('ghost') || lower.includes('shade')) return { lines: ARCHETYPE_ART.wraith, color };
-  if (lower.includes('scorpion') || lower.includes('borer')) return { lines: ARCHETYPE_ART.scorpion, color };
-  if (lower.includes('sentinel') || lower.includes('sentry') || lower.includes('guardian')) return { lines: ARCHETYPE_ART.sentinel, color };
-  if (lower.includes('golem') || lower.includes('titan') || lower.includes('colossus')) return { lines: ARCHETYPE_ART.golem, color };
-  if (lower.includes('wisp') || lower.includes('fragment') || lower.includes('plasma')) return { lines: ARCHETYPE_ART.wisp, color };
-  if (lower.includes('spider') || lower.includes('stalker')) return { lines: ARCHETYPE_ART.spider, color };
-  if (lower.includes('parasite') || lower.includes('leech') || lower.includes('worm') || lower.includes('sensor')) return { lines: ARCHETYPE_ART.parasite, color };
-  if (lower.includes('wall') || lower.includes('node') || lower.includes('process') || lower.includes('carrier')) return { lines: ARCHETYPE_ART.wall, color };
-  if (lower.includes('walker') || lower.includes('xenomorph') || lower.includes('scout')) return { lines: ARCHETYPE_ART.walker, color };
-  if (lower.includes('colonist') || lower.includes('scavenger') || lower.includes('raider') || lower.includes('marine') || lower.includes('host')) return { lines: ARCHETYPE_ART.humanoid, color };
-  if (lower.includes('jellyfish')) return { lines: ARCHETYPE_ART.jellyfish, color };
-  if (lower.includes('centipede') || lower.includes('pipe worm')) return { lines: ARCHETYPE_ART.centipede, color };
-  if (lower.includes('eye') || lower.includes('watcher')) return { lines: ARCHETYPE_ART.eye, color };
-  if (lower.includes('turret') || lower.includes('junction') || lower.includes('sentry')) return { lines: ARCHETYPE_ART.turret, color };
-  if (lower.includes('amalgam') || lower.includes('cluster')) return { lines: ARCHETYPE_ART.amalgam, color };
-  if (lower.includes('hound')) return { lines: ARCHETYPE_ART.hound, color };
-  if (lower.includes('shimmer') || lower.includes('loop') || lower.includes('recursive') || lower.includes('overflow') || lower.includes('pixel storm') || lower.includes('gravity maw')) return { lines: ARCHETYPE_ART.swirl, color };
-  if (lower.includes('mimic')) return { lines: ARCHETYPE_ART.wall, color };
-  if (lower.includes('echo') || lower.includes('grief')) return { lines: ARCHETYPE_ART.wraith, color };
-
-  // Ultimate fallback - humanoid
-  return { lines: ARCHETYPE_ART.humanoid, color };
+  // Normalize: pad all lines to the same width for consistent alignment
+  const maxLen = Math.max(...lines.map(l => l.length));
+  const normalized = lines.map(l => l.padEnd(maxLen));
+  return { lines: normalized, color };
 }

@@ -66,9 +66,9 @@ export const COLORS = Object.freeze({
   BRIGHT_YELLOW:  '#f8e060',
   BRIGHT_WHITE:   '#f8f0ff',
   // FF-style UI colors
-  FF_BLUE_BG:     '#10106e',
-  FF_BLUE_DARK:   '#080840',
-  FF_BORDER:      '#b8b8e8',
+  FF_BLUE_BG:     '#1a1a2a',
+  FF_BLUE_DARK:   '#0e0e14',
+  FF_BORDER:      '#b0b0b8',
   FF_CURSOR:      '#f8f0ff',
 });
 

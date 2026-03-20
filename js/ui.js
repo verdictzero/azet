@@ -370,9 +370,9 @@ export class UIManager {
     const bgChars = [' ', '.', '·', ':', '∙', '░', '▒'];
     // Brighter base colors with inverse hue shift (different rate from crystal)
     const voronoiHueShift = t * (-13 / 360); // inverse direction, ~28s full cycle
-    const bgColorsBase = ['#2a2a50', '#303058', '#383868', '#2a3858', '#40305c', '#302a54'];
+    const bgColorsBase = ['#2a2a30', '#303038', '#383840', '#2a3038', '#403040', '#302a34'];
     const bgColors = bgColorsBase.map(c => shiftHue(c, voronoiHueShift));
-    const bgBg = shiftHue('#0c0c20', voronoiHueShift);
+    const bgBg = shiftHue('#0c0c10', voronoiHueShift);
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         let minDist = Infinity;
@@ -1314,7 +1314,7 @@ export class UIManager {
       }
     }
 
-    r.drawString(2, rows - 1, 'Esc:Close  O:Outpost  H:Habitat  *:Hub  +:Garrison  v:Sealed  ^:Spire', COLORS.BRIGHT_BLACK, COLORS.FF_BLUE_DARK);
+    r.drawString(2, rows - 1, 'Esc:Close  -/=:Zoom  O:Outpost  H:Habitat  *:Hub  +:Garrison  v:Sealed  ^:Spire', COLORS.BRIGHT_BLACK, COLORS.FF_BLUE_DARK);
   }
 
   // ─── GAME OVER (FF-style) ───
