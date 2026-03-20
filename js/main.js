@@ -7,6 +7,42 @@ import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
 import { getMonsterArt } from './monsterart.js';
 
+// ─── Save Export/Import Cipher ───
+const SAVE_CIPHER_KEY = 'AETHON-ASCIIQUEST-2024';
+const SAVE_HEADER = '--- ASCIIQUEST SAVE FILE ---';
+const SAVE_FOOTER = '--- END ASCIIQUEST SAVE ---';
+
+function xorCipher(str, key) {
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    result += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return result;
+}
+
+function exportSaveToText(saveDataJson) {
+  const xored = xorCipher(saveDataJson, SAVE_CIPHER_KEY);
+  const b64 = btoa(unescape(encodeURIComponent(xored)));
+  return `${SAVE_HEADER}\n${b64}\n${SAVE_FOOTER}`;
+}
+
+function importSaveFromText(text) {
+  const lines = text.trim().split('\n');
+  if (lines[0].trim() !== SAVE_HEADER || lines[lines.length - 1].trim() !== SAVE_FOOTER) {
+    return null;
+  }
+  const b64 = lines.slice(1, -1).join('');
+  try {
+    const xored = decodeURIComponent(escape(atob(b64)));
+    const json = xorCipher(xored, SAVE_CIPHER_KEY);
+    const data = JSON.parse(json);
+    if (!data.seed || !data.player || !data.version) return null;
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ═══════════════════════════════════════════
 //  GAME - Main controller
 // ═══════════════════════════════════════════
@@ -22,7 +58,7 @@ class Game {
     this._loadVersion();
 
     // Game state
-    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG
+    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC
 
     // Settings (persisted to localStorage)
     this.settings = {
@@ -786,6 +822,7 @@ class Game {
       case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
       case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
       case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
+      case 'ALMANAC': return this.handleAlmanacInput(key);
       case 'WORLD_GEN_PAUSE':
         this.setState('LOADING');
         this._worldGenRunStep(this._worldGenResumeStep);
@@ -794,7 +831,7 @@ class Game {
   }
 
   handleMenuInput(key) {
-    const result = this.ui.handleMenuInput(key, 5);
+    const result = this.ui.handleMenuInput(key, 7);
     if (result === 'select') {
       switch (this.ui.selectedIndex) {
         case 0: // New Game
@@ -821,10 +858,16 @@ class Game {
             this.ui.addMessage('No save found.', COLORS.BRIGHT_RED);
           }
           break;
-        case 3: // Settings (placeholder)
-          this.ui.addMessage('Settings coming soon.', COLORS.BRIGHT_BLACK);
+        case 3: // Export Save
+          this.exportSave();
           break;
-        case 4: // Help
+        case 4: // Import Save
+          this.importSave();
+          break;
+        case 5: // Settings
+          this.setState('SETTINGS');
+          break;
+        case 6: // Help
           this.setState('HELP');
           break;
       }
@@ -941,6 +984,7 @@ class Game {
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
+    if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
     // Movement (with night stumble penalty)
     let dir = this.getDirection(key);
@@ -1007,6 +1051,7 @@ class Game {
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(); return; }
+    if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
     // Zoom controls
     if (key === '+' || key === '=') { this._zoomIn(); return; }
@@ -1059,6 +1104,7 @@ class Game {
     if (key === 'n' || key === 'N') { this._toggleQuestNav(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
+    if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
     // Zoom controls
     if (key === '+' || key === '=') { this._zoomIn(); return; }
@@ -2176,6 +2222,9 @@ class Game {
       this.settings.showQuestNav = !this.settings.showQuestNav;
       this._saveSettings();
     }
+    // Export/Import
+    if (key === '9') { this.exportSave(); }
+    if (key === '0') { this.importSave(); }
     // CRT sub-options
     if (this.settings.crtEffects) {
       if (key === '6') { this.settings.crtGlow = !this.settings.crtGlow; this._saveSettings(); }
@@ -2419,6 +2468,33 @@ class Game {
     if (key === 'End') {
       this.ui.consoleLogScroll = maxScroll;
       return;
+    }
+  }
+
+  handleAlmanacInput(key) {
+    const tabCount = 6;
+    const tab = this.ui.almanacTab || 0;
+    if (key === 'Escape') {
+      this.ui.almanacTab = 0;
+      this.ui.almanacScroll = 0;
+      this.setState(this.prevState || 'OVERWORLD');
+    } else if (key === 'ArrowRight' || key === 'd' || key === 'D') {
+      this.ui.almanacTab = (tab + 1) % tabCount;
+      this.ui.almanacScroll = 0;
+    } else if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
+      this.ui.almanacTab = (tab - 1 + tabCount) % tabCount;
+      this.ui.almanacScroll = 0;
+    } else if (key === 'ArrowDown' || key === 's') {
+      this.ui.almanacScroll = (this.ui.almanacScroll || 0) + 1;
+    } else if (key === 'ArrowUp' || key === 'w') {
+      this.ui.almanacScroll = Math.max(0, (this.ui.almanacScroll || 0) - 1);
+    } else if (key === 'PageDown') {
+      this.ui.almanacScroll = (this.ui.almanacScroll || 0) + 20;
+    } else if (key === 'PageUp') {
+      this.ui.almanacScroll = Math.max(0, (this.ui.almanacScroll || 0) - 20);
+    } else if (key >= '1' && key <= '6') {
+      this.ui.almanacTab = parseInt(key) - 1;
+      this.ui.almanacScroll = 0;
     }
   }
 
@@ -3095,7 +3171,9 @@ class Game {
         activeEffects: this.activeEffects,
         turnCount: this.turnCount,
         state: this.state,
-        trackedQuestId: this._trackedQuestId
+        trackedQuestId: this._trackedQuestId,
+        historyDepth: this.charGenState ? this.charGenState.historyDepth : 'medium',
+        messageLog: this.ui.messageLog.slice(-500)
       };
 
       // Compress dungeon tiles with RLE if in dungeon
@@ -3133,6 +3211,60 @@ class Game {
       this.ui.addMessage('Save failed!', COLORS.BRIGHT_RED);
       return false;
     }
+  }
+
+  exportSave(slot = 1) {
+    try {
+      const data = localStorage.getItem(`asciiquest_save_${slot}`);
+      if (!data) {
+        this.ui.addMessage('No save to export!', COLORS.BRIGHT_RED);
+        return;
+      }
+      const text = exportSaveToText(data);
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `asciiquest_save_${this.player ? this.player.name : 'unknown'}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      this.ui.addMessage('Save exported!', COLORS.BRIGHT_GREEN);
+    } catch (e) {
+      this.ui.addMessage('Export failed!', COLORS.BRIGHT_RED);
+    }
+  }
+
+  importSave() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.txt';
+    input.style.display = 'none';
+    input.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target.result;
+        const saveData = importSaveFromText(text);
+        if (saveData) {
+          localStorage.setItem('asciiquest_save_1', JSON.stringify(saveData));
+          localStorage.setItem('asciiquest_save', JSON.stringify(saveData));
+          if (this.loadGame()) {
+            this.ui.addMessage('Save imported successfully!', COLORS.BRIGHT_GREEN);
+          } else {
+            this.ui.addMessage('Import failed: corrupted data.', COLORS.BRIGHT_RED);
+          }
+        } else {
+          this.ui.addMessage('Invalid save file!', COLORS.BRIGHT_RED);
+        }
+      };
+      reader.readAsText(file);
+      document.body.removeChild(input);
+    });
+    document.body.appendChild(input);
+    input.click();
   }
 
   _compressTiles(tiles) {
@@ -3249,6 +3381,25 @@ class Game {
 
       this.turnCount = save.turnCount;
       this._trackedQuestId = save.trackedQuestId || null;
+
+      // Restore message log
+      if (save.messageLog) {
+        this.ui.messageLog = save.messageLog;
+      }
+
+      // Regenerate world history from seed for almanac access
+      if (!this.worldHistoryGen) {
+        const depthConfigs = {
+          short:  { eras: 3, yearsPerEra: 80, eventDensity: 0.7 },
+          medium: { eras: 5, yearsPerEra: 120, eventDensity: 1.0 },
+          long:   { eras: 7, yearsPerEra: 150, eventDensity: 1.3 },
+          epic:   { eras: 11, yearsPerEra: 180, eventDensity: 1.6 },
+        };
+        const depthKey = save.historyDepth || 'medium';
+        const depthCfg = depthConfigs[depthKey] || depthConfigs.medium;
+        this.worldHistoryGen = new WorldHistoryGenerator(this.seed);
+        this.worldHistory = this.worldHistoryGen.generate(depthCfg);
+      }
 
       // Generate chunks around player position
       this.overworld.ensureChunksAround(this.player.position.x, this.player.position.y);
@@ -3371,6 +3522,10 @@ class Game {
 
       case 'CONSOLE_LOG':
         this.ui.drawConsoleLog();
+        break;
+
+      case 'ALMANAC':
+        this.ui.drawAlmanac(this.worldHistoryGen, this.ui.messageLog);
         break;
     }
 

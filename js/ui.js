@@ -96,6 +96,10 @@ export class UIManager {
 
     // Console log viewer state
     this.consoleLogScroll = 0;
+
+    // Almanac state
+    this.almanacTab = 0;    // 0-5: Preamble, Timeline, Civs, Figures, Artifacts, Log
+    this.almanacScroll = 0;
   }
 
   addMessage(text, color = COLORS.WHITE) {
@@ -553,7 +557,7 @@ export class UIManager {
     }
 
     // FF-style menu box (draws on top of background)
-    const menuItems = ['New Game', 'Quick Start', 'Continue', 'Settings', 'Help'];
+    const menuItems = ['New Game', 'Quick Start', 'Continue', 'Export Save', 'Import Save', 'Settings', 'Help'];
     const menuW = 22;
     const menuH = menuItems.length * 2 + 3;
     const menuX = Math.floor((cols - menuW) / 2);
@@ -1443,6 +1447,7 @@ export class UIManager {
         { t: 'M                    World map (explored areas)' },
         { t: 'F                    Faction standings' },
         { t: 'O                    Settings / config' },
+        { t: 'L                    Almanac / world history' },
         { t: 'P                    Quick save' },
         { t: '?                    This help screen' },
         { t: 'Escape               Close current menu / go back' },
@@ -1727,7 +1732,7 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 50);
-    const panelH = settings.crtEffects ? 24 : 16;
+    const panelH = settings.crtEffects ? 28 : 20;
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
@@ -1747,6 +1752,19 @@ export class UIManager {
       r.drawString(px + 3, curY, `[${item.key}]`, COLORS.BRIGHT_WHITE, bg);
       r.drawString(px + 7, curY, item.label, COLORS.WHITE, bg);
       r.drawString(px + panelW - item.value.length - 3, curY, item.value, item.color, bg);
+      curY += 2;
+    }
+
+    // Export/Import separator
+    r.drawString(px + 1, curY, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+    curY += 1;
+    const exportItems = [
+      { key: '9', label: 'Export Save', value: '', color: COLORS.BRIGHT_CYAN },
+      { key: '0', label: 'Import Save', value: '', color: COLORS.BRIGHT_CYAN },
+    ];
+    for (const item of exportItems) {
+      r.drawString(px + 3, curY, `[${item.key}]`, COLORS.BRIGHT_WHITE, bg);
+      r.drawString(px + 7, curY, item.label, COLORS.WHITE, bg);
       curY += 2;
     }
 
@@ -2391,6 +2409,288 @@ export class UIManager {
       ];
     }
     return [];
+  }
+
+  // ─── ALMANAC (World History Viewer) ───
+
+  drawAlmanac(worldHistoryGen, messageLog) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const panelW = Math.min(cols - 4, 80);
+    const panelH = Math.min(rows - 2, 42);
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.floor((rows - panelH) / 2);
+    const bg = COLORS.FF_BLUE_DARK;
+
+    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Almanac ');
+
+    // Tab bar (same pattern as drawHelp)
+    const tabs = ['Preamble', 'Timeline', 'Civs', 'Figures', 'Artifacts', 'Log'];
+    const tab = this.almanacTab || 0;
+    const usableW = panelW - 4;
+    const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
+
+    const tabRows = [];
+    let currentRow = [];
+    let currentRowLen = 0;
+    for (let i = 0; i < tabLabels.length; i++) {
+      const labelLen = tabLabels[i].length;
+      const needed = currentRow.length > 0 ? labelLen + 1 : labelLen;
+      if (currentRowLen + needed > usableW && currentRow.length > 0) {
+        tabRows.push(currentRow);
+        currentRow = [i];
+        currentRowLen = labelLen;
+      } else {
+        currentRow.push(i);
+        currentRowLen += needed;
+      }
+    }
+    if (currentRow.length > 0) tabRows.push(currentRow);
+
+    for (let rowIdx = 0; rowIdx < tabRows.length; rowIdx++) {
+      const rowIndices = tabRows[rowIdx];
+      const totalLen = rowIndices.reduce((sum, i) => sum + tabLabels[i].length, 0) + (rowIndices.length - 1);
+      const startX = px + 2 + Math.floor((usableW - totalLen) / 2);
+      let tx = startX;
+      for (const i of rowIndices) {
+        const label = tabLabels[i];
+        const color = i === tab ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
+        r.drawString(tx, py + 1 + rowIdx, label, color, bg);
+        tx += label.length + 1;
+      }
+    }
+    const tabBarHeight = tabRows.length;
+    r.drawString(px + 1, py + 1 + tabBarHeight, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+
+    const contentY = py + 2 + tabBarHeight;
+    const contentH = panelH - 4 - tabBarHeight;
+    const w = panelW - 4;
+
+    // Build content lines: array of { t: string, c: color }
+    const lines = [];
+    const addLine = (text, color) => lines.push({ t: text || '', c: color || COLORS.WHITE });
+    const addHeader = (text, color) => lines.push({ t: text, c: color || COLORS.BRIGHT_YELLOW });
+    const addBlank = () => lines.push({ t: '', c: COLORS.WHITE });
+
+    const summary = worldHistoryGen ? worldHistoryGen.getSummary() : null;
+
+    if (!summary) {
+      addLine('No world history available.', COLORS.BRIGHT_BLACK);
+      addLine('Start a new game to generate history.', COLORS.BRIGHT_BLACK);
+    } else if (tab === 0) {
+      // Preamble / Pre-History
+      const pre = summary.preHistory;
+      if (pre && pre.vessel) {
+        addHeader('THE VESSEL', COLORS.BRIGHT_CYAN);
+        addLine(`  Name: ${pre.vessel.fullName || pre.vessel.name}`);
+        addLine(`  Class: ${pre.vessel.class || 'Colony Ship'}`);
+        addLine(`  Dimensions: ${pre.vessel.dimensions || 'Unknown'}`);
+        addLine(`  Crew: ${pre.vessel.crew ? pre.vessel.crew.toLocaleString() : 'Unknown'}`);
+        addLine(`  Destination: ${pre.vessel.destinationName || pre.vessel.destination || 'Unknown'}`);
+        addLine(`  Launch Year: ${pre.vessel.launchYear || 'Unknown'}`);
+        addBlank();
+
+        if (pre.builders) {
+          addHeader('THE BUILDERS', COLORS.BRIGHT_CYAN);
+          addLine(`  ${pre.builders.name || 'Unknown Organization'}`);
+          if (pre.builders.description) {
+            const desc = wordWrap(pre.builders.description, w - 4);
+            for (const line of desc) addLine(`  ${line}`, COLORS.BRIGHT_BLACK);
+          }
+          if (pre.builders.keyFigures) {
+            addBlank();
+            for (const fig of pre.builders.keyFigures) {
+              addLine(`  ${fig.name} - ${fig.title || fig.role}`, COLORS.BRIGHT_WHITE);
+            }
+          }
+          addBlank();
+        }
+
+        if (pre.mission) {
+          addHeader('THE MISSION', COLORS.BRIGHT_CYAN);
+          if (pre.mission.purpose) addLine(`  ${pre.mission.purpose}`);
+          if (pre.mission.method) addLine(`  Method: ${pre.mission.method}`, COLORS.BRIGHT_BLACK);
+          if (pre.mission.estimatedDuration) addLine(`  Duration: ${pre.mission.estimatedDuration} years`, COLORS.BRIGHT_BLACK);
+          addBlank();
+        }
+
+        if (pre.preHistoryEras) {
+          addHeader('PRE-HISTORY ERAS', COLORS.BRIGHT_CYAN);
+          for (const era of pre.preHistoryEras) {
+            addBlank();
+            const range = era.yearRange ? `[${era.yearRange[0]} to ${era.yearRange[1]}]` : '';
+            addLine(`  ${era.name} ${range}`, COLORS.BRIGHT_WHITE);
+            if (era.description) {
+              const desc = wordWrap(era.description, w - 4);
+              for (const line of desc) addLine(`  ${line}`, COLORS.BRIGHT_BLACK);
+            }
+            if (era.keyEvents) {
+              for (const ev of era.keyEvents) addLine(`    - ${ev}`, COLORS.WHITE);
+            }
+          }
+          addBlank();
+        }
+
+        if (pre.theForgetting) {
+          addHeader('THE FORGETTING', COLORS.BRIGHT_RED);
+          if (pre.theForgetting.causes) {
+            for (const cause of pre.theForgetting.causes) {
+              addLine(`  - ${cause}`, COLORS.WHITE);
+            }
+          }
+          if (pre.theForgetting.fragmentedMemories) {
+            addBlank();
+            addLine('  Fragmented Memories:', COLORS.BRIGHT_BLACK);
+            for (const mem of pre.theForgetting.fragmentedMemories) {
+              addLine(`    "${mem}"`, COLORS.BRIGHT_BLACK);
+            }
+          }
+        }
+      } else {
+        addLine('Pre-history data not available.', COLORS.BRIGHT_BLACK);
+      }
+    } else if (tab === 1) {
+      // Timeline
+      addHeader('WORLD TIMELINE', COLORS.BRIGHT_CYAN);
+      addBlank();
+      const timeline = summary.timeline || [];
+      for (const ev of timeline) {
+        const yearStr = `[Year ${ev.year}]`;
+        const color = ev.isPreHistory ? COLORS.BRIGHT_YELLOW
+          : (ev.importance === 'major' || ev.type === 'era_start') ? COLORS.BRIGHT_CYAN
+          : COLORS.WHITE;
+        const desc = wordWrap(`${yearStr} ${ev.description}`, w);
+        for (let i = 0; i < desc.length; i++) {
+          addLine(desc[i], i === 0 ? color : COLORS.BRIGHT_BLACK);
+        }
+      }
+    } else if (tab === 2) {
+      // Civilizations
+      addHeader('CIVILIZATIONS', COLORS.BRIGHT_CYAN);
+      const civs = summary.civilizations || [];
+      for (const civ of civs) {
+        addBlank();
+        const status = civ.isActive ? '[Active]' : '[Fallen]';
+        const statusColor = civ.isActive ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED;
+        addLine(`  ${civ.name} ${status}`, statusColor);
+        if (civ.government) addLine(`    Government: ${civ.government}`, COLORS.WHITE);
+        if (civ.culturalValues && civ.culturalValues.length) addLine(`    Values: ${civ.culturalValues.join(', ')}`, COLORS.BRIGHT_BLACK);
+        if (civ.population) addLine(`    Population: ${civ.population.toLocaleString()}`, COLORS.WHITE);
+        if (civ.militaryStrength) addLine(`    Military: ${civ.militaryStrength}`, COLORS.WHITE);
+        if (civ.religion) addLine(`    Religion: ${civ.religion}`, COLORS.BRIGHT_BLACK);
+        if (civ.homeRegion) addLine(`    Home: ${civ.homeRegion}`, COLORS.BRIGHT_BLACK);
+        if (civ.controlledRegions && civ.controlledRegions.length) {
+          addLine(`    Regions: ${civ.controlledRegions.join(', ')}`, COLORS.BRIGHT_BLACK);
+        }
+      }
+    } else if (tab === 3) {
+      // Historical Figures
+      addHeader('HISTORICAL FIGURES', COLORS.BRIGHT_CYAN);
+      const figures = summary.historicalFigures || [];
+      for (const fig of figures) {
+        addBlank();
+        const name = fig.fullName || (fig.name && fig.name.full) || fig.name || 'Unknown';
+        const status = fig.isAlive ? '[Alive]' : '[Dead]';
+        const statusColor = fig.isAlive ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED;
+        addLine(`  ${name} ${status}`, statusColor);
+        if (fig.title) addLine(`    Title: ${fig.title}`, COLORS.WHITE);
+        if (fig.bornYear) {
+          const lifespan = fig.deathYear ? `${fig.bornYear} - ${fig.deathYear}` : `Born ${fig.bornYear}`;
+          addLine(`    Years: ${lifespan}`, COLORS.BRIGHT_BLACK);
+        }
+        if (fig.deeds && fig.deeds.length) {
+          for (const deed of fig.deeds.slice(0, 3)) {
+            const deedText = typeof deed === 'string' ? deed : deed.description || deed.deed || JSON.stringify(deed);
+            const wrapped = wordWrap(`    - ${deedText}`, w);
+            for (const line of wrapped) addLine(line, COLORS.WHITE);
+          }
+        }
+      }
+    } else if (tab === 4) {
+      // Artifacts & Religions
+      const artifacts = summary.artifacts || [];
+      const religions = summary.religions || [];
+
+      if (artifacts.length > 0) {
+        addHeader('ARTIFACTS', COLORS.BRIGHT_CYAN);
+        for (const art of artifacts) {
+          addBlank();
+          const lost = art.isLost ? ' [Lost]' : '';
+          const cursed = art.cursed ? ' [Cursed]' : '';
+          addLine(`  ${art.name}${cursed}${lost}`, art.cursed ? COLORS.BRIGHT_RED : COLORS.BRIGHT_WHITE);
+          if (art.description) {
+            const desc = wordWrap(art.description, w - 4);
+            for (const line of desc) addLine(`    ${line}`, COLORS.BRIGHT_BLACK);
+          }
+          if (art.type) addLine(`    Type: ${art.type}`, COLORS.WHITE);
+          if (art.creatorName) addLine(`    Creator: ${art.creatorName}`, COLORS.WHITE);
+          if (art.material) addLine(`    Material: ${art.material}`, COLORS.WHITE);
+        }
+      }
+
+      if (religions.length > 0) {
+        addBlank();
+        addHeader('RELIGIONS', COLORS.BRIGHT_CYAN);
+        for (const rel of religions) {
+          addBlank();
+          addLine(`  ${rel.name}`, COLORS.BRIGHT_WHITE);
+          if (rel.deity) {
+            const deity = typeof rel.deity === 'string' ? rel.deity : rel.deity.fullName || rel.deity.name || 'Unknown';
+            const domain = (rel.deity && rel.deity.domain) ? ` (${rel.deity.domain})` : '';
+            addLine(`    Deity: ${deity}${domain}`, COLORS.WHITE);
+          }
+          if (rel.followers) addLine(`    Followers: ${rel.followers.toLocaleString()}`, COLORS.BRIGHT_BLACK);
+          if (rel.tenets && rel.tenets.length) {
+            addLine(`    Tenets: ${rel.tenets.slice(0, 3).join(', ')}`, COLORS.BRIGHT_BLACK);
+          }
+        }
+      }
+
+      if (artifacts.length === 0 && religions.length === 0) {
+        addLine('No artifacts or religions recorded.', COLORS.BRIGHT_BLACK);
+      }
+    } else if (tab === 5) {
+      // Message Log (reuse console log logic)
+      addHeader('MESSAGE LOG', COLORS.BRIGHT_CYAN);
+      addBlank();
+      const log = messageLog || [];
+      const total = log.length;
+      if (total === 0) {
+        addLine('No messages yet.', COLORS.BRIGHT_BLACK);
+      } else {
+        // Oldest first
+        for (let i = total - 1; i >= 0; i--) {
+          const msg = log[i];
+          lines.push({ t: msg.text, c: msg.color || COLORS.WHITE });
+        }
+      }
+    }
+
+    // Clamp scroll
+    const maxScroll = Math.max(0, lines.length - contentH);
+    this.almanacScroll = Math.min(this.almanacScroll || 0, maxScroll);
+    const scroll = this.almanacScroll;
+
+    // Render visible lines
+    for (let i = 0; i < contentH; i++) {
+      const idx = scroll + i;
+      if (idx >= lines.length) break;
+      const line = lines[idx];
+      r.drawString(px + 2, contentY + i, line.t, line.c, bg, w);
+    }
+
+    // Scroll indicators
+    if (scroll > 0) {
+      r.drawString(px + panelW - 4, contentY, ' \u25b2 ', COLORS.BRIGHT_WHITE, bg);
+    }
+    if (scroll < maxScroll) {
+      r.drawString(px + panelW - 4, contentY + contentH - 1, ' \u25bc ', COLORS.BRIGHT_WHITE, bg);
+    }
+
+    // Footer
+    r.drawString(px + 2, py + panelH - 1,
+      'Left/Right:Tab  Up/Down:Scroll  1-6:Tab  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
   }
 
   // ─── CONSOLE LOG VIEWER ───
