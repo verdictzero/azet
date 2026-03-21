@@ -1680,7 +1680,7 @@ export class WeatherSystem {
       desert:       ['clear', 'clear', 'sandstorm'],
       tundra:       ['clear', 'snow', 'snow', 'storm'],
       swamp:        ['fog', 'rain', 'rain', 'cloudy', 'acid_rain'],
-      forest:       ['clear', 'cloudy', 'rain', 'fog', 'spore_fall'],
+      forest:       ['clear', 'cloudy', 'rain', 'fog', 'rain'],
       grassland:    ['clear', 'clear', 'cloudy', 'rain'],
       mountain:     ['clear', 'cloudy', 'snow', 'storm', 'ion_storm'],
       ocean:        ['clear', 'rain', 'storm'],
@@ -1690,8 +1690,7 @@ export class WeatherSystem {
       reactor_slag: ['ember_rain', 'ember_rain', 'clear', 'ember_rain'],
       frozen_deck:  ['snow', 'snow', 'coolant_mist', 'clear', 'coolant_mist'],
       // Environmental failure biomes
-      hydro_jungle: ['rain', 'rain', 'spore_fall', 'fog', 'rain'],
-      fungal_net:   ['spore_fall', 'spore_fall', 'fog', 'spore_fall'],
+      hydro_jungle: ['rain', 'rain', 'fog', 'fog', 'rain'],
       toxic_sump:   ['acid_rain', 'acid_rain', 'fog', 'acid_rain'],
       // Anomaly/alien biomes
       alien_crash:  ['data_storm', 'ion_storm', 'clear', 'ion_storm'],
@@ -1700,7 +1699,7 @@ export class WeatherSystem {
       // Corruption biomes
       glitch_zone:  ['data_storm', 'data_storm', 'data_storm', 'data_storm'],
       nano_plague:  ['nano_haze', 'nano_haze', 'fog', 'nano_haze'],
-      assimilated:  ['blood_rain', 'spore_fall', 'fog', 'blood_rain'],
+      assimilated:  ['blood_rain', 'fog', 'fog', 'blood_rain'],
       // Temperature gradient biomes — cold
       tundra:          ['snow', 'snow', 'storm', 'clear', 'snow'],
       permafrost:      ['snow', 'coolant_mist', 'storm', 'snow', 'snow'],
@@ -1744,7 +1743,6 @@ export class WeatherSystem {
       case 'snow':         return 0.75;
       case 'acid_rain':    return 0.8;
       case 'coolant_mist': return 0.45;
-      case 'spore_fall':   return 0.7;
       case 'ember_rain':   return 0.75;
       case 'data_storm':   return 0.55;
       case 'nano_haze':    return 0.5;
@@ -1774,8 +1772,6 @@ export class WeatherSystem {
         return { char: '|', fg: '#88FF00', density: this.intensity * 0.08 };
       case 'coolant_mist':
         return { char: '.', fg: '#88DDFF', density: this.intensity * 0.04 };
-      case 'spore_fall':
-        return { char: '*', fg: '#CC88FF', density: this.intensity * 0.06 };
       case 'ember_rain':
         return { char: ',', fg: '#FF6622', density: this.intensity * 0.07 };
       case 'data_storm':
@@ -1802,7 +1798,6 @@ export class WeatherSystem {
       sandstorm: 'Sand whips through the air!',
       acid_rain: 'Corrosive droplets hiss against the hull plating.',
       coolant_mist: 'Cryogenic coolant vents into the air, freezing everything.',
-      spore_fall: 'Bioluminescent spores drift down like toxic snow.',
       ember_rain: 'Glowing embers rain from overloaded reactor vents.',
       data_storm: 'Holographic noise crackles through corrupted systems.',
       nano_haze: 'A grey haze of nanites hangs in the air, dissolving everything.',
@@ -1951,7 +1946,7 @@ export class CloudSystem {
   static WEATHER_COVERAGE = {
     clear: 0.15, cloudy: 0.55, rain: 0.70, storm: 0.85,
     snow: 0.50, fog: 0.60, acid_rain: 0.70, ion_storm: 0.80,
-    sandstorm: 0.40, coolant_mist: 0.45, spore_fall: 0.50,
+    sandstorm: 0.40, coolant_mist: 0.45,
     ember_rain: 0.35, data_storm: 0.65, nano_haze: 0.55,
     blood_rain: 0.65,
   };
