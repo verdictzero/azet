@@ -201,6 +201,20 @@ class Game {
     this.showDebugButtons = false; // toggle debug button bar
     this._debugButtonRects = [];   // hit areas for debug buttons
 
+    // Wire debug state provider so touch buttons can show toggle indicators
+    this.input._debugStateProvider = () => ({
+      invincible: this.debug.invincible,
+      noClip: this.debug.noClip,
+      noEncounters: this.debug.noEncounters,
+      infiniteAttack: this.debug.infiniteAttack,
+      infiniteMana: this.debug.infiniteMana,
+      disableShadows: this.debug.disableShadows,
+      disableLighting: this.debug.disableLighting,
+      disableClouds: this.debug.disableClouds,
+      crtEffects: this.renderer?.effectsEnabled ?? false,
+      revealMap: this.debug.revealMap,
+    });
+
     // World history (deep procedural history engine)
     this.worldHistoryGen = null;
     this.worldHistory = null;
@@ -1137,6 +1151,7 @@ class Game {
     // Handle debug quick-commands from touch UI
     if (typeof key === 'string' && key.startsWith('debug:')) {
       this._executeDebugButton(key.slice(6));
+      this.input.updateTouchLayout(this.state); // refresh toggle indicators
       return;
     }
     // Toggle debug button bar with F2

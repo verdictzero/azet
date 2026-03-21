@@ -160,6 +160,14 @@ html, body {
   border-color: rgba(255, 165, 0, 0.85);
 }
 
+/* Debug toggle button — active/ON state (bright green glow) */
+.grid-btn.debug-cmd.active {
+  background: rgba(0, 255, 0, 0.35);
+  border-color: rgba(0, 255, 0, 0.8);
+  color: rgba(0, 255, 0, 0.95);
+  box-shadow: 0 0 6px rgba(0, 255, 0, 0.4);
+}
+
 /* Empty/spacer cell */
 .grid-btn.empty {
   visibility: hidden;
