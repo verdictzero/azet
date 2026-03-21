@@ -1782,24 +1782,20 @@ export class UIManager {
         const perpX = -(sunDir.dy || 0);
         const perpY = sunDir.dx || 0;
         const ts = Date.now() / 1000;
+        // Along-ray direction for color temperature gradient
+        const alongX = sunDir.dx || 0;
+        const alongY = sunDir.dy || 0;
+        const ac0 = 0, ac1 = (viewW - 1) * alongX, ac2 = (viewH - 1) * alongY, ac3 = ac1 + ac2;
+        const minAlong = Math.min(ac0, ac1, ac2, ac3);
+        const maxAlong = Math.max(ac0, ac1, ac2, ac3);
+        const alongRange = maxAlong - minAlong || 1;
         // Ray color shifts with time of day
-        let rayTintOpen, rayTintCanopy, rayIntMul, edgeBoost;
+        let rayIntMul, edgeBoost;
         if (isDay) {
-          // Dawn/dusk: deep golden rays. Midday: soft neutral-warm.
-          const rayR = Math.round(255);
-          const rayG = Math.round(238 - sunWarmth * 60);   // 238→178
-          const rayB = Math.round(170 - sunWarmth * 120);   // 170→50
-          rayTintOpen = '#' + [rayR, rayG, rayB].map(v => Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
-          const cR = Math.round(221 - sunWarmth * 40);
-          const cG = Math.round(238 - sunWarmth * 50);
-          const cB = Math.round(187 - sunWarmth * 80);
-          rayTintCanopy = '#' + [cR, cG, cB].map(v => Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
           // God rays more visible at golden hour, subtler at midday
           rayIntMul = 0.7 + sunWarmth * 0.8; // 0.7 midday → 1.5 golden hour
           edgeBoost = 0.06 + sunWarmth * 0.08; // stronger edge highlight at golden hour
         } else {
-          rayTintOpen = '#AABBDD';
-          rayTintCanopy = '#8899BB';
           rayIntMul = 0.55;
           edgeBoost = 0.05;
         }
@@ -1818,8 +1814,42 @@ export class UIManager {
             const proj = sx * perpX + sy * perpY;
             const rayNoise = r._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
             if (rayNoise > 0.05) {
+              // Along-ray factor: 0 = near sun (cool/bright), 1 = far from sun (warm/dim)
+              const alongProj = sx * alongX + sy * alongY;
+              const rayT = (alongProj - minAlong) / alongRange;
+              let tint;
+              if (isDay) {
+                // Cool origin → warm far end, shifted by sunWarmth
+                // Origin (rayT=0): cooler white-blue, Far (rayT=1): warm gold
+                const baseR = 221 + sunWarmth * 10;   // slightly warmer base at golden hour
+                const baseG = 238 - sunWarmth * 30;
+                const baseB = 240 - sunWarmth * 80;
+                const tR = Math.round(baseR + rayT * (255 - baseR));          // →255
+                const tG = Math.round(baseG - rayT * (baseG - 178 + sunWarmth * 30));  // →178 (more golden at far end)
+                const tB = Math.round(baseB - rayT * (baseB - 50 + sunWarmth * 40));   // →50 (deep gold at far end)
+                if (nearCanopy) {
+                  // Canopy light is slightly muted/greener
+                  tint = '#' + [Math.round(tR * 0.86), Math.round(Math.min(255, tG * 1.0)), Math.round(tB * 0.85)]
+                    .map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+                } else {
+                  tint = '#' + [tR, tG, tB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+                }
+              } else {
+                // Night: cool silver-blue origin → slightly warmer blue far end
+                const tR = Math.round(170 + rayT * 18);   // 170→188
+                const tG = Math.round(187 - rayT * 10);   // 187→177
+                const tB = Math.round(221 - rayT * 30);   // 221→191
+                if (nearCanopy) {
+                  tint = '#' + [Math.round(tR * 0.8), Math.round(tG * 0.82), Math.round(tB * 0.85)]
+                    .map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+                } else {
+                  tint = '#' + [tR, tG, tB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+                }
+              }
               let intensity = ((rayNoise - 0.05) / 0.95 * 0.15 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
-              const tint = nearCanopy ? rayTintCanopy : rayTintOpen;
+              // Dim far end, brighten origin
+              const dimFactor = 1.0 - rayT * 0.35;
+              intensity *= dimFactor;
               if (nearCanopy) intensity *= 1.3;
               r.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.30, intensity), tint);
             }
