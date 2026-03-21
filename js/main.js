@@ -1643,6 +1643,7 @@ class Game {
   }
 
   handleDialogueInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this.activeNPC = null;
       this.setState(this.prevState || 'LOCATION');
@@ -2063,6 +2064,7 @@ class Game {
   }
 
   handleShopInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this.ui.shopState = null;
       this.setState('DIALOGUE');
@@ -2124,6 +2126,7 @@ class Game {
   }
 
   handleInventoryInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this.setState(this.prevState || 'OVERWORLD');
       return;
@@ -2196,6 +2199,7 @@ class Game {
 
   handleCombatInput(key) {
     if (!this.combatState) return;
+    if (key === '?') { this.setState('HELP'); return; }
 
     // FF-style cursor navigation in command menu
     if (!this.combatState.selectedAction) this.combatState.selectedAction = 0;
@@ -2462,12 +2466,14 @@ class Game {
   }
 
   handleGenericClose(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this.setState(this.prevState || 'OVERWORLD');
     }
   }
 
   handleMapInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this.setState(this.prevState || 'OVERWORLD');
     } else if (key === '+' || key === '=') {
@@ -2478,6 +2484,7 @@ class Game {
   }
 
   handleFactionInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this.ui.factionScroll = 0;
       this.setState(this.prevState || 'OVERWORLD');
@@ -2491,6 +2498,7 @@ class Game {
   // ─── QUEST LOG (with tracking) ───
 
   handleQuestLogInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     const active = this.questSystem.getActiveQuests();
     const itemCount = active.length;
 
@@ -2551,6 +2559,7 @@ class Game {
   }
 
   handleQuestCompassInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     const active = this.questSystem.getActiveQuests();
     if (key === 'Escape') {
       this.setState(this.prevState || 'OVERWORLD');
@@ -2620,6 +2629,7 @@ class Game {
   }
 
   handleSettingsInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this._saveSettings();
       this.setState(this.prevState || 'OVERWORLD');
@@ -2661,6 +2671,7 @@ class Game {
   }
 
   handleDebugMenuInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     const ui = this.ui;
     const tab = ui.debugTab || 0;
     const entries = ui.getDebugEntries(this.debug, this.timeSystem, this.weatherSystem, this.renderer);
@@ -2863,6 +2874,7 @@ class Game {
   }
 
   handleConsoleLogInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     const total = this.ui.messageLog.length;
     const panelH = Math.min(this.renderer.rows - 2, 40);
     const contentH = panelH - 3;
@@ -2899,6 +2911,7 @@ class Game {
   }
 
   handleAlmanacInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
     const tabCount = 7;
     const tab = this.ui.almanacTab || 0;
     if (key === 'Escape') {

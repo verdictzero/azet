@@ -1361,7 +1361,7 @@ export class InputManager {
       // Page 1: Combat Actions
       [
         [{ label: 'ATK', key: 'a', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'FLEE', key: 'f', type: 'action' }],
-        [null, { label: 'SEL', key: 'Enter', type: 'action-primary' }, null],
+        [{ label: 'HELP', key: '?', type: 'action' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, null],
         [{ label: 'AB1', key: '1', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'AB2', key: '2', type: 'action' }],
         [{ label: 'AB3', key: '3', type: 'action' }, { label: 'INV', key: 'i', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
       ],
@@ -1385,41 +1385,43 @@ export class InputManager {
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'BUY', key: 'Enter', type: 'action-primary' }, { label: 'SELL', key: 's', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
+      [{ label: 'HELP', key: '?', type: 'action' }, { label: 'SELL', key: 's', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
     ]]},
     // ── Inventory ──
     INVENTORY: { pages: [[
       [{ label: 'USE', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'EQP', key: 'e', type: 'action' }],
       [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
       [{ label: 'DROP', key: 'd', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'SELL', key: 's', type: 'action' }],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, null],
     ]]},
     // ── Character Sheet ──
     CHARACTER: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [null, null, null],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, null],
     ]]},
     // ── Quest Log ──
     QUEST_LOG: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'TRK', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'NAV', key: 'n', type: 'action' }, null, { label: 'ESC', key: 'Escape', type: 'action' }],
+      [{ label: 'NAV', key: 'n', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
     ]]},
     // ── Map ──
     MAP: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }],
+      [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }],
+      [null, { label: 'ESC', key: 'Escape', type: 'action' }, null],
     ]]},
     // ── Help ──
     HELP: { pages: [[
       [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, null, null],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+      [{ label: '1', key: '1', type: 'tab' }, { label: '2', key: '2', type: 'tab' }, { label: '3', key: '3', type: 'tab' }],
+      [{ label: '4', key: '4', type: 'tab' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: '5', key: '5', type: 'tab' }],
+      [{ label: '6', key: '6', type: 'tab' }, { label: '7', key: '7', type: 'tab' }, { label: '8', key: '8', type: 'tab' }],
       [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
     ]]},
     // ── Settings ──
@@ -1427,7 +1429,7 @@ export class InputManager {
       [{ label: '1', key: '1', type: 'action' }, { label: '2', key: '2', type: 'action' }, { label: '3', key: '3', type: 'action' }],
       [{ label: '4', key: '4', type: 'action' }, { label: '5', key: '5', type: 'action' }, { label: '6', key: '6', type: 'action' }],
       [{ label: '7', key: '7', type: 'action' }, { label: '8', key: '8', type: 'action' }, { label: 'EXP', key: '9', type: 'action' }],
-      [{ label: 'IMP', key: '0', type: 'action' }, { label: 'BACK', key: 'Escape', type: 'action' }, null],
+      [{ label: 'IMP', key: '0', type: 'action' }, { label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
     ]]},
     // ── Game Over ──
     GAME_OVER: { pages: [[
@@ -1450,7 +1452,7 @@ export class InputManager {
     // ── Console Log ──
     CONSOLE_LOG: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [null, null, null],
+      [null, { label: 'HELP', key: '?', type: 'action' }, null],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
       [{ label: 'HOME', key: 'Home', type: 'action' }, { label: 'END', key: 'End', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
     ]]},
@@ -1459,14 +1461,14 @@ export class InputManager {
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, null],
     ]]},
     // ── Quest Compass ──
     QUEST_COMPASS: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
       [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
       [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
+      [{ label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, null],
     ]]},
     // ── Almanac ──
     ALMANAC: { pages: [[
