@@ -2308,7 +2308,7 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 50);
-    const panelH = settings.crtEffects ? 28 : 20;
+    const panelH = settings.crtEffects ? 32 : 24;
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
@@ -2320,6 +2320,8 @@ export class UIManager {
       { key: '3', label: 'Touch Controls', value: settings.touchControls ? 'ON' : 'OFF', color: settings.touchControls ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
       { key: '4', label: 'Auto-Save', value: `${settings.autoSaveInterval} turns`, color: COLORS.BRIGHT_YELLOW },
       { key: '5', label: 'Quest Nav', value: settings.showQuestNav !== false ? 'ON' : 'OFF', color: settings.showQuestNav !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
+      { key: 'V', label: 'Music Volume', value: `${Math.round((settings.musicVolume ?? 0.5) * 100)}%`, color: COLORS.BRIGHT_YELLOW },
+      { key: 'M', label: 'Music', value: settings.musicMuted ? 'MUTED' : 'ON', color: settings.musicMuted ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN },
     ];
 
     let curY = py + 2;
