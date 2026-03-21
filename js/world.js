@@ -459,11 +459,28 @@ export class ChunkManager {
     }
 
     // Convert scars to chunk-coordinate zones
+    const SCAR_SAFE_RADIUS = 4; // chunks clear around starting town
     for (const scar of scars) {
       const coords = scar.regionId ? regionCoords.get(scar.regionId) : null;
-      const cx = coords ? coords.cx : regionRng.nextInt(-10, 10);
-      const cy = coords ? coords.cy : regionRng.nextInt(-6, 6);
+      let cx = coords ? coords.cx : regionRng.nextInt(-10, 10);
+      let cy = coords ? coords.cy : regionRng.nextInt(-6, 6);
       const radius = scar.radius || 3;
+
+      // Push scar center so its full radius clears the safe zone around origin
+      const minDist = SCAR_SAFE_RADIUS + radius;
+      const scarDist = Math.sqrt(cx * cx + cy * cy);
+      if (scarDist < minDist) {
+        if (scarDist > 0) {
+          const scale = minDist / scarDist;
+          cx = Math.round(cx * scale);
+          cy = Math.round(cy * scale);
+        } else {
+          // Push in deterministic direction based on scar year
+          const angle = ((scar.year || 0) % 360) * Math.PI / 180;
+          cx = Math.round(Math.cos(angle) * minDist);
+          cy = Math.round(Math.sin(angle) * minDist);
+        }
+      }
 
       this._scarZones.push({
         ...scar,
@@ -1180,6 +1197,10 @@ export class ChunkManager {
   _applyMapScarsToChunk(cx, cy, tiles) {
     if (this._scarZones.length === 0) return;
 
+    // Safety net: convert non-walkable scar terrain to walkable rubble near starting town
+    const ORIGIN_SAFE_CHUNKS = 3;
+    const nearOrigin = Math.abs(cx) <= ORIGIN_SAFE_CHUNKS && Math.abs(cy) <= ORIGIN_SAFE_CHUNKS;
+
     for (const scar of this._scarZones) {
       const dx = cx - scar.cx;
       const dy = cy - scar.cy;
@@ -1295,6 +1316,13 @@ export class ChunkManager {
                 });
               }
               break;
+          }
+
+          // Revert non-walkable scar tiles near starting town to walkable rubble
+          if (nearOrigin && !tiles[ly][lx].walkable && tiles[ly][lx].historicalScar) {
+            tiles[ly][lx] = tile('RUBBLE', '.', '#555544', '#222211', true, {
+              biome: 'ruins', historicalScar: tiles[ly][lx].historicalScar,
+            });
           }
         }
       }
