@@ -25,12 +25,12 @@ export class MusicManager {
     this._fadeInterval = null;
   }
 
-  play(trackPath, { loop = true } = {}) {
+  play(trackPath, { loop = true, fadeDuration } = {}) {
     if (trackPath === this.currentTrack) return;
     this.currentTrack = trackPath;
     const incoming = this._active === this.audioA ? this.audioB : this.audioA;
     const outgoing = this._active;
-    this._startCrossfade(outgoing, incoming, trackPath, loop);
+    this._startCrossfade(outgoing, incoming, trackPath, loop, fadeDuration);
     this._active = incoming;
   }
 
@@ -75,8 +75,9 @@ export class MusicManager {
     return this.muted;
   }
 
-  _startCrossfade(outgoing, incoming, newSrc, loop) {
+  _startCrossfade(outgoing, incoming, newSrc, loop, fadeDuration) {
     this._clearFade();
+    const duration = fadeDuration != null ? fadeDuration : this.crossfadeDuration;
     incoming.src = newSrc;
     incoming.loop = loop;
     incoming.volume = 0;
@@ -100,7 +101,7 @@ export class MusicManager {
     const startVol = outgoing.src ? outgoing.volume : 0;
     this._fadeInterval = setInterval(() => {
       elapsed += step;
-      const progress = Math.min(elapsed / this.crossfadeDuration, 1);
+      const progress = Math.min(elapsed / duration, 1);
       incoming.volume = this.muted ? 0 : progress * this.volume;
       if (outgoing.src) {
         outgoing.volume = this.muted ? 0 : (1 - progress) * startVol;

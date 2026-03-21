@@ -440,6 +440,10 @@ class Game {
     ];
     if (overlayStates.includes(newState)) return;
 
+    // Use near-instant fade when leaving battle/fanfare
+    const battleStates = ['BATTLE_ENTER', 'COMBAT', 'ENEMY_DEATH', 'BATTLE_RESULTS'];
+    const leavingBattle = battleStates.includes(this.prevState);
+
     switch (newState) {
       case 'MENU':
       case 'CHAR_CREATE':
@@ -452,31 +456,31 @@ class Game {
         this._currentTownTrack = null;
         this._currentRuinsTrack = null;
         if (this.timeSystem) {
-          this.music.play(this.timeSystem.isDaytime() ? TRACKS.OVERWORLD_DAY : TRACKS.OVERWORLD_NIGHT);
+          this.music.play(this.timeSystem.isDaytime() ? TRACKS.OVERWORLD_DAY : TRACKS.OVERWORLD_NIGHT, leavingBattle ? { fadeDuration: 50 } : undefined);
         }
         break;
       case 'LOCATION':
         if (!this._currentTownTrack) {
           this._currentTownTrack = TRACKS.TOWN[Math.floor(Math.random() * TRACKS.TOWN.length)];
         }
-        this.music.play(this._currentTownTrack);
+        this.music.play(this._currentTownTrack, leavingBattle ? { fadeDuration: 50 } : undefined);
         break;
       case 'DUNGEON':
         if (!this._currentRuinsTrack) {
           this._currentRuinsTrack = TRACKS.RUINS[Math.floor(Math.random() * TRACKS.RUINS.length)];
         }
-        this.music.play(this._currentRuinsTrack);
+        this.music.play(this._currentRuinsTrack, leavingBattle ? { fadeDuration: 50 } : undefined);
         break;
       case 'BATTLE_ENTER':
       case 'COMBAT':
         if (!this.music.currentTrack || !this.music.currentTrack.includes('battle')) {
-          this.music.play(TRACKS.BATTLE);
+          this.music.play(TRACKS.BATTLE, { fadeDuration: 50 });
         }
         break;
       case 'ENEMY_DEATH':
         break;
       case 'BATTLE_RESULTS':
-        this.music.play(TRACKS.FANFARE, { loop: false });
+        this.music.play(TRACKS.FANFARE, { loop: false, fadeDuration: 50 });
         break;
       case 'GAME_OVER':
         this.music.stop();
@@ -581,7 +585,7 @@ class Game {
     };
     this.ui.addMessage(`${enemy.name} appeared!`, COLORS.BRIGHT_RED);
     this.battleEnterTimer = 0;
-    this.music.play(enemy.isBoss ? TRACKS.BOSS_BATTLE : TRACKS.BATTLE);
+    this.music.play(enemy.isBoss ? TRACKS.BOSS_BATTLE : TRACKS.BATTLE, { fadeDuration: 50 });
     this.setState('BATTLE_ENTER');
   }
 
