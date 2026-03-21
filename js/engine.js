@@ -722,9 +722,9 @@ export class Renderer {
           const along = worldX * cosW + worldY * sinW;
           const perp = -worldX * sinW + worldY * cosW;
           // Primary traveling wave
-          const n = this._grassNoise.noise2D(along * 0.15 - ts * 1.2, perp * 0.08);
+          const n = this._grassNoise.noise2D(along * 0.15 - ts * 0.5, perp * 0.08);
           // Secondary chaos noise
-          const n2 = this._grassNoise2.noise2D(worldX * 0.25 + ts * 0.5, worldY * 0.25 - ts * 0.3);
+          const n2 = this._grassNoise2.noise2D(worldX * 0.25 + ts * 0.2, worldY * 0.25 - ts * 0.12);
           const combined = n * 0.7 + n2 * 0.3;
           if (combined > 0.35) return '/';
           if (combined > 0.1) return '`';
@@ -733,7 +733,7 @@ export class Renderer {
           return ',';
         }
         // Fallback: original uniform animation
-        const cycle = Math.floor(t / 600) % 4;
+        const cycle = Math.floor(t / 1400) % 4;
         return [',', '`', '.', ','][cycle];
       }
       // Water features
@@ -762,7 +762,7 @@ export class Renderer {
       const cosW = Math.cos(windAngle), sinW = Math.sin(windAngle);
       const along = worldX * cosW + worldY * sinW;
       const perp = -worldX * sinW + worldY * cosW;
-      const n = this._grassNoise.noise2D(along * 0.15 - ts * 1.2, perp * 0.08);
+      const n = this._grassNoise.noise2D(along * 0.15 - ts * 0.5, perp * 0.08);
       // Brighten on wind gusts, darken in calm
       const boost = n * 0.15; // -0.15 to +0.15
       return this._adjustBrightness(baseColor, boost);
