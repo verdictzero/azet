@@ -1111,7 +1111,7 @@ class Game {
   }
 
   handleMenuInput(key) {
-    const result = this.ui.handleMenuInput(key, 6);
+    const result = this.ui.handleHorizontalMenuInput(key, 6);
     if (result === 'select') {
       switch (this.ui.selectedIndex) {
         case 0: // New Game

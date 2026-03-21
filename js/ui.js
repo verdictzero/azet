@@ -87,6 +87,7 @@ export class UIManager {
     this.shopState = null;
     this.menuState = null;
     this.selectedIndex = 0;
+    this.menuScrollOffset = 0;
     this.confirmCallback = null;
     this.confirmMessage = null;
 
@@ -405,8 +406,13 @@ export class UIManager {
     ];
 
     const titleWidth = 65;
-    const startY = Math.max(2, Math.floor(rows / 2) - 10);
     const compact = cols < titleWidth + 6;
+
+    // Center the entire content group vertically on screen
+    // Non-compact: crystal(34) is tallest element, title overlaps it, then version(1) + gap(1) + menu(1) + gap(1) + footer(1)
+    // Compact: title box(3) + version(1) + gap(1) + menu(1) + gap(1) + footer(1)
+    const contentHeight = compact ? 8 : (CRYSTAL_HEIGHT + 5);
+    const startY = Math.max(1, Math.floor((rows - contentHeight) / 2));
 
     const artStartX = Math.floor((cols - titleWidth) / 2);
     const artStartY = startY;
@@ -552,23 +558,89 @@ export class UIManager {
         vLabel, COLORS.BRIGHT_BLACK, COLORS.BLACK);
     }
 
-    // FF-style menu box (draws on top of background)
+    // Horizontal linear menu below title
     const menuItems = ['New Game', 'Quick Start', 'Continue', 'Import Save', 'Settings', 'Help'];
-    const menuW = 22;
-    const menuH = menuItems.length * 2 + 3;
-    const menuX = Math.floor((cols - menuW) / 2);
-    const menuY = titleBlockEnd + 3;
+    const menuY = titleBlockEnd + 2;
+    const sep = '   ';
+    const sepLen = sep.length;
 
-    r.drawBox(menuX, menuY, menuW, menuH);
+    // Calculate total width needed for all items (selected item gets [ ] brackets = +2 chars)
+    const totalMenuWidth = menuItems.reduce((sum, item, i) => {
+      return sum + item.length + 2 + (i < menuItems.length - 1 ? sepLen : 0);
+    }, 0);
 
-    for (let i = 0; i < menuItems.length; i++) {
-      const sel = i === this.selectedIndex;
-      const cursor = sel ? ICONS.cursor : ' ';
-      const color = sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE;
-      r.drawString(menuX + 2, menuY + 1 + i * 2, cursor + ' ' + menuItems[i], color, COLORS.FF_BLUE_DARK);
+    if (totalMenuWidth <= cols - 2) {
+      // === All items fit: render centered on one line ===
+      let curX = Math.floor((cols - totalMenuWidth) / 2);
+      for (let i = 0; i < menuItems.length; i++) {
+        const sel = i === this.selectedIndex;
+        const label = sel ? `[${menuItems[i]}]` : ` ${menuItems[i]} `;
+        const color = sel ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
+        const bg = sel ? COLORS.FF_BLUE_DARK : COLORS.BLACK;
+        r.drawString(curX, menuY, label, color, bg);
+        curX += label.length + sepLen;
+      }
+    } else {
+      // === Narrow mode: scrollable subset with arrow indicators ===
+      const arrowW = 3; // "◄  " or "  ►"
+      const availWidth = cols - 2 - arrowW * 2;
+
+      // Ensure selectedIndex is visible by adjusting menuScrollOffset
+      if (this.selectedIndex < this.menuScrollOffset) {
+        this.menuScrollOffset = this.selectedIndex;
+      }
+
+      // Calculate visible items from menuScrollOffset
+      let visibleItems = [];
+      let widthUsed = 0;
+      for (let i = this.menuScrollOffset; i < menuItems.length; i++) {
+        const itemW = menuItems[i].length + 2 + (visibleItems.length > 0 ? sepLen : 0);
+        if (widthUsed + itemW > availWidth && visibleItems.length > 0) break;
+        visibleItems.push(i);
+        widthUsed += itemW;
+      }
+
+      // If selected is past visible range, shift offset forward
+      while (!visibleItems.includes(this.selectedIndex) && this.menuScrollOffset < menuItems.length - 1) {
+        this.menuScrollOffset++;
+        visibleItems = [];
+        widthUsed = 0;
+        for (let i = this.menuScrollOffset; i < menuItems.length; i++) {
+          const itemW = menuItems[i].length + 2 + (visibleItems.length > 0 ? sepLen : 0);
+          if (widthUsed + itemW > availWidth && visibleItems.length > 0) break;
+          visibleItems.push(i);
+          widthUsed += itemW;
+        }
+      }
+
+      const showLeftArrow = this.menuScrollOffset > 0;
+      const showRightArrow = visibleItems.length > 0 && visibleItems[visibleItems.length - 1] < menuItems.length - 1;
+
+      // Center the visible content within the available space
+      const contentW = widthUsed + (showLeftArrow ? arrowW : 0) + (showRightArrow ? arrowW : 0);
+      let curX = Math.max(1, Math.floor((cols - contentW) / 2));
+
+      if (showLeftArrow) {
+        r.drawString(curX, menuY, '\u25C4 ', COLORS.BRIGHT_YELLOW, COLORS.BLACK);
+        curX += arrowW;
+      }
+
+      for (let vi = 0; vi < visibleItems.length; vi++) {
+        const idx = visibleItems[vi];
+        const sel = idx === this.selectedIndex;
+        const label = sel ? `[${menuItems[idx]}]` : ` ${menuItems[idx]} `;
+        const color = sel ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
+        const bg = sel ? COLORS.FF_BLUE_DARK : COLORS.BLACK;
+        r.drawString(curX, menuY, label, color, bg);
+        curX += label.length + (vi < visibleItems.length - 1 ? sepLen : 0);
+      }
+
+      if (showRightArrow) {
+        r.drawString(curX + 1, menuY, ' \u25BA', COLORS.BRIGHT_YELLOW, COLORS.BLACK);
+      }
     }
 
-    const footer = 'Select with arrows, confirm with Enter';
+    const footer = '\u25C4 \u25BA Select  \u00B7  Enter Confirm';
     r.drawString(Math.floor((cols - footer.length) / 2), rows - 2, footer, COLORS.BRIGHT_BLACK, COLORS.BLACK);
   }
 
@@ -2407,6 +2479,24 @@ export class UIManager {
     return null;
   }
 
+  handleHorizontalMenuInput(key, itemCount) {
+    if (key === 'ArrowLeft' || key === 'a') {
+      this.selectedIndex = (this.selectedIndex - 1 + itemCount) % itemCount;
+      return 'move';
+    }
+    if (key === 'ArrowRight' || key === 'd') {
+      this.selectedIndex = (this.selectedIndex + 1) % itemCount;
+      return 'move';
+    }
+    if (key === 'Enter' || key === ' ') {
+      return 'select';
+    }
+    if (key === 'Escape') {
+      return 'back';
+    }
+    return null;
+  }
+
   scrollMessages(delta) {
     this.messageScroll = Math.max(0,
       Math.min(this.messageScroll + delta, this.messageLog.length - this.visibleMessages));
@@ -2414,6 +2504,7 @@ export class UIManager {
 
   resetSelection() {
     this.selectedIndex = 0;
+    this.menuScrollOffset = 0;
   }
 
   // ─── DEBUG MENU (in-game, canvas-rendered) ───
