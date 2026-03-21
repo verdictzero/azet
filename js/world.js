@@ -459,7 +459,7 @@ export class ChunkManager {
     }
 
     // Convert scars to chunk-coordinate zones
-    const SCAR_SAFE_RADIUS = 4; // chunks clear around starting town
+    const SCAR_SAFE_RADIUS = 6; // chunks clear around starting town (generous for temperature gradients)
     for (const scar of scars) {
       const coords = scar.regionId ? regionCoords.get(scar.regionId) : null;
       let cx = coords ? coords.cx : regionRng.nextInt(-10, 10);
