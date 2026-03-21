@@ -4231,9 +4231,9 @@ class Game {
         const wy = camY + wy_off;
         const tile = this.overworld.getTile(wx, wy);
 
-        // Fog of war
+        // Fog of war — only at night; daytime has full visibility
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
-        const isFogged = dist > viewRange;
+        const isFogged = isNight && dist > viewRange;
 
         if (density === 1) {
           const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
