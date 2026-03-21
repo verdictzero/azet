@@ -74,6 +74,49 @@ const ICONS = {
   unselected: ' ',      //   blank for unselected
 };
 
+// ─── Circuit Line Background Effect (mirrored from main.js for loading screen) ───
+function _circuitHash(x, y) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967296;
+}
+
+function _hasTrace(x, y) {
+  return _circuitHash(x, y) < 0.35;
+}
+
+const _CIRCUIT_CONN = [
+  '·', '─', '─', '─', '│', '┌', '┐', '┬',
+  '│', '└', '┘', '┴', '│', '├', '┤', '○',
+];
+
+const _circuitResult = { char: ' ', fg: '#000000', bg: '#000000' };
+
+function _getCircuitryCell(wx, wy) {
+  if (!_hasTrace(wx, wy)) {
+    _circuitResult.char = ' ';
+    _circuitResult.fg = '#000000';
+    _circuitResult.bg = '#000000';
+    return _circuitResult;
+  }
+  const conn = (_hasTrace(wx, wy - 1) ? 8 : 0)
+             | (_hasTrace(wx, wy + 1) ? 4 : 0)
+             | (_hasTrace(wx - 1, wy) ? 2 : 0)
+             | (_hasTrace(wx + 1, wy) ? 1 : 0);
+  _circuitResult.char = _CIRCUIT_CONN[conn];
+  const t = Date.now() / 1000;
+  const wave = Math.sin((wx * 0.3 + wy * 0.2) - t * 1.5) * 0.5 + 0.5;
+  const pulse2 = Math.sin((wx * 0.1 - wy * 0.15) + t * 0.7) * 0.5 + 0.5;
+  const energy = wave * 0.7 + pulse2 * 0.3;
+  const cr = Math.floor(6 + energy * 10);
+  const cg = Math.floor(6 + energy * 50);
+  const cb = Math.floor(18 + energy * 62);
+  _circuitResult.fg = `rgb(${cr},${cg},${cb})`;
+  _circuitResult.bg = '#000000';
+  return _circuitResult;
+}
+
 export class UIManager {
   constructor(renderer) {
     this.renderer = renderer;
@@ -2740,11 +2783,18 @@ export class UIManager {
     }
   }
 
-  drawLoadingModal(step, logLines = []) {
+  drawLoadingModal(step) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
-    r.clear();
+
+    // Fill background with animated circuit line effect
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const cell = _getCircuitryCell(x, y);
+        r.drawChar(x, y, cell.char, cell.fg, cell.bg);
+      }
+    }
 
     // Centered modal box
     const boxW = Math.min(cols - 4, 48);
@@ -2782,18 +2832,6 @@ export class UIManager {
     // Animated dots
     const dots = '.'.repeat(Math.floor(t / 2) % 4);
     r.drawString(bx + Math.floor((boxW - label.length) / 2) + label.length, by + 4, dots, COLORS.BRIGHT_BLACK);
-
-    // Show last few log lines below the modal
-    const logStartY = by + boxH + 1;
-    const maxLines = Math.min(logLines.length, rows - logStartY - 1);
-    const startIdx = Math.max(0, logLines.length - maxLines);
-    for (let i = startIdx; i < logLines.length; i++) {
-      const line = logLines[i];
-      const y = logStartY + (i - startIdx);
-      if (y >= rows - 1) break;
-      const color = i === logLines.length - 1 ? COLORS.BRIGHT_BLACK : COLORS.BRIGHT_BLACK;
-      r.drawString(2, y, line.text, color, COLORS.BLACK, cols - 4);
-    }
   }
 
   // ─── UTILITIES ───
