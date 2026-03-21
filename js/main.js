@@ -4038,6 +4038,41 @@ class Game {
       this.timeSystem.hour = origHour;
       this.renderer.tintViewport(tint.color, tint.alpha, viewLeft, viewTop, viewW, viewH);
 
+      // Apply weather ambient lighting
+      const weatherAmbient = this.weatherSystem.getAmbientEffect();
+      if (weatherAmbient) {
+        let wAlpha = weatherAmbient.tintAlpha;
+        if (weatherAmbient.pulseSpeed > 0) {
+          const pulse = Math.sin(Date.now() / 1000 * weatherAmbient.pulseSpeed) * weatherAmbient.pulseAmount;
+          wAlpha = Math.max(0, Math.min(1, wAlpha + pulse));
+        }
+        this.renderer.tintViewport(weatherAmbient.tintColor, wAlpha, viewLeft, viewTop, viewW, viewH);
+
+        // Brightness shift across viewport
+        const bShift = weatherAmbient.brightnessShift;
+        if (bShift < 0) {
+          const darkAlpha = Math.abs(bShift);
+          for (let sy = 0; sy < viewH; sy++)
+            for (let sx = 0; sx < viewW; sx++)
+              this.renderer.darkenCell(viewLeft + sx, viewTop + sy, darkAlpha);
+        } else if (bShift > 0) {
+          for (let sy = 0; sy < viewH; sy++)
+            for (let sx = 0; sx < viewW; sx++)
+              this.renderer.brightenCell(viewLeft + sx, viewTop + sy, bShift);
+        }
+
+        // Lightning flashes for high-energy weather
+        const weather = this.weatherSystem.current;
+        const wIntensity = this.weatherSystem.intensity;
+        let flashChance = 0, flashColor = '#FFFFFF';
+        if (weather === 'storm') { flashChance = wIntensity * 0.005; flashColor = '#FFFFFF'; }
+        else if (weather === 'ion_storm') { flashChance = wIntensity * 0.008; flashColor = '#FFFF44'; }
+        else if (weather === 'data_storm') { flashChance = wIntensity * 0.006; flashColor = '#FF0088'; }
+        if (flashChance > 0 && Math.random() < flashChance) {
+          this.renderer.flash(flashColor, 0.6 + Math.random() * 0.3);
+        }
+      }
+
       // Apply shadow darkening in overworld (post-process on canvas)
       if (this.state === 'OVERWORLD' && this._shadowCells) {
         for (const [key, alpha] of this._shadowCells) {
