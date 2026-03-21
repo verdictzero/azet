@@ -1279,74 +1279,48 @@ export class InputManager {
       [{ label: 'SEL', key: 'Enter', type: 'action-primary' }, null, { label: 'BACK', key: 'Escape', type: 'action' }],
     ]]},
     LOADING: { pages: [[[null, null, null]]] },
-    OVERWORLD: { pages: [
+    // Universal gameplay layout — all buttons available across pages
+    GAMEPLAY: { pages: [
+      // Page 1: Core Exploration
       [
         [{ label: 'ACT', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'INV', key: 'i', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'REST', key: 'r', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'TALK', key: 't', type: 'action' }],
         [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'CHR', key: 'c', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-        [{ label: 'ZM+', key: '+', type: 'action' }, null, { label: 'ZM-', key: '-', type: 'action' }],
       ],
+      // Page 2: Secondary Actions
       [
         [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
         [{ label: 'FCTN', key: 'f', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'SAVE', key: 'p', type: 'action' }],
         [{ label: 'SET', key: 'o', type: 'action' }, { label: 'NAV', key: 'n', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
       ],
+      // Page 3: Dungeon / Combat
       [
-        [{ label: 'ALM', key: 'l', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'HELP', key: '?', type: 'action' }],
+        [{ label: 'GET', key: 'g', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'STR', key: '>', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'DBG', key: '`', type: 'debug' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
+        [{ label: 'AB1', key: '1', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'AB2', key: '2', type: 'action' }],
+        [{ label: 'AB3', key: '3', type: 'action' }, { label: 'FLEE', key: 'f', type: 'action' }, { label: 'ALM', key: 'l', type: 'action' }],
       ],
-    ]},
-    LOCATION: { pages: [
+      // Page 4: Inventory / Shop / Zoom
       [
-        [{ label: 'ACT', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'INV', key: 'i', type: 'action' }],
+        [{ label: 'EQP', key: 'e', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'DROP', key: 'd', type: 'action' }],
         [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'TALK', key: 't', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-        [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'MAP', key: 'm', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }],
+        [{ label: 'SELL', key: 's', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'ZM+', key: '+', type: 'action' }],
+        [{ label: 'ZM-', key: '-', type: 'action' }, { label: 'DBG', key: '`', type: 'debug' }, { label: 'LOG', key: 'F2', type: 'action' }],
       ],
+      // Page 5: Debug Commands — Time / Weather / Visual
       [
-        [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
-        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'NAV', key: 'n', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }],
+        [{ label: 'H+', key: 'debug:hourInc', type: 'debug-cmd' }, { label: 'H-', key: 'debug:hourDec', type: 'debug-cmd' }, { label: 'ADV', key: 'debug:advanceDay', type: 'debug-cmd' }],
+        [{ label: 'W>', key: 'debug:weatherNext', type: 'debug-cmd' }, { label: 'W<', key: 'debug:weatherPrev', type: 'debug-cmd' }, { label: 'CRT', key: 'debug:crtEffects', type: 'debug-cmd' }],
+        [{ label: 'SHD', key: 'debug:disableShadows', type: 'debug-cmd' }, { label: 'LIT', key: 'debug:disableLighting', type: 'debug-cmd' }, { label: 'CLD', key: 'debug:disableClouds', type: 'debug-cmd' }],
+        [{ label: 'ENC', key: 'debug:noEncounters', type: 'debug-cmd' }, { label: 'NCP', key: 'debug:noClip', type: 'debug-cmd' }, { label: 'GOD', key: 'debug:invincible', type: 'debug-cmd' }],
       ],
+      // Page 6: Debug Commands — Player / Items
       [
-        [{ label: 'ALM', key: 'l', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'HELP', key: '?', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'DBG', key: '`', type: 'debug' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      ],
-    ]},
-    DUNGEON: { pages: [
-      [
-        [{ label: 'ACT', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'INV', key: 'i', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'GET', key: 'g', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'STR', key: '>', type: 'action' }],
-        [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }],
-      ],
-      [
-        [{ label: 'QST', key: 'q', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'CHR', key: 'c', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'FCTN', key: 'f', type: 'action' }],
-        [{ label: 'NAV', key: 'n', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'MAP', key: 'm', type: 'action' }],
-      ],
-      [
-        [{ label: 'ALM', key: 'l', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'HELP', key: '?', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'DBG', key: '`', type: 'debug' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      ],
-    ]},
-    COMBAT: { pages: [
-      [
-        [{ label: 'ATK', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'FLEE', key: 'f', type: 'action' }],
-        [null, null, null],
-        [{ label: 'INV', key: 'i', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      [
-        [{ label: 'AB1', key: '1', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'AB2', key: '2', type: 'action' }],
-        [null, null, null],
-        [{ label: 'AB3', key: '3', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'DBG', key: '`', type: 'debug' }],
+        [{ label: 'HEAL', key: 'debug:fullHeal', type: 'debug-cmd' }, { label: '+XP', key: 'debug:giveXP', type: 'debug-cmd' }, { label: '+GP', key: 'debug:giveGold', type: 'debug-cmd' }],
+        [{ label: 'LVL', key: 'debug:levelUp', type: 'debug-cmd' }, { label: 'RMAP', key: 'debug:revealMap', type: 'debug-cmd' }, { label: 'TELE', key: 'debug:teleport', type: 'debug-cmd' }],
+        [{ label: '\u221EATK', key: 'debug:infiniteAttack', type: 'debug-cmd' }, { label: '\u221EMP', key: 'debug:infiniteMana', type: 'debug-cmd' }, null],
       ],
     ]},
     DIALOGUE: { pages: [[
@@ -1443,7 +1417,7 @@ export class InputManager {
   updateTouchLayout(state) {
     if (!this._touchDiv) return;
     this._lastTouchState = state;
-    const layout = InputManager.TOUCH_LAYOUTS[state] || InputManager.TOUCH_LAYOUTS.OVERWORLD;
+    const layout = InputManager.TOUCH_LAYOUTS[state] || InputManager.TOUCH_LAYOUTS.GAMEPLAY;
     const pages = layout.pages;
 
     // Clamp tab index

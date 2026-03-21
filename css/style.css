@@ -135,8 +135,9 @@ html, body {
   border-color: rgba(0, 255, 0, 0.8);
 }
 
-/* Tab/page button (purple) */
+/* Tab/page button (purple, full-width) */
 .grid-btn.tab {
+  grid-column: span 3;
   background: rgba(170, 85, 255, 0.25);
   border: 1.5px solid rgba(170, 85, 255, 0.5);
   color: rgba(200, 150, 255, 0.9);
@@ -145,6 +146,18 @@ html, body {
 .grid-btn.tab:active, .grid-btn.tab.pressed {
   background: rgba(170, 85, 255, 0.5);
   border-color: rgba(170, 85, 255, 0.85);
+}
+
+/* Debug quick-command buttons (orange) */
+.grid-btn.debug-cmd {
+  background: rgba(255, 140, 0, 0.25);
+  border: 1.5px solid rgba(255, 165, 0, 0.5);
+  color: rgba(255, 200, 100, 0.9);
+  font-size: clamp(9px, 2.5vw, 12px);
+}
+.grid-btn.debug-cmd:active, .grid-btn.debug-cmd.pressed {
+  background: rgba(255, 140, 0, 0.5);
+  border-color: rgba(255, 165, 0, 0.85);
 }
 
 /* Empty/spacer cell */

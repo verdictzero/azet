@@ -330,6 +330,57 @@ class Game {
       case 'noEncounters': this.debug.noEncounters = !this.debug.noEncounters; break;
       case 'noClip': this.debug.noClip = !this.debug.noClip; break;
       case 'invincible': this.debug.invincible = !this.debug.invincible; break;
+      case 'infiniteAttack':
+        this.debug.infiniteAttack = !this.debug.infiniteAttack;
+        if (this.player) this.player._debugInfiniteAttack = this.debug.infiniteAttack;
+        break;
+      case 'infiniteMana': this.debug.infiniteMana = !this.debug.infiniteMana; break;
+      case 'fullHeal':
+        if (this.player) {
+          this.player.stats.hp = this.player.stats.maxHp;
+          this.player.stats.mana = this.player.stats.maxMana;
+          this.ui.addMessage('[DEBUG] Full heal!', COLORS.BRIGHT_GREEN);
+        }
+        break;
+      case 'giveXP':
+        if (this.player) {
+          const leveled = this.player.addXP(100);
+          if (leveled.length) this.ui.addMessage(`[DEBUG] Level up! Lv ${leveled[leveled.length - 1]}`, COLORS.BRIGHT_YELLOW);
+          else this.ui.addMessage('[DEBUG] +100 XP', COLORS.BRIGHT_CYAN);
+        }
+        break;
+      case 'giveGold':
+        if (this.player) { this.player.gold += 100; this.ui.addMessage('[DEBUG] +100 Gold', COLORS.BRIGHT_YELLOW); }
+        break;
+      case 'levelUp':
+        if (this.player) {
+          const needed = this.player.stats.xpToNext - this.player.stats.xp;
+          this.player.addXP(needed);
+          this.ui.addMessage(`[DEBUG] Level up! Lv ${this.player.stats.level}`, COLORS.BRIGHT_YELLOW);
+        }
+        break;
+      case 'advanceDay':
+        this.timeSystem.advance(24);
+        this.ui.addMessage('[DEBUG] Advanced 24 hours', COLORS.BRIGHT_CYAN);
+        break;
+      case 'revealMap':
+        if (this.overworld) {
+          for (const loc of this.overworld.getLoadedLocations()) {
+            this.player.knownLocations.add(loc.id);
+          }
+          this.debug.revealMap = true;
+          this.ui.addMessage('[DEBUG] Map revealed', COLORS.BRIGHT_GREEN);
+        }
+        break;
+      case 'teleport':
+        if (this.player) {
+          this.player.position.x = 50;
+          this.player.position.y = 30;
+          if (this.overworld) this.overworld.ensureChunksAround(50, 30);
+          this.camera.follow(this.player);
+          this.ui.addMessage('[DEBUG] Teleported to 50,30', COLORS.BRIGHT_CYAN);
+        }
+        break;
     }
   }
 
@@ -1059,6 +1110,11 @@ class Game {
   // ─── INPUT HANDLING ───
 
   handleInput(key) {
+    // Handle debug quick-commands from touch UI
+    if (typeof key === 'string' && key.startsWith('debug:')) {
+      this._executeDebugButton(key.slice(6));
+      return;
+    }
     // Toggle debug button bar with F2
     if (key === 'F2') {
       this.showDebugButtons = !this.showDebugButtons;
