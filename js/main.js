@@ -127,6 +127,12 @@ class Game {
     this.ui = new UIManager(this.renderer);
     this._loadVersion();
 
+    // Auto-refresh: version polling
+    this._currentVersion = null; // set by _loadVersion
+    this._updateAvailable = false;
+    this._updateDetectedAt = null;
+    this._startVersionPolling();
+
     // Game state
     this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC
 
@@ -179,6 +185,12 @@ class Game {
     this.ui.glow = this.glow;
     this.lighting = new LightingSystem();
     this.cloudSystem = new CloudSystem(this.seed);
+
+    // Performance: god ray frame throttle cache
+    this._godRayFrame = 0;
+    this._godRayCachedCells = null;
+    this._godRayCacheCamX = null;
+    this._godRayCacheCamY = null;
 
     // Debug state
     this.debug = {
@@ -3552,14 +3564,33 @@ class Game {
   // ─── SETTINGS ───
 
   _loadVersion() {
-    fetch('version.json')
+    fetch('version.json', { cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
         const label = `${data.phase} ${data.version}`;
         document.title = `ASCIIQUEST [${label}]`;
         this.ui.versionString = label;
+        this._currentVersion = data.version;
       })
       .catch(() => { /* version.json not found, use defaults */ });
+  }
+
+  _startVersionPolling() {
+    const POLL_INTERVAL = 300000; // 5 minutes
+    const AUTO_RELOAD_DELAY = 300000; // 5 minutes after detection
+    setInterval(() => {
+      fetch('version.json', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+          if (this._currentVersion && data.version !== this._currentVersion && !this._updateAvailable) {
+            this._updateAvailable = true;
+            this._updateDetectedAt = Date.now();
+            this._newVersion = `${data.phase} ${data.version}`;
+          }
+        })
+        .catch(() => { /* ignore fetch errors */ });
+    }, POLL_INTERVAL);
+    this._autoReloadDelay = AUTO_RELOAD_DELAY;
   }
 
   _loadSettings() {
@@ -4045,29 +4076,45 @@ class Game {
           this.renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
         }
 
-        // God rays in unshadowed areas
+        // God rays in unshadowed areas (throttled: recompute every 3rd frame)
         const owSunDir = this.timeSystem.getSunDirection();
         if (owSunDir.isDay && this._shadowCells.size > 0 && this.renderer._godRayNoise) {
-          const perpX = -(owSunDir.dy || 0);
-          const perpY = owSunDir.dx || 0;
-          const ts = Date.now() / 1000;
-          for (let sy = 0; sy < viewH; sy++) {
-            for (let sx = 0; sx < viewW; sx++) {
-              const key = `${sx},${sy}`;
-              if (this._shadowCells.has(key)) continue;
-              let nearShadow = false;
-              for (let nd = 1; nd <= 2; nd++) {
-                const ckx = sx + Math.round((owSunDir.dx || 0) * nd);
-                const cky = sy + Math.round((owSunDir.dy || 0) * nd);
-                if (this._shadowCells.has(`${ckx},${cky}`)) { nearShadow = true; break; }
-              }
-              const proj = sx * perpX + sy * perpY;
-              const rayN = this.renderer._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
-              if (rayN > 0.05) {
-                const intensity = (rayN - 0.05) / 0.95 * 0.15 + (nearShadow ? 0.08 : 0);
-                this.renderer.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.25, intensity), '#FFEEAA');
+          this._godRayFrame++;
+          const camX = Math.floor(this.camera.x);
+          const camY = Math.floor(this.camera.y);
+          const cameraMoved = camX !== this._godRayCacheCamX || camY !== this._godRayCacheCamY;
+          if (!this._godRayCachedCells || this._godRayFrame % 3 === 0 || cameraMoved) {
+            // Recompute god rays
+            this._godRayCacheCamX = camX;
+            this._godRayCacheCamY = camY;
+            const cells = [];
+            const perpX = -(owSunDir.dy || 0);
+            const perpY = owSunDir.dx || 0;
+            const ts = Date.now() / 1000;
+            for (let sy = 0; sy < viewH; sy++) {
+              for (let sx = 0; sx < viewW; sx++) {
+                const key = `${sx},${sy}`;
+                if (this._shadowCells.has(key)) continue;
+                let nearShadow = false;
+                for (let nd = 1; nd <= 2; nd++) {
+                  const ckx = sx + Math.round((owSunDir.dx || 0) * nd);
+                  const cky = sy + Math.round((owSunDir.dy || 0) * nd);
+                  if (this._shadowCells.has(`${ckx},${cky}`)) { nearShadow = true; break; }
+                }
+                const proj = sx * perpX + sy * perpY;
+                const rayN = this.renderer._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
+                if (rayN > 0.05) {
+                  const intensity = (rayN - 0.05) / 0.95 * 0.15 + (nearShadow ? 0.08 : 0);
+                  cells.push(sx, sy, Math.min(0.25, intensity));
+                }
               }
             }
+            this._godRayCachedCells = cells;
+          }
+          // Replay cached cells
+          const gc = this._godRayCachedCells;
+          for (let i = 0; i < gc.length; i += 3) {
+            this.renderer.brightenCell(viewLeft + gc[i], viewTop + gc[i + 1], gc[i + 2], '#FFEEAA');
           }
         }
       }
@@ -4089,37 +4136,62 @@ class Game {
         const shOffX = Math.round(sunDir.dx * shadowDist);
         const shOffY = Math.round(sunDir.dy * shadowDist);
 
-        for (let wy_off = 0; wy_off < cloudWorldH; wy_off++) {
-          for (let wx_off = 0; wx_off < cloudWorldW; wx_off++) {
-            const wx = camX + wx_off;
-            const wy = camY + wy_off;
-            const cDensity = this.cloudSystem.getCloudDensity(wx, wy);
-
-            if (cDensity > 0) {
-              const cloudAlpha = isDay ? cDensity * 0.18 : cDensity * 0.06;
-              // Tint all screen cells for this world tile
-              for (let sdy = 0; sdy < dLevel; sdy++) {
-                for (let sdx = 0; sdx < dLevel; sdx++) {
-                  const screenX = wx_off * dLevel + sdx;
-                  const screenY = wy_off * dLevel + sdy;
-                  if (screenX < viewW && screenY < viewH) {
-                    this.renderer.tintCell(viewLeft + screenX, viewTop + screenY, '#CCCCEE', cloudAlpha);
+        const castShadows = isDay && sunDir.elevation > 0.05;
+        const alphaMul = isDay ? 0.18 : 0.06;
+        const rr = this.renderer;
+        if (dLevel === 1) {
+          // Fast path: no inner density loops needed
+          for (let wy_off = 0; wy_off < cloudWorldH; wy_off++) {
+            for (let wx_off = 0; wx_off < cloudWorldW; wx_off++) {
+              const cDensity = this.cloudSystem.getCloudDensity(camX + wx_off, camY + wy_off);
+              if (cDensity > 0) {
+                if (wx_off < viewW && wy_off < viewH) {
+                  rr.tintCell(viewLeft + wx_off, viewTop + wy_off, '#CCCCEE', cDensity * alphaMul);
+                }
+                if (castShadows) {
+                  const shwx = wx_off + shOffX;
+                  const shwy = wy_off + shOffY;
+                  if (shwx >= 0 && shwx < cloudWorldW && shwy >= 0 && shwy < cloudWorldH
+                      && shwx < viewW && shwy < viewH) {
+                    rr.darkenCell(viewLeft + shwx, viewTop + shwy, cDensity * 0.20);
                   }
                 }
               }
-
-              // Cloud shadow
-              if (isDay && sunDir.elevation > 0.05) {
-                const shwx = wx_off + shOffX;
-                const shwy = wy_off + shOffY;
-                if (shwx >= 0 && shwx < cloudWorldW && shwy >= 0 && shwy < cloudWorldH) {
-                  const shadowAlpha = cDensity * 0.20;
-                  for (let sdy = 0; sdy < dLevel; sdy++) {
-                    for (let sdx = 0; sdx < dLevel; sdx++) {
-                      const screenX = shwx * dLevel + sdx;
-                      const screenY = shwy * dLevel + sdy;
-                      if (screenX < viewW && screenY < viewH) {
-                        this.renderer.darkenCell(viewLeft + screenX, viewTop + screenY, shadowAlpha);
+            }
+          }
+        } else {
+          for (let wy_off = 0; wy_off < cloudWorldH; wy_off++) {
+            for (let wx_off = 0; wx_off < cloudWorldW; wx_off++) {
+              const cDensity = this.cloudSystem.getCloudDensity(camX + wx_off, camY + wy_off);
+              if (cDensity > 0) {
+                const cloudAlpha = cDensity * alphaMul;
+                const baseX = wx_off * dLevel;
+                const baseY = wy_off * dLevel;
+                for (let sdy = 0; sdy < dLevel; sdy++) {
+                  const screenY = baseY + sdy;
+                  if (screenY >= viewH) break;
+                  for (let sdx = 0; sdx < dLevel; sdx++) {
+                    const screenX = baseX + sdx;
+                    if (screenX < viewW) {
+                      rr.tintCell(viewLeft + screenX, viewTop + screenY, '#CCCCEE', cloudAlpha);
+                    }
+                  }
+                }
+                if (castShadows) {
+                  const shwx = wx_off + shOffX;
+                  const shwy = wy_off + shOffY;
+                  if (shwx >= 0 && shwx < cloudWorldW && shwy >= 0 && shwy < cloudWorldH) {
+                    const shadowAlpha = cDensity * 0.20;
+                    const shBaseX = shwx * dLevel;
+                    const shBaseY = shwy * dLevel;
+                    for (let sdy = 0; sdy < dLevel; sdy++) {
+                      const screenY = shBaseY + sdy;
+                      if (screenY >= viewH) break;
+                      for (let sdx = 0; sdx < dLevel; sdx++) {
+                        const screenX = shBaseX + sdx;
+                        if (screenX < viewW) {
+                          rr.darkenCell(viewLeft + screenX, viewTop + screenY, shadowAlpha);
+                        }
                       }
                     }
                   }
@@ -4165,6 +4237,34 @@ class Game {
           }
         }
       }
+    }
+
+    // Update-available banner overlay
+    if (this._updateAvailable) {
+      const elapsed = Date.now() - this._updateDetectedAt;
+      const remaining = Math.max(0, this._autoReloadDelay - elapsed);
+      if (remaining <= 0) {
+        // Auto-save and reload
+        if (this.player) this.saveGame();
+        location.reload();
+        return;
+      }
+      const mins = Math.floor(remaining / 60000);
+      const secs = Math.floor((remaining % 60000) / 1000);
+      const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+      const cols = this.renderer.cols;
+      const msg = `Update ${this._newVersion || ''} available! F5 to refresh (auto in ${timeStr})`;
+      const x = Math.floor((cols - msg.length) / 2);
+      const ctx = this.renderer.ctx;
+      const cw = this.renderer.cellW;
+      const ch = this.renderer.cellH;
+      // Draw banner background directly on canvas
+      ctx.fillStyle = 'rgba(180, 120, 0, 0.85)';
+      ctx.fillRect(0, 0, cols * cw, ch + 4);
+      ctx.font = `${ch}px monospace`;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textBaseline = 'top';
+      ctx.fillText(msg, x * cw, 2);
     }
 
     // Transition overlay (fade in/out between scenes)
@@ -4765,26 +4865,39 @@ class Game {
     const fireFg = ['#FF2200', '#FF4400', '#FF6600', '#FF8800', '#FFAA00', '#FFCC00', '#FFDD44'];
     const fireBg = ['#1a0800', '#2a0e00', '#3a1500', '#4a1a00', '#5a2200', '#6a2800'];
     const numSeeds = 10;
+    // Pre-compute seed positions once per frame (was 4 trig ops × 10 seeds × every pixel)
+    const seedX = new Float64Array(numSeeds);
+    const seedY = new Float64Array(numSeeds);
+    const halfCols = cols / 2;
+    const halfH = battleH / 2;
+    for (let s = 0; s < numSeeds; s++) {
+      seedX[s] = halfCols + Math.sin(t * 0.45 + s * 2.09) * (cols * 0.4) + Math.sin(t * 0.26 + s * 1.3) * (cols * 0.15);
+      seedY[s] = halfH + Math.cos(t * 0.375 + s * 1.88) * (halfH * 0.8) + Math.cos(t * 0.195 + s * 0.9) * (halfH * 0.3);
+    }
+    // Pre-compute time-dependent sin values used in pulse calculations
+    const tPulse = t * 1.8;
+    const tEdgePulse = t * 1.2;
+    const fcLen = fireChars.length;
+    const ffLen = fireFg.length;
+    const fbLen = fireBg.length;
     for (let row = 0; row < battleH; row++) {
       for (let col = 0; col < cols; col++) {
         let minDist = Infinity;
         let secondDist = Infinity;
         for (let s = 0; s < numSeeds; s++) {
-          const sx = (cols / 2) + Math.sin(t * 0.45 + s * 2.09) * (cols * 0.4) + Math.sin(t * 0.26 + s * 1.3) * (cols * 0.15);
-          const sy = (battleH / 2) + Math.cos(t * 0.375 + s * 1.88) * (battleH * 0.4) + Math.cos(t * 0.195 + s * 0.9) * (battleH * 0.15);
-          const dx = col - sx;
-          const dy = (row - sy) * 2;
+          const dx = col - seedX[s];
+          const dy = (row - seedY[s]) * 2;
           const d = Math.sqrt(dx * dx + dy * dy);
           if (d < minDist) { secondDist = minDist; minDist = d; }
           else if (d < secondDist) { secondDist = d; }
         }
         const edge = secondDist - minDist;
-        const pulse = Math.sin(minDist * 0.15 - t * 1.8) * 0.5 + 0.5;
-        const edgePulse = Math.sin(edge * 0.5 - t * 1.2) * 0.5 + 0.5;
+        const pulse = Math.sin(minDist * 0.15 - tPulse) * 0.5 + 0.5;
+        const edgePulse = Math.sin(edge * 0.5 - tEdgePulse) * 0.5 + 0.5;
         const val = pulse * 0.6 + edgePulse * 0.4;
-        const ci = Math.min(Math.floor(val * fireChars.length), fireChars.length - 1);
-        const fi = Math.min(Math.floor((val * 0.7 + edge * 0.02) * fireFg.length), fireFg.length - 1);
-        const bi = Math.min(Math.floor(val * fireBg.length), fireBg.length - 1);
+        const ci = Math.min((val * fcLen) | 0, fcLen - 1);
+        const fi = Math.min(((val * 0.7 + edge * 0.02) * ffLen) | 0, ffLen - 1);
+        const bi = Math.min((val * fbLen) | 0, fbLen - 1);
         const drawCol = col + shakeX;
         const drawRow = row + shakeY;
         if (drawCol >= 0 && drawCol < cols && drawRow >= 0 && drawRow < battleH) {
@@ -5186,14 +5299,15 @@ class Game {
 
     // Render combat particles (ember sparks throughout)
     if (this.combatState && this.combatState.combatParticles) {
-      for (let i = this.combatState.combatParticles.length - 1; i >= 0; i--) {
-        const p = this.combatState.combatParticles[i];
+      const parts = this.combatState.combatParticles;
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const p = parts[i];
         p.x += p.vx;
         p.y += p.vy;
         p.vy += 0.05;
         p.life--;
         if (p.life <= 0) {
-          this.combatState.combatParticles.splice(i, 1);
+          parts[i] = parts[parts.length - 1]; parts.pop(); // swap-and-pop
           continue;
         }
         const px = Math.round(p.x) + shakeX;
@@ -5334,14 +5448,15 @@ class Game {
 
     // ── Combat Particles ──
     if (cs.combatParticles) {
-      for (let i = cs.combatParticles.length - 1; i >= 0; i--) {
-        const p = cs.combatParticles[i];
+      const cparts = cs.combatParticles;
+      for (let i = cparts.length - 1; i >= 0; i--) {
+        const p = cparts[i];
         p.x += p.vx;
         p.y += p.vy;
         p.vy += 0.05; // gravity
         p.life--;
         if (p.life <= 0) {
-          cs.combatParticles.splice(i, 1);
+          cparts[i] = cparts[cparts.length - 1]; cparts.pop(); // swap-and-pop
           continue;
         }
         const px = Math.round(p.x) + shakeX;
@@ -5356,12 +5471,13 @@ class Game {
 
     // ── Floating Damage Numbers ──
     if (cs.damageNumbers) {
-      for (let i = cs.damageNumbers.length - 1; i >= 0; i--) {
-        const dn = cs.damageNumbers[i];
+      const dnums = cs.damageNumbers;
+      for (let i = dnums.length - 1; i >= 0; i--) {
+        const dn = dnums[i];
         dn.y -= 0.15;
         dn.life--;
         if (dn.life <= 0) {
-          cs.damageNumbers.splice(i, 1);
+          dnums[i] = dnums[dnums.length - 1]; dnums.pop(); // swap-and-pop
           continue;
         }
         const dx = Math.round(dn.x) + shakeX;

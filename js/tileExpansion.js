@@ -408,6 +408,14 @@ function tileHash(wx, wy) {
   return ((wx * 73856093) ^ (wy * 19349663)) >>> 0;
 }
 
+// ── Tile expansion LRU cache ──
+// expandTile is deterministic for (type, density, wx, wy, char, fg, bg),
+// so we cache results to avoid recomputing every frame.
+const _tileCache = new Map();
+const _TILE_CACHE_MAX = 8192;
+
+export function clearTileCache() { _tileCache.clear(); }
+
 /**
  * Expand a tile to an NxN grid of characters, colors, and backgrounds.
  * @param {object} tile - Tile object with type, char, fg, bg
@@ -417,6 +425,29 @@ function tileHash(wx, wy) {
  * @returns {{ chars: string[][], fgs: string[][], bgs: string[][] }}
  */
 export function expandTile(tile, density, wx, wy) {
+  if (density > 1) {
+    const cacheKey = `${tile.type}:${density}:${wx}:${wy}:${tile.char}:${tile.fg}:${tile.bg || ''}`;
+    const cached = _tileCache.get(cacheKey);
+    if (cached) return cached;
+    const result = _expandTileInner(tile, density, wx, wy);
+    if (_tileCache.size >= _TILE_CACHE_MAX) {
+      // Evict oldest quarter of entries
+      const iter = _tileCache.keys();
+      for (let i = 0; i < _TILE_CACHE_MAX / 4; i++) iter.next();
+      // Delete from start up to iterator position
+      let count = 0;
+      for (const k of _tileCache.keys()) {
+        if (count++ >= _TILE_CACHE_MAX / 4) break;
+        _tileCache.delete(k);
+      }
+    }
+    _tileCache.set(cacheKey, result);
+    return result;
+  }
+  return _expandTileInner(tile, density, wx, wy);
+}
+
+function _expandTileInner(tile, density, wx, wy) {
   if (density === 1) {
     return {
       chars: [[tile.char]],
