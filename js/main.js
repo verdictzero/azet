@@ -4228,6 +4228,14 @@ class Game {
             const perpX = -(owSunDir.dy || 0);
             const perpY = owSunDir.dx || 0;
             const ts = Date.now() / 1000;
+            // Along-ray direction (shadow direction = away from sun)
+            const alongX = owSunDir.dx || 0;
+            const alongY = owSunDir.dy || 0;
+            // Compute projection range across viewport for normalization
+            const c0 = 0, c1 = (viewW - 1) * alongX, c2 = (viewH - 1) * alongY, c3 = c1 + c2;
+            const minAlong = Math.min(c0, c1, c2, c3);
+            const maxAlong = Math.max(c0, c1, c2, c3);
+            const alongRange = maxAlong - minAlong || 1;
             for (let sy = 0; sy < viewH; sy++) {
               for (let sx = 0; sx < viewW; sx++) {
                 const key = `${sx},${sy}`;
@@ -4242,16 +4250,26 @@ class Game {
                 const rayN = this.renderer._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
                 if (rayN > 0.05) {
                   const intensity = (rayN - 0.05) / 0.95 * 0.15 + (nearShadow ? 0.08 : 0);
-                  cells.push(sx, sy, Math.min(0.25, intensity));
+                  // Along-ray factor: 0 = near sun (cool/bright), 1 = far from sun (warm/dim)
+                  const alongProj = sx * alongX + sy * alongY;
+                  const rayT = (alongProj - minAlong) / alongRange;
+                  cells.push(sx, sy, Math.min(0.25, intensity), rayT);
                 }
               }
             }
             this._godRayCachedCells = cells;
           }
-          // Replay cached cells
+          // Replay cached cells with color temperature gradient
           const gc = this._godRayCachedCells;
-          for (let i = 0; i < gc.length; i += 3) {
-            this.renderer.brightenCell(viewLeft + gc[i], viewTop + gc[i + 1], gc[i + 2], '#FFEEAA');
+          for (let i = 0; i < gc.length; i += 4) {
+            const t = gc[i + 3]; // 0=near sun (cool/bright), 1=far (warm/dim)
+            // Cool origin: #DDEEFF → Warm far end: #FFCC66
+            const cR = Math.round(221 + t * 34);   // 221→255
+            const cG = Math.round(238 - t * 34);   // 238→204
+            const cB = Math.round(255 - t * 153);   // 255→102
+            const tint = '#' + [cR, cG, cB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+            const dimFactor = 1.0 - t * 0.35; // brighter at origin, dimmer at far end
+            this.renderer.brightenCell(viewLeft + gc[i], viewTop + gc[i + 1], gc[i + 2] * dimFactor, tint);
           }
         }
       }
