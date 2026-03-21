@@ -982,17 +982,13 @@ export class WorldHistoryGenerator {
           importance: 'major',
         });
         this._emitEvent(year, 'plague_spread', `${plague} spreads — ${totalDead} perish across ${affectedCivs.length} civilizations`, 'catastrophe');
-        // Severe plagues create map scars
+        // Severe plagues — historical event only, no terrain scar
         if (totalDead > 1000) {
+          // RNG calls preserved to keep deterministic sequence stable
           const region = this.rng.random(this.regions);
           if (region) {
-            this.mapScars.push({
-              type: 'plague_zone', year, severity: Math.min(1, totalDead / 5000),
-              regionName: region.name, regionId: region.id,
-              terrainEffect: this.rng.random(['TOXIC_SUMP', 'FUNGAL_NET']),
-              radius: this.rng.nextInt(2, 5),
-              description: `${plague} killing grounds of Year ${year}`,
-            });
+            this.rng.random(['TOXIC_SUMP', 'FUNGAL_NET']);
+            this.rng.nextInt(2, 5);
           }
         }
         eraCatCount++;
@@ -1010,19 +1006,10 @@ export class WorldHistoryGenerator {
             description: `${civ.name} enters a golden age of prosperity and innovation.`,
           });
           this._emitEvent(year, 'golden_age', `${civ.name} enters a golden age`, 'treaty');
-          // Major golden ages create monuments on map
+          // Major golden ages — historical event only, no terrain scar
           if (civ.population > 3000) {
             const region = this.regions.find(r => civ.controlledRegions.includes(r.id)) || this.rng.random(this.regions);
-            if (region) {
-              this.mapScars.push({
-                type: 'monument', year, severity: 0.5,
-                regionName: region.name, regionId: region.id,
-                terrainEffect: 'MONUMENT',
-                radius: 1,
-                description: `Monument to the Golden Age of ${civ.name}, Year ${year}`,
-                civName: civ.name,
-              });
-            }
+            void region; // preserve RNG sequence
           }
         } else {
           // Dark age
@@ -1051,14 +1038,7 @@ export class WorldHistoryGenerator {
         });
         this._emitEvent(year, 'machine_cult_rise', `${civ.name} embraces the Mechanicum — machine worship rises`, 'religion');
         if (region) {
-          this.mapScars.push({
-            type: 'machine_shrine', year, severity: 0.6,
-            regionName: region.name, regionId: region.id,
-            terrainEffect: 'MACHINE_SHRINE',
-            radius: this.rng.nextInt(2, 4),
-            description: `Mechanicum shrine of ${civ.name}, Year ${year}`,
-            civName: civ.name,
-          });
+          this.rng.nextInt(2, 4); // preserve RNG sequence
         }
         eraReligiousEvents++;
       }
@@ -1086,16 +1066,9 @@ export class WorldHistoryGenerator {
             importance: 'major',
           });
           this._emitEvent(year, 'great_crusade', `${civ.name} launches a Great Crusade — ${conquered.length} regions fall`, 'war');
-          // Crusade creates fortresses
+          // Crusade — historical event only, no terrain scar
           for (const region of conquered) {
-            this.mapScars.push({
-              type: 'fortress', year, severity: 0.5,
-              regionName: region.name, regionId: region.id,
-              terrainEffect: 'FORTRESS',
-              radius: this.rng.nextInt(1, 3),
-              description: `${civ.name} fortress from the Great Crusade of Year ${year}`,
-              civName: civ.name,
-            });
+            this.rng.nextInt(1, 3); // preserve RNG sequence
           }
           eraWarCount++;
         }
@@ -1112,14 +1085,7 @@ export class WorldHistoryGenerator {
             importance: 'major',
           });
           this._emitEvent(year, 'encyclopedia_project', `A hidden archive is established in ${region.name}`, 'tech');
-          this.mapScars.push({
-            type: 'hidden_archive', year, severity: 0.3,
-            regionName: region.name, regionId: region.id,
-            terrainEffect: 'HIDDEN_ARCHIVE',
-            radius: 1,
-            description: `Hidden Encyclopedia of ${civ.name}, Year ${year}`,
-            civName: civ.name,
-          });
+          // Hidden archive — historical event only, no terrain scar
           // Create a data core artifact
           this._createArtifact(year);
         }
@@ -1144,13 +1110,8 @@ export class WorldHistoryGenerator {
             importance: 'major',
           });
           this._emitEvent(year, 'ecological_transformation', `${region.name} is ecologically transformed`, 'catastrophe');
-          this.mapScars.push({
-            type: 'transformed_biome', year, severity: 0.7,
-            regionName: region.name, regionId: region.id,
-            terrainEffect: transform.terrain,
-            radius: this.rng.nextInt(3, 6),
-            description: `${transform.desc} — Year ${year}`,
-          });
+          // Transformed biome — historical event only, no terrain scar
+          this.rng.nextInt(3, 6); // preserve RNG sequence
           eraCatCount++;
         }
       }
@@ -1164,14 +1125,8 @@ export class WorldHistoryGenerator {
             const region = this.regions.find(r => r.id === regionId);
             if (region) {
               region.controlledBy = null;
-              this.mapScars.push({
-                type: 'abandoned_district', year, severity: 0.4,
-                regionName: region.name, regionId: region.id,
-                terrainEffect: 'ABANDONED_DISTRICT',
-                radius: this.rng.nextInt(2, 5),
-                description: `Ruins of ${civ.name} — abandoned in the Exodus of Year ${year}`,
-                civName: civ.name,
-              });
+              // Abandoned district — historical event only, no terrain scar
+              this.rng.nextInt(2, 5); // preserve RNG sequence
             }
           }
           civ.controlledRegions = [];
@@ -1203,13 +1158,8 @@ export class WorldHistoryGenerator {
             importance: 'major',
           });
           this._emitEvent(year, 'megastructure_discovery', `Discovery in ${region.name} — the ship holds secrets`, 'tech');
-          this.mapScars.push({
-            type: 'megastructure', year, severity: 0.5,
-            regionName: region.name, regionId: region.id,
-            terrainEffect: 'MEGASTRUCTURE',
-            radius: this.rng.nextInt(2, 4),
-            description: `Megastructure discovered in ${region.name} — Year ${year}`,
-          });
+          // Megastructure — historical event only, no terrain scar
+          this.rng.nextInt(2, 4); // preserve RNG sequence
         }
       }
 
@@ -1322,15 +1272,9 @@ export class WorldHistoryGenerator {
             stress.lastEvent = year;
             this.regionalStress.set(region.id, stress);
           }
-          // Total wars create map scars
-          this.mapScars.push({
-            type: 'war_ruins', year, severity: 0.6,
-            regionName: eventData.battles?.[0]?.name?.replace('Battle of ', '') || 'unknown sector',
-            regionId: this.rng.random(this.regions)?.id,
-            terrainEffect: 'WAR_RUINS',
-            radius: this.rng.nextInt(2, 5),
-            description: `Ruins of ${eventData.name || 'an ancient war'}, Year ${year}`,
-          });
+          // Total wars — historical event only, no terrain scar
+          this.rng.random(this.regions); // preserve RNG sequence
+          this.rng.nextInt(2, 5);
         }
         break;
       }
@@ -1906,13 +1850,8 @@ export class WorldHistoryGenerator {
     if (template.type === 'void_incursion') {
       if (region) {
         effects.push(`A permanent void rift tears open in ${region.name}.`);
-        this.mapScars.push({
-          type: 'void_rift', year, severity,
-          regionName: region.name, regionId: region.id,
-          terrainEffect: 'VOID_RIFT',
-          radius: this.rng.nextInt(2, 6),
-          description: `${name} — Year ${year}`,
-        });
+        // Void rift — historical event only, no terrain scar
+        this.rng.nextInt(2, 6); // preserve RNG sequence
       }
     }
     if (template.type === 'ai_uprising') {

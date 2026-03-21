@@ -502,7 +502,27 @@ export class ChunkManager {
     const a = (this.anomalyNoise.fbm(wx * TERRAIN_SCALE * 0.5, wy * TERRAIN_SCALE * 0.5, 4) + 1) / 2;
     const d = (this.detailNoise.fbm(wx * TERRAIN_SCALE * 2, wy * TERRAIN_SCALE * 2, 3) + 1) / 2;
     // Very low-frequency temperature noise for massive contiguous hot/cold regions
-    const t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.1 + 200, wy * TERRAIN_SCALE * 0.1 + 200, 3) + 1) / 2;
+    let t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.1 + 200, wy * TERRAIN_SCALE * 0.1 + 200, 3) + 1) / 2;
+
+    // Apply temperature gradients from historical scars (hull breaches = cold, reactor slag = hot)
+    for (const scar of this._scarZones) {
+      const scarWx = scar.cx * CHUNK_SIZE + CHUNK_SIZE / 2;
+      const scarWy = scar.cy * CHUNK_SIZE + CHUNK_SIZE / 2;
+      const radiusW = scar.radius * CHUNK_SIZE;
+      const dx = wx - scarWx;
+      const dy = wy - scarWy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist >= radiusW) continue;
+
+      const intensity = (1 - dist / radiusW) * (scar.severity || 0.5);
+      if (scar.type === 'breach_zone') {
+        t -= intensity * 0.5; // cold gradient toward hull breach
+      } else if (scar.type === 'slag_zone') {
+        t += intensity * 0.5; // hot gradient toward reactor meltdown
+      }
+    }
+    t = Math.max(0, Math.min(1, t));
+
     return this._terrainGen._terrainFromNoise(h, m, a, d, t);
   }
 
@@ -1197,134 +1217,24 @@ export class ChunkManager {
   _applyMapScarsToChunk(cx, cy, tiles) {
     if (this._scarZones.length === 0) return;
 
-    // Safety net: convert non-walkable scar terrain to walkable rubble near starting town
-    const ORIGIN_SAFE_CHUNKS = 3;
-    const nearOrigin = Math.abs(cx) <= ORIGIN_SAFE_CHUNKS && Math.abs(cy) <= ORIGIN_SAFE_CHUNKS;
-
+    // Temperature gradients are handled in _generateTile — here we only place center markers
     for (const scar of this._scarZones) {
-      const dx = cx - scar.cx;
-      const dy = cy - scar.cy;
-      const chunkDist = Math.sqrt(dx * dx + dy * dy);
+      if (scar.type !== 'breach_zone' && scar.type !== 'slag_zone') continue;
+      if (cx !== scar.cx || cy !== scar.cy) continue;
 
-      if (chunkDist > scar.radius) continue;
+      const centerX = Math.floor(CHUNK_SIZE / 2);
+      const centerY = Math.floor(CHUNK_SIZE / 2);
 
-      // This chunk is within the scar zone — apply terrain effects
-      const intensity = 1 - (chunkDist / scar.radius); // 1.0 at center, 0 at edge
-      const rng = this._chunkRng(cx + scar.year, cy + scar.year); // deterministic per scar+chunk
-
-      for (let ly = 0; ly < CHUNK_SIZE; ly++) {
-        for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-          // Probability of replacement based on intensity and severity
-          if (!rng.chance(intensity * (scar.severity || 0.5) * 0.7)) continue;
-
-          switch (scar.type) {
-            case 'slag_zone':
-              tiles[ly][lx] = tile('REACTOR_SLAG', '~', '#FF6622', '#331100', true, {
-                biome: 'reactor_slag', historicalScar: scar.description,
-              });
-              break;
-            case 'void_rift':
-              tiles[ly][lx] = tile('VOID_RIFT', ' ', '#220044', '#000000', true, {
-                biome: 'void_rift', historicalScar: scar.description,
-              });
-              break;
-            case 'breach_zone':
-              tiles[ly][lx] = tile('HULL_BREACH', '%', '#8899AA', '#111122', true, {
-                biome: 'hull_breach', historicalScar: scar.description,
-              });
-              break;
-            case 'war_ruins':
-              if (rng.chance(0.3)) {
-                tiles[ly][lx] = tile('RUBBLE', '.', '#666655', '#222211', true, {
-                  biome: 'ruins', historicalScar: scar.description,
-                });
-              } else if (rng.chance(0.15)) {
-                tiles[ly][lx] = tile('RUINED_WALL', '#', '#555544', '#222211', false, {
-                  biome: 'ruins', historicalScar: scar.description, structure: true,
-                });
-              }
-              break;
-            case 'plague_zone':
-              tiles[ly][lx] = tile(
-                scar.terrainEffect === 'FUNGAL_NET' ? 'FUNGAL_NET' : 'TOXIC_SUMP',
-                scar.terrainEffect === 'FUNGAL_NET' ? '%' : '~',
-                scar.terrainEffect === 'FUNGAL_NET' ? '#CC88FF' : '#44FF00',
-                scar.terrainEffect === 'FUNGAL_NET' ? '#1A0022' : '#112200',
-                scar.terrainEffect === 'FUNGAL_NET',
-                { biome: scar.terrainEffect === 'FUNGAL_NET' ? 'fungal_net' : 'toxic_sump', historicalScar: scar.description }
-              );
-              break;
-            case 'transformed_biome':
-              if (scar.terrainEffect === 'HYDROPONIC_JUNGLE') {
-                tiles[ly][lx] = tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { biome: 'hydro_jungle', historicalScar: scar.description });
-              } else if (scar.terrainEffect === 'CRYSTALLINE_GROWTH') {
-                tiles[ly][lx] = tile('CRYSTAL_ZONE', '#', '#44FFFF', '#002222', false, { biome: 'crystal_zone', historicalScar: scar.description });
-              } else if (scar.terrainEffect === 'FUNGAL_NET') {
-                tiles[ly][lx] = tile('FUNGAL_NET', '%', '#CC88FF', '#1A0022', true, { biome: 'fungal_net', historicalScar: scar.description });
-              } else if (scar.terrainEffect === 'NANO_PLAGUE') {
-                tiles[ly][lx] = tile('NANO_PLAGUE', ':', '#888888', '#222222', true, { biome: 'nano_plague', historicalScar: scar.description });
-              } else if (scar.terrainEffect === 'ALIEN_CRASH') {
-                tiles[ly][lx] = tile('ALIEN_CRASH', '*', '#FF44FF', '#220022', true, { biome: 'alien_crash', historicalScar: scar.description });
-              }
-              break;
-            case 'abandoned_district':
-              if (rng.chance(0.4)) {
-                tiles[ly][lx] = tile('RUBBLE', '.', '#444433', '#1A1A11', true, { biome: 'ruins', historicalScar: scar.description });
-              } else if (rng.chance(0.1)) {
-                tiles[ly][lx] = tile('RUINED_WALL', '#', '#333322', '#1A1A11', false, { biome: 'ruins', historicalScar: scar.description, structure: true });
-              }
-              break;
-            case 'monument':
-              // Only place a monument at the center tile of the scar
-              if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && lx === Math.floor(CHUNK_SIZE / 2) && ly === Math.floor(CHUNK_SIZE / 2)) {
-                tiles[ly][lx] = tile('MONUMENT', '\u2666', '#FFD700', '#332200', false, {
-                  biome: 'monument', historicalScar: scar.description, structure: true, lightSource: { radius: 10, r: 1, g: 0.85, b: 0.3, intensity: 0.8 },
-                });
-              }
-              break;
-            case 'fortress':
-              if (rng.chance(0.25)) {
-                tiles[ly][lx] = tile('FORTIFICATION', '#', '#778899', '#222233', false, {
-                  biome: 'fortress', historicalScar: scar.description, structure: true,
-                });
-              }
-              break;
-            case 'machine_shrine':
-              if (rng.chance(0.2)) {
-                tiles[ly][lx] = tile('MACHINE_SHRINE', '+', '#00CCFF', '#001122', true, {
-                  biome: 'machine_shrine', historicalScar: scar.description,
-                });
-              } else if (rng.chance(0.05) && lx === Math.floor(CHUNK_SIZE / 2) && ly === Math.floor(CHUNK_SIZE / 2)) {
-                tiles[ly][lx] = tile('SHRINE_CORE', '\u2726', '#00FFFF', '#002233', false, {
-                  biome: 'machine_shrine', historicalScar: scar.description, structure: true,
-                  lightSource: { radius: 8, r: 0, g: 0.8, b: 1, intensity: 0.7 },
-                });
-              }
-              break;
-            case 'hidden_archive':
-              // Subtle — only a few tiles hint at buried knowledge
-              if (rng.chance(0.05)) {
-                tiles[ly][lx] = tile('ARCHIVE_MARKER', '\u00b7', '#4488FF', '#111133', true, {
-                  biome: 'archive', historicalScar: scar.description,
-                });
-              }
-              break;
-            case 'megastructure':
-              if (rng.chance(0.15)) {
-                tiles[ly][lx] = tile('MEGASTRUCTURE', '=', '#AABBCC', '#1A1A2A', false, {
-                  biome: 'megastructure', historicalScar: scar.description, structure: true,
-                });
-              }
-              break;
-          }
-
-          // Revert non-walkable scar tiles near starting town to walkable rubble
-          if (nearOrigin && !tiles[ly][lx].walkable && tiles[ly][lx].historicalScar) {
-            tiles[ly][lx] = tile('RUBBLE', '.', '#555544', '#222211', true, {
-              biome: 'ruins', historicalScar: tiles[ly][lx].historicalScar,
-            });
-          }
-        }
+      if (scar.type === 'breach_zone') {
+        tiles[centerY][centerX] = tile('HULL_BREACH', '%', '#8899AA', '#111122', true, {
+          biome: 'hull_breach', historicalScar: scar.description,
+          lightSource: { radius: 8, r: 0.5, g: 0.6, b: 1, intensity: 0.6 },
+        });
+      } else if (scar.type === 'slag_zone') {
+        tiles[centerY][centerX] = tile('REACTOR_SLAG', '~', '#FF6622', '#331100', true, {
+          biome: 'reactor_slag', historicalScar: scar.description,
+          lightSource: { radius: 10, r: 1, g: 0.4, b: 0, intensity: 0.8 },
+        });
       }
     }
   }
@@ -1590,98 +1500,7 @@ export class SettlementGenerator {
 
   // Apply historical context to a generated settlement (war ruins, monuments, plague, etc.)
   applyHistoricalContext(settlement, rng, historicalContext) {
-    if (!historicalContext || !historicalContext.scars || historicalContext.scars.length === 0) return settlement;
-
-    const { tiles, buildings, npcSlots, coreOffset } = settlement;
-    const coreW = settlement.width - coreOffset.x * 2;
-    const coreH = settlement.height - coreOffset.y * 2;
-
-    for (const scar of historicalContext.scars) {
-      switch (scar.type) {
-        case 'war_ruins': {
-          // Damage some buildings — replace tiles with rubble
-          const damageRate = Math.min(0.4, scar.severity * 0.5);
-          for (let y = coreOffset.y; y < coreOffset.y + coreH; y++) {
-            for (let x = coreOffset.x; x < coreOffset.x + coreW; x++) {
-              if (tiles[y] && tiles[y][x] && rng.chance(damageRate * 0.15)) {
-                tiles[y][x] = tile('RUBBLE', '.', '#666655', '#222211', true, {
-                  historicalScar: scar.description,
-                });
-              }
-            }
-          }
-          // Remove some NPC slots (fewer people in war-torn settlements)
-          const removeCount = Math.floor(npcSlots.length * damageRate * 0.3);
-          for (let i = 0; i < removeCount && npcSlots.length > 2; i++) {
-            npcSlots.pop();
-          }
-          break;
-        }
-        case 'monument': {
-          // Place a golden monument in the settlement center
-          const mx = coreOffset.x + Math.floor(coreW / 2);
-          const my = coreOffset.y + Math.floor(coreH / 2);
-          if (tiles[my] && tiles[my][mx]) {
-            tiles[my][mx] = tile('MONUMENT', '\u2666', '#FFD700', '#332200', false, {
-              historicalScar: scar.description, structure: true,
-              lightSource: { radius: 6, r: 1, g: 0.85, b: 0.3, intensity: 0.6 },
-            });
-          }
-          break;
-        }
-        case 'plague_zone': {
-          // Add quarantine-themed tiles around edges
-          for (let y = coreOffset.y; y < coreOffset.y + coreH; y++) {
-            for (let x = coreOffset.x; x < coreOffset.x + coreW; x++) {
-              if (tiles[y] && tiles[y][x] && rng.chance(0.05 * scar.severity)) {
-                tiles[y][x] = tile('QUARANTINE', 'X', '#FF4444', '#220000', false, {
-                  historicalScar: scar.description,
-                });
-              }
-            }
-          }
-          // Reduce NPCs
-          const plagueCull = Math.floor(npcSlots.length * 0.3);
-          for (let i = 0; i < plagueCull && npcSlots.length > 1; i++) {
-            npcSlots.pop();
-          }
-          break;
-        }
-        case 'machine_shrine': {
-          // Add a tech-shrine structure
-          const sx = coreOffset.x + rng.nextInt(2, coreW - 3);
-          const sy = coreOffset.y + rng.nextInt(2, coreH - 3);
-          if (tiles[sy] && tiles[sy][sx]) {
-            tiles[sy][sx] = tile('SHRINE_CORE', '\u2726', '#00FFFF', '#002233', false, {
-              historicalScar: scar.description, structure: true,
-              lightSource: { radius: 6, r: 0, g: 0.8, b: 1, intensity: 0.5 },
-            });
-          }
-          break;
-        }
-        case 'fortress': {
-          // Add fortification walls around settlement edges
-          for (let x = coreOffset.x; x < coreOffset.x + coreW; x++) {
-            if (tiles[coreOffset.y] && rng.chance(0.7)) {
-              tiles[coreOffset.y][x] = tile('FORTIFICATION', '#', '#778899', '#222233', false, { structure: true, historicalScar: scar.description });
-            }
-            if (tiles[coreOffset.y + coreH - 1] && rng.chance(0.7)) {
-              tiles[coreOffset.y + coreH - 1][x] = tile('FORTIFICATION', '#', '#778899', '#222233', false, { structure: true, historicalScar: scar.description });
-            }
-          }
-          for (let y = coreOffset.y; y < coreOffset.y + coreH; y++) {
-            if (tiles[y] && rng.chance(0.7)) {
-              tiles[y][coreOffset.x] = tile('FORTIFICATION', '#', '#778899', '#222233', false, { structure: true, historicalScar: scar.description });
-            }
-            if (tiles[y] && rng.chance(0.7)) {
-              tiles[y][coreOffset.x + coreW - 1] = tile('FORTIFICATION', '#', '#778899', '#222233', false, { structure: true, historicalScar: scar.description });
-            }
-          }
-          break;
-        }
-      }
-    }
-
+    // Only breach_zone and slag_zone scars remain — no settlement-interior effects needed
     return settlement;
   }
 

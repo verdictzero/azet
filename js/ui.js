@@ -3130,18 +3130,10 @@ export class UIManager {
       } else {
         // Group scars by type
         const typeNames = {
-          slag_zone: 'Reactor Slag Zones', void_rift: 'Void Rifts', breach_zone: 'Hull Breaches',
-          war_ruins: 'War Ruins', monument: 'Monuments', plague_zone: 'Plague Grounds',
-          abandoned_district: 'Abandoned Districts', transformed_biome: 'Transformed Regions',
-          fortress: 'Ancient Fortresses', machine_shrine: 'Machine Shrines',
-          hidden_archive: 'Hidden Archives', megastructure: 'Megastructure Discoveries',
+          slag_zone: 'Reactor Meltdown Zones', breach_zone: 'Hull Breaches',
         };
         const typeIcons = {
-          slag_zone: '\u2622', void_rift: '\u2727', breach_zone: '%',
-          war_ruins: '\u00a7', monument: '\u2666', plague_zone: '\u2620',
-          abandoned_district: '\u25A1', transformed_biome: '\u2042',
-          fortress: '\u2302', machine_shrine: '\u2726',
-          hidden_archive: '\u2261', megastructure: '\u25A0',
+          slag_zone: '\u2622', breach_zone: '%',
         };
         const grouped = {};
         for (const scar of scars) {
