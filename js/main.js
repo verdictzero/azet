@@ -1221,9 +1221,7 @@ class Game {
           const playerClass = this.rng.random(classes);
           const nameObj = this.nameGen.generate(this.rng, race);
           this.charGenState = { step: 'history_depth', race, playerClass, name: nameObj.first, historyDepth: 'medium', quickStart: true };
-          this.ui.resetSelection();
-          this.ui.selectedIndex = 0; // Default to "Short" for quick start
-          this.setState('CHAR_CREATE');
+          this.startNewGame();
           break;
         }
         case 2: // Continue
