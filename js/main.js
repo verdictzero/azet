@@ -522,11 +522,12 @@ class Game {
     };
 
     // History depth config from character creation
+    // Timescales: short ~2,000y, medium ~4,000y, long ~8,000y, epic ~20,000y
     const depthConfigs = {
-      short:  { eras: 3, yearsPerEra: 100, eventDensity: 0.7 },
-      medium: { eras: 5, yearsPerEra: 120, eventDensity: 1.0 },
-      long:   { eras: 7, yearsPerEra: 150, eventDensity: 1.3 },
-      epic:   { eras: 11, yearsPerEra: 180, eventDensity: 1.6 },
+      short:  { eras: 8,  yearsPerEra: 250,  eventDensity: 0.6 },
+      medium: { eras: 12, yearsPerEra: 333,  eventDensity: 0.8 },
+      long:   { eras: 16, yearsPerEra: 500,  eventDensity: 1.0 },
+      epic:   { eras: 20, yearsPerEra: 1000, eventDensity: 1.2 },
     };
     const depthKey = this.charGenState.historyDepth || 'medium';
     const depthCfg = depthConfigs[depthKey];
@@ -610,7 +611,7 @@ class Game {
           } else {
             // Add summary events
             addWorldGenEvent({ year: this.worldHistoryGen.currentYear, type: 'summary',
-              description: `═══ ${this.worldHistoryGen.currentYear} years of history simulated ═══`, category: 'era' });
+              description: `═══ ${this.worldHistoryGen.currentYear.toLocaleString()} years of history simulated ═══`, category: 'era' });
             addWorldGenEvent({ year: this.worldHistoryGen.currentYear, type: 'summary',
               description: `${this.worldHistoryGen.civilizations.length} civilizations rose — ${this.worldHistoryGen.civilizations.filter(c=>c.isActive).length} survive`, category: 'civ' });
             addWorldGenEvent({ year: this.worldHistoryGen.currentYear, type: 'summary',
@@ -633,9 +634,12 @@ class Game {
 
         // Switch to standard loading display for terrain gen
         log('History simulation complete.', COLORS.BRIGHT_CYAN);
-        log(`  ${this.worldHistoryGen.currentYear} years across ${this.worldHistoryGen.eras.length} eras`, COLORS.BRIGHT_YELLOW);
+        log(`  ${this.worldHistoryGen.currentYear.toLocaleString()} years across ${this.worldHistoryGen.eras.length} eras`, COLORS.BRIGHT_YELLOW);
         log(`  ${this.worldHistoryGen.civilizations.length} civilizations, ${this.worldHistoryGen.wars.length} wars`, COLORS.WHITE);
         log(`  ${this.worldHistoryGen.artifacts.length} artifacts, ${this.worldHistoryGen.historicalFigures.length} notable figures`, COLORS.WHITE);
+        if (this.worldHistoryGen.mapScars.length > 0) {
+          log(`  ${this.worldHistoryGen.mapScars.length} historical scars will mark the world`, COLORS.BRIGHT_RED);
+        }
         flush('Building world...');
       },
       // Step 4: Generate terrain and chunks
@@ -646,9 +650,14 @@ class Game {
         log('  Chunk size: 32x32 tiles, infinite procedural world', COLORS.WHITE);
         flush('Charting terrain...');
       },
-      // Step 5: Create ChunkManager and generate initial chunks
+      // Step 5: Create ChunkManager and generate initial chunks (with historical map scars)
       () => {
         this.overworld = new ChunkManager(this.seed);
+        // Wire historical map scars into terrain generation
+        if (this.worldHistoryGen && this.worldHistoryGen.mapScars && this.worldHistoryGen.mapScars.length > 0) {
+          this.overworld.setMapScars(this.worldHistoryGen.mapScars, this.worldHistoryGen.regions);
+          log(`  ${this.worldHistoryGen.mapScars.length} historical scars will mark the landscape`, COLORS.BRIGHT_YELLOW);
+        }
         this.overworld.ensureChunksAround(16, 16);
         const loadedLocs = this.overworld.getLoadedLocations();
         log(`  Initial chunks generated: ${this.overworld.chunks.size} regions`, COLORS.WHITE);
@@ -800,6 +809,21 @@ class Game {
     this.currentSettlement = this.settlementGen.generate(locRng, location.type, location.population || 10, 'grassland');
     this.currentSettlement.name = location.name;
     this.currentSettlement.locationData = location;
+
+    // Apply historical scars to settlement if applicable
+    if (this.worldHistoryGen && this.worldHistoryGen.mapScars && this.worldHistoryGen.mapScars.length > 0) {
+      const nearbyScars = this.worldHistoryGen.mapScars.filter(s => {
+        // Match scars by checking if the location is in a scarred region
+        const locName = (location.name || '').toLowerCase();
+        const scarRegion = (s.regionName || '').toLowerCase();
+        // Match if location name contains region name or vice versa, or random chance for scars without region names
+        return locName.includes(scarRegion) || scarRegion.includes(locName) ||
+          (s.severity > 0.6 && locRng.chance(0.15));
+      });
+      if (nearbyScars.length > 0) {
+        this.settlementGen.applyHistoricalContext(this.currentSettlement, locRng, { scars: nearbyScars });
+      }
+    }
 
     // Generate NPCs for this location
     this.npcs = [];
@@ -2804,7 +2828,7 @@ class Game {
   }
 
   handleAlmanacInput(key) {
-    const tabCount = 6;
+    const tabCount = 7;
     const tab = this.ui.almanacTab || 0;
     if (key === 'Escape') {
       this.ui.almanacTab = 0;
@@ -2824,7 +2848,7 @@ class Game {
       this.ui.almanacScroll = (this.ui.almanacScroll || 0) + 20;
     } else if (key === 'PageUp') {
       this.ui.almanacScroll = Math.max(0, (this.ui.almanacScroll || 0) - 20);
-    } else if (key >= '1' && key <= '6') {
+    } else if (key >= '1' && key <= '7') {
       this.ui.almanacTab = parseInt(key) - 1;
       this.ui.almanacScroll = 0;
     }

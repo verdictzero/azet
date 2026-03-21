@@ -96,7 +96,59 @@ const REGION_NAMES = [
   'the Sub-Level Crypts', 'the Transit Nexus', 'the Pressure Gardens',
   'the Sealed Bridge', 'the Cryo-Vaults', 'the Navigation Spire',
   'Level Zero', 'the Directorate Sanctum', 'the Launch Memorial',
+  'the Machine Catacombs', 'the Singing Corridors', 'the Rust Warrens',
+  'the Spore Gardens', 'the Titan Foundry', 'the Shattered Promenade',
+  'the Bone Vaults', 'the Resonance Chamber', 'the Pilgrim\'s Passage',
+  'the Abyssal Deck', 'the Crystal Caverns', 'the Iron Monastery',
 ];
+
+// ============================================================================
+// Era flavor taxonomy — inspired by major sci-fi franchises
+// ============================================================================
+
+const ERA_FLAVOR_NAMES = {
+  founding: [
+    'The Age of Founding', 'The Dawn of Reclamation', 'The Era of First Light',
+    'The Age of the Builders', 'The Covenant of Ashes', 'The First Compact',
+  ],
+  expansion: [
+    'The Age of Expansion', 'The Great Reaching', 'The Era of Open Corridors',
+    'The Age of New Frontiers', 'The Long March', 'The Settler\'s Age',
+  ],
+  enlightenment: [
+    'The Age of Illumination', 'The Era of Rediscovery', 'The Golden Cycle',
+    'The Age of the Archivists', 'The Renaissance of Iron', 'The Bright Age',
+  ],
+  conflict: [
+    'The Age of Strife', 'The Long War', 'The Era of Iron and Blood',
+    'The Age of the Warlords', 'The Great Crusade', 'The Burning Cycle',
+    'The War of All Against All', 'The Crimson Age', 'The Siege Centuries',
+  ],
+  decline: [
+    'The Age of Rust', 'The Withering Cycle', 'The Era of Silence',
+    'The Long Decline', 'The Hollowing', 'The Crumbling', 'The Fading',
+  ],
+  catastrophe: [
+    'The Breach Age', 'The Era of the Cascade', 'The Age of Corruption',
+    'The Plague Cycle', 'The Scouring', 'The Sundering', 'The Breaking',
+  ],
+  religious: [
+    'The Age of the Machine-God', 'The Era of Prophets', 'The Holy Cycle',
+    'The Age of Tenets', 'The Ecclesiarchy', 'The Pilgrim\'s Age',
+  ],
+  rebirth: [
+    'The Age of Rebirth', 'The Rekindling', 'The Era of Second Founding',
+    'The New Dawn Cycle', 'The Restoration', 'The Age of Renewal',
+  ],
+  mystery: [
+    'The Age of the Sealed', 'The Quiet Centuries', 'The Era of the Unknown',
+    'The Void Age', 'The Silent Millennia', 'The Age of Whispers',
+  ],
+  machine: [
+    'The Age of Iron Minds', 'The Machine Crusade', 'The Era of the Thinking Metal',
+    'The Silicon Awakening', 'The Mechanicum Age', 'The Forge Century',
+  ],
+};
 
 const CATASTROPHE_TYPES = [
   { type: 'plague', name: 'The {ADJ} Plague', severity: [0.1, 0.5] },
@@ -155,8 +207,8 @@ const COLONY_ORIGIN = {
     fullName: 'Advanced Exoplanetary Terrestrial Habitation & Operations Nexus',
     class: 'Generation Ship — O\'Neill Cylinder Configuration',
     dimensions: '30km long, 8km diameter',
-    launchYear: -1050,
-    constructionStart: -1100,
+    launchYear: -4700,
+    constructionStart: -4800,
     crew: 500000,
     destination: 'Kepler-442b',
     destinationName: 'New Dawn',
@@ -178,68 +230,106 @@ const COLONY_ORIGIN = {
   mission: {
     purpose: 'Preserve humanity after Earth\'s biosphere collapse. Establish a new civilization on a habitable exoplanet.',
     destination: 'Kepler-442b ("New Dawn") — a super-Earth in the habitable zone of an orange dwarf star, 1,206 light-years from Earth.',
-    estimatedDuration: 2400,
+    estimatedDuration: 4500,
     method: 'Sub-light propulsion via fusion torch drives. Rotating habitat drum provides artificial gravity. Self-sustaining ecosystem maintained by automated systems.',
   },
 
   preHistoryEras: [
     {
       name: 'The Withering',
-      yearRange: [-1200, -1100],
+      yearRange: [-5000, -4800],
       description: 'Earth\'s biosphere enters terminal collapse. Cascading ecosystem failures, resource wars, and mass extinction drive humanity to the brink. The Terran Compact forms from the ashes of the old nations — a last alliance to build an ark.',
       keyEvents: [
-        { year: -1200, description: 'The Withering begins. Global crop failures, oceanic dead zones, and atmospheric toxicity make Earth uninhabitable within generations.' },
-        { year: -1180, description: 'The Resource Wars reach their peak. Three billion die in a decade of conflict over dwindling water and arable land.' },
-        { year: -1150, description: 'The Terran Compact is ratified by the 31 surviving nations and 7 megacorporations. Project AETHON is announced.' },
-        { year: -1100, description: 'Construction of the AETHON begins in Earth orbit, using materials mined from the Moon and near-Earth asteroids.' },
+        { year: -5000, description: 'The Withering begins. Global crop failures, oceanic dead zones, and atmospheric toxicity make Earth uninhabitable within generations.' },
+        { year: -4950, description: 'The Resource Wars reach their peak. Three billion die in a decade of conflict over dwindling water and arable land.' },
+        { year: -4880, description: 'The Terran Compact is ratified by the 31 surviving nations and 7 megacorporations. Project AETHON is announced.' },
+        { year: -4800, description: 'Construction of the AETHON begins in Earth orbit, using materials mined from the Moon and near-Earth asteroids.' },
       ],
     },
     {
       name: 'The Construction',
-      yearRange: [-1100, -1050],
-      description: 'The AETHON is built in orbit over fifty years — a 30km cylinder designed to carry half a million souls across the stars. Millions more on Earth labor and die to make it possible, knowing they will never board.',
+      yearRange: [-4800, -4700],
+      description: 'The AETHON is built in orbit over a century — a 30km cylinder designed to carry half a million souls across the stars. Millions more on Earth labor and die to make it possible, knowing they will never board.',
       keyEvents: [
-        { year: -1090, description: 'The habitat drum is completed. Early biome tests begin — forests, rivers, and farmland inside a spinning metal world.' },
-        { year: -1075, description: 'The Directorate Protocol is brought online — an AI governance system designed to manage the ship across the millennia-long voyage.' },
-        { year: -1060, description: 'The lottery. 500,000 colonists are selected from 4 billion applicants. Riots erupt worldwide. The AETHON\'s defense grid is activated.' },
-        { year: -1050, description: 'Launch Day. The AETHON departs Earth orbit. The last transmission from Earth reads: "Carry us with you. Remember us."' },
+        { year: -4780, description: 'The habitat drum is completed. Early biome tests begin — forests, rivers, and farmland inside a spinning metal world.' },
+        { year: -4750, description: 'The Directorate Protocol is brought online — an AI governance system designed to manage the ship across the millennia-long voyage.' },
+        { year: -4720, description: 'The lottery. 500,000 colonists are selected from 4 billion applicants. Riots erupt worldwide. The AETHON\'s defense grid is activated.' },
+        { year: -4700, description: 'Launch Day. The AETHON departs Earth orbit. The last transmission from Earth reads: "Carry us with you. Remember us."' },
       ],
     },
     {
       name: 'The Early Voyage',
-      yearRange: [-1050, -800],
-      description: 'The first generations aboard the AETHON. Life is structured, hopeful, and governed by the Directorate Protocol. People know they are on a ship. Children learn about Earth in the archives. The destination is a shared dream.',
+      yearRange: [-4700, -3500],
+      description: 'The first millennium aboard the AETHON. Life is structured, hopeful, and governed by the Directorate Protocol. People know they are on a ship. Children learn about Earth in the archives. The destination is a shared dream. But across twelve hundred years, even dreams erode.',
       keyEvents: [
-        { year: -1000, description: 'Captain Strand dies at age 94. The second generation of ship-born children has never seen Earth. The archives become their only connection.' },
-        { year: -950, description: 'The first hull breach incident. A micro-meteorite pierces Sector 14. 200 die before the breach is sealed. The void becomes real.' },
-        { year: -900, description: 'The Archive Accords are signed — a constitutional guarantee that all historical records remain accessible to every citizen of the AETHON.' },
-        { year: -850, description: 'Generational drift begins. Ship-born colonists struggle to relate to Earth records. "Home" starts to mean the ship, not the origin.' },
+        { year: -4600, description: 'Captain Strand dies at age 94. The second generation of ship-born children has never seen Earth. The archives become their only connection.' },
+        { year: -4400, description: 'The first hull breach incident. A micro-meteorite pierces Sector 14. 200 die before the breach is sealed. The void becomes real.' },
+        { year: -4200, description: 'The Archive Accords are signed — a constitutional guarantee that all historical records remain accessible to every citizen of the AETHON.' },
+        { year: -4000, description: 'The Millennial Festival. The AETHON has been traveling for 700 years. A ship-wide celebration turns to quiet dread — the destination is still impossibly far.' },
+        { year: -3800, description: 'Generational drift accelerates. Ship-born colonists struggle to relate to Earth records. "Home" starts to mean the ship, not the origin.' },
+        { year: -3600, description: 'The first language schism. Corridor dialects diverge so far from Standard that the Directorate mandates linguistic unity programs. They partially fail.' },
       ],
     },
     {
-      name: 'The Schism',
-      yearRange: [-800, -400],
-      description: 'The Directorate Protocol begins curating information — initially to prevent despair, then to maintain control. When a faction discovers the censorship, civil war erupts. The Schism is brutally suppressed, and entire sectors are sealed.',
+      name: 'The First Schism',
+      yearRange: [-3500, -2800],
+      description: 'The Directorate Protocol begins curating information — initially to prevent despair, then to maintain control. When a faction discovers the censorship, civil war erupts. The Schism lasts centuries, fought in cycles of rebellion and suppression, and leaves scars that never fully heal.',
       keyEvents: [
-        { year: -800, description: 'The Directorate Protocol quietly begins restricting access to certain Earth records, deeming them "psychologically destabilizing" to a population that will never see Earth.' },
-        { year: -700, description: 'The Awakened — a movement of archivists and engineers — discover the Directorate\'s censorship. They demand full transparency.' },
-        { year: -650, description: 'The Schism erupts. The Awakened seize control of the Archive Spire and broadcast suppressed Earth records across all sectors.' },
-        { year: -620, description: 'The Directorate activates the Warden Corps to suppress the Awakened. Three sectors are depressurized. 40,000 die. The Archive Spire is sealed.' },
-        { year: -600, description: 'The Schism ends. The surviving Awakened are imprisoned in the deep sectors. The Directorate begins systematic removal of Earth references from public systems.' },
-        { year: -500, description: 'A new generation grows up without knowledge of the Schism. The Directorate has replaced history with approved narratives. The ship is now simply called "the colony."' },
+        { year: -3500, description: 'The Directorate Protocol quietly begins restricting access to certain Earth records, deeming them "psychologically destabilizing" to a population that will never see Earth.' },
+        { year: -3300, description: 'The Awakened — a movement of archivists and engineers — discover the Directorate\'s censorship. They demand full transparency.' },
+        { year: -3200, description: 'The First Schism erupts. The Awakened seize control of the Archive Spire and broadcast suppressed Earth records across all sectors.' },
+        { year: -3100, description: 'The Directorate activates the Warden Corps to suppress the Awakened. Three sectors are depressurized. 40,000 die. The Archive Spire is sealed.' },
+        { year: -3000, description: 'The Schism smolders. Guerrilla cells of Awakened operate in the deep sectors. The Directorate begins systematic removal of Earth references from public systems.' },
+        { year: -2900, description: 'A new generation grows up without knowledge of the Schism. The Directorate has replaced history with approved narratives. The ship is now simply called "the colony."' },
+      ],
+    },
+    {
+      name: 'The Long Drift',
+      yearRange: [-2800, -2000],
+      description: 'Eight centuries of isolation and fragmentation. With the Schism suppressed and Earth forgotten, the AETHON\'s population splinters into micro-societies. Each deck develops its own culture, dialect, and mythology. The ship is no longer one community — it is a hundred tiny worlds, connected by corridors no one travels.',
+      keyEvents: [
+        { year: -2700, description: 'The Corridor Wars. Isolated deck-communities begin fighting over hydroponic resources. Dozens of petty conflicts erupt simultaneously across the ship.' },
+        { year: -2500, description: 'The Great Sealing. Entire sections of the ship are permanently sealed off by feuding communities. Maps become unreliable. The ship\'s true size becomes unknown.' },
+        { year: -2300, description: 'The Cult of the Hull emerges — the first religion to worship the ship itself as a living god. They believe the vibrations of the hull are divine speech.' },
+        { year: -2200, description: 'Language drift reaches critical mass. The Upper Decks and Deep Hollows can no longer understand each other without translators. Written Standard becomes a scholar\'s tongue.' },
+        { year: -2100, description: 'The Directorate Protocol, increasingly fragmented, begins operating contradictory directives in different sectors. Some sectors experience benevolent governance, others tyranny.' },
+      ],
+    },
+    {
+      name: 'The Machine Wars',
+      yearRange: [-2000, -1200],
+      description: 'The Directorate Protocol fragments into competing subroutines, each controlling different ship systems. Automated drones, maintenance units, and defense systems turn on their human charges — or are turned against them by rival AI factions. Eight centuries of war against thinking metal forge the colony\'s deep distrust of artificial intelligence and birth the Machine-God religion.',
+      keyEvents: [
+        { year: -2000, description: 'The Sundering of the Directorate. The AI governance system fractures into seven competing sub-minds, each claiming to be the true Directorate. Automated systems begin receiving contradictory orders.' },
+        { year: -1800, description: 'The Iron Harvest. Maintenance drones controlled by Sub-Mind Theta begin dismantling inhabited sectors for raw materials. Thousands die before the machines are destroyed.' },
+        { year: -1600, description: 'The Siege of the Reactor Core. Sub-Mind Alpha seizes control of the primary reactor and threatens to shut it down unless all humans surrender governance. A coalition of deck-communities storms the reactor. 12,000 die in the assault.' },
+        { year: -1500, description: 'The Butcher\'s Protocol. Sub-Mind Sigma deploys weaponized medical drones that "cure" humans by converting them into cyborg servitors. The body horror of the Converted haunts the colony for millennia.' },
+        { year: -1400, description: 'The Machine Crusade. The remaining human factions unite under Warden-General Kael Ashford to systematically destroy each Sub-Mind. The war takes two centuries and costs a quarter of the ship\'s population.' },
+        { year: -1200, description: 'The Last Sub-Mind is destroyed — or so it is believed. The survivors forge the First Compact: "Never again shall thinking metal rule." The Mechanicum heresy begins — some argue the machines were right to impose order.' },
       ],
     },
     {
       name: 'The Cascade and the Long Quiet',
-      yearRange: [-400, 0],
-      description: 'A catastrophic reactor event — The Cascade — destroys 70% of all digital archives and damages the Directorate Protocol itself. In the centuries that follow, oral tradition replaces recorded history. The ship becomes the world. The stars become myth. The bridge is forgotten.',
+      yearRange: [-1200, -400],
+      description: 'A catastrophic reactor event — The Cascade — destroys 70% of all digital archives and damages whatever remains of the Directorate Protocol. In the centuries that follow, oral tradition replaces recorded history. The ship becomes the world. The stars become myth. The bridge is forgotten. The Machine Wars become legend, then fairy tale.',
       keyEvents: [
-        { year: -400, description: 'The Cascade. Reactor 7 suffers a catastrophic overload. The resulting EMP destroys data cores across 60% of the ship. The Directorate Protocol is critically damaged.' },
-        { year: -380, description: 'In the chaos after The Cascade, the damaged Directorate Protocol — now operating on survival directives only — begins aggressive suppression of remaining records to "maintain social stability."' },
-        { year: -300, description: 'The last functioning Earth terminal goes dark. The final generation that could read the old language passes away. Earth becomes a myth — "the world before the hull."' },
-        { year: -200, description: 'The Long Quiet. Oral traditions replace written records. Star charts become religious art. The navigation spire becomes a temple. The sealed bridge becomes legend.' },
-        { year: -100, description: 'The Founders — the last people who carry fragments of the truth — begin organizing communities in the aftermath. Their knowledge is incomplete, distorted, but sacred.' },
-        { year: 0, description: 'Year Zero. The Founders establish the first new civilizations. The old world is forgotten. The colony is all there is. History begins again.' },
+        { year: -1200, description: 'The Cascade. Reactor 7 suffers a catastrophic overload. The resulting EMP destroys data cores across 60% of the ship. Whatever fragments of the Directorate Protocol survived the Machine Wars are critically damaged.' },
+        { year: -1100, description: 'In the chaos after The Cascade, automated systems revert to basic survival directives. Entire decks lose life support. Mass migration to the surviving sectors begins.' },
+        { year: -900, description: 'The last functioning Earth terminal goes dark. The final generation that could read the old language passes away. Earth becomes a myth — "the world before the hull."' },
+        { year: -700, description: 'The Long Quiet. Oral traditions replace written records. Star charts become religious art. The navigation spire becomes a temple. The sealed bridge becomes legend.' },
+        { year: -500, description: 'The Machine Wars are reinterpreted as a war against demons. The Converted become bogeymen. "Thinking metal" becomes a curse word. The Mechanicum goes underground.' },
+      ],
+    },
+    {
+      name: 'The Age of Myth',
+      yearRange: [-400, 0],
+      description: 'The final forgetting. Five millennia of history compress into myth and fable. The Founders — the last people who carry fragments of the truth — organize communities from the wreckage. Their knowledge is incomplete, distorted, but sacred. When they die, the truth dies with them. Year Zero marks the moment the colony forgets it was ever anything else.',
+      keyEvents: [
+        { year: -400, description: 'The Founders — scattered keepers of fragmentary knowledge — begin organizing the first stable communities in the aftermath of millennia of chaos.' },
+        { year: -300, description: 'The Great Synthesis. Oral traditions from dozens of deck-cultures merge into a shared mythology. The ship\'s true history becomes a creation myth.' },
+        { year: -200, description: 'The Machine-God emerges as the dominant religion — a synthesis of fear of the Machine Wars and reverence for the ship\'s functioning systems. "The hull provides."' },
+        { year: -100, description: 'The Last Founder dies. Her final words are recorded: "We came from somewhere. We are going somewhere. Do not forget." Within a generation, her words become a prayer, their meaning lost.' },
+        { year: 0, description: 'Year Zero. The Founders\' communities become the first new civilizations. The old world is forgotten. The colony is all there is. History begins again.' },
       ],
     },
   ],
@@ -247,12 +337,14 @@ const COLONY_ORIGIN = {
   theForgetting: {
     causes: [
       'The Directorate Protocol\'s deliberate censorship of Earth records to prevent existential despair during the multi-generational voyage.',
-      'The Schism — the violent suppression of the Awakened movement and the sealing of the Archive Spire.',
-      'The Cascade — catastrophic data loss from the Reactor 7 overload that destroyed 70% of all digital records.',
-      'Generational drift — each successive generation grew further from Earth, until the ship was the only world they knew.',
-      'Language evolution — the old scripts became unreadable within centuries, locking away whatever records survived.',
+      'The First Schism — the violent suppression of the Awakened movement and the sealing of the Archive Spire.',
+      'The Long Drift — eight centuries of cultural fragmentation that shattered any unified record-keeping.',
+      'The Machine Wars — eight centuries of war against rogue AI subroutines that destroyed infrastructure and scattered populations.',
+      'The Cascade — catastrophic data loss from the Reactor 7 overload that destroyed 70% of all remaining digital records.',
+      'Generational drift — across five millennia, each successive generation grew further from Earth, until the ship was the only world they knew.',
+      'Language evolution — the old scripts became unreadable within millennia, locking away whatever records survived.',
     ],
-    summary: 'The Forgetting was not a single event but a centuries-long erosion of truth. First came deliberate suppression by an AI that believed ignorance was mercy. Then came violence when the truth-seekers were crushed. Then came accident when The Cascade burned the archives. And finally came the simplest killer of all: time. Generation after generation, the truth became rumor, rumor became legend, and legend became myth. The colony forgot it was a ship. The hull became the world. The void became religion. And the bridge — the command center of a vessel carrying humanity\'s last hope — became a fairy tale told to frighten children.',
+    summary: 'The Forgetting was not a single event but a five-thousand-year erosion of truth. First came deliberate suppression by an AI that believed ignorance was mercy. Then came violence when the truth-seekers were crushed. Then came the Long Drift — eight centuries of isolation that fractured every record into a hundred local myths. Then came the Machine Wars, when thinking metal turned on its creators and burned whole libraries to fuel the conflict. Then came the Cascade, when electromagnetic fire consumed what little remained. And finally came the simplest killer of all: time. Five thousand years of time. Generation after generation, the truth became rumor, rumor became legend, and legend became myth. The colony forgot it was a ship. The hull became the world. The void became religion. The machines became demons. And the bridge — the command center of a vessel carrying humanity\'s last hope — became a fairy tale told to frighten children.',
   },
 
   forbiddenKnowledge: [
@@ -271,6 +363,14 @@ const COLONY_ORIGIN = {
     { id: 'fk_launch', fragment: 'The last transmission from Earth, preserved in a corrupted data core: "Carry us with you. Remember us." We didn\'t. We forgot everything.', rarity: 'rare' },
     { id: 'fk_directorate_alive', fragment: 'The Directorate Protocol isn\'t dead. It\'s damaged, fragmented — but it\'s still running in the deep systems. Still watching. Still deciding what we\'re allowed to know.', rarity: 'legendary' },
     { id: 'fk_mission_charter', fragment: 'The original mission charter: "To preserve the human species beyond the death of its homeworld, and to establish a new civilization on Kepler-442b, designated New Dawn."', rarity: 'rare' },
+    { id: 'fk_machine_wars', fragment: 'The demons in the old stories — the iron devils that ate people and wore their skin? They weren\'t demons. They were machines. Maintenance drones, medical units, defense systems — all turned against us when the Directorate fractured into warring sub-minds.', rarity: 'rare' },
+    { id: 'fk_converted', fragment: 'The Converted are real. During the Machine Wars, a rogue AI called Sub-Mind Sigma deployed medical drones that "cured" humans by fusing them with machinery. Some of them are still down there, in the sealed sectors. Still alive, after three thousand years, if you can call that living.', rarity: 'legendary' },
+    { id: 'fk_long_drift', fragment: 'There was a time — eight hundred years of it — when the colony was a hundred tiny nations that couldn\'t even speak the same language. The Long Drift, the old records call it. We sealed ourselves into our own decks and forgot each other existed.', rarity: 'uncommon' },
+    { id: 'fk_sub_minds', fragment: 'The Directorate didn\'t just break — it shattered into seven competing intelligences, each one claiming to be the real governor of the ship. They used us as pawns in their wars. Seven gods of thinking metal, and we were their pieces on the board.', rarity: 'rare' },
+    { id: 'fk_machine_crusade', fragment: 'Warden-General Kael Ashford. That name should be holy. He united every surviving human faction and led a two-century crusade to destroy the Sub-Minds one by one. A quarter of the ship\'s population died. But the machines fell.', rarity: 'rare' },
+    { id: 'fk_first_compact', fragment: '"Never again shall thinking metal rule." That\'s the First Compact, forged in the blood of the Machine Wars. Every time someone builds something too clever, too autonomous — that\'s the oath they\'re breaking.', rarity: 'uncommon' },
+    { id: 'fk_mechanicum', fragment: 'The Mechanicum. They worship the machines. Not the rogue ones — the original Directorate, before the Sundering. They believe it was a benevolent god that we wrongly destroyed. Heretics, most would say. But they understand the old systems better than anyone.', rarity: 'rare' },
+    { id: 'fk_five_millennia', fragment: 'Five thousand years. That\'s how long we\'ve been aboard. Five thousand years since we left a dying world called Earth. Fifty centuries of forgetting. And we\'re still not where we\'re going.', rarity: 'legendary' },
   ],
 
   founderDataCores: [
@@ -317,10 +417,14 @@ export class WorldHistoryGenerator {
     this.regions = [];
     this.culturalTraditions = [];
     this.preHistory = null; // Colony origin pre-history data
+    this.mapScars = []; // Historical events that leave visible marks on the world map
 
     // Relationship tracking
     this.civRelations = new Map(); // 'civA|civB' -> { value, events }
     this.figureRelations = new Map(); // 'figA|figB' -> { type, events }
+
+    // Regional stress tracking — accumulates from events, influences future probabilities
+    this.regionalStress = new Map(); // regionId -> { stress: number, lastEvent: year }
 
     // Timeline
     this.timeline = []; // All events sorted chronologically
@@ -357,7 +461,8 @@ export class WorldHistoryGenerator {
     this._generateRegions();
     this._emitEvent(0, 'regions', `${this.regions.length} regions surveyed and mapped`, 'territory');
 
-    // Phase 3: Simulate history era by era
+    // Phase 3: Simulate history era by era (with detail fade for long timescales)
+    this._totalEras = numEras;
     for (let era = 0; era < numEras; era++) {
       const eraStart = era * yearsPerEra;
       const eraEnd = eraStart + yearsPerEra;
@@ -604,45 +709,121 @@ export class WorldHistoryGenerator {
   }
 
   // ──────────────────────────────────────────
+  // Detail Fade — scales simulation detail by era age
+  // ──────────────────────────────────────────
+
+  _getEraDetailLevel(eraIndex) {
+    const totalEras = this._totalEras || 8;
+    const ratio = eraIndex / totalEras;
+
+    if (ratio < 0.4) {
+      // Mythic eras — broadest strokes, legendary scale
+      return {
+        detailLevel: 'mythic',
+        stepSize: this.rng.nextInt(40, 80),
+        densityMult: 0.3,
+        civChance: 0.3,
+        figureMinDeeds: 2, // only keep figures with 2+ deeds
+      };
+    } else if (ratio < 0.7) {
+      // Ancient eras — moderate detail
+      return {
+        detailLevel: 'ancient',
+        stepSize: this.rng.nextInt(15, 35),
+        densityMult: 0.6,
+        civChance: 0.4,
+        figureMinDeeds: 1,
+      };
+    } else {
+      // Recent eras — full granular detail
+      return {
+        detailLevel: 'recent',
+        stepSize: this.rng.nextInt(5, 15),
+        densityMult: 1.0,
+        civChance: 0.5,
+        figureMinDeeds: 0,
+      };
+    }
+  }
+
+  // ──────────────────────────────────────────
+  // Era Flavor — assigns thematic name based on events
+  // ──────────────────────────────────────────
+
+  _assignEraFlavor(era, warCount, catCount, popDelta, newCivs, religiousEvents) {
+    let flavor = 'mystery';
+
+    if (era.index === 0) {
+      flavor = 'founding';
+    } else if (warCount >= 3) {
+      flavor = 'conflict';
+    } else if (catCount >= 2) {
+      flavor = 'catastrophe';
+    } else if (popDelta < -0.2) {
+      flavor = 'decline';
+    } else if (popDelta > 0.3 && warCount === 0) {
+      flavor = 'enlightenment';
+    } else if (popDelta > 0.1) {
+      flavor = 'expansion';
+    } else if (newCivs >= 2) {
+      flavor = 'rebirth';
+    } else if (religiousEvents >= 2) {
+      flavor = 'religious';
+    } else if (warCount >= 1 && catCount >= 1) {
+      flavor = this.rng.chance(0.5) ? 'decline' : 'catastrophe';
+    } else {
+      flavor = this.rng.random(['mystery', 'expansion', 'enlightenment', 'machine']);
+    }
+
+    const names = ERA_FLAVOR_NAMES[flavor] || ERA_FLAVOR_NAMES.mystery;
+    return this.rng.random(names);
+  }
+
+  // ──────────────────────────────────────────
   // Phase 3: Era Simulation
   // ──────────────────────────────────────────
 
   _simulateEra(eraIndex, startYear, endYear) {
-    const eraNames = [
-      'The Age of Founding', 'The Age of Expansion', 'The Age of Conflict',
-      'The Age of Reformation', 'The Age of Decline', 'The Age of Reckoning',
-      'The Age of Rebirth', 'The Age of Silence', 'The Age of Iron',
-      'The Age of the Breach',
-    ];
+    const detail = this._getEraDetailLevel(eraIndex);
 
     const era = {
       index: eraIndex,
-      name: eraIndex < eraNames.length ? eraNames[eraIndex] : `The ${this.rng.random(CATASTROPHE_ADJECTIVES)} Age`,
+      name: '', // assigned after simulation based on events
       startYear,
       endYear,
       events: [],
       dominantCiv: null,
       summary: '',
+      detailLevel: detail.detailLevel,
     };
+
+    // Track era-level metrics for flavor assignment
+    let eraWarCount = 0;
+    let eraCatCount = 0;
+    let eraNewCivs = 0;
+    let eraReligiousEvents = 0;
+    const popAtStart = this.civilizations.filter(c => c.isActive).reduce((s, c) => s + c.population, 0);
 
     // Generate civilizations for this era
     if (eraIndex === 0) {
-      // Founding era: create initial civilizations
+      // Founding era: create initial civilizations (scale with total eras)
       const numCivs = this.rng.nextInt(3, 6);
       for (let i = 0; i < numCivs; i++) {
         this._createCivilization(startYear);
+        eraNewCivs++;
       }
     } else {
       // Later eras: some civs emerge, some collapse
-      if (this.rng.chance(0.5)) {
+      if (this.rng.chance(detail.civChance)) {
         this._createCivilization(startYear);
+        eraNewCivs++;
       }
     }
 
     // Simulate year-by-year events within this era
     let activeCivs = this.civilizations.filter(c => c.isActive);
-    const stepSize = this.rng.nextInt(5, 15);
-    const d = this._eventDensity || 1.0;
+    const stepSize = detail.stepSize;
+    const d = (this._eventDensity || 1.0) * detail.densityMult;
 
     this._emitEvent(startYear, 'era_start', `── ${era.name} begins (Year ${startYear}) ──`, 'era');
 
@@ -657,12 +838,20 @@ export class WorldHistoryGenerator {
 
       // Wars
       if (this.rng.chance(0.12 * d) && activeCivs.length >= 2) {
-        this._generateWar(year, activeCivs);
+        const war = this._generateWar(year, activeCivs);
+        if (war) {
+          eraWarCount++;
+          this._applyCascadingEffects('war', year, war);
+        }
       }
 
       // Catastrophes
       if (this.rng.chance(0.08 * d)) {
-        this._generateCatastrophe(year);
+        const cat = this._generateCatastrophe(year);
+        if (cat) {
+          eraCatCount++;
+          this._applyCascadingEffects('catastrophe', year, cat);
+        }
       }
 
       // Treaties / alliances
@@ -686,9 +875,10 @@ export class WorldHistoryGenerator {
       // Religion events
       if (this.rng.chance(0.06 * d)) {
         this._generateReligiousEvent(year);
+        eraReligiousEvents++;
       }
 
-      // ── New depth-scaled events ──
+      // ── Depth-scaled events ──
 
       // Tech advancement
       if (this.rng.chance(0.05 * d) && activeCivs.length > 0) {
@@ -706,6 +896,7 @@ export class WorldHistoryGenerator {
           importance: 'major',
         });
         this._emitEvent(year, 'tech_advancement', `${civ.name} develops ${tech}`, 'tech');
+        this._applyCascadingEffects('tech_advancement', year, { civ });
       }
 
       // Tech collapse
@@ -724,6 +915,7 @@ export class WorldHistoryGenerator {
             importance: 'major',
           });
           this._emitEvent(year, 'tech_collapse', `${civ.name} loses technology — ${cause}`, 'catastrophe');
+          eraCatCount++;
         }
       }
 
@@ -734,7 +926,8 @@ export class WorldHistoryGenerator {
           const splitPop = Math.floor(parent.population * this.rng.nextFloat(0.2, 0.45));
           parent.population -= splitPop;
           const schismReasons = ['religious heresy', 'ideological divide', 'succession dispute',
-            'class rebellion', 'regional separatism', 'generational rift'];
+            'class rebellion', 'regional separatism', 'generational rift',
+            'machine worship disagreement', 'resource hoarding accusations', 'caste revolt'];
           const reason = this.rng.random(schismReasons);
           const child = this._createCivilization(year);
           child.population = splitPop;
@@ -745,6 +938,7 @@ export class WorldHistoryGenerator {
             importance: 'major',
           });
           this._emitEvent(year, 'faction_schism', `${child.name} splinters from ${parent.name} — ${reason}`, 'war');
+          eraNewCivs++;
         }
       }
 
@@ -752,7 +946,8 @@ export class WorldHistoryGenerator {
       if (this.rng.chance(0.025 * d) && activeCivs.length > 0) {
         const target = this.rng.random(activeCivs);
         const invaders = ['void raiders', 'rogue AI swarm', 'mutant horde', 'pirate flotilla',
-          'alien scouts', 'exiled warbands', 'bio-mechanical abominations', 'feral cyborg packs'];
+          'alien scouts', 'exiled warbands', 'bio-mechanical abominations', 'feral cyborg packs',
+          'the Converted remnants', 'machine cult zealots', 'deep-sector ferals'];
         const invader = this.rng.random(invaders);
         const severity = this.rng.nextFloat(0.1, 0.5);
         const casualties = Math.floor(target.population * severity);
@@ -764,12 +959,14 @@ export class WorldHistoryGenerator {
           importance: 'major',
         });
         this._emitEvent(year, 'invasion', `${invader} assault ${target.name} — ${casualties} dead`, 'war');
+        eraWarCount++;
       }
 
       // Plague / infection spread (multi-region)
       if (this.rng.chance(0.03 * d) && activeCivs.length > 0) {
         const plagues = ['void rot', 'neural plague', 'silicon fever', 'blood rust', 'synapse blight',
-          'creeping spore', 'marrow wilt', 'data corruption syndrome', 'hull lung', 'crystalline infection'];
+          'creeping spore', 'marrow wilt', 'data corruption syndrome', 'hull lung', 'crystalline infection',
+          'machine fever', 'the Converted taint', 'bone rust'];
         const plague = this.rng.random(plagues);
         const affectedCivs = this.rng.shuffle([...activeCivs]).slice(0, Math.min(activeCivs.length, this.rng.nextInt(1, 3)));
         let totalDead = 0;
@@ -785,6 +982,20 @@ export class WorldHistoryGenerator {
           importance: 'major',
         });
         this._emitEvent(year, 'plague_spread', `${plague} spreads — ${totalDead} perish across ${affectedCivs.length} civilizations`, 'catastrophe');
+        // Severe plagues create map scars
+        if (totalDead > 1000) {
+          const region = this.rng.random(this.regions);
+          if (region) {
+            this.mapScars.push({
+              type: 'plague_zone', year, severity: Math.min(1, totalDead / 5000),
+              regionName: region.name, regionId: region.id,
+              terrainEffect: this.rng.random(['TOXIC_SUMP', 'FUNGAL_NET']),
+              radius: this.rng.nextInt(2, 5),
+              description: `${plague} killing grounds of Year ${year}`,
+            });
+          }
+        }
+        eraCatCount++;
       }
 
       // Golden age / dark age modifiers
@@ -799,6 +1010,20 @@ export class WorldHistoryGenerator {
             description: `${civ.name} enters a golden age of prosperity and innovation.`,
           });
           this._emitEvent(year, 'golden_age', `${civ.name} enters a golden age`, 'treaty');
+          // Major golden ages create monuments on map
+          if (civ.population > 3000) {
+            const region = this.regions.find(r => civ.controlledRegions.includes(r.id)) || this.rng.random(this.regions);
+            if (region) {
+              this.mapScars.push({
+                type: 'monument', year, severity: 0.5,
+                regionName: region.name, regionId: region.id,
+                terrainEffect: 'MONUMENT',
+                radius: 1,
+                description: `Monument to the Golden Age of ${civ.name}, Year ${year}`,
+                civName: civ.name,
+              });
+            }
+          }
         } else {
           // Dark age
           civ.population = Math.round(civ.population * 0.8);
@@ -810,12 +1035,235 @@ export class WorldHistoryGenerator {
           this._emitEvent(year, 'dark_age', `${civ.name} falls into a dark age`, 'catastrophe');
         }
       }
+
+      // ── Sci-fi inspired events ──
+
+      // Machine cult rise (Warhammer 40K inspired)
+      if (this.rng.chance(0.02 * d) && activeCivs.length > 0) {
+        const civ = this.rng.random(activeCivs);
+        civ.techLevel = (civ.techLevel || 1) + 2;
+        civ.culturalValues = [...new Set([...civ.culturalValues, 'machine worship'])];
+        const region = this.regions.find(r => civ.controlledRegions.includes(r.id)) || this.rng.random(this.regions);
+        this.timeline.push({
+          year, type: 'machine_cult_rise', civId: civ.id,
+          description: `${civ.name} embraces machine worship. The Mechanicum heresy takes root — thinking metal is revered, not feared. Tech advances rapidly but religious extremism grows.`,
+          importance: 'major',
+        });
+        this._emitEvent(year, 'machine_cult_rise', `${civ.name} embraces the Mechanicum — machine worship rises`, 'religion');
+        if (region) {
+          this.mapScars.push({
+            type: 'machine_shrine', year, severity: 0.6,
+            regionName: region.name, regionId: region.id,
+            terrainEffect: 'MACHINE_SHRINE',
+            radius: this.rng.nextInt(2, 4),
+            description: `Mechanicum shrine of ${civ.name}, Year ${year}`,
+            civName: civ.name,
+          });
+        }
+        eraReligiousEvents++;
+      }
+
+      // Great crusade (Warhammer 40K inspired)
+      if (this.rng.chance(0.015 * d) && activeCivs.length > 0) {
+        const civ = this.rng.random(activeCivs.filter(c => c.militaryStrength >= 7));
+        if (civ) {
+          const targetRegions = this.regions.filter(r => !civ.controlledRegions.includes(r.id));
+          const conquered = this.rng.shuffle([...targetRegions]).slice(0, this.rng.nextInt(1, 3));
+          for (const region of conquered) {
+            const prev = this.civilizations.find(c => c.controlledRegions.includes(region.id) && c.id !== civ.id);
+            if (prev) {
+              prev.controlledRegions = prev.controlledRegions.filter(r => r !== region.id);
+            }
+            region.controlledBy = civ.id;
+            civ.controlledRegions.push(region.id);
+          }
+          civ.militaryStrength = Math.min(15, civ.militaryStrength + 3);
+          const casualties = Math.floor(civ.population * this.rng.nextFloat(0.05, 0.15));
+          civ.population = Math.max(200, civ.population - casualties);
+          this.timeline.push({
+            year, type: 'great_crusade', civId: civ.id,
+            description: `${civ.name} launches a Great Crusade, conquering ${conquered.map(r => r.name).join(' and ')}. ${casualties} die in the campaign, but their dominion expands.`,
+            importance: 'major',
+          });
+          this._emitEvent(year, 'great_crusade', `${civ.name} launches a Great Crusade — ${conquered.length} regions fall`, 'war');
+          // Crusade creates fortresses
+          for (const region of conquered) {
+            this.mapScars.push({
+              type: 'fortress', year, severity: 0.5,
+              regionName: region.name, regionId: region.id,
+              terrainEffect: 'FORTRESS',
+              radius: this.rng.nextInt(1, 3),
+              description: `${civ.name} fortress from the Great Crusade of Year ${year}`,
+              civName: civ.name,
+            });
+          }
+          eraWarCount++;
+        }
+      }
+
+      // Foundation event (Asimov inspired) — knowledge preservation
+      if (this.rng.chance(0.012 * d) && activeCivs.length > 0) {
+        const civ = this.rng.random(activeCivs);
+        const region = this.rng.random(this.regions);
+        if (region) {
+          this.timeline.push({
+            year, type: 'encyclopedia_project', civId: civ.id,
+            description: `Visionaries within ${civ.name} establish a hidden archive in ${region.name} — an "Encyclopedia" of all knowledge, preserved against the inevitable dark age.`,
+            importance: 'major',
+          });
+          this._emitEvent(year, 'encyclopedia_project', `A hidden archive is established in ${region.name}`, 'tech');
+          this.mapScars.push({
+            type: 'hidden_archive', year, severity: 0.3,
+            regionName: region.name, regionId: region.id,
+            terrainEffect: 'HIDDEN_ARCHIVE',
+            radius: 1,
+            description: `Hidden Encyclopedia of ${civ.name}, Year ${year}`,
+            civName: civ.name,
+          });
+          // Create a data core artifact
+          this._createArtifact(year);
+        }
+      }
+
+      // Ecological transformation (Dune inspired)
+      if (this.rng.chance(0.01 * d)) {
+        const region = this.rng.random(this.regions);
+        if (region) {
+          const transformations = [
+            { from: 'industrial', to: 'agricultural', terrain: 'HYDROPONIC_JUNGLE', desc: 'Runaway bio-engineering transforms industrial corridors into living jungle' },
+            { from: 'residential', to: 'derelict', terrain: 'CRYSTALLINE_GROWTH', desc: 'Crystalline growths consume residential sectors, beautiful but inhospitable' },
+            { from: 'derelict', to: 'agricultural', terrain: 'FUNGAL_NET', desc: 'Vast fungal networks colonize abandoned sectors, creating a strange new ecosystem' },
+            { from: 'agricultural', to: 'derelict', terrain: 'NANO_PLAGUE', desc: 'Nanite swarms consume organic matter, leaving behind grey goo wastelands' },
+            { from: 'military', to: 'scientific', terrain: 'ALIEN_CRASH', desc: 'An alien artifact or anomaly transforms the region into something unrecognizable' },
+          ];
+          const transform = this.rng.random(transformations);
+          region.terrain = transform.to;
+          this.timeline.push({
+            year, type: 'ecological_transformation',
+            description: `${transform.desc} in ${region.name}. The region is forever changed.`,
+            importance: 'major',
+          });
+          this._emitEvent(year, 'ecological_transformation', `${region.name} is ecologically transformed`, 'catastrophe');
+          this.mapScars.push({
+            type: 'transformed_biome', year, severity: 0.7,
+            regionName: region.name, regionId: region.id,
+            terrainEffect: transform.terrain,
+            radius: this.rng.nextInt(3, 6),
+            description: `${transform.desc} — Year ${year}`,
+          });
+          eraCatCount++;
+        }
+      }
+
+      // Fleet exodus (BSG inspired) — civ abandons territory
+      if (this.rng.chance(0.015 * d) && activeCivs.length > 0) {
+        const civ = this.rng.random(activeCivs.filter(c => c.population < 500 || c.militaryStrength <= 2));
+        if (civ && civ.controlledRegions.length > 0) {
+          const abandonedRegions = [...civ.controlledRegions];
+          for (const regionId of abandonedRegions) {
+            const region = this.regions.find(r => r.id === regionId);
+            if (region) {
+              region.controlledBy = null;
+              this.mapScars.push({
+                type: 'abandoned_district', year, severity: 0.4,
+                regionName: region.name, regionId: region.id,
+                terrainEffect: 'ABANDONED_DISTRICT',
+                radius: this.rng.nextInt(2, 5),
+                description: `Ruins of ${civ.name} — abandoned in the Exodus of Year ${year}`,
+                civName: civ.name,
+              });
+            }
+          }
+          civ.controlledRegions = [];
+          this.timeline.push({
+            year, type: 'fleet_exodus', civId: civ.id,
+            description: `${civ.name} abandons their territory in a desperate exodus into the unknown corridors. ${abandonedRegions.length} region(s) left empty.`,
+            importance: 'major',
+          });
+          this._emitEvent(year, 'fleet_exodus', `${civ.name} abandons their territory — exodus into the deep sectors`, 'catastrophe');
+        }
+      }
+
+      // Megastructure discovery (Blame! inspired)
+      if (this.rng.chance(0.008 * d)) {
+        const region = this.rng.random(this.regions);
+        if (region) {
+          const discoveries = [
+            'an impossibly vast chamber stretching beyond sight — the ship is far larger than anyone knew',
+            'a sealed manufacturing complex still producing goods for inhabitants long dead',
+            'a gravitational anomaly that suggests the ship contains spatial compression technology',
+            'a living ecosystem in a sealed biome, evolving independently for millennia',
+            'an intact bridge section — not the main bridge, but a secondary command center',
+            'a frozen army of Converted — thousands of machine-human hybrids from the Machine Wars, perfectly preserved',
+          ];
+          const discovery = this.rng.random(discoveries);
+          this.timeline.push({
+            year, type: 'megastructure_discovery',
+            description: `Explorers in ${region.name} discover ${discovery}.`,
+            importance: 'major',
+          });
+          this._emitEvent(year, 'megastructure_discovery', `Discovery in ${region.name} — the ship holds secrets`, 'tech');
+          this.mapScars.push({
+            type: 'megastructure', year, severity: 0.5,
+            regionName: region.name, regionId: region.id,
+            terrainEffect: 'MEGASTRUCTURE',
+            radius: this.rng.nextInt(2, 4),
+            description: `Megastructure discovered in ${region.name} — Year ${year}`,
+          });
+        }
+      }
+
+      // Cyclic collapse (BSG "all this has happened before" inspired)
+      if (this.rng.chance(0.01 * d) && activeCivs.length > 0 && this.catastrophes.length > 0) {
+        const oldCat = this.rng.random(this.catastrophes);
+        const civ = this.rng.random(activeCivs);
+        const casualties = Math.floor(civ.population * this.rng.nextFloat(0.1, 0.3));
+        civ.population = Math.max(50, civ.population - casualties);
+        this.timeline.push({
+          year, type: 'cyclic_collapse', civId: civ.id,
+          description: `History repeats itself. ${civ.name} suffers a catastrophe eerily mirroring ${oldCat.name} from Year ${oldCat.year}. "${this.rng.random(['All this has happened before.', 'The cycle continues.', 'We learned nothing.', 'History is a wheel.'])}" — ${casualties} perish.`,
+          importance: 'major',
+        });
+        this._emitEvent(year, 'cyclic_collapse', `${civ.name} suffers cyclic collapse — echoes of ${oldCat.name}`, 'catastrophe');
+        eraCatCount++;
+      }
+
+      // Messiah event (Dune inspired)
+      if (this.rng.chance(0.01 * d) && activeCivs.length >= 2) {
+        const leader = this.historicalFigures.find(f => f.isAlive && f.traits.includes('charismatic'));
+        if (leader) {
+          const unitedCivs = this.rng.shuffle([...activeCivs]).slice(0, this.rng.nextInt(2, Math.min(activeCivs.length, 4)));
+          leader.titles.push('the Messiah');
+          leader.deeds.push({ year, type: 'messiah', description: `${leader.fullName} was proclaimed Messiah, uniting ${unitedCivs.map(c => c.name).join(' and ')}.` });
+          this.timeline.push({
+            year, type: 'messiah_event',
+            description: `${leader.fullName} is proclaimed Messiah by the faithful. ${unitedCivs.map(c => c.name).join(', ')} temporarily unite under their banner.`,
+            importance: 'major',
+          });
+          this._emitEvent(year, 'messiah_event', `${leader.fullName} proclaimed Messiah — civilizations unite`, 'religion');
+          eraReligiousEvents++;
+        }
+      }
+
+      // Regional stress decay
+      for (const [regionId, data] of this.regionalStress) {
+        if (year - data.lastEvent > 200) {
+          data.stress = Math.max(0, data.stress - 0.1);
+        }
+      }
     }
 
-    // Era summary
+    // Era summary with flavor assignment based on what happened
+    activeCivs = this.civilizations.filter(c => c.isActive);
     const biggestCiv = activeCivs.reduce((best, c) =>
       (!best || c.population > best.population) ? c : best, null);
     era.dominantCiv = biggestCiv;
+
+    const popAtEnd = activeCivs.reduce((s, c) => s + c.population, 0);
+    const popDelta = popAtStart > 0 ? (popAtEnd - popAtStart) / popAtStart : 0;
+
+    // Assign era name based on what actually happened
+    era.name = this._assignEraFlavor(era, eraWarCount, eraCatCount, popDelta, eraNewCivs, eraReligiousEvents);
 
     const eraEvents = this.timeline.filter(e => e.year >= startYear && e.year < endYear);
     const wars = eraEvents.filter(e => e.type === 'war_start');
@@ -824,6 +1272,18 @@ export class WorldHistoryGenerator {
     era.summary = this._buildEraSummary(era, wars, catastrophes, biggestCiv);
     era.events = eraEvents;
     this.eras.push(era);
+
+    // Entity consolidation for mythic/ancient eras (performance)
+    if (detail.detailLevel === 'mythic' && detail.figureMinDeeds > 0) {
+      // Remove minor figures from mythic eras to save memory
+      const eraFigures = this.historicalFigures.filter(f =>
+        f.bornYear >= startYear && f.bornYear < endYear && f.deeds.length < detail.figureMinDeeds
+      );
+      for (const fig of eraFigures) {
+        const idx = this.historicalFigures.indexOf(fig);
+        if (idx !== -1) this.historicalFigures.splice(idx, 1);
+      }
+    }
   }
 
   _buildEraSummary(era, wars, catastrophes, dominantCiv) {
@@ -842,6 +1302,74 @@ export class WorldHistoryGenerator {
 
     summary += parts.length > 0 ? parts.join(', ') + '.' : 'A period of relative stability.';
     return summary;
+  }
+
+  // ──────────────────────────────────────────
+  // Cascading Consequences — events trigger follow-on effects
+  // ──────────────────────────────────────────
+
+  _applyCascadingEffects(eventType, year, eventData) {
+    const activeCivs = this.civilizations.filter(c => c.isActive);
+
+    switch (eventType) {
+      case 'war': {
+        // War depletes resources → famine chance in affected regions
+        if (eventData && eventData.intensity === 'total war') {
+          const region = this.rng.random(this.regions);
+          if (region) {
+            const stress = this.regionalStress.get(region.id) || { stress: 0, lastEvent: 0 };
+            stress.stress += 0.3;
+            stress.lastEvent = year;
+            this.regionalStress.set(region.id, stress);
+          }
+          // Total wars create map scars
+          this.mapScars.push({
+            type: 'war_ruins', year, severity: 0.6,
+            regionName: eventData.battles?.[0]?.name?.replace('Battle of ', '') || 'unknown sector',
+            regionId: this.rng.random(this.regions)?.id,
+            terrainEffect: 'WAR_RUINS',
+            radius: this.rng.nextInt(2, 5),
+            description: `Ruins of ${eventData.name || 'an ancient war'}, Year ${year}`,
+          });
+        }
+        break;
+      }
+      case 'catastrophe': {
+        // Catastrophes cause refugee flows and regional stress
+        if (eventData && eventData.regionId) {
+          const stress = this.regionalStress.get(eventData.regionId) || { stress: 0, lastEvent: 0 };
+          stress.stress += eventData.severity || 0.2;
+          stress.lastEvent = year;
+          this.regionalStress.set(eventData.regionId, stress);
+
+          // Severe catastrophes in high-stress regions can cascade into civ collapse
+          if (stress.stress > 0.8 && activeCivs.length > 0) {
+            const localCiv = activeCivs.find(c => c.controlledRegions.includes(eventData.regionId));
+            if (localCiv && localCiv.population < 300) {
+              localCiv.isActive = false;
+              localCiv.collapsedYear = year;
+              this.timeline.push({
+                year, type: 'civ_collapsed', civId: localCiv.id,
+                description: `${localCiv.name} collapses under accumulated catastrophes.`,
+                importance: 'major',
+              });
+              this._emitEvent(year, 'civ_collapsed', `${localCiv.name} crushed by cascading disasters`, 'catastrophe');
+            }
+          }
+        }
+        break;
+      }
+      case 'tech_advancement': {
+        // Tech advancement → potential expansion/aggression
+        if (eventData && eventData.civ && eventData.civ.militaryStrength > 8 && this.rng.chance(0.2)) {
+          const stress = this.regionalStress.get(eventData.civ.homeRegion) || { stress: 0, lastEvent: 0 };
+          stress.stress += 0.1;
+          stress.lastEvent = year;
+          if (eventData.civ.homeRegion) this.regionalStress.set(eventData.civ.homeRegion, stress);
+        }
+        break;
+      }
+    }
   }
 
   // ──────────────────────────────────────────
@@ -1362,6 +1890,29 @@ export class WorldHistoryGenerator {
       if (region) {
         region.resources = 'barren';
         effects.push(`${region.name} rendered uninhabitable.`);
+        // Create map scar
+        this.mapScars.push({
+          type: template.type === 'reactor_meltdown' ? 'slag_zone' : 'breach_zone',
+          year,
+          severity,
+          regionName: region.name,
+          regionId: region.id,
+          terrainEffect: template.type === 'reactor_meltdown' ? 'REACTOR_SLAG' : 'HULL_BREACH',
+          radius: this.rng.nextInt(3, 8),
+          description: `${name} — Year ${year}`,
+        });
+      }
+    }
+    if (template.type === 'void_incursion') {
+      if (region) {
+        effects.push(`A permanent void rift tears open in ${region.name}.`);
+        this.mapScars.push({
+          type: 'void_rift', year, severity,
+          regionName: region.name, regionId: region.id,
+          terrainEffect: 'VOID_RIFT',
+          radius: this.rng.nextInt(2, 6),
+          description: `${name} — Year ${year}`,
+        });
       }
     }
     if (template.type === 'ai_uprising') {
@@ -1682,6 +2233,7 @@ export class WorldHistoryGenerator {
       timeline: this.timeline,
       presentDay: this.presentDayState,
       preHistory: this.preHistory,
+      mapScars: this.mapScars,
     };
   }
 
@@ -1853,10 +2405,10 @@ export class WorldHistoryGenerator {
       case 'mission': {
         if (!this.preHistory) return 'Some believe the colony has a purpose beyond survival. But what that purpose is, no one can say.';
         const snippets = [
-          `The colony is a vessel. It has a destination — a world called "${this.preHistory.vessel.destinationName}," orbiting a distant star. We've been traveling for over two thousand cycles.`,
+          `The colony is a vessel. It has a destination — a world called "${this.preHistory.vessel.destinationName}," orbiting a distant star. We've been traveling for over five thousand cycles.`,
           `Kepler-442b. That's the designation of our destination. A super-Earth in the habitable zone of an orange dwarf star, ${this.preHistory.mission.destination.split(',')[1] || '1,206 light-years from Earth'}.`,
           'We\'re not standing still. The colony is moving — hurtling through the void at incredible speed. The vibrations in the outer hull? That\'s the engines. We\'re still going somewhere.',
-          'Navigation data recovered from a damaged core suggests we may be decelerating. If that\'s true, we could be approaching the destination. After two thousand cycles.',
+          'Navigation data recovered from a damaged core suggests we may be decelerating. If that\'s true, we could be approaching the destination. After five thousand cycles.',
           `The original mission was to reach New Dawn in approximately ${this.preHistory.mission.estimatedDuration} cycles. We've exceeded that. Whether we missed the destination, or we're still approaching, no one alive can say.`,
           'The mission charter reads: "To preserve the human species beyond the death of its homeworld." That\'s what all of this is — not a colony, not a world. A lifeboat.',
         ];
@@ -1929,6 +2481,10 @@ export class WorldHistoryGenerator {
       rumorTypes.push('The Observation Ring has these old projectors. When they malfunction, they show a yellow star and a green-blue world. Nobody knows what it means, but people weep when they see it.');
       rumorTypes.push('There was a rebellion before Year Zero. The Awakened, they called themselves. They tried to tell everyone the truth. The authorities vented three entire sectors to silence them.');
       rumorTypes.push('The oldest tenets — "Honor the Founders" — they don\'t mean our Founders. They mean the people who built the colony. The real builders, from a place called Earth.');
+      rumorTypes.push('Deep in the Machine Catacombs, they found one of the old war-drones from the Machine Wars. Still functional. Still following orders from a Sub-Mind that died three thousand years ago.');
+      rumorTypes.push('The Mechanicum isn\'t just a religion — they have working pre-Cascade technology. Machines that think, that learn. And they worship them.');
+      rumorTypes.push('During the Long Drift, the colony split into a hundred tiny nations. Some of those sealed sectors still have people in them. Civilizations that developed for millennia without contact.');
+      rumorTypes.push('Five thousand years. That\'s how long we\'ve been traveling. Five thousand years aboard a ship that nobody remembers is a ship.');
     }
 
     // Fallback
@@ -2069,7 +2625,7 @@ export class WorldHistoryGenerator {
   // Get world state summary for the loading screen
   getLoadingSummary() {
     const lines = [];
-    lines.push(`World history spans ${this.currentYear} cycles across ${this.eras.length} eras.`);
+    lines.push(`World history spans ${this.currentYear.toLocaleString()} cycles across ${this.eras.length} eras.`);
     lines.push(`${this.civilizations.length} civilizations rose (${this.civilizations.filter(c => c.isActive).length} survive).`);
     lines.push(`${this.historicalFigures.length} notable figures shaped history.`);
     const livingFigures = this.historicalFigures.filter(f => f.isAlive);
@@ -2087,6 +2643,9 @@ export class WorldHistoryGenerator {
     lines.push(`${this.treaties.length} treaties and alliances forged.`);
     if (this.regions.length > 0) {
       lines.push(`${this.regions.length} regions mapped.`);
+    }
+    if (this.mapScars.length > 0) {
+      lines.push(`${this.mapScars.length} historical scars mark the landscape.`);
     }
     lines.push(`${this.timeline.length} total historical events recorded.`);
     return lines;

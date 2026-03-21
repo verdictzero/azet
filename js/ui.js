@@ -100,7 +100,7 @@ export class UIManager {
     this.consoleLogScroll = 0;
 
     // Almanac state
-    this.almanacTab = 0;    // 0-5: Preamble, Timeline, Civs, Figures, Artifacts, Log
+    this.almanacTab = 0;    // 0-6: Preamble, Timeline, Civs, Figures, Artifacts, Scars, Log
     this.almanacScroll = 0;
   }
 
@@ -717,16 +717,16 @@ export class UIManager {
       r.drawString(px + 2, py + 5, 'How deep should the world\'s history be?', COLORS.BRIGHT_CYAN, bg);
       const depths = ['Short', 'Medium', 'Long', 'Epic'];
       const descs = [
-        'A young colony, barely settled (~200 years)',
-        'Generations of growth and conflict (~500 years)',
-        'Deep roots, ancient grudges (~1000 years)',
-        'Eons of rise and ruin (~2000+ years)',
+        'Millennia of forgotten wars (~2,000 years)',
+        'Ages of rise and fall (~4,000 years)',
+        'Deep time. Empires crumble to myth (~8,000 years)',
+        'Eons of ruin and rebirth (~20,000 years)',
       ];
       const flavors = [
-        'Quick start. Fewer factions and events.',
-        'Balanced depth. Wars, plagues, and legends.',
-        'Rich tapestry. Tech rises and falls, schisms tear nations apart.',
-        'Maximum depth. Countless civilizations, invasions, and cataclysms.',
+        '8 eras. Wars, plagues, and legends unfold.',
+        '12 eras. Machine cults rise, crusades reshape the map.',
+        '16 eras. Ancient mythic ages fade into recent strife.',
+        '20 eras. Maximum depth. 20 millennia of history scar the world.',
       ];
       for (let i = 0; i < depths.length; i++) {
         const sel = i === this.selectedIndex;
@@ -2840,7 +2840,7 @@ export class UIManager {
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Almanac ');
 
     // Tab bar (same pattern as drawHelp)
-    const tabs = ['Preamble', 'Timeline', 'Civs', 'Figures', 'Artifacts', 'Log'];
+    const tabs = ['Preamble', 'Timeline', 'Civs', 'Figures', 'Artifacts', 'Scars', 'Log'];
     const tab = this.almanacTab || 0;
     const usableW = panelW - 4;
     const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
@@ -2965,19 +2965,75 @@ export class UIManager {
         addLine('Pre-history data not available.', COLORS.BRIGHT_BLACK);
       }
     } else if (tab === 1) {
-      // Timeline
-      addHeader('WORLD TIMELINE', COLORS.BRIGHT_CYAN);
+      // Timeline — organized by eras with detail level indicators
+      addHeader(`WORLD TIMELINE — ${summary.totalYears.toLocaleString()} Years of History`, COLORS.BRIGHT_CYAN);
       addBlank();
+
+      // Show eras as section headers with events grouped under them
+      const eras = summary.eras || [];
       const timeline = summary.timeline || [];
-      for (const ev of timeline) {
-        const yearStr = `[Year ${ev.year}]`;
-        const color = ev.isPreHistory ? COLORS.BRIGHT_YELLOW
-          : (ev.importance === 'major' || ev.type === 'era_start') ? COLORS.BRIGHT_CYAN
-          : COLORS.WHITE;
-        const desc = wordWrap(`${yearStr} ${ev.description}`, w);
-        for (let i = 0; i < desc.length; i++) {
-          addLine(desc[i], i === 0 ? color : COLORS.BRIGHT_BLACK);
+
+      // Pre-history events first
+      const preEvents = timeline.filter(e => e.isPreHistory);
+      if (preEvents.length > 0) {
+        addLine('  \u2550\u2550\u2550 PRE-HISTORY \u2550\u2550\u2550', COLORS.BRIGHT_YELLOW);
+        for (const ev of preEvents) {
+          if (ev.type === 'pre_history_era') {
+            addBlank();
+            addLine(`  ${ev.description.split(':')[0]}`, COLORS.BRIGHT_YELLOW);
+          } else {
+            const desc = wordWrap(`    [${ev.year}] ${ev.description}`, w);
+            for (let i = 0; i < desc.length; i++) {
+              addLine(desc[i], i === 0 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_BLACK);
+            }
+          }
         }
+        addBlank();
+      }
+
+      // Post-Year-Zero eras
+      for (const era of eras) {
+        const detailTag = era.detailLevel === 'mythic' ? '\u2606 Legend' : era.detailLevel === 'ancient' ? '\u2605 Ancient' : '\u2726 Recent';
+        const headerColor = era.detailLevel === 'mythic' ? COLORS.BRIGHT_BLACK : era.detailLevel === 'ancient' ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_CYAN;
+        addLine(`  \u2550\u2550 ${era.name} (${era.startYear}-${era.endYear}) [${detailTag}] \u2550\u2550`, headerColor);
+
+        // Show era summary
+        if (era.summary) {
+          const sumLines = wordWrap(`    ${era.summary}`, w);
+          for (const l of sumLines) addLine(l, COLORS.BRIGHT_BLACK);
+        }
+
+        // For mythic eras, only show major events
+        const eraEvents = (era.events || []).filter(e =>
+          era.detailLevel === 'mythic' ? (e.importance === 'major' || e.type === 'era_start') :
+          era.detailLevel === 'ancient' ? (e.importance === 'major' || e.type === 'era_start' || e.type === 'war_start' || e.type === 'catastrophe') :
+          true
+        );
+
+        // Limit events shown per era to prevent overwhelming the scroll
+        const maxEvents = era.detailLevel === 'mythic' ? 5 : era.detailLevel === 'ancient' ? 10 : 20;
+        const shown = eraEvents.slice(0, maxEvents);
+
+        for (const ev of shown) {
+          if (ev.type === 'era_start') continue; // Already shown in header
+          const yearStr = `[${ev.year}]`;
+          const color = ev.type === 'war_start' || ev.type === 'great_crusade' ? COLORS.BRIGHT_RED
+            : ev.type === 'catastrophe' || ev.type === 'plague_spread' || ev.type === 'cyclic_collapse' ? COLORS.BRIGHT_RED
+            : ev.type === 'golden_age' || ev.type === 'tech_advancement' ? COLORS.BRIGHT_GREEN
+            : ev.type === 'civ_founded' || ev.type === 'civ_revived' ? COLORS.BRIGHT_CYAN
+            : ev.type === 'machine_cult_rise' || ev.type === 'messiah_event' ? COLORS.BRIGHT_MAGENTA
+            : ev.type === 'megastructure_discovery' || ev.type === 'encyclopedia_project' ? COLORS.BRIGHT_BLUE
+            : COLORS.WHITE;
+          const desc = wordWrap(`    ${yearStr} ${ev.description}`, w);
+          for (let i = 0; i < desc.length; i++) {
+            addLine(desc[i], i === 0 ? color : COLORS.BRIGHT_BLACK);
+          }
+        }
+
+        if (eraEvents.length > maxEvents) {
+          addLine(`    ...and ${eraEvents.length - maxEvents} more events`, COLORS.BRIGHT_BLACK);
+        }
+        addBlank();
       }
     } else if (tab === 2) {
       // Civilizations
@@ -3065,6 +3121,50 @@ export class UIManager {
         addLine('No artifacts or religions recorded.', COLORS.BRIGHT_BLACK);
       }
     } else if (tab === 5) {
+      // Map Scars — historical events that left visible marks on the world
+      addHeader('MAP SCARS — The Land Remembers', COLORS.BRIGHT_CYAN);
+      addBlank();
+      const scars = summary.mapScars || [];
+      if (scars.length === 0) {
+        addLine('  No historical scars mark this world.', COLORS.BRIGHT_BLACK);
+      } else {
+        // Group scars by type
+        const typeNames = {
+          slag_zone: 'Reactor Slag Zones', void_rift: 'Void Rifts', breach_zone: 'Hull Breaches',
+          war_ruins: 'War Ruins', monument: 'Monuments', plague_zone: 'Plague Grounds',
+          abandoned_district: 'Abandoned Districts', transformed_biome: 'Transformed Regions',
+          fortress: 'Ancient Fortresses', machine_shrine: 'Machine Shrines',
+          hidden_archive: 'Hidden Archives', megastructure: 'Megastructure Discoveries',
+        };
+        const typeIcons = {
+          slag_zone: '\u2622', void_rift: '\u2727', breach_zone: '%',
+          war_ruins: '\u00a7', monument: '\u2666', plague_zone: '\u2620',
+          abandoned_district: '\u25A1', transformed_biome: '\u2042',
+          fortress: '\u2302', machine_shrine: '\u2726',
+          hidden_archive: '\u2261', megastructure: '\u25A0',
+        };
+        const grouped = {};
+        for (const scar of scars) {
+          const key = scar.type || 'other';
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(scar);
+        }
+        for (const [type, scarList] of Object.entries(grouped)) {
+          const icon = typeIcons[type] || '?';
+          addLine(`  ${icon} ${typeNames[type] || type.toUpperCase()} (${scarList.length})`, COLORS.BRIGHT_YELLOW);
+          for (const scar of scarList.slice(0, 8)) {
+            const desc = wordWrap(`    ${scar.description || 'Unknown event'} — ${scar.regionName || 'unknown region'}`, w);
+            const color = scar.severity > 0.7 ? COLORS.BRIGHT_RED : scar.severity > 0.4 ? COLORS.WHITE : COLORS.BRIGHT_BLACK;
+            for (const line of desc) addLine(line, color);
+          }
+          if (scarList.length > 8) {
+            addLine(`    ...and ${scarList.length - 8} more`, COLORS.BRIGHT_BLACK);
+          }
+          addBlank();
+        }
+        addLine(`  Total: ${scars.length} historical scars mark the landscape`, COLORS.BRIGHT_WHITE);
+      }
+    } else if (tab === 6) {
       // Message Log (reuse console log logic)
       addHeader('MESSAGE LOG', COLORS.BRIGHT_CYAN);
       addBlank();
