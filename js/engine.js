@@ -852,6 +852,8 @@ export class Renderer {
 
   /**
    * Subtle chromatic aberration: shift R left, B right by 1px.
+   * Optimized: eliminated Math.max/min per-pixel, uses pre-computed
+   * row offsets and direct array indexing for the inner loop.
    */
   applyChromaAberration() {
     const ctx = this.ctx;
@@ -863,18 +865,28 @@ export class Renderer {
     const src = imgData.data;
     const shifted = ctx.createImageData(w, h);
     const dst = shifted.data;
-    const offset = 1;
+    const stride = w * 4;
 
     for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        const rSrc = (y * w + Math.max(0, x - offset)) * 4;
-        const bSrc = (y * w + Math.min(w - 1, x + offset)) * 4;
-        dst[i] = src[rSrc];         // R from left
-        dst[i + 1] = src[i + 1];    // G stays
-        dst[i + 2] = src[bSrc + 2]; // B from right
+      const rowOff = y * stride;
+      // First pixel: clamp R source to 0
+      dst[rowOff] = src[rowOff];
+      dst[rowOff + 1] = src[rowOff + 1];
+      dst[rowOff + 2] = src[rowOff + 6]; // B from x+1
+      dst[rowOff + 3] = 255;
+      // Middle pixels: no clamping needed
+      const end = rowOff + (w - 1) * 4;
+      for (let i = rowOff + 4; i < end; i += 4) {
+        dst[i] = src[i - 4];      // R from left
+        dst[i + 1] = src[i + 1];  // G stays
+        dst[i + 2] = src[i + 6];  // B from right
         dst[i + 3] = 255;
       }
+      // Last pixel: clamp B source to w-1
+      dst[end] = src[end - 4];
+      dst[end + 1] = src[end + 1];
+      dst[end + 2] = src[end + 2];
+      dst[end + 3] = 255;
     }
     ctx.putImageData(shifted, 0, 0);
   }
@@ -1735,11 +1747,16 @@ export class GlowSystem {
   constructor() {
     this.time = 0;
     this._cache = {};
+    this._lastCacheTime = 0;
   }
 
   update(dt) {
     this.time += dt;
-    this._cache = {};
+    // Only invalidate cache every 0.1s — glow colors change slowly
+    if (this.time - this._lastCacheTime > 0.1) {
+      this._cache = {};
+      this._lastCacheTime = this.time;
+    }
   }
 
   getGlowColor(category, baseColor) {

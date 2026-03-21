@@ -840,6 +840,8 @@ export class DialogueSystem {
       reason,
       timestamp: Date.now(),
     });
+    // Cap memory to prevent unbounded growth
+    if (npc.memory.length > 20) npc.memory.splice(0, npc.memory.length - 20);
   }
 
   getDialogue(npc, topic, playerRep = 0) {
