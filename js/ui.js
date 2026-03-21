@@ -1577,9 +1577,15 @@ export class UIManager {
       const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - worldW) / 2));
       const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - worldH) / 2));
 
-      // Collect shadows (in screen coords)
+      // Collect shadows (in screen coords) — works for both sun and moon
       const shadowCells = new Map();
-      if (sunDir && sunDir.isDay) {
+      const isDay = sunDir && sunDir.isDay;
+      const isNight = sunDir && !sunDir.isDay;
+      if (sunDir) {
+        // Moon shadows are softer and longer; sun shadows are sharper
+        const shadowAlpha = isDay ? 0.3 : 0.15;
+        const shadowMax = isDay ? 0.7 : 0.45;
+        const lengthMul = isDay ? 0.7 : 0.9;
         for (let wy_off = 0; wy_off < worldH; wy_off++) {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
             const wx = camX + wx_off;
@@ -1588,7 +1594,7 @@ export class UIManager {
             const t = settlement.tiles[wy][wx];
             const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
             if (height > 0) {
-              const len = Math.min(height + 1, Math.round(sunDir.shadowLength * height * 0.7));
+              const len = Math.min(height + 1, Math.round(sunDir.shadowLength * height * lengthMul));
               for (let i = 1; i <= len; i++) {
                 const shBaseX = wx_off * density + sunDir.dx * i * density;
                 const shBaseY = wy_off * density + Math.round(sunDir.dy) * i * density;
@@ -1599,7 +1605,7 @@ export class UIManager {
                     if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
                       const key = `${shx},${shy}`;
                       const existing = shadowCells.get(key) || 0;
-                      shadowCells.set(key, Math.min(0.7, existing + 0.3));
+                      shadowCells.set(key, Math.min(shadowMax, existing + shadowAlpha));
                     }
                   }
                 }
@@ -1647,14 +1653,13 @@ export class UIManager {
 
       // Pre-compute canopy proximity set for dappled light effect
       const canopyNearbyCells = new Set();
-      if (sunDir && sunDir.isDay && settlement.tiles) {
+      if (sunDir && settlement.tiles) {
         for (let wy_off = 0; wy_off < worldH; wy_off++) {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
             const wx = camX + wx_off;
             const wy = camY + wy_off;
             if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
               if (settlement.tiles[wy][wx].type === 'TREE_CANOPY') {
-                // Mark a 2-tile radius around canopy in screen coords
                 for (let cdy = -2; cdy <= 2; cdy++) {
                   for (let cdx = -2; cdx <= 2; cdx++) {
                     const nsx = wx_off * density + cdx;
@@ -1670,16 +1675,21 @@ export class UIManager {
         }
       }
 
-      // God rays in unshadowed areas (enhanced pseudo-volumetric lighting)
-      if (sunDir && sunDir.isDay && r._godRayNoise && shadowCells.size > 0) {
+      // God rays / moonbeams in unshadowed areas (works day and night)
+      if (sunDir && r._godRayNoise && shadowCells.size > 0) {
         const perpX = -(sunDir.dy || 0);
         const perpY = sunDir.dx || 0;
         const ts = Date.now() / 1000;
+        // Night: silvery-blue moonbeams at lower intensity; Day: warm golden god rays
+        const rayTintOpen = isDay ? '#FFEEAA' : '#AABBDD';
+        const rayTintCanopy = isDay ? '#DDEEBB' : '#8899BB';
+        const rayIntMul = isDay ? 1.0 : 0.55;
+        const edgeBoost = isDay ? 0.08 : 0.05;
         for (let sy = 0; sy < viewH; sy++) {
           for (let sx = 0; sx < viewW; sx++) {
             const key = `${sx},${sy}`;
             if (shadowCells.has(key)) continue;
-            // Check adjacency to shadow for edge glow
+            // Edge highlighting: check adjacency to shadow for rim light
             let nearShadow = false;
             for (let nd = 1; nd <= 2; nd++) {
               const checkX = sx + Math.round((sunDir.dx || 0) * nd);
@@ -1690,10 +1700,99 @@ export class UIManager {
             const proj = sx * perpX + sy * perpY;
             const rayNoise = r._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
             if (rayNoise > 0.05) {
-              let intensity = (rayNoise - 0.05) / 0.95 * 0.15 + (nearShadow ? 0.08 : 0);
-              const tint = nearCanopy ? '#DDEEBB' : '#FFEEAA';
+              let intensity = ((rayNoise - 0.05) / 0.95 * 0.15 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
+              const tint = nearCanopy ? rayTintCanopy : rayTintOpen;
               if (nearCanopy) intensity *= 1.3;
               r.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.25, intensity), tint);
+            }
+          }
+        }
+      }
+
+      // ── Lamp/torch glow in settlements (visible day and night, strongest at night) ──
+      if (sunDir && settlement.tiles) {
+        const LIGHT_TILES = {
+          '\u263C': { r: 1.0, g: 0.85, b: 0.3, rad: 4, int: 0.6, spd: 2.5 },   // ☼ lamp
+          'FIREPLACE': { r: 1.0, g: 0.5, b: 0.15, rad: 3, int: 0.7, spd: 3.0 },
+          'CAMPFIRE':  { r: 1.0, g: 0.55, b: 0.12, rad: 3, int: 0.7, spd: 3.0 },
+          'TORCH_SCONCE': { r: 1.0, g: 0.7, b: 0.3, rad: 4, int: 0.65, spd: 3.2 },
+          'TORCH':     { r: 1.0, g: 0.7, b: 0.3, rad: 4, int: 0.65, spd: 3.2 },
+        };
+        const lt = Date.now() / 1000;
+        // Night multiplier — lamps are subtle during day, vivid at night
+        const lampMul = isNight ? 1.0 : 0.25;
+        const lampSources = [];
+        for (let wy_off = 0; wy_off < worldH; wy_off++) {
+          for (let wx_off = 0; wx_off < worldW; wx_off++) {
+            const wx = camX + wx_off;
+            const wy = camY + wy_off;
+            if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
+            const t = settlement.tiles[wy][wx];
+            // Match by type or by char
+            const prof = LIGHT_TILES[t.type] || (t.char === '\u263C' ? LIGHT_TILES['\u263C'] : null);
+            if (prof) lampSources.push({ wx_off, wy_off, wx, wy, prof });
+          }
+        }
+        for (const ls of lampSources) {
+          const { wx_off, wy_off, wx, wy, prof } = ls;
+          const ph = (wx * 0.731 + wy * 0.419) % 6.28;
+          // Flickering intensity
+          const flBase = Math.sin(lt * prof.spd + ph) * 0.5 + 0.5;
+          const flJit = Math.sin(lt * 7.3 + ph) * 0.12 + Math.sin(lt * 13.1 + ph * 2) * 0.08;
+          const flicker = Math.max(0.55, Math.min(1.0, 0.65 + 0.35 * flBase + flJit));
+          const baseInt = prof.int * flicker * lampMul;
+          const rad = prof.rad;
+          const hexR = Math.round(prof.r * 255).toString(16).padStart(2, '0');
+          const hexG = Math.round(Math.min(1, prof.g * (0.9 + 0.1 * flBase)) * 255).toString(16).padStart(2, '0');
+          const hexB = Math.round(prof.b * 255).toString(16).padStart(2, '0');
+          const tintColor = `#${hexR}${hexG}${hexB}`;
+          for (let ldy = -rad; ldy <= rad; ldy++) {
+            for (let ldx = -rad; ldx <= rad; ldx++) {
+              const dist = Math.sqrt(ldx * ldx + ldy * ldy);
+              if (dist > rad) continue;
+              const tx = wx_off + ldx;
+              const ty = wy_off + ldy;
+              if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
+              const falloff = Math.max(0, 1 - dist / rad);
+              const alpha = falloff * falloff * baseInt;
+              for (let sdy = 0; sdy < density; sdy++) {
+                for (let sdx = 0; sdx < density; sdx++) {
+                  r.tintCell(viewLeft + tx * density + sdx, viewTop + ty * density + sdy, tintColor, alpha);
+                }
+              }
+            }
+          }
+        }
+
+        // ── Window/door warm glow at night — buildings emit warm light outward ──
+        if (isNight) {
+          for (let wy_off = 0; wy_off < worldH; wy_off++) {
+            for (let wx_off = 0; wx_off < worldW; wx_off++) {
+              const wx = camX + wx_off;
+              const wy = camY + wy_off;
+              if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
+              const t = settlement.tiles[wy][wx];
+              if (t.type === 'DOOR' || t.type === 'WINDOW') {
+                const wRad = 3;
+                const wph = (wx * 0.5 + wy * 0.3) % 6.28;
+                const wFlicker = 0.8 + 0.2 * Math.sin(lt * 1.5 + wph);
+                for (let ldy = -wRad; ldy <= wRad; ldy++) {
+                  for (let ldx = -wRad; ldx <= wRad; ldx++) {
+                    const dist = Math.sqrt(ldx * ldx + ldy * ldy);
+                    if (dist > wRad) continue;
+                    const tx = wx_off + ldx;
+                    const ty = wy_off + ldy;
+                    if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
+                    const falloff = Math.max(0, 1 - dist / wRad);
+                    const alpha = falloff * falloff * 0.35 * wFlicker;
+                    for (let sdy = 0; sdy < density; sdy++) {
+                      for (let sdx = 0; sdx < density; sdx++) {
+                        r.tintCell(viewLeft + tx * density + sdx, viewTop + ty * density + sdy, '#FFCC66', alpha);
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -2485,6 +2584,62 @@ export class UIManager {
       const y = logStartY + (i - startIdx);
       if (y >= rows - 1) break;
       const color = line.color || (i === logLines.length - 1 ? COLORS.BRIGHT_CYAN : COLORS.BRIGHT_BLACK);
+      r.drawString(2, y, line.text, color, COLORS.BLACK, cols - 4);
+    }
+  }
+
+  drawLoadingModal(step, logLines = []) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    r.clear();
+
+    // Centered modal box
+    const boxW = Math.min(cols - 4, 48);
+    const boxH = 11;
+    const bx = Math.floor((cols - boxW) / 2);
+    const by = Math.floor((rows - boxH) / 2);
+
+    r.drawBox(bx, by, boxW, boxH, COLORS.FF_BORDER, COLORS.FF_BLUE_DARK, ' Forging the World ');
+
+    // Animated spinner
+    const t = Date.now() / 200;
+    const spinChars = ['\u25DC', '\u25DD', '\u25DE', '\u25DF']; // ◜ ◝ ◞ ◟
+    const spin = spinChars[Math.floor(t) % spinChars.length];
+    const spinColor = [COLORS.BRIGHT_CYAN, COLORS.CYAN, COLORS.BRIGHT_BLUE, COLORS.BLUE][Math.floor(t) % 4];
+
+    // Title with spinner
+    const title = `${spin} Forging the World ${spin}`;
+    r.drawString(bx + Math.floor((boxW - title.length) / 2), by + 2, title, spinColor);
+
+    // Step label
+    const label = step.label || 'Loading...';
+    r.drawString(bx + Math.floor((boxW - label.length) / 2), by + 4, label, COLORS.BRIGHT_WHITE);
+
+    // Progress bar
+    const barW = boxW - 8;
+    const filled = Math.floor((step.current / step.total) * barW);
+    const empty = barW - filled;
+    const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty); // █ and ░
+    const pctText = `${step.current}/${step.total}`;
+    r.drawString(bx + 3, by + 6, '[', COLORS.BRIGHT_BLACK);
+    r.drawString(bx + 4, by + 6, bar, COLORS.BRIGHT_CYAN);
+    r.drawString(bx + 4 + barW, by + 6, ']', COLORS.BRIGHT_BLACK);
+    r.drawString(bx + 4 + barW + 2, by + 6, pctText, COLORS.WHITE);
+
+    // Animated dots
+    const dots = '.'.repeat(Math.floor(t / 2) % 4);
+    r.drawString(bx + Math.floor((boxW - label.length) / 2) + label.length, by + 4, dots, COLORS.BRIGHT_BLACK);
+
+    // Show last few log lines below the modal
+    const logStartY = by + boxH + 1;
+    const maxLines = Math.min(logLines.length, rows - logStartY - 1);
+    const startIdx = Math.max(0, logLines.length - maxLines);
+    for (let i = startIdx; i < logLines.length; i++) {
+      const line = logLines[i];
+      const y = logStartY + (i - startIdx);
+      if (y >= rows - 1) break;
+      const color = i === logLines.length - 1 ? COLORS.BRIGHT_BLACK : COLORS.BRIGHT_BLACK;
       r.drawString(2, y, line.text, color, COLORS.BLACK, cols - 4);
     }
   }

@@ -583,6 +583,7 @@ class Game {
     this.setState('LOADING');
     this._loadLog = [];
     this._loadStep = 0;
+    this._loadingStep = null; // {current, total, label} for post-history loading modal
     this._worldGenEvents = [];
     this._worldGenStats = { currentYear: 0, activeCivs: 0, fallenCivs: 0, wars: 0, figures: 0, artifacts: 0, catastrophes: 0, treaties: 0, totalPop: 0 };
     this._worldGenEra = null;
@@ -593,7 +594,12 @@ class Game {
     };
 
     const flush = (header) => {
-      this.ui.drawLoading(header, this._loadLog);
+      this.renderer.beginFrame();
+      if (this._loadingStep) {
+        this.ui.drawLoadingModal(this._loadingStep, this._loadLog);
+      } else {
+        this.ui.drawLoading(header, this._loadLog);
+      }
       this.renderer.endFrame();
       this.renderer.postProcess();
     };
@@ -704,6 +710,7 @@ class Game {
       },
       // Step 3: Wire history into subsystems
       () => {
+        this._loadingStep = { current: 1, total: 10, label: 'Weaving history into the world...' };
         this.loreGen.setWorldHistory(this.worldHistoryGen);
         this.dialogueSys.setWorldHistory(this.worldHistoryGen);
         this.npcGen.setWorldHistory(this.worldHistoryGen);
@@ -721,6 +728,7 @@ class Game {
       },
       // Step 4: Generate terrain and chunks
       () => {
+        this._loadingStep = { current: 2, total: 10, label: 'Charting the terrain...' };
         log('Charting the lands...', COLORS.BRIGHT_CYAN);
         log('  Generating Perlin noise heightmap (scale: 0.04)', COLORS.WHITE);
         log('  Computing moisture overlay for biome distribution', COLORS.WHITE);
@@ -729,6 +737,7 @@ class Game {
       },
       // Step 5: Create ChunkManager and generate initial chunks (with historical map scars)
       () => {
+        this._loadingStep = { current: 3, total: 10, label: 'Mapping the regions...' };
         this.overworld = new ChunkManager(this.seed);
         // Wire historical map scars into terrain generation
         if (this.worldHistoryGen && this.worldHistoryGen.mapScars && this.worldHistoryGen.mapScars.length > 0) {
@@ -751,6 +760,7 @@ class Game {
       },
       // Step 6: Populate locations
       () => {
+        this._loadingStep = { current: 4, total: 10, label: 'Populating the world...' };
         log('Surveying settlements and landmarks...', COLORS.BRIGHT_CYAN);
         const typeCounts = {};
         const typePopulation = {};
@@ -771,6 +781,7 @@ class Game {
       },
       // Step 7: Initialize faction system
       () => {
+        this._loadingStep = { current: 5, total: 10, label: 'Forming factions...' };
         log('Establishing faction allegiances...', COLORS.BRIGHT_CYAN);
         if (this.worldHistoryGen) {
           this.factionSystem.enrichWithWorldHistory(this.worldHistoryGen);
@@ -784,6 +795,7 @@ class Game {
       },
       // Step 8: Generate world events
       () => {
+        this._loadingStep = { current: 6, total: 10, label: 'Seeding events...' };
         log('Weaving the threads of fate...', COLORS.BRIGHT_CYAN);
         this.eventSystem.generateWorldEvents(this.overworld);
         log('  Festivals, plagues, and monster incursions foretold', COLORS.WHITE);
@@ -795,6 +807,7 @@ class Game {
       },
       // Step 9: Generate lore
       () => {
+        this._loadingStep = { current: 7, total: 10, label: 'Recovering ancient lore...' };
         log('Recovering ancient lore...', COLORS.BRIGHT_CYAN);
         const factionNames = this.factionSystem.getAllFactionNames();
         const locationNames = this.overworld.getLoadedLocations().map(l => l.name);
@@ -804,6 +817,7 @@ class Game {
       },
       // Step 10: Initialize weather
       () => {
+        this._loadingStep = { current: 8, total: 10, label: 'Reading the skies...' };
         log('Reading the skies...', COLORS.BRIGHT_CYAN);
         log(`  Current weather: ${this.weatherSystem.current || 'clear'}`, COLORS.WHITE);
         log('  Day/night cycle active', COLORS.WHITE);
@@ -811,6 +825,7 @@ class Game {
       },
       // Step 11: Create player
       () => {
+        this._loadingStep = { current: 9, total: 10, label: 'Creating your character...' };
         const race = this.charGenState.race || 'human';
         const pClass = this.charGenState.playerClass || 'junk_collector';
         const name = this.charGenState.name || 'Wanderer';
@@ -824,6 +839,7 @@ class Game {
       },
       // Step 12: Place player and enter world
       () => {
+        this._loadingStep = { current: 10, total: 10, label: 'Entering the world...' };
         const loadedLocs = this.overworld.getLoadedLocations();
         const startLoc = loadedLocs.find(l => l.type === 'village') || loadedLocs[0];
         if (startLoc) {
@@ -3922,7 +3938,9 @@ class Game {
         break;
 
       case 'LOADING':
-        if (this._worldGenEvents && this._worldGenEvents.length > 0) {
+        if (this._loadingStep) {
+          this.ui.drawLoadingModal(this._loadingStep, this._loadLog);
+        } else if (this._worldGenEvents && this._worldGenEvents.length > 0) {
           this.ui.drawWorldGen(this._worldGenEvents, this._worldGenStats || {}, this._worldGenEra, this._worldGenPhase);
         } else {
           this.ui.drawLoading('Generating world...');
@@ -4568,6 +4586,96 @@ class Game {
       }
     }
 
+    // ── Night glow for flowing/luminous tiles (pulsating, color-shifting, organic) ──
+    if (isNight) {
+      const NIGHT_GLOW = {
+        OCEAN:       { hMin: 190, hMax: 220, int: 0.12, spd: 0.8,  rad: 1, pat: 'wave' },
+        DEEP_OCEAN:  { hMin: 200, hMax: 240, int: 0.10, spd: 0.6,  rad: 1, pat: 'wave' },
+        DEEP_LAKE:   { hMin: 200, hMax: 240, int: 0.10, spd: 0.6,  rad: 1, pat: 'wave' },
+        SHALLOWS:    { hMin: 170, hMax: 210, int: 0.14, spd: 1.0,  rad: 1, pat: 'wave' },
+        WATER:       { hMin: 180, hMax: 215, int: 0.12, spd: 0.8,  rad: 1, pat: 'wave' },
+        TIDAL_POOL:  { hMin: 175, hMax: 220, int: 0.16, spd: 1.2,  rad: 1, pat: 'wave' },
+        RIVER:       { hMin: 180, hMax: 210, int: 0.13, spd: 0.9,  rad: 1, pat: 'wave' },
+        STREAM:      { hMin: 180, hMax: 210, int: 0.11, spd: 0.9,  rad: 1, pat: 'wave' },
+        LAVA:        { hMin: 0,   hMax: 35,  int: 0.28, spd: 1.5,  rad: 2, pat: 'flicker' },
+        REACTOR_SLAG:{ hMin: 5,   hMax: 40,  int: 0.25, spd: 1.4,  rad: 2, pat: 'flicker' },
+        TOXIC_SUMP:  { hMin: 85,  hMax: 130, int: 0.18, spd: 1.0,  rad: 1, pat: 'pulse' },
+        BOG:         { hMin: 90,  hMax: 120, int: 0.10, spd: 0.7,  rad: 1, pat: 'pulse' },
+        MARSH_REEDS: { hMin: 80,  hMax: 110, int: 0.08, spd: 0.6,  rad: 1, pat: 'pulse' },
+        CRYSTAL_ZONE:{ hMin: 165, hMax: 200, int: 0.22, spd: 1.2,  rad: 2, pat: 'wave' },
+        VOID_RIFT:   { hMin: 260, hMax: 310, int: 0.20, spd: 0.5,  rad: 2, pat: 'pulse' },
+        GLITCH_ZONE: { hMin: 300, hMax: 360, int: 0.24, spd: 2.0,  rad: 1, pat: 'flicker' },
+        ABYSS:       { hMin: 240, hMax: 280, int: 0.08, spd: 0.3,  rad: 1, pat: 'pulse' },
+      };
+      const now = Date.now() / 1000;
+      // Collect glow sources then apply (allows light-bleed to neighbours)
+      const glowCells = []; // {wx_off, wy_off, profile, wx, wy}
+      for (let wy_off = 0; wy_off < worldH; wy_off++) {
+        for (let wx_off = 0; wx_off < worldW; wx_off++) {
+          const wx = camX + wx_off;
+          const wy = camY + wy_off;
+          const tile = this.overworld.getTile(wx, wy);
+          const prof = NIGHT_GLOW[tile.type];
+          if (prof) glowCells.push({ wx_off, wy_off, prof, wx, wy });
+        }
+      }
+      for (const gc of glowCells) {
+        const { wx_off, wy_off, prof, wx, wy } = gc;
+        // Per-tile phase offset for organic feel (positional hash)
+        const phaseOff = (wx * 0.137 + wy * 0.293) % 6.28;
+        const t = now * prof.spd + phaseOff;
+        let hue, sat, lit;
+        if (prof.pat === 'wave') {
+          const phase = Math.sin(t * 1.8) * 0.5 + 0.5;
+          hue = prof.hMin + (prof.hMax - prof.hMin) * phase;
+          sat = 70 + phase * 25;
+          lit = 55 + Math.sin(t * 2.2) * 15;
+        } else if (prof.pat === 'pulse') {
+          const phase = Math.sin(t * 2.5) * 0.5 + 0.5;
+          hue = (prof.hMin + prof.hMax) * 0.5;
+          sat = 75 + phase * 20;
+          lit = 50 + phase * 25;
+        } else { // flicker
+          const base = Math.sin(t * 3.0) * 0.5 + 0.5;
+          const jitter = Math.sin(t * 7.3) * 0.15 + Math.sin(t * 13.1) * 0.1;
+          const phase = Math.max(0, Math.min(1, base + jitter));
+          hue = prof.hMin + (prof.hMax - prof.hMin) * phase;
+          sat = 85;
+          lit = 45 + phase * 30;
+        }
+        // Convert HSL to hex for tintCell
+        const h = hue / 360, s = sat / 100, l = lit / 100;
+        const hue2rgb = (p, q, t2) => { if (t2 < 0) t2++; if (t2 > 1) t2--; return t2 < 1/6 ? p + (q-p)*6*t2 : t2 < 1/2 ? q : t2 < 2/3 ? p + (q-p)*(2/3-t2)*6 : p; };
+        const q = l < 0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+        const rr = Math.round(hue2rgb(p,q,h+1/3)*255).toString(16).padStart(2,'0');
+        const gg = Math.round(hue2rgb(p,q,h)*255).toString(16).padStart(2,'0');
+        const bb = Math.round(hue2rgb(p,q,h-1/3)*255).toString(16).padStart(2,'0');
+        const glowColor = `#${rr}${gg}${bb}`;
+        // Apply glow to tile itself + bleed to surrounding tiles
+        const rad = prof.rad;
+        for (let ldy = -rad; ldy <= rad; ldy++) {
+          for (let ldx = -rad; ldx <= rad; ldx++) {
+            const dist = Math.sqrt(ldx * ldx + ldy * ldy);
+            if (dist > rad) continue;
+            const tx = wx_off + ldx;
+            const ty = wy_off + ldy;
+            if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
+            // Check fog: skip if this target cell is fogged
+            const twx = camX + tx, twy = camY + ty;
+            const tdist = distance(twx, twy, this.player.position.x, this.player.position.y);
+            if (tdist > viewRange) continue;
+            const falloff = Math.max(0, 1 - dist / Math.max(rad, 1));
+            const alpha = falloff * falloff * prof.int;
+            for (let sdy = 0; sdy < density; sdy++) {
+              for (let sdx = 0; sdx < density; sdx++) {
+                r.tintCell(viewLeft + tx * density + sdx, viewTop + ty * density + sdy, glowColor, alpha);
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Store shadow data for post-process tinting pass
     this._shadowCells = shadowCells;
 
@@ -4626,20 +4734,65 @@ class Game {
         intensity: lightInfo.hasLight ? 1.0 : 0.7,
       });
 
-      // Static light sources (fireplaces, lava, etc)
+      // Dynamic light sources (fireplaces, lava, ruins crystals, etc.)
+      // Time-based modulation for organic flickering/pulsing
+      const lt = Date.now() / 1000;
       for (let ty = Math.max(0, offsetY); ty < Math.min(dh, offsetY + worldH); ty++) {
         for (let tx = Math.max(0, offsetX); tx < Math.min(dw, offsetX + worldW); tx++) {
           const tile = this.currentDungeon.tiles[ty]?.[tx];
           if (!tile) continue;
+          // Per-tile phase offset for organic variation
+          const ph = (tx * 0.731 + ty * 0.419) % 6.28;
+          let lr, lg, lb, li, lrad;
+          let flickerType = 'none'; // none, torch, crystal, ember, pulse
           if (tile.type === 'FIREPLACE' || tile.type === 'CAMPFIRE') {
-            lightSources.push({ x: tx, y: ty, radius: 4, r: 1.0, g: 0.5, b: 0.15, intensity: 0.8 });
+            lr = 1.0; lg = 0.5; lb = 0.15; li = 0.8; lrad = 4; flickerType = 'torch';
           } else if (tile.type === 'LAVA') {
-            lightSources.push({ x: tx, y: ty, radius: 3, r: 1.0, g: 0.13, b: 0.0, intensity: 0.6 });
+            lr = 1.0; lg = 0.13; lb = 0.0; li = 0.6; lrad = 3; flickerType = 'ember';
           } else if (tile.type === 'TORCH_SCONCE' || tile.type === 'TORCH') {
-            lightSources.push({ x: tx, y: ty, radius: 5, r: 1.0, g: 0.7, b: 0.3, intensity: 0.7 });
+            lr = 1.0; lg = 0.7; lb = 0.3; li = 0.7; lrad = 5; flickerType = 'torch';
           } else if (tile.type === 'MECH_CONDUIT') {
-            lightSources.push({ x: tx, y: ty, radius: 4, r: 0.2, g: 0.6, b: 1.0, intensity: 0.65 });
+            lr = 0.2; lg = 0.6; lb = 1.0; li = 0.65; lrad = 4; flickerType = 'pulse';
+          } else if (tile.type === 'GLOWING_RUNE') {
+            lr = 0.6; lg = 0.2; lb = 1.0; li = 0.7; lrad = 5; flickerType = 'crystal';
+          } else if (tile.type === 'ANCIENT_CRYSTAL') {
+            lr = 0.15; lg = 0.9; lb = 1.0; li = 0.75; lrad = 6; flickerType = 'crystal';
+          } else if (tile.type === 'EMBER_PIT') {
+            lr = 1.0; lg = 0.35; lb = 0.08; li = 0.65; lrad = 4; flickerType = 'ember';
+          } else if (tile.type === 'BIOLUM_MOSS') {
+            lr = 0.15; lg = 1.0; lb = 0.5; li = 0.5; lrad = 3; flickerType = 'pulse';
+          } else { continue; }
+          // Apply time-based modulation
+          if (flickerType === 'torch') {
+            // Fast jittery flicker like a flame
+            const f = Math.sin(lt * 3.0 + ph) * 0.5 + 0.5;
+            const j = Math.sin(lt * 7.3 + ph) * 0.15 + Math.sin(lt * 13.1 + ph * 2) * 0.1;
+            const mod = Math.max(0.6, Math.min(1.0, 0.7 + 0.3 * f + j));
+            li *= mod;
+            // Slight warmth shift
+            lg *= (0.9 + 0.1 * f);
+          } else if (flickerType === 'crystal') {
+            // Slow, mesmerizing wave with color shift
+            const wave = Math.sin(lt * 1.2 + ph) * 0.5 + 0.5;
+            const wave2 = Math.sin(lt * 0.7 + ph * 1.5) * 0.5 + 0.5;
+            li *= (0.65 + 0.35 * wave);
+            // Hue rotation: shift RGB components
+            lr = lr * (0.7 + 0.3 * wave2);
+            lg = lg * (0.8 + 0.2 * (1 - wave));
+            lb = lb * (0.75 + 0.25 * wave);
+            lrad = lrad + Math.round(wave * 1.5);
+          } else if (flickerType === 'ember') {
+            // Medium pulse with occasional flare
+            const pulse = Math.sin(lt * 2.0 + ph) * 0.5 + 0.5;
+            const flare = Math.max(0, Math.sin(lt * 0.4 + ph) - 0.7) * 3.3; // occasional bright flare
+            li *= (0.6 + 0.3 * pulse + 0.15 * flare);
+            lg *= (0.8 + 0.4 * pulse); // shifts more orange when brighter
+          } else if (flickerType === 'pulse') {
+            // Smooth, steady pulse
+            const pulse = Math.sin(lt * 1.8 + ph) * 0.5 + 0.5;
+            li *= (0.7 + 0.3 * pulse);
           }
+          lightSources.push({ x: tx, y: ty, radius: lrad, r: lr, g: lg, b: lb, intensity: li });
         }
       }
 
