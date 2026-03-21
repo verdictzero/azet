@@ -3885,6 +3885,25 @@ export class RuinGenerator {
       }
     }
 
+    // Place atmospheric light sources in ruins
+    const lightCount = rng.nextInt(2, 5 + Math.floor(damageFraction * 4));
+    for (let i = 0; i < lightCount; i++) {
+      const lx = rng.nextInt(1, width - 2);
+      const ly = rng.nextInt(1, height - 2);
+      if (baseTiles[ly][lx].walkable && baseTiles[ly][lx].type !== 'HOLE') {
+        const lightType = rng.random([
+          { type: 'GLOWING_RUNE', char: '\u2726', fg: '#9955FF', bg: '#1a0033', name: 'glowing rune' },       // ✦
+          { type: 'GLOWING_RUNE', char: '\u2606', fg: '#AA66FF', bg: '#1a0033', name: 'pulsing sigil' },       // ☆
+          { type: 'ANCIENT_CRYSTAL', char: '\u25C6', fg: '#44FFEE', bg: '#002222', name: 'ancient crystal' },   // ◆
+          { type: 'ANCIENT_CRYSTAL', char: '\u2666', fg: '#33EEFF', bg: '#001a22', name: 'humming crystal' },   // ♦
+          { type: 'EMBER_PIT', char: '\u2237', fg: '#FF6622', bg: '#221100', name: 'smouldering embers' },      // ∷
+          { type: 'EMBER_PIT', char: '\u2059', fg: '#FF4400', bg: '#220800', name: 'dying fire pit' },          // ⁙
+          { type: 'BIOLUM_MOSS', char: '\u223C', fg: '#33FF88', bg: '#001a0d', name: 'bioluminescent moss' },   // ∼
+        ]);
+        baseTiles[ly][lx] = tile(lightType.type, lightType.char, lightType.fg, lightType.bg, true);
+      }
+    }
+
     // Place environmental storytelling
     const storyElements = [];
     const storyCount = rng.nextInt(3, 8);
