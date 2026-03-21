@@ -2078,7 +2078,7 @@ export class UIManager {
     }
 
     r.drawString(px + 2, py + panelH - 1,
-      '1-8:Tab  Arrows:Scroll  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+      '1-8:Tab  \u25C4\u25BA:Tab  \u25B2\u25BC:Scroll  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
   // ─── SETTINGS (FF-style Config) ───
