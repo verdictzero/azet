@@ -659,7 +659,7 @@ class Game {
     const flush = (header) => {
       this.renderer.beginFrame();
       if (this._loadingStep) {
-        this.ui.drawLoadingModal(this._loadingStep, this._loadLog);
+        this.ui.drawLoadingModal(this._loadingStep);
       } else {
         this.ui.drawLoading(header, this._loadLog);
       }
@@ -4023,7 +4023,7 @@ class Game {
 
       case 'LOADING':
         if (this._loadingStep) {
-          this.ui.drawLoadingModal(this._loadingStep, this._loadLog);
+          this.ui.drawLoadingModal(this._loadingStep);
         } else if (this._worldGenEvents && this._worldGenEvents.length > 0) {
           this.ui.drawWorldGen(this._worldGenEvents, this._worldGenStats || {}, this._worldGenEra, this._worldGenPhase);
         } else {
