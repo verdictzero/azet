@@ -17,12 +17,19 @@ export class MusicManager {
     this.audioB = new Audio();
     this.audioA.loop = true;
     this.audioB.loop = true;
+    this.audioA.preload = 'auto';
+    this.audioB.preload = 'auto';
     this._active = this.audioA; // currently playing element
     this.currentTrack = null;
     this.volume = 0.5;
     this.muted = false;
     this.crossfadeDuration = 1500;
     this._fadeInterval = null;
+    this._pendingResume = null;
+
+    // Preload title music so it's ready for instant playback on first interaction
+    this.audioA.src = TRACKS.TITLE;
+    this.audioA.load();
   }
 
   play(trackPath, { loop = true, fadeDuration } = {}) {
@@ -86,13 +93,22 @@ export class MusicManager {
     const playPromise = incoming.play();
     if (playPromise) {
       playPromise.catch(() => {
+        // Browser blocked autoplay — resume on the very first user interaction
+        this._pendingResume = incoming;
+        const events = ['click', 'keydown', 'touchstart', 'pointerdown', 'mousedown'];
         const resume = () => {
-          incoming.play().catch(() => {});
-          document.removeEventListener('click', resume);
-          document.removeEventListener('keydown', resume);
+          if (this._pendingResume) {
+            // Reset to start and play at correct volume immediately
+            this._pendingResume.currentTime = 0;
+            this._pendingResume.volume = this.muted ? 0 : this.volume;
+            this._pendingResume.play().catch(() => {});
+            this._pendingResume = null;
+          }
+          for (const evt of events) document.removeEventListener(evt, resume);
         };
-        document.addEventListener('click', resume, { once: true });
-        document.addEventListener('keydown', resume, { once: true });
+        for (const evt of events) {
+          document.addEventListener(evt, resume, { once: true });
+        }
       });
     }
 
