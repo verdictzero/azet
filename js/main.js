@@ -7,6 +7,7 @@ import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
 import { getMonsterArt } from './monsterart.js';
 import { expandTile } from './tileExpansion.js';
+import { MusicManager, TRACKS } from './music.js';
 
 // ─── Save Export/Import Cipher ───
 const SAVE_CIPHER_KEY = 'AETHON-ASCIIQUEST-2024';
@@ -125,6 +126,7 @@ class Game {
     this.camera = new Camera(this.renderer.cols - 2, this.renderer.rows - LAYOUT.HUD_TOTAL);
     this.locationCamera = null;
     this.ui = new UIManager(this.renderer);
+    this.music = new MusicManager();
     this._loadVersion();
 
     // Auto-refresh: version polling
@@ -146,6 +148,8 @@ class Game {
       touchControls: true,
       autoSaveInterval: 100, // turns
       showQuestNav: true, // quest navigation overlay
+      musicVolume: 0.5,
+      musicMuted: false,
     };
     this._loadSettings();
     this.prevState = null;
@@ -424,6 +428,60 @@ class Game {
     }
     // Update touch controls layout for new state
     this.input.updateTouchLayout(newState);
+    this._updateMusic(newState);
+  }
+
+  _updateMusic(newState) {
+    if (!this.music) return;
+    const overlayStates = [
+      'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'HELP',
+      'SETTINGS', 'DIALOGUE', 'SHOP', 'FACTION', 'ALMANAC',
+      'CONSOLE_LOG', 'DEBUG_MENU', 'QUEST_COMPASS'
+    ];
+    if (overlayStates.includes(newState)) return;
+
+    switch (newState) {
+      case 'MENU':
+      case 'CHAR_CREATE':
+        this.music.play(TRACKS.TITLE);
+        break;
+      case 'LOADING':
+      case 'WORLD_GEN_PAUSE':
+        break;
+      case 'OVERWORLD':
+        this._currentTownTrack = null;
+        this._currentRuinsTrack = null;
+        if (this.timeSystem) {
+          this.music.play(this.timeSystem.isDaytime() ? TRACKS.OVERWORLD_DAY : TRACKS.OVERWORLD_NIGHT);
+        }
+        break;
+      case 'LOCATION':
+        if (!this._currentTownTrack) {
+          this._currentTownTrack = TRACKS.TOWN[Math.floor(Math.random() * TRACKS.TOWN.length)];
+        }
+        this.music.play(this._currentTownTrack);
+        break;
+      case 'DUNGEON':
+        if (!this._currentRuinsTrack) {
+          this._currentRuinsTrack = TRACKS.RUINS[Math.floor(Math.random() * TRACKS.RUINS.length)];
+        }
+        this.music.play(this._currentRuinsTrack);
+        break;
+      case 'BATTLE_ENTER':
+      case 'COMBAT':
+        if (!this.music.currentTrack || !this.music.currentTrack.includes('battle')) {
+          this.music.play(TRACKS.BATTLE);
+        }
+        break;
+      case 'ENEMY_DEATH':
+        break;
+      case 'BATTLE_RESULTS':
+        this.music.play(TRACKS.FANFARE, { loop: false });
+        break;
+      case 'GAME_OVER':
+        this.music.stop();
+        break;
+    }
   }
 
   _zoomIn() {
@@ -523,6 +581,7 @@ class Game {
     };
     this.ui.addMessage(`${enemy.name} appeared!`, COLORS.BRIGHT_RED);
     this.battleEnterTimer = 0;
+    this.music.play(enemy.isBoss ? TRACKS.BOSS_BATTLE : TRACKS.BATTLE);
     this.setState('BATTLE_ENTER');
   }
 
@@ -2685,6 +2744,19 @@ class Game {
       this.settings.showQuestNav = !this.settings.showQuestNav;
       this._saveSettings();
     }
+    // Music controls
+    if (key === 'v' || key === 'V') {
+      const steps = [0, 0.25, 0.5, 0.75, 1.0];
+      const curIdx = steps.indexOf(this.settings.musicVolume);
+      this.settings.musicVolume = steps[(curIdx + 1) % steps.length];
+      this.music.setVolume(this.settings.musicVolume);
+      this._saveSettings();
+    }
+    if (key === 'm' || key === 'M') {
+      this.settings.musicMuted = !this.settings.musicMuted;
+      this.music.setMuted(this.settings.musicMuted);
+      this._saveSettings();
+    }
     // Export/Import
     if (key === '9') { this.exportSave(); }
     if (key === '0') { this.importSave(); }
@@ -3623,6 +3695,10 @@ class Game {
       this.renderer.crtOptions = this.settings;
     }
     if (this.input) this.input.enableTouch = this.settings.touchControls;
+    if (this.music) {
+      this.music.setVolume(this.settings.musicVolume);
+      this.music.setMuted(this.settings.musicMuted);
+    }
   }
 
   _saveSettings() {
@@ -3633,6 +3709,10 @@ class Game {
     this.renderer.enableCRT = this.settings.crtEffects;
     this.renderer.crtOptions = this.settings;
     this.input.enableTouch = this.settings.touchControls;
+    if (this.music) {
+      this.music.setVolume(this.settings.musicVolume);
+      this.music.setMuted(this.settings.musicMuted);
+    }
   }
 
   // ─── SAVE/LOAD ───
@@ -5697,6 +5777,14 @@ class Game {
       this.timeSystem.setRealTimePaused(!isGameplay);
       if (isGameplay) {
         this.timeSystem.updateRealTime(timestamp);
+      }
+    }
+
+    // Check for overworld day/night music crossfade
+    if (this.state === 'OVERWORLD' && this.music && this.timeSystem) {
+      const wantTrack = this.timeSystem.isDaytime() ? TRACKS.OVERWORLD_DAY : TRACKS.OVERWORLD_NIGHT;
+      if (this.music.currentTrack !== wantTrack) {
+        this.music.play(wantTrack);
       }
     }
 
