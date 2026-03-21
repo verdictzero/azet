@@ -3959,7 +3959,7 @@ class Game {
 
       case 'LOCATION':
         if (this.locationCamera) { this.locationCamera.follow(this.player); this.locationCamera.update(); }
-        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.timeSystem.getSunDirection());
+        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.timeSystem.getSunDirection(), this.timeSystem.hour);
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
         this._renderQuestNavIndicator();
         break;
