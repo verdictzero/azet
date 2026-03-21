@@ -1759,29 +1759,59 @@ export class WeatherSystem {
   getVisualEffect() {
     switch (this.current) {
       case 'rain':
-        return { char: '|', fg: '#4466AA', density: this.intensity * 0.08 };
+        return { char: '|', fg: '#4466AA', density: this.intensity * 0.02 };
       case 'snow':
-        return { char: '.', fg: '#CCCCCC', density: this.intensity * 0.05 };
+        return { char: '.', fg: '#CCCCCC', density: this.intensity * 0.015 };
       case 'storm':
-        return { char: '/', fg: '#6688CC', density: this.intensity * 0.12 };
+        return { char: '/', fg: '#6688CC', density: this.intensity * 0.035 };
       case 'sandstorm':
-        return { char: '.', fg: '#AA8844', density: this.intensity * 0.1 };
-      case 'fog':
-        return { char: '~', fg: '#666666', density: this.intensity * 0.03 };
+        return { char: '.', fg: '#AA8844', density: this.intensity * 0.025 };
       case 'acid_rain':
-        return { char: '|', fg: '#88FF00', density: this.intensity * 0.08 };
-      case 'coolant_mist':
-        return { char: '.', fg: '#88DDFF', density: this.intensity * 0.04 };
+        return { char: '|', fg: '#88FF00', density: this.intensity * 0.02 };
       case 'ember_rain':
-        return { char: ',', fg: '#FF6622', density: this.intensity * 0.07 };
+        return { char: ',', fg: '#FF6622', density: this.intensity * 0.02 };
       case 'data_storm':
-        return { char: '#', fg: '#FF0088', density: this.intensity * 0.1 };
-      case 'nano_haze':
-        return { char: '.', fg: '#AAAAAA', density: this.intensity * 0.05 };
+        return { char: '#', fg: '#FF0088', density: this.intensity * 0.03 };
       case 'ion_storm':
-        return { char: '/', fg: '#FFFF44', density: this.intensity * 0.12 };
+        return { char: '/', fg: '#FFFF44', density: this.intensity * 0.03 };
       case 'blood_rain':
-        return { char: '|', fg: '#AA2244', density: this.intensity * 0.08 };
+        return { char: '|', fg: '#AA2244', density: this.intensity * 0.02 };
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Get ambient lighting effect for weather rendering.
+   * Returns { tintColor, tintAlpha, brightnessShift, pulseSpeed, pulseAmount } or null.
+   */
+  getAmbientEffect() {
+    const i = this.intensity;
+    switch (this.current) {
+      case 'rain':
+        return { tintColor: '#223355', tintAlpha: i * 0.18, brightnessShift: i * -0.08, pulseSpeed: 0.4, pulseAmount: 0.03 };
+      case 'snow':
+        return { tintColor: '#CCDDFF', tintAlpha: i * 0.12, brightnessShift: i * 0.05, pulseSpeed: 0.2, pulseAmount: 0.02 };
+      case 'storm':
+        return { tintColor: '#111133', tintAlpha: i * 0.28, brightnessShift: i * -0.15, pulseSpeed: 2.5, pulseAmount: 0.08 };
+      case 'sandstorm':
+        return { tintColor: '#AA7733', tintAlpha: i * 0.22, brightnessShift: i * -0.05, pulseSpeed: 0.6, pulseAmount: 0.04 };
+      case 'fog':
+        return { tintColor: '#888888', tintAlpha: i * 0.25, brightnessShift: i * -0.03, pulseSpeed: 0.1, pulseAmount: 0.01 };
+      case 'acid_rain':
+        return { tintColor: '#335500', tintAlpha: i * 0.18, brightnessShift: i * -0.06, pulseSpeed: 0.5, pulseAmount: 0.03 };
+      case 'coolant_mist':
+        return { tintColor: '#66BBDD', tintAlpha: i * 0.15, brightnessShift: i * 0.03, pulseSpeed: 0.3, pulseAmount: 0.02 };
+      case 'ember_rain':
+        return { tintColor: '#552200', tintAlpha: i * 0.20, brightnessShift: i * -0.08, pulseSpeed: 0.8, pulseAmount: 0.04 };
+      case 'data_storm':
+        return { tintColor: '#330044', tintAlpha: i * 0.22, brightnessShift: i * -0.10, pulseSpeed: 3.0, pulseAmount: 0.06 };
+      case 'nano_haze':
+        return { tintColor: '#444455', tintAlpha: i * 0.14, brightnessShift: i * -0.02, pulseSpeed: 0.2, pulseAmount: 0.01 };
+      case 'ion_storm':
+        return { tintColor: '#444400', tintAlpha: i * 0.20, brightnessShift: i * 0.04, pulseSpeed: 2.0, pulseAmount: 0.07 };
+      case 'blood_rain':
+        return { tintColor: '#330011', tintAlpha: i * 0.22, brightnessShift: i * -0.10, pulseSpeed: 0.6, pulseAmount: 0.04 };
       default:
         return null;
     }
