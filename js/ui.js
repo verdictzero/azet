@@ -548,7 +548,7 @@ export class UIManager {
 
     if (this.versionString) {
       const vLabel = `[${this.versionString}]`;
-      r.drawString(Math.floor((cols - vLabel.length) / 2), rows - 1,
+      r.drawString(Math.floor((cols - vLabel.length) / 2), titleBlockEnd,
         vLabel, COLORS.BRIGHT_BLACK, COLORS.BLACK);
     }
 
