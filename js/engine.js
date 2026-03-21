@@ -1277,6 +1277,8 @@ export class InputManager {
   // pageNames: optional array of labels shown on the tab button
   static _E = null; // shorthand for empty cell
   static TOUCH_LAYOUTS = {
+    // ── Preamble (click anywhere to start) ──
+    PREAMBLE: { pages: [[[null, null, null]]] },
     // ── Title / Main Menu ──
     MENU: { pages: [[
       [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
