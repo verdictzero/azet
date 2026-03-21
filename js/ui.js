@@ -409,13 +409,14 @@ export class UIManager {
     const compact = cols < titleWidth + 6;
 
     // Center the entire content group vertically on screen
-    // Non-compact: crystal(34) is tallest element, title overlaps it, then version(1) + gap(1) + menu(1) + gap(1) + footer(1)
+    // Non-compact: crystal(34) with title centered inside, then version(1) + gap(1) + menu(1)
     // Compact: title box(3) + version(1) + gap(1) + menu(1) + gap(1) + footer(1)
-    const contentHeight = compact ? 8 : (CRYSTAL_HEIGHT + 5);
-    const startY = Math.max(1, Math.floor((rows - contentHeight) / 2));
+    const contentHeight = compact ? 8 : (CRYSTAL_HEIGHT + 1 + 1 + 1); // crystal + version + gap + menu
+    const blockTop = Math.max(0, Math.floor((rows - contentHeight) / 2));
 
+    // In non-compact mode, title is centered within the crystal; in compact, it starts at blockTop
+    const artStartY = compact ? blockTop : blockTop + Math.floor(CRYSTAL_HEIGHT / 2) - Math.floor(title.length / 2);
     const artStartX = Math.floor((cols - titleWidth) / 2);
-    const artStartY = startY;
     const waveColors = [COLORS.BLUE, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_WHITE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
 
     // ── Layer 0.5: Animated crystal behind title card ──
@@ -423,7 +424,7 @@ export class UIManager {
       const frameIndex = Math.floor(t / 0.12) % CRYSTAL_FRAMES.length;
       const frame = CRYSTAL_FRAMES[frameIndex];
       const cx = Math.floor((cols - CRYSTAL_WIDTH) / 2);
-      const cy = startY + Math.floor(title.length / 2) - Math.floor(CRYSTAL_HEIGHT / 2);
+      const cy = blockTop;
       for (let row = 0; row < CRYSTAL_HEIGHT; row++) {
         const y = cy + row;
         if (y < 0 || y >= rows) continue;
@@ -550,7 +551,7 @@ export class UIManager {
       }
     }
 
-    const titleBlockEnd = compact ? artStartY + 3 : artStartY + title.length;
+    const titleBlockEnd = compact ? artStartY + 3 : blockTop + CRYSTAL_HEIGHT;
 
     if (this.versionString) {
       const vLabel = `[${this.versionString}]`;
