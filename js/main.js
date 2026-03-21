@@ -1097,6 +1097,7 @@ class Game {
       case 'GAME_OVER': return this.handleGameOverInput(key);
       case 'COMBAT': return this.handleCombatInput(key);
       case 'BATTLE_ENTER': return; // no input during enter animation
+      case 'ENEMY_DEATH': return; // no input during death animation
       case 'BATTLE_RESULTS': return this.handleBattleResultsInput(key);
       case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
       case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
@@ -2193,9 +2194,7 @@ class Game {
           if (enemy.stats.hp <= 0) {
             const deadEnemy = enemy;
             this.ui.addMessage(`${deadEnemy.name} defeated!`, COLORS.BRIGHT_GREEN);
-            // Death burst effect
             this.renderer.flash('#FFFFFF', 0.4);
-            this.spawnCombatParticles(15, ['\u2588', '\u2593', '\u2592', '\u2591', '*'], '#FFAA00');
 
             const xp = this.combat.calculateXPReward(deadEnemy);
             const leveled = this.player.addXP(xp);
@@ -2217,7 +2216,6 @@ class Game {
               this.particles.emit(this.player.position.x, this.player.position.y, '*', COLORS.BRIGHT_YELLOW, 10, 4, 20);
             }
 
-            // Update quest progress for KILL quests
             const activeQuests = this.questSystem.getActiveQuests();
             for (const quest of activeQuests) {
               this.questSystem.updateProgress(quest.id, 'kill', deadEnemy.name, 1);
@@ -2227,27 +2225,14 @@ class Game {
               }
             }
 
-            // Faction standing changes from combat
             if (deadEnemy.faction) {
               this.factionSystem.modifyPlayerStanding(deadEnemy.faction, -5);
-              if (deadEnemy.faction === 'MALFUNCTIONING') {
-                this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 1);
-              }
-              if (deadEnemy.faction === 'MUTANT') {
-                this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 2);
-              }
-              if (deadEnemy.faction === 'ALIEN') {
-                this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2);
-                this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 1);
-              }
-              if (deadEnemy.faction === 'ASSIMILATED') {
-                this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 3);
-                this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 2);
-                this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2);
-              }
+              if (deadEnemy.faction === 'MALFUNCTIONING') this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 1);
+              if (deadEnemy.faction === 'MUTANT') this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 2);
+              if (deadEnemy.faction === 'ALIEN') { this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2); this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 1); }
+              if (deadEnemy.faction === 'ASSIMILATED') { this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 3); this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 2); this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2); }
             }
 
-            // Reputation boost with nearby NPCs
             for (const npc of this.npcs) {
               if (distance(npc.position.x, npc.position.y, this.player.position.x, this.player.position.y) < 10) {
                 this.dialogueSys.modifyReputation(npc, 3, 'defended settlement');
@@ -2257,7 +2242,6 @@ class Game {
             this.enemies = this.enemies.filter(e => e !== deadEnemy);
             this.particles.emit(deadEnemy.position.x, deadEnemy.position.y, '*', COLORS.BRIGHT_RED, 5, 3, 12);
 
-            // Store results for display and go to results screen
             this.battleResults = {
               enemyName: deadEnemy.name,
               xp,
@@ -2266,8 +2250,8 @@ class Game {
               leveled,
             };
             this.battleResultsTimer = 0;
-            this.combatState = null;
-            this.setState('BATTLE_RESULTS');
+            // Start death disintegration animation (combatState kept alive)
+            this.startEnemyDeath();
             return;
           }
 
@@ -2315,9 +2299,7 @@ class Game {
       if (result.battleOver) {
         if (result.winner === 'player') {
           const deadEnemy = this.combatState.enemy;
-          // Death burst effect
           this.renderer.flash('#FFFFFF', 0.4);
-          this.spawnCombatParticles(15, ['\u2588', '\u2593', '\u2592', '\u2591', '*'], '#FFAA00');
 
           const xp = this.combat.calculateXPReward(deadEnemy);
           const leveled = this.player.addXP(xp);
@@ -2333,58 +2315,38 @@ class Game {
           }
           this.ui.addMessage(`${xp} EXP received.`, COLORS.BRIGHT_CYAN);
 
-          // Level-up effects
           if (leveled.length > 0) {
             this.ui.addMessage(`Level up! Lv ${leveled[leveled.length - 1]}!`, COLORS.BRIGHT_YELLOW);
             this.renderer.flash('#FFFF00', 0.5);
             this.particles.emit(this.player.position.x, this.player.position.y, '*', COLORS.BRIGHT_YELLOW, 10, 4, 20);
           }
 
-          // Update quest progress for KILL quests
           const activeQuests = this.questSystem.getActiveQuests();
           for (const quest of activeQuests) {
             this.questSystem.updateProgress(quest.id, 'kill', deadEnemy.name, 1);
-            // Also check generic monster kills
             this.questSystem.updateProgress(quest.id, 'kill', 'any', 1);
             if (this.questSystem.checkCompletion(quest.id)) {
               this.ui.addMessage(`Quest "${quest.title}" is ready to turn in!`, COLORS.BRIGHT_YELLOW);
             }
           }
 
-          // Faction standing changes from combat
           if (deadEnemy.faction) {
             this.factionSystem.modifyPlayerStanding(deadEnemy.faction, -5);
-            if (deadEnemy.faction === 'MALFUNCTIONING') {
-              this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 1);
-            }
-            if (deadEnemy.faction === 'MUTANT') {
-              this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 2);
-            }
-            if (deadEnemy.faction === 'ALIEN') {
-              this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2);
-              this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 1);
-            }
-            if (deadEnemy.faction === 'ASSIMILATED') {
-              this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 3);
-              this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 2);
-              this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2);
-            }
+            if (deadEnemy.faction === 'MALFUNCTIONING') this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 1);
+            if (deadEnemy.faction === 'MUTANT') this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 2);
+            if (deadEnemy.faction === 'ALIEN') { this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2); this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 1); }
+            if (deadEnemy.faction === 'ASSIMILATED') { this.factionSystem.modifyPlayerStanding('COLONY_GUARD', 3); this.factionSystem.modifyPlayerStanding('SALVAGE_GUILD', 2); this.factionSystem.modifyPlayerStanding('ARCHIVE_KEEPERS', 2); }
           }
 
-          // Reputation boost with nearby NPCs (if in town)
           for (const npc of this.npcs) {
             if (distance(npc.position.x, npc.position.y, this.player.position.x, this.player.position.y) < 10) {
               this.dialogueSys.modifyReputation(npc, 3, 'defended settlement');
             }
           }
 
-          // Remove dead enemy
           this.enemies = this.enemies.filter(e => e !== deadEnemy);
-
-          // Combat hit particles
           this.particles.emit(deadEnemy.position.x, deadEnemy.position.y, '*', COLORS.BRIGHT_RED, 5, 3, 12);
 
-          // Store results for display and go to results screen
           this.battleResults = {
             enemyName: deadEnemy.name,
             xp,
@@ -2393,8 +2355,8 @@ class Game {
             leveled,
           };
           this.battleResultsTimer = 0;
-          this.combatState = null;
-          this.setState('BATTLE_RESULTS');
+          // Start death disintegration animation (combatState kept alive)
+          this.startEnemyDeath();
         } else {
           this.setState('GAME_OVER');
           return;
@@ -3910,6 +3872,10 @@ class Game {
         this.renderBattleEnter();
         break;
 
+      case 'ENEMY_DEATH':
+        this.renderEnemyDeath();
+        break;
+
       case 'BATTLE_RESULTS':
         this.renderBattleResults();
         break;
@@ -3942,7 +3908,7 @@ class Game {
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
     const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON'].includes(this.state);
-    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'BATTLE_RESULTS';
+    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
       || hasTimeTint
@@ -4686,43 +4652,14 @@ class Game {
     }
   }
 
-  renderCombat() {
-    if (!this.combatState) return;
-
-    const r = this.renderer;
-    const cols = r.cols;
-    const rows = r.rows;
-    const enemy = this.combatState.enemy;
-    const bg = COLORS.FF_BLUE_DARK;
-    const cs = this.combatState;
-
-    r.clear();
-
-    // ── Earthbound-style battle layout ──
-    const battleH = Math.floor(rows * 0.55);
-    const statusH = rows - battleH;
-
-    // ── Fire Voronoi animated background ──
+  // ── Reusable: render animated Voronoi fire background ──
+  renderFireBackground(r, cols, battleH, shakeX, shakeY) {
     const t = Date.now() / 1000;
     const fireChars = [' ', '.', '\u00B7', ':', '\u2219', '\u2591', '\u2592', '\u2593'];
     const fireFg = ['#FF2200', '#FF4400', '#FF6600', '#FF8800', '#FFAA00', '#FFCC00', '#FFDD44'];
     const fireBg = ['#1a0800', '#2a0e00', '#3a1500', '#4a1a00', '#5a2200', '#6a2800'];
     const numSeeds = 10;
-
-    // Screen shake offset
-    let shakeX = 0, shakeY = 0;
-    if (cs.shake && cs.shake.intensity > 0.1) {
-      shakeX = Math.round((Math.random() - 0.5) * cs.shake.intensity * 2);
-      shakeY = Math.round((Math.random() - 0.5) * cs.shake.intensity);
-      cs.shake.intensity *= cs.shake.decay;
-    } else if (cs.shake) {
-      cs.shake.intensity = 0;
-    }
-
-    // Store bg colors for compositing
-    const bgColors = [];
     for (let row = 0; row < battleH; row++) {
-      bgColors[row] = [];
       for (let col = 0; col < cols; col++) {
         let minDist = Infinity;
         let secondDist = Infinity;
@@ -4747,9 +4684,462 @@ class Game {
         if (drawCol >= 0 && drawCol < cols && drawRow >= 0 && drawRow < battleH) {
           r.drawChar(drawCol, drawRow, fireChars[ci], fireFg[fi], fireBg[bi]);
         }
-        bgColors[row][col] = fireBg[bi];
       }
     }
+  }
+
+  // ── Reusable: render combat bottom HUD (message log, player stats, command menu) ──
+  renderCombatHUD(r, cols, rows, battleH, bg) {
+    const statusH = rows - battleH;
+    const logW = Math.floor(cols * 0.55);
+    const logH = statusH;
+    r.drawBox(0, battleH, logW, logH, COLORS.FF_BORDER, bg);
+    for (let i = 0; i < Math.min(logH - 2, this.ui.messageLog.length); i++) {
+      const msg = this.ui.messageLog[i];
+      r.drawString(2, battleH + 1 + i, msg.text.substring(0, logW - 4), msg.color, bg);
+    }
+    const statusW = cols - logW;
+    const statusBoxH = Math.floor(statusH * 0.45);
+    r.drawBox(logW, battleH, statusW, statusBoxH, COLORS.FF_BORDER, bg);
+    const p = this.player;
+    r.drawString(logW + 2, battleH + 1, p.name, COLORS.BRIGHT_WHITE, bg);
+    const hpFrac = p.stats.hp / p.stats.maxHp;
+    r.drawString(logW + 2, battleH + 2, 'HP', COLORS.BRIGHT_WHITE, bg);
+    const sGaugeW = Math.min(10, statusW - 12);
+    for (let i = 0; i < sGaugeW; i++) {
+      r.drawChar(logW + 5 + i, battleH + 2, i < Math.round(hpFrac * sGaugeW) ? '\u2588' : '\u2591',
+        hpFrac < 0.25 ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN, bg);
+    }
+    const hpColor = hpFrac < 0.25 ? COLORS.BRIGHT_RED : hpFrac < 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_WHITE;
+    r.drawString(logW + 6 + sGaugeW, battleH + 2, `${p.stats.hp}`, hpColor, bg);
+    const mpFrac = p.stats.maxMana > 0 ? p.stats.mana / p.stats.maxMana : 0;
+    r.drawString(logW + 2, battleH + 3, 'MP', COLORS.BRIGHT_WHITE, bg);
+    for (let i = 0; i < sGaugeW; i++) {
+      r.drawChar(logW + 5 + i, battleH + 3, i < Math.round(mpFrac * sGaugeW) ? '\u2588' : '\u2591',
+        COLORS.BRIGHT_CYAN, bg);
+    }
+    r.drawString(logW + 6 + sGaugeW, battleH + 3, `${p.stats.mana}`, COLORS.BRIGHT_CYAN, bg);
+    const cmdY = battleH + statusBoxH;
+    const cmdH = statusH - statusBoxH;
+    r.drawBox(logW, cmdY, statusW, cmdH, COLORS.FF_BORDER, bg);
+    const actions = ['Attack', 'Flee'];
+    if (p.abilities && p.abilities.length > 0) {
+      for (let i = 0; i < Math.min(p.abilities.length, 3); i++) {
+        actions.push(`${p.abilities[i].name}`);
+      }
+    }
+    const combatSel = (this.combatState && this.combatState.selectedAction) || 0;
+    for (let i = 0; i < actions.length && i < cmdH - 2; i++) {
+      const sel = i === combatSel;
+      const cursor = sel ? '\u25BA' : ' ';
+      r.drawString(logW + 2, cmdY + 1 + i, cursor + ' ' + actions[i],
+        sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
+      if (i >= 2 && p.abilities[i - 2]) {
+        const cost = `${p.abilities[i - 2].manaCost}`;
+        r.drawString(logW + statusW - cost.length - 3, cmdY + 1 + i, cost, COLORS.BRIGHT_CYAN, bg);
+      }
+    }
+  }
+
+  // ── Color interpolation utility ──
+  _lerpColor(c1, c2, t) {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    const ri = Math.round(r1 + (r2 - r1) * t), gi = Math.round(g1 + (g2 - g1) * t), bi = Math.round(b1 + (b2 - b1) * t);
+    return '#' + ((1 << 24) + (ri << 16) + (gi << 8) + bi).toString(16).slice(1);
+  }
+
+  // ── Character decay sequence for death animation ──
+  _getDecaySequence(ch) {
+    const heavy = ['\u2588', '\u2593', '\u2592', '\u2591', '\u00B7', ' '];
+    const medium = ['\u2592', '\u2591', '\u00B7', ' '];
+    const light = ['\u00B7', '.', ' '];
+    if ('\u2588\u2593\u2554\u2551\u2557\u255A\u255D\u2560\u2563\u2550\u2500\u2502\u250C\u2510\u2514\u2518\u251C\u2524\u2534\u252C\u253C\u2580\u2584\u258C\u2590\u256C\u256B\u256A'.includes(ch)) return heavy;
+    if ('\u2592\u2591'.includes(ch)) return medium;
+    return light;
+  }
+
+  // ── Start enemy death disintegration animation ──
+  startEnemyDeath() {
+    const enemy = this.combatState.enemy;
+    const art = getMonsterArt(enemy);
+    const artLines = art.lines;
+    const artH = artLines.length;
+    const artW = Math.max(...artLines.map(l => l.length));
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const battleH = Math.floor(rows * 0.55);
+    const artX = Math.floor(cols / 2 - artW / 2);
+    const artY = Math.floor(battleH / 2 - artH / 2) - 1;
+    const centerX = artX + artW / 2;
+    const centerY = artY + artH / 2;
+
+    // Build debris particles from every non-space character
+    const debris = [];
+    for (let row = 0; row < artH; row++) {
+      const line = artLines[row];
+      for (let col = 0; col < line.length; col++) {
+        const ch = line[col];
+        if (ch === ' ') continue;
+        const px = artX + col;
+        const py = artY + row;
+        // Direction outward from center
+        const dx = px - centerX;
+        const dy = py - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const speed = 0.3 + Math.random() * 1.2;
+        debris.push({
+          ch,
+          origCh: ch,
+          x: px,
+          y: py,
+          origX: px,
+          origY: py,
+          vx: nx * speed + (Math.random() - 0.5) * 0.4,
+          vy: ny * speed * 0.6 - 0.3 - Math.random() * 0.4,
+          color: art.color,
+          delay: Math.floor(Math.random() * 10),
+          alpha: 1.0,
+          decayStage: 0,
+          decaySeq: this._getDecaySequence(ch),
+        });
+      }
+    }
+
+    // Generate 2-3 crack seed points within art bounds
+    const crackSeeds = [];
+    const numCracks = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < numCracks; i++) {
+      crackSeeds.push({
+        x: artX + Math.floor(Math.random() * artW),
+        y: artY + Math.floor(Math.random() * artH),
+        branches: [],
+      });
+    }
+
+    this.enemyDeathState = {
+      frame: 0,
+      debris,
+      crackSeeds,
+      crackCells: new Set(),
+      artColor: art.color,
+      artLines,
+      artX, artY, artW, artH,
+      centerX, centerY,
+      defeatedY: centerY,
+      enemyName: enemy.name,
+    };
+    // Keep combatState alive for HUD rendering
+    this.setState('ENEMY_DEATH');
+  }
+
+  // ── Enemy death disintegration animation renderer ──
+  renderEnemyDeath() {
+    const ds = this.enemyDeathState;
+    if (!ds) return;
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.FF_BLUE_DARK;
+    const frame = ds.frame;
+
+    r.clear();
+
+    const battleH = Math.floor(rows * 0.55);
+
+    // Screen shake — strong initial jolt, decaying
+    let shakeX = 0, shakeY = 0;
+    if (frame < 30) {
+      const intensity = frame < 8 ? 4 : Math.max(0, 3 - (frame - 8) * 0.15);
+      if (intensity > 0.1) {
+        shakeX = Math.round((Math.random() - 0.5) * intensity * 2);
+        shakeY = Math.round((Math.random() - 0.5) * intensity);
+      }
+    }
+
+    // Fire background (keeps animating throughout)
+    this.renderFireBackground(r, cols, battleH, shakeX, shakeY);
+
+    // ═══ PHASE 1: FREEZE + FLASH (frames 0-7) ═══
+    if (frame < 8) {
+      const strobeColors = ['#FFFFFF', '#FFFFFF', ds.artColor, ds.artColor, '#FFFFFF', '#FFFFFF', '#FF4400', '#FF4400'];
+      const drawColor = strobeColors[frame] || ds.artColor;
+      const monsterBg = '#0a0500';
+      for (let row = 0; row < ds.artH; row++) {
+        const line = ds.artLines[row];
+        let firstNonSpace = -1, lastNonSpace = -1;
+        for (let col = 0; col < line.length; col++) {
+          if (line[col] !== ' ') {
+            if (firstNonSpace === -1) firstNonSpace = col;
+            lastNonSpace = col;
+          }
+        }
+        for (let col = 0; col < line.length; col++) {
+          const ch = line[col];
+          const dx = ds.artX + col + shakeX;
+          const dy = ds.artY + row + shakeY;
+          if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
+          if (ch === ' ') {
+            if (col > firstNonSpace && col < lastNonSpace) {
+              r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
+            }
+            continue;
+          }
+          r.drawChar(dx, dy, ch, drawColor, monsterBg, true);
+        }
+      }
+    }
+
+    // ═══ PHASE 2: CRACK + SHATTER (frames 8-22) ═══
+    else if (frame < 23) {
+      const phaseFrame = frame - 8;
+      const monsterBg = '#0a0500';
+
+      // Propagate cracks — extend each seed's random walk
+      for (const seed of ds.crackSeeds) {
+        if (seed.branches.length === 0) {
+          seed.branches.push({ x: seed.x, y: seed.y });
+        }
+        // Extend 1-2 branches per frame
+        const extensions = 1 + Math.floor(Math.random() * 2);
+        for (let e = 0; e < extensions; e++) {
+          const tip = seed.branches[seed.branches.length - 1];
+          const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+          const dir = dirs[Math.floor(Math.random() * dirs.length)];
+          const nx = tip.x + dir[0];
+          const ny = tip.y + dir[1];
+          if (nx >= ds.artX && nx < ds.artX + ds.artW && ny >= ds.artY && ny < ds.artY + ds.artH) {
+            seed.branches.push({ x: nx, y: ny });
+            ds.crackCells.add(`${nx},${ny}`);
+          }
+        }
+        // Occasionally fork
+        if (Math.random() < 0.3 && seed.branches.length > 2) {
+          const forkPoint = seed.branches[Math.floor(Math.random() * seed.branches.length)];
+          seed.branches.push({ x: forkPoint.x, y: forkPoint.y });
+        }
+      }
+
+      // Draw monster art with jitter and crack overlay
+      for (let row = 0; row < ds.artH; row++) {
+        const line = ds.artLines[row];
+        let firstNonSpace = -1, lastNonSpace = -1;
+        for (let col = 0; col < line.length; col++) {
+          if (line[col] !== ' ') {
+            if (firstNonSpace === -1) firstNonSpace = col;
+            lastNonSpace = col;
+          }
+        }
+        for (let col = 0; col < line.length; col++) {
+          const ch = line[col];
+          const baseX = ds.artX + col;
+          const baseY = ds.artY + row;
+          // Jitter increases over phase
+          const jitter = phaseFrame > 3 ? (Math.random() - 0.5) * Math.min(1.5, phaseFrame * 0.15) : 0;
+          const dx = Math.round(baseX + jitter) + shakeX;
+          const dy = Math.round(baseY + (Math.random() - 0.5) * Math.min(0.8, phaseFrame * 0.08)) + shakeY;
+          if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
+          if (ch === ' ') {
+            if (col > firstNonSpace && col < lastNonSpace) {
+              r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
+            }
+            continue;
+          }
+          // Crack overlay
+          const crackKey = `${baseX},${baseY}`;
+          if (ds.crackCells.has(crackKey)) {
+            const crackChars = ['\u2571', '\u2572', '\u2502', '\u2500', '\u2573'];
+            const crackCh = crackChars[Math.floor(Math.random() * crackChars.length)];
+            r.drawChar(dx, dy, crackCh, '#FFFFFF', monsterBg, true);
+          } else {
+            // Color shifting toward orange
+            const t = phaseFrame / 14;
+            const color = this._lerpColor(ds.artColor, '#FF6600', t);
+            r.drawChar(dx, dy, ch, color, monsterBg, true);
+          }
+        }
+      }
+
+      // Activate early debris near cracks
+      for (const p of ds.debris) {
+        const key = `${p.origX},${p.origY}`;
+        if (ds.crackCells.has(key) && phaseFrame > 5) {
+          p.delay = 0;
+        }
+      }
+    }
+
+    // ═══ PHASE 3: CRUMBLE + SCATTER (frames 23-45) ═══
+    else if (frame < 46) {
+      const phaseFrame = frame - 23;
+
+      // Spawn extra ember particles at intervals
+      if (this.combatState && (phaseFrame === 2 || phaseFrame === 7 || phaseFrame === 12)) {
+        this.spawnCombatParticles(6, ['*', '\u00B7', '+', '\u2219'], '#FFAA00');
+      }
+
+      // Update and draw debris
+      for (const p of ds.debris) {
+        if (p.alpha <= 0) continue;
+        // Force-activate all debris
+        if (p.delay > 0) { p.delay--; continue; }
+
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.06; // gravity
+        p.vx *= 0.98; // air friction
+
+        // Decay characters every ~5 frames
+        if (phaseFrame % 5 === 0 && p.decayStage < p.decaySeq.length - 1) {
+          p.decayStage++;
+          p.ch = p.decaySeq[p.decayStage];
+        }
+
+        // Color progression: orange → red → ash
+        const t = phaseFrame / 22;
+        if (t < 0.5) {
+          p.color = this._lerpColor('#FF6600', '#FF2200', t * 2);
+        } else {
+          p.color = this._lerpColor('#FF2200', '#888888', (t - 0.5) * 2);
+        }
+
+        const dx = Math.round(p.x) + shakeX;
+        const dy = Math.round(p.y) + shakeY;
+        if (p.ch !== ' ' && dx >= 0 && dx < cols && dy >= 0 && dy < battleH) {
+          r.drawChar(dx, dy, p.ch, p.color, null);
+        }
+      }
+
+      // "Defeated!" text fades in and floats up
+      if (phaseFrame > 5) {
+        const textAlpha = Math.min(1, (phaseFrame - 5) / 8);
+        ds.defeatedY -= 0.08;
+        const defText = `${ds.enemyName} defeated!`;
+        const textColor = textAlpha > 0.7 ? '#FFFFFF' : '#AAAAAA';
+        const tx = Math.floor(cols / 2 - defText.length / 2) + shakeX;
+        const ty = Math.round(ds.defeatedY) + shakeY;
+        if (ty >= 0 && ty < battleH) {
+          r.drawString(Math.max(0, tx), ty, defText, textColor, null);
+        }
+      }
+    }
+
+    // ═══ PHASE 4: DISSOLVE + FADE (frames 46-65) ═══
+    else if (frame < 66) {
+      const phaseFrame = frame - 46;
+
+      // Continue debris falling and fading
+      for (const p of ds.debris) {
+        if (p.alpha <= 0 || p.ch === ' ') continue;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.06;
+        p.vx *= 0.97;
+        p.alpha -= 0.05;
+
+        // Continue decay
+        if (phaseFrame % 3 === 0 && p.decayStage < p.decaySeq.length - 1) {
+          p.decayStage++;
+          p.ch = p.decaySeq[p.decayStage];
+        }
+
+        p.color = this._lerpColor('#555555', '#222222', phaseFrame / 19);
+
+        const dx = Math.round(p.x) + shakeX;
+        const dy = Math.round(p.y) + shakeY;
+        if (p.alpha > 0 && p.ch !== ' ' && dx >= 0 && dx < cols && dy >= 0 && dy < battleH) {
+          r.drawChar(dx, dy, p.ch, p.color, null);
+        }
+      }
+
+      // Floating "defeated" text still visible
+      ds.defeatedY -= 0.04;
+      const defText = `${ds.enemyName} defeated!`;
+      const tx = Math.floor(cols / 2 - defText.length / 2);
+      const ty = Math.round(ds.defeatedY);
+      if (ty >= 0 && ty < battleH) {
+        const textFade = Math.max(0, 1 - phaseFrame / 19);
+        const textColor = textFade > 0.5 ? '#FFFFFF' : '#888888';
+        r.drawString(Math.max(0, tx), ty, defText, textColor, null);
+      }
+
+      // Gradual dark tint
+      const tintAlpha = phaseFrame * 0.015;
+      if (tintAlpha > 0.01) r.tintOverlay('#000000', tintAlpha);
+    }
+
+    // ═══ PHASE 5: TRANSITION (frames 66-75) ═══
+    else {
+      const phaseFrame = frame - 66;
+      const tintAlpha = 0.3 + phaseFrame * 0.07;
+      r.tintOverlay('#000000', Math.min(0.95, tintAlpha));
+    }
+
+    // Render combat particles (ember sparks throughout)
+    if (this.combatState && this.combatState.combatParticles) {
+      for (let i = this.combatState.combatParticles.length - 1; i >= 0; i--) {
+        const p = this.combatState.combatParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.05;
+        p.life--;
+        if (p.life <= 0) {
+          this.combatState.combatParticles.splice(i, 1);
+          continue;
+        }
+        const px = Math.round(p.x) + shakeX;
+        const py = Math.round(p.y) + shakeY;
+        if (px >= 0 && px < cols && py >= 0 && py < battleH) {
+          const alpha = Math.min(1, p.life / 10);
+          const color = alpha > 0.5 ? p.color : '#666666';
+          r.drawChar(px, py, p.char, color, null);
+        }
+      }
+    }
+
+    // Bottom HUD
+    this.renderCombatHUD(r, cols, rows, battleH, bg);
+
+    ds.frame++;
+
+    // Animation complete — transition to battle results
+    if (ds.frame >= 75) {
+      this.combatState = null;
+      this.enemyDeathState = null;
+      this.setState('BATTLE_RESULTS');
+    }
+  }
+
+  renderCombat() {
+    if (!this.combatState) return;
+
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const enemy = this.combatState.enemy;
+    const bg = COLORS.FF_BLUE_DARK;
+    const cs = this.combatState;
+
+    r.clear();
+
+    // ── Earthbound-style battle layout ──
+    const battleH = Math.floor(rows * 0.55);
+
+    // Screen shake offset
+    let shakeX = 0, shakeY = 0;
+    if (cs.shake && cs.shake.intensity > 0.1) {
+      shakeX = Math.round((Math.random() - 0.5) * cs.shake.intensity * 2);
+      shakeY = Math.round((Math.random() - 0.5) * cs.shake.intensity);
+      cs.shake.intensity *= cs.shake.decay;
+    } else if (cs.shake) {
+      cs.shake.intensity = 0;
+    }
+
+    // ── Fire Voronoi animated background ──
+    this.renderFireBackground(r, cols, battleH, shakeX, shakeY);
 
     // ── Centered Monster Art ──
     const art = getMonsterArt(enemy);
@@ -4879,70 +5269,7 @@ class Game {
     }
 
     // ── Bottom status area (FF-style windows) ──
-
-    // Message/battle log window (left side)
-    const logW = Math.floor(cols * 0.55);
-    const logH = statusH;
-    r.drawBox(0, battleH, logW, logH, COLORS.FF_BORDER, bg);
-
-    for (let i = 0; i < Math.min(logH - 2, this.ui.messageLog.length); i++) {
-      const msg = this.ui.messageLog[i];
-      r.drawString(2, battleH + 1 + i, msg.text.substring(0, logW - 4), msg.color, bg);
-    }
-
-    // Player status window (right side)
-    const statusW = cols - logW;
-    const statusBoxH = Math.floor(statusH * 0.45);
-    r.drawBox(logW, battleH, statusW, statusBoxH, COLORS.FF_BORDER, bg);
-
-    const p = this.player;
-    r.drawString(logW + 2, battleH + 1, p.name, COLORS.BRIGHT_WHITE, bg);
-
-    // HP gauge
-    const hpFrac = p.stats.hp / p.stats.maxHp;
-    const hpColor = hpFrac < 0.25 ? COLORS.BRIGHT_RED : hpFrac < 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_WHITE;
-    r.drawString(logW + 2, battleH + 2, 'HP', COLORS.BRIGHT_WHITE, bg);
-    const sGaugeW = Math.min(10, statusW - 12);
-    for (let i = 0; i < sGaugeW; i++) {
-      r.drawChar(logW + 5 + i, battleH + 2, i < Math.round(hpFrac * sGaugeW) ? '\u2588' : '\u2591',
-        hpFrac < 0.25 ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN, bg);
-    }
-    r.drawString(logW + 6 + sGaugeW, battleH + 2, `${p.stats.hp}`, hpColor, bg);
-
-    // MP gauge
-    const mpFrac = p.stats.maxMana > 0 ? p.stats.mana / p.stats.maxMana : 0;
-    r.drawString(logW + 2, battleH + 3, 'MP', COLORS.BRIGHT_WHITE, bg);
-    for (let i = 0; i < sGaugeW; i++) {
-      r.drawChar(logW + 5 + i, battleH + 3, i < Math.round(mpFrac * sGaugeW) ? '\u2588' : '\u2591',
-        COLORS.BRIGHT_CYAN, bg);
-    }
-    r.drawString(logW + 6 + sGaugeW, battleH + 3, `${p.stats.mana}`, COLORS.BRIGHT_CYAN, bg);
-
-    // Command window (bottom-right, FF-style action menu)
-    const cmdY = battleH + statusBoxH;
-    const cmdH = statusH - statusBoxH;
-    r.drawBox(logW, cmdY, statusW, cmdH, COLORS.FF_BORDER, bg);
-
-    // Build action list
-    const actions = ['Attack', 'Flee'];
-    if (p.abilities && p.abilities.length > 0) {
-      for (let i = 0; i < Math.min(p.abilities.length, 3); i++) {
-        actions.push(`${p.abilities[i].name}`);
-      }
-    }
-
-    const combatSel = this.combatState.selectedAction || 0;
-    for (let i = 0; i < actions.length && i < cmdH - 2; i++) {
-      const sel = i === combatSel;
-      const cursor = sel ? '\u25BA' : ' '; // ►
-      r.drawString(logW + 2, cmdY + 1 + i, cursor + ' ' + actions[i],
-        sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
-      // Show MP cost for abilities
-      if (i >= 2 && p.abilities[i - 2]) {
-        const cost = `${p.abilities[i - 2].manaCost}`;
-        r.drawString(logW + statusW - cost.length - 3, cmdY + 1 + i, cost, COLORS.BRIGHT_CYAN, bg);
-      }
-    }
+    this.renderCombatHUD(r, cols, rows, battleH, bg);
   }
 
   // ─── GAME LOOP ───
