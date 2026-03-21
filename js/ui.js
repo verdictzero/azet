@@ -1556,6 +1556,7 @@ export class UIManager {
     // Tile height lookup for settlement shadow casting
     const SETTLEMENT_HEIGHTS = {
       WALL: 3, BUILDING_WALL: 3, FENCE: 1, COLUMN: 2,
+      TREE_CANOPY: 4, TREE_TRUNK: 2,
     };
     // Character-based heights for decorations
     const CHAR_HEIGHTS = {
@@ -1587,7 +1588,7 @@ export class UIManager {
             const t = settlement.tiles[wy][wx];
             const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
             if (height > 0) {
-              const len = Math.min(height, Math.round(sunDir.shadowLength * height * 0.5));
+              const len = Math.min(height + 1, Math.round(sunDir.shadowLength * height * 0.7));
               for (let i = 1; i <= len; i++) {
                 const shBaseX = wx_off * density + sunDir.dx * i * density;
                 const shBaseY = wy_off * density + Math.round(sunDir.dy) * i * density;
@@ -1598,7 +1599,7 @@ export class UIManager {
                     if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
                       const key = `${shx},${shy}`;
                       const existing = shadowCells.get(key) || 0;
-                      shadowCells.set(key, Math.min(0.6, existing + 0.3));
+                      shadowCells.set(key, Math.min(0.7, existing + 0.3));
                     }
                   }
                 }
@@ -1644,7 +1645,32 @@ export class UIManager {
         r.darkenCell(viewLeft + sx, viewTop + sy, alpha);
       }
 
-      // God rays in unshadowed areas
+      // Pre-compute canopy proximity set for dappled light effect
+      const canopyNearbyCells = new Set();
+      if (sunDir && sunDir.isDay && settlement.tiles) {
+        for (let wy_off = 0; wy_off < worldH; wy_off++) {
+          for (let wx_off = 0; wx_off < worldW; wx_off++) {
+            const wx = camX + wx_off;
+            const wy = camY + wy_off;
+            if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
+              if (settlement.tiles[wy][wx].type === 'TREE_CANOPY') {
+                // Mark a 2-tile radius around canopy in screen coords
+                for (let cdy = -2; cdy <= 2; cdy++) {
+                  for (let cdx = -2; cdx <= 2; cdx++) {
+                    const nsx = wx_off * density + cdx;
+                    const nsy = wy_off * density + cdy;
+                    if (nsx >= 0 && nsx < viewW && nsy >= 0 && nsy < viewH) {
+                      canopyNearbyCells.add(`${nsx},${nsy}`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // God rays in unshadowed areas (enhanced pseudo-volumetric lighting)
       if (sunDir && sunDir.isDay && r._godRayNoise && shadowCells.size > 0) {
         const perpX = -(sunDir.dy || 0);
         const perpY = sunDir.dx || 0;
@@ -1660,11 +1686,14 @@ export class UIManager {
               const checkY = sy + Math.round((sunDir.dy || 0) * nd);
               if (shadowCells.has(`${checkX},${checkY}`)) { nearShadow = true; break; }
             }
+            const nearCanopy = canopyNearbyCells.has(key);
             const proj = sx * perpX + sy * perpY;
             const rayNoise = r._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
             if (rayNoise > 0.05) {
-              const intensity = (rayNoise - 0.05) / 0.95 * 0.12 + (nearShadow ? 0.06 : 0);
-              r.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.18, intensity), '#FFEEAA');
+              let intensity = (rayNoise - 0.05) / 0.95 * 0.15 + (nearShadow ? 0.08 : 0);
+              const tint = nearCanopy ? '#DDEEBB' : '#FFEEAA';
+              if (nearCanopy) intensity *= 1.3;
+              r.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.25, intensity), tint);
             }
           }
         }

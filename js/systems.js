@@ -1317,7 +1317,7 @@ export class TimeSystem {
     // Shadow direction is opposite the light source
     const dx = -Math.cos(angle);
     const dy = -0.5; // slight downward bias (isometric feel)
-    const shadowLength = elevation > 0.05 ? Math.min(6, 1.0 / elevation) : 6;
+    const shadowLength = elevation > 0.03 ? Math.min(8, 1.2 / elevation) : 8;
 
     return { dx: Math.round(dx), dy: Math.round(dy), elevation, shadowLength, isDay };
   }

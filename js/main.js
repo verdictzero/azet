@@ -4038,8 +4038,8 @@ class Game {
               const proj = sx * perpX + sy * perpY;
               const rayN = this.renderer._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
               if (rayN > 0.05) {
-                const intensity = (rayN - 0.05) / 0.95 * 0.12 + (nearShadow ? 0.06 : 0);
-                this.renderer.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.18, intensity), '#FFEEAA');
+                const intensity = (rayN - 0.05) / 0.95 * 0.15 + (nearShadow ? 0.08 : 0);
+                this.renderer.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.25, intensity), '#FFEEAA');
               }
             }
           }
@@ -4150,7 +4150,7 @@ class Game {
 
   // Tile height lookup for shadow casting
   static TILE_HEIGHTS = {
-    TREE: 2, PINE: 2, PALM: 2, CACTUS: 1,
+    TREE: 2, PINE: 2, PALM: 2, CACTUS: 1, TREE_CANOPY: 4, TREE_TRUNK: 2,
     WALL: 3, BUILDING: 3, TOWER: 4, CASTLE: 4,
     MOUNTAIN: 4, HILL: 2, RUINS: 2,
     FENCE: 1, COLUMN: 2, STATUE: 2,
@@ -4247,7 +4247,7 @@ class Game {
           const tile = this.overworld.getTile(wx, wy);
           const height = Game.TILE_HEIGHTS[tile.type] || 0;
           if (height > 0) {
-            const len = Math.min(height, Math.round(sunDir.shadowLength * height * 0.6));
+            const len = Math.min(height + 1, Math.round(sunDir.shadowLength * height * 0.8));
             const shadowAlpha = sunDir.isDay ? 0.35 : 0.20;
             for (let i = 1; i <= len; i++) {
               // Shadow in screen coords

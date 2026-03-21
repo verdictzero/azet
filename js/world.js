@@ -2177,8 +2177,130 @@ export class SettlementGenerator {
       this._carveRoad(tiles, doorX, doorY + 1, fcx, fcy, w, h);
     }
 
-    // Scatter decorations
+    // Place multi-tile trees before scattering small decorations
+    this._placeMultiTileTrees(rng, tiles, w, h, placed, type);
+
+    // Scatter decorations (with reduced single-tile trees)
     this._scatterDecorations(rng, tiles, w, h, biome, placed);
+  }
+
+  // ── Multi-tile tree templates and placement ──
+
+  _getTreeTemplates() {
+    // Each template: { width, height, tiles: [{dx, dy, type, char, fgIdx, walkable}] }
+    // fgIdx indexes into a color array chosen per-tree instance
+    const CANOPY_CHARS = ['\u2663', '\u2660', '\u2663', '\u2660']; // ♣ ♠
+    return [
+      // Small (1x2): single canopy + trunk
+      {
+        width: 1, height: 2, weight: 2,
+        cells: [
+          { dx: 0, dy: 0, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 0, dy: 1, type: 'TREE_TRUNK', char: '|', walkable: false },
+        ]
+      },
+      // Medium (2x3): 2-wide canopy, trunk center-bottom
+      {
+        width: 2, height: 3, weight: 3,
+        cells: [
+          { dx: 0, dy: 0, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 1, dy: 0, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 0, dy: 1, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 1, dy: 1, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 0, dy: 2, type: 'TREE_TRUNK', char: '|', walkable: false },
+        ]
+      },
+      // Large (3x3): 3-wide crown, trunk center-bottom
+      {
+        width: 3, height: 3, weight: 3,
+        cells: [
+          { dx: 0, dy: 0, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 1, dy: 0, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 2, dy: 0, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 0, dy: 1, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 1, dy: 1, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 2, dy: 1, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 1, dy: 2, type: 'TREE_TRUNK', char: '|', walkable: false },
+        ]
+      },
+      // Extra Large (3x4): tallest variant
+      {
+        width: 3, height: 4, weight: 2,
+        cells: [
+          { dx: 1, dy: 0, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 0, dy: 1, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 1, dy: 1, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 2, dy: 1, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 0, dy: 2, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 1, dy: 2, type: 'TREE_CANOPY', char: '\u2663', walkable: false },
+          { dx: 2, dy: 2, type: 'TREE_CANOPY', char: '\u2660', walkable: false },
+          { dx: 1, dy: 3, type: 'TREE_TRUNK', char: '|', walkable: false },
+        ]
+      },
+    ];
+  }
+
+  _placeMultiTileTrees(rng, tiles, w, h, placed, type) {
+    const treeCounts = { village: 6, town: 10, city: 8 };
+    const count = treeCounts[type] || 6;
+    const templates = this._getTreeTemplates();
+
+    // Build weighted list for template selection
+    const weighted = [];
+    for (const tmpl of templates) {
+      // Bias toward larger trees in towns/cities
+      const sizeBonus = (type === 'town' || type === 'city') && tmpl.width >= 3 ? 2 : 0;
+      for (let i = 0; i < tmpl.weight + sizeBonus; i++) weighted.push(tmpl);
+    }
+
+    const CANOPY_GREENS = ['#228822', '#338833', '#226622', '#2A8A2A'];
+    const TRUNK_BROWNS = ['#886644', '#775533'];
+    const CANOPY_BGS = ['#0D1A0D', '#112211', '#0A180A'];
+
+    for (let i = 0; i < count; i++) {
+      const tmpl = rng.random(weighted);
+      const greenFg = rng.random(CANOPY_GREENS);
+      const greenFg2 = rng.random(CANOPY_GREENS);
+      const trunkFg = rng.random(TRUNK_BROWNS);
+      const canopyBg = rng.random(CANOPY_BGS);
+
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const tx = rng.nextInt(1, w - tmpl.width - 1);
+        const ty = rng.nextInt(1, h - tmpl.height - 1);
+
+        // Check all footprint tiles are GRASSLAND
+        let valid = true;
+        for (const cell of tmpl.cells) {
+          const cx = tx + cell.dx;
+          const cy = ty + cell.dy;
+          if (cy < 0 || cy >= h || cx < 0 || cx >= w || tiles[cy][cx].type !== 'GRASSLAND') {
+            valid = false;
+            break;
+          }
+        }
+        if (!valid) continue;
+
+        // Check no overlap with placed rects (1-tile margin)
+        let overlap = false;
+        for (const p of placed) {
+          if (this._rectsOverlap(tx - 1, ty - 1, tmpl.width + 2, tmpl.height + 2, p.x, p.y, p.w, p.h)) {
+            overlap = true;
+            break;
+          }
+        }
+        if (overlap) continue;
+
+        // Place the tree
+        for (const cell of tmpl.cells) {
+          const fg = cell.type === 'TREE_TRUNK' ? trunkFg :
+            (cell.char === '\u2663' ? greenFg : greenFg2);
+          const bg = cell.type === 'TREE_TRUNK' ? '#112211' : canopyBg;
+          tiles[ty + cell.dy][tx + cell.dx] = tile(cell.type, cell.char, fg, bg, cell.walkable, { buildingId: null });
+        }
+        placed.push({ x: tx - 1, y: ty - 1, w: tmpl.width + 2, h: tmpl.height + 2 });
+        break;
+      }
+    }
   }
 
   _getBiomeTheme(biome) {
@@ -2394,13 +2516,10 @@ export class SettlementGenerator {
       if (inside) continue;
 
       const decor = rng.random([
-        // Trees (weighted more heavily)
-        tile('TREE', '\u2663', '#228822', '#112211', false, { buildingId: null }),      // ♣
-        tile('TREE', '\u2663', '#338833', '#112211', false, { buildingId: null }),      // ♣ lighter
-        tile('TREE', '\u2660', '#116611', '#112211', false, { buildingId: null }),      // ♠
-        tile('TREE', 'T', '#116611', '#112211', false, { buildingId: null }),
-        tile('TREE', '\u2660', '#227722', '#0D1A0D', false, { buildingId: null }),      // ♠ variant
-        // Flowers & bushes
+        // Saplings (reduced — multi-tile trees handle the big ones)
+        tile('TREE', '\u2663', '#228822', '#112211', false, { buildingId: null }),      // ♣ sapling
+        tile('TREE', '\u2660', '#227722', '#0D1A0D', false, { buildingId: null }),      // ♠ sapling
+        // Flowers & bushes (more weight now)
         tile('BUSH', '\u273F', '#44AA44', '#112211', false, { buildingId: null }),      // ✿
         tile('FLOWER_BED', '\u2740', '#FF88AA', '#112211', true, { buildingId: null }), // ❀
         tile('FLOWER_BED', '\u2740', '#FFAA44', '#112211', true, { buildingId: null }), // ❀ orange
