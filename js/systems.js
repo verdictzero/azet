@@ -1104,6 +1104,38 @@ export class FactionSystem {
         }
       }
     }
+
+    // Enrich factions with historical trauma and prosperity from catastrophes/golden ages
+    for (const civ of worldHistory.civilizations.filter(c => c.isActive)) {
+      const civKey = civ.id.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      const faction = this._factions.get(civKey);
+      if (!faction) continue;
+
+      // Check for historical wars involving this civ
+      const civWars = worldHistory.wars.filter(w => w.aggressorId === civ.id || w.defenderId === civ.id);
+      faction.warHistory = civWars.length;
+      faction.warTrauma = civWars.length > 3 ? 'battle-hardened' : civWars.length > 0 ? 'war-scarred' : 'peaceful';
+
+      // Check for catastrophes in controlled regions
+      const civCatastrophes = worldHistory.catastrophes.filter(c =>
+        c.regionId && civ.controlledRegions.includes(c.regionId)
+      );
+      faction.catastropheHistory = civCatastrophes.length;
+      faction.traumaLevel = civCatastrophes.length > 2 ? 'deeply scarred' : civCatastrophes.length > 0 ? 'haunted' : 'untroubled';
+
+      // Population trajectory — is this civ growing or dying?
+      faction.populationTrend = civ.population > (civ.peakPopulation * 0.8) ? 'thriving' :
+        civ.population > (civ.peakPopulation * 0.5) ? 'declining' : 'dying';
+
+      // Machine cult or anti-machine stance
+      faction.machineStance = civ.culturalValues.includes('machine worship') ? 'mechanicum' :
+        civ.culturalValues.includes('tradition') ? 'anti-machine' : 'neutral';
+
+      // Calculate age and classify
+      const age = worldHistory.currentYear - civ.foundedYear;
+      faction.civilizationAge = age;
+      faction.ageClass = age > 5000 ? 'primordial' : age > 2000 ? 'ancient' : age > 500 ? 'established' : 'young';
+    }
   }
 
   // Get faction lore summary for UI display
