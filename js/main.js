@@ -136,7 +136,7 @@ class Game {
     this._startVersionPolling();
 
     // Game state
-    this.state = 'MENU'; // MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC
+    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC
 
     // Settings (persisted to localStorage)
     this.settings = {
@@ -287,7 +287,7 @@ class Game {
     // Canvas click handler for debug buttons
     this.canvas.addEventListener('click', (e) => this._handleCanvasClick(e));
     this.canvas.addEventListener('touchstart', (e) => {
-      if (this._debugButtonRects && this._debugButtonRects.length > 0) {
+      if (this.state === 'PREAMBLE' || (this._debugButtonRects && this._debugButtonRects.length > 0)) {
         const touch = e.touches[0];
         if (touch) this._handleCanvasClickAt(touch.clientX, touch.clientY, e);
       }
@@ -309,6 +309,12 @@ class Game {
   }
 
   _handleCanvasClickAt(clientX, clientY, e) {
+    // Preamble: any click/touch transitions to title screen
+    if (this.state === 'PREAMBLE') {
+      e.preventDefault();
+      this.setState('MENU');
+      return;
+    }
     if (!this._debugButtonRects || this._debugButtonRects.length === 0) return;
     const rect = this.canvas.getBoundingClientRect();
     const cellW = this.renderer.cellWidth;
@@ -445,6 +451,8 @@ class Game {
     const leavingBattle = battleStates.includes(this.prevState);
 
     switch (newState) {
+      case 'PREAMBLE':
+        break;
       case 'MENU':
       case 'CHAR_CREATE':
         this.music.play(TRACKS.TITLE);
@@ -1266,6 +1274,7 @@ class Game {
       return;
     }
     switch (this.state) {
+      case 'PREAMBLE': return this.handlePreambleInput(key);
       case 'MENU': return this.handleMenuInput(key);
       case 'CHAR_CREATE': return this.handleCharCreateInput(key);
       case 'OVERWORLD': return this.handleOverworldInput(key);
@@ -1294,6 +1303,11 @@ class Game {
         this._worldGenRunStep(this._worldGenResumeStep);
         return;
     }
+  }
+
+  handlePreambleInput(key) {
+    // Any key press transitions to the title screen
+    this.setState('MENU');
   }
 
   handleMenuInput(key) {
@@ -4013,6 +4027,10 @@ class Game {
     this.renderer.beginFrame();
 
     switch (this.state) {
+      case 'PREAMBLE':
+        this.ui.drawPreamble(this.renderer.cols, this.renderer.rows);
+        break;
+
       case 'MENU':
         this.ui.drawMainMenu(this.renderer.cols, this.renderer.rows);
         break;
@@ -5844,7 +5862,7 @@ class Game {
 
   start() {
     this.lastFrame = performance.now();
-    this.setState('MENU');
+    this.setState('PREAMBLE');
     requestAnimationFrame((ts) => this.gameLoop(ts));
   }
 

@@ -401,6 +401,96 @@ export class UIManager {
     }
   }
 
+  // ─── PREAMBLE SCREEN ───
+
+  drawPreamble(cols, rows) {
+    const r = this.renderer;
+    r.clear();
+
+    const t = Date.now() / 1000;
+
+    // ── Animated Voronoi cellular automata background (same as title screen) ──
+    const numSeeds = 10;
+    const bgChars = [' ', '.', '·', ':', '∙', '░', '▒'];
+    const voronoiHueShift = t * (-13 / 360);
+    const bgColorsBase = ['#2a2a30', '#303038', '#383840', '#2a3038', '#403040', '#302a34'];
+    const bgColors = bgColorsBase.map(c => shiftHue(c, voronoiHueShift));
+    const bgBg = shiftHue('#0c0c10', voronoiHueShift);
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        let minDist = Infinity;
+        let secondDist = Infinity;
+        for (let s = 0; s < numSeeds; s++) {
+          const sx = (cols / 2) + Math.sin(t * 0.3 + s * 2.09) * (cols * 0.4) + Math.sin(t * 0.17 + s * 1.3) * (cols * 0.15);
+          const sy = (rows / 2) + Math.cos(t * 0.25 + s * 1.88) * (rows * 0.4) + Math.cos(t * 0.13 + s * 0.9) * (rows * 0.15);
+          const dx = col - sx;
+          const dy = (row - sy) * 2;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < minDist) { secondDist = minDist; minDist = d; }
+          else if (d < secondDist) { secondDist = d; }
+        }
+        const edge = secondDist - minDist;
+        const pulse = Math.sin(minDist * 0.15 - t * 1.2) * 0.5 + 0.5;
+        const edgePulse = Math.sin(edge * 0.5 - t * 0.8) * 0.5 + 0.5;
+        const val = pulse * 0.6 + edgePulse * 0.4;
+        const ci = Math.min(Math.floor(val * bgChars.length), bgChars.length - 1);
+        const fi = Math.min(Math.floor((val * 0.7 + edge * 0.02) * bgColors.length), bgColors.length - 1);
+        r.drawChar(col, row, bgChars[ci], bgColors[fi], bgBg);
+      }
+    }
+
+    // ── Center container box ──
+    const buttonText = '[ Press Here to Start ]';
+    const versionText = this.versionString ? this.versionString : '';
+    const contentWidth = Math.max(buttonText.length, versionText.length);
+    const boxW = contentWidth + 6;
+    const boxH = versionText ? 7 : 5;
+    const boxX = Math.floor((cols - boxW) / 2);
+    const boxY = Math.floor((rows - boxH) / 2);
+    const boxBg = '#1a1a2a';
+    const borderColor = '#808090';
+
+    // Fill interior
+    r.fillRect(boxX, boxY, boxW, boxH, ' ', COLORS.WHITE, boxBg);
+
+    // Single-line border
+    r.drawChar(boxX, boxY, '┌', borderColor, boxBg);
+    r.drawChar(boxX + boxW - 1, boxY, '┐', borderColor, boxBg);
+    r.drawChar(boxX, boxY + boxH - 1, '└', borderColor, boxBg);
+    r.drawChar(boxX + boxW - 1, boxY + boxH - 1, '┘', borderColor, boxBg);
+    for (let x = 1; x < boxW - 1; x++) {
+      r.drawChar(boxX + x, boxY, '─', borderColor, boxBg);
+      r.drawChar(boxX + x, boxY + boxH - 1, '─', borderColor, boxBg);
+    }
+    for (let y = 1; y < boxH - 1; y++) {
+      r.drawChar(boxX, boxY + y, '│', borderColor, boxBg);
+      r.drawChar(boxX + boxW - 1, boxY + y, '│', borderColor, boxBg);
+    }
+
+    // ── Rainbow hue-shifting "Press Here to Start" button ──
+    const btnX = Math.floor((cols - buttonText.length) / 2);
+    const btnY = boxY + 2;
+    const hueShift = t * (60 / 360); // full rainbow cycle ~6s
+    for (let i = 0; i < buttonText.length; i++) {
+      const ch = buttonText[i];
+      if (ch === ' ') {
+        r.drawChar(btnX + i, btnY, ' ', COLORS.WHITE, boxBg);
+        continue;
+      }
+      // Per-character hue offset for rainbow wave effect
+      const charHue = hueShift + (i / buttonText.length) * 1.0;
+      const color = shiftHue('#e04040', charHue); // start from red
+      r.drawChar(btnX + i, btnY, ch, color, boxBg);
+    }
+
+    // ── Version string ──
+    if (versionText) {
+      const vx = Math.floor((cols - versionText.length) / 2);
+      const vy = boxY + boxH - 2;
+      r.drawString(vx, vy, versionText, COLORS.BRIGHT_BLACK, boxBg);
+    }
+  }
+
   // ─── MAIN MENU (FF-style) ───
 
   drawMainMenu(cols, rows) {
