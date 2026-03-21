@@ -311,7 +311,7 @@ class Game {
   }
 
   _executeDebugButton(action) {
-    const weatherOptions = ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','spore_fall','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'];
+    const weatherOptions = ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'];
     switch (action) {
       case 'hourInc':
         if (this.timeSystem) this.timeSystem.hour = (this.timeSystem.hour + 1) % 24;
@@ -4185,7 +4185,7 @@ class Game {
     REACTOR_WALL: 3, REACTOR_CORE: 1,
     ALIEN_PILLAR: 5, ALIEN_NODE: 3,
     CRYO_HOUSING: 2, CRYO_EMITTER: 3, CRYO_BASE: 1,
-    FUNGAL_MASS: 3, DATA_FRAME: 2, DATA_CORE: 1,
+    DATA_FRAME: 2, DATA_CORE: 1,
     VOID_ARCH: 4, VOID_BASE: 2, VOID_CENTER: 0,
     // Mechanical mega-structure tiles
     MANUFACTORY_WALL: 3, MANUFACTORY_STACK: 5, MANUFACTORY_STACK_TOP: 6,

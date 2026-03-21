@@ -2045,16 +2045,6 @@ const CREATURE_TABLES = {
     { name: 'Symbiotic Cluster', char: '&', color: '#44CC66', behavior: 'aggressive', hp: 24, attack: 8, defense: 3, xpBase: 30, ability: 'symbioticBurst', faction: 'MUTANT' },
   ],
 
-  // FUNGAL NETWORK — Bioluminescent mycelium corridors
-  fungal_net: [
-    { name: 'Spore Carrier', char: 'S', color: '#CC88FF', behavior: 'patrol', hp: 20, attack: 4, defense: 4, xpBase: 22, ability: 'sporeCloud', faction: 'MUTANT' },
-    { name: 'Mycelium Tendril', char: 't', color: '#AA66DD', behavior: 'ambush', hp: 15, attack: 7, defense: 2, xpBase: 20, faction: 'MUTANT' },
-    { name: 'Fungal Colossus', char: 'F', color: '#DD88FF', behavior: 'aggressive', hp: 60, attack: 10, defense: 7, xpBase: 90, ability: 'sporeCloud', isBoss: true, faction: 'MUTANT' },
-    { name: 'Puffball Mine', char: 'o', color: '#EEAAFF', behavior: 'coward', hp: 5, attack: 15, defense: 0, xpBase: 18, faction: 'MUTANT' },
-    { name: 'Mycelium Eye', char: '@', color: '#BB88DD', behavior: 'patrol', hp: 18, attack: 5, defense: 3, xpBase: 22, ability: 'sporeCloud', faction: 'MUTANT' },
-    { name: 'Spore Hound', char: 'h', color: '#AA77CC', behavior: 'aggressive', hp: 16, attack: 7, defense: 2, xpBase: 22, ability: 'toxinSpray', faction: 'MUTANT' },
-  ],
-
   // TOXIC SUMP — Waste processing overflow, acid pools
   toxic_sump: [
     { name: 'Acid Slime', char: 's', color: '#44FF00', behavior: 'patrol', hp: 25, attack: 6, defense: 5, xpBase: 25, ability: 'corrosiveSpit', faction: 'MUTANT' },

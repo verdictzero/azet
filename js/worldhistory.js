@@ -989,7 +989,7 @@ export class WorldHistoryGenerator {
             this.mapScars.push({
               type: 'plague_zone', year, severity: Math.min(1, totalDead / 5000),
               regionName: region.name, regionId: region.id,
-              terrainEffect: this.rng.random(['TOXIC_SUMP', 'FUNGAL_NET']),
+              terrainEffect: 'TOXIC_SUMP',
               radius: this.rng.nextInt(2, 5),
               description: `${plague} killing grounds of Year ${year}`,
             });
@@ -1132,7 +1132,6 @@ export class WorldHistoryGenerator {
           const transformations = [
             { from: 'industrial', to: 'agricultural', terrain: 'HYDROPONIC_JUNGLE', desc: 'Runaway bio-engineering transforms industrial corridors into living jungle' },
             { from: 'residential', to: 'derelict', terrain: 'CRYSTALLINE_GROWTH', desc: 'Crystalline growths consume residential sectors, beautiful but inhospitable' },
-            { from: 'derelict', to: 'agricultural', terrain: 'FUNGAL_NET', desc: 'Vast fungal networks colonize abandoned sectors, creating a strange new ecosystem' },
             { from: 'agricultural', to: 'derelict', terrain: 'NANO_PLAGUE', desc: 'Nanite swarms consume organic matter, leaving behind grey goo wastelands' },
             { from: 'military', to: 'scientific', terrain: 'ALIEN_CRASH', desc: 'An alien artifact or anomaly transforms the region into something unrecognizable' },
           ];

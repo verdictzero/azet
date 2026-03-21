@@ -160,7 +160,7 @@ export class UIManager {
 
     // Weather indicator — only if it fits
     if (weatherSystem && weatherSystem.current !== 'clear') {
-      const weatherIcons = { rain: '~', snow: '*', storm: '!', fog: '=', sandstorm: '=', cloudy: '-', acid_rain: '~', coolant_mist: '.', spore_fall: '*', ember_rain: ',', data_storm: '#', nano_haze: '.', ion_storm: '/', blood_rain: '~' };
+      const weatherIcons = { rain: '~', snow: '*', storm: '!', fog: '=', sandstorm: '=', cloudy: '-', acid_rain: '~', coolant_mist: '.', ember_rain: ',', data_storm: '#', nano_haze: '.', ion_storm: '/', blood_rain: '~' };
       const wIcon = weatherIcons[weatherSystem.current] || '';
       const wPos = Math.min(loc.length, locMaxW) + 4;
       if (wPos < cols - rightReserved - 2) {
@@ -2611,7 +2611,7 @@ export class UIManager {
         { type: 'slider', label: 'Hour', key: 'hour', value: timeSystem ? timeSystem.hour : 0, min: 0, max: 23 },
         { type: 'sep' },
         { type: 'select', label: 'Weather', key: 'weather', value: weatherSystem ? weatherSystem.current : 'clear',
-          options: ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','spore_fall','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'] },
+          options: ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'] },
         { type: 'sep' },
         { type: 'action', label: 'Teleport to 50,30', key: 'teleport' },
       ];
@@ -2773,7 +2773,7 @@ export class UIManager {
         { type: 'action', key: 'advanceDay' },
         { type: 'slider', key: 'hour', value: timeSystem ? timeSystem.hour : 0, min: 0, max: 23 },
         { type: 'select', key: 'weather', value: weatherSystem ? weatherSystem.current : 'clear',
-          options: ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','spore_fall','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'] },
+          options: ['auto','clear','rain','storm','fog','snow','sandstorm','acid_rain','coolant_mist','ember_rain','data_storm','nano_haze','ion_storm','blood_rain'] },
         { type: 'action', key: 'teleport' },
       ];
     } else if (tab === 2) {

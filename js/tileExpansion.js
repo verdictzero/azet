@@ -399,11 +399,7 @@ const TYPE_PATTERNS = {
   BORE_DRILL:     { 2: MECH_2x2, 3: MECH_3x3 },
   TURBINE_BLADE:  { 2: MECH_2x2, 3: MECH_3x3 },
 
-  // Fungal
-  FUNGAL_NET:     { 2: FUNGAL_2x2, 3: FUNGAL_3x3 },
-  FUNGAL_MASS:    { 2: FUNGAL_2x2, 3: FUNGAL_3x3 },
-  FUNGAL_PATCH:   { 2: FUNGAL_2x2, 3: FUNGAL_3x3 },
-  MUSHROOM:       { 2: FUNGAL_2x2, 3: FUNGAL_3x3 },
+  // Organic
   MOSS:           { 2: FUNGAL_2x2, 3: FUNGAL_3x3 },
 };
 

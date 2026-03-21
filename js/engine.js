@@ -614,10 +614,6 @@ export class Renderer {
         return `rgb(${r},${g},0)`;
       }
       // ── Anomaly types ──
-      case 'FUNGAL_NET': {
-        const fungi = ['#CC88FF', '#BB77EE', '#DD99FF'];
-        return fungi[Math.floor(t * 0.6) % fungi.length];
-      }
       case 'GLITCH_ZONE': {
         const glitches = ['#FF0088', '#EE0077', '#FF2299', '#DD0066'];
         return glitches[Math.floor(t * 2) % glitches.length];

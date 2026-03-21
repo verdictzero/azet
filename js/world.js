@@ -80,8 +80,6 @@ export class OverworldGenerator {
     if (a > 0.7 && h < 0.5 && m > 0.6) return tile('FROZEN_DECK', '.', '#AADDFF', '#112233', true, { biome: 'frozen_deck' });
     // Crystalline Growth: alien mineral formations
     if (a > 0.7 && h > 0.6 && m < 0.3) return tile('CRYSTAL_ZONE', '#', '#44FFFF', '#002222', false, { biome: 'crystal_zone' });
-    // Fungal Network: bioluminescent mycelium
-    if (a > 0.65 && h >= 0.3 && h <= 0.6 && m > 0.5) return tile('FUNGAL_NET', '%', '#CC88FF', '#1A0022', true, { biome: 'fungal_net' });
     // Toxic Sump: waste processing overflow
     if (a > 0.6 && h < 0.3) return tile('TOXIC_SUMP', '~', '#44FF00', '#112200', false, { biome: 'toxic_sump' });
     // Hydroponic Jungle: agri-domes gone wild
@@ -567,19 +565,6 @@ export class ChunkManager {
         },
         lights(sx, sy, ox, oy) {
           return [{ x: ox + sx + 1, y: oy + sy, radius: 6, r: 0.3, g: 0.6, b: 1, intensity: 0.7 }];
-        },
-      },
-      {
-        type: 'fungal_colossus', w: 6, h: 6, biomes: ['fungal_net', 'hydro_jungle'],
-        build(tiles, sx, sy) {
-          for (let dy = 0; dy < 6; dy++) for (let dx = 0; dx < 6; dx++) {
-            const dist = Math.abs(dx - 2.5) + Math.abs(dy - 2.5);
-            if (dist < 3) tiles[sy + dy][sx + dx] = tile('FUNGAL_MASS', '&', '#AA66DD', '#1A0022', false, { structure: true });
-            else if (dist < 4.5 && (dx + dy) % 2 === 0) tiles[sy + dy][sx + dx] = tile('SPORE_FLOOR', '.', '#8844AA', '#1A0022', true, { structure: true });
-          }
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 3, y: oy + sy + 3, radius: 8, r: 0.2, g: 1, b: 0.4, intensity: 0.75 }];
         },
       },
       {
@@ -1246,12 +1231,12 @@ export class ChunkManager {
               break;
             case 'plague_zone':
               tiles[ly][lx] = tile(
-                scar.terrainEffect === 'FUNGAL_NET' ? 'FUNGAL_NET' : 'TOXIC_SUMP',
-                scar.terrainEffect === 'FUNGAL_NET' ? '%' : '~',
-                scar.terrainEffect === 'FUNGAL_NET' ? '#CC88FF' : '#44FF00',
-                scar.terrainEffect === 'FUNGAL_NET' ? '#1A0022' : '#112200',
-                scar.terrainEffect === 'FUNGAL_NET',
-                { biome: scar.terrainEffect === 'FUNGAL_NET' ? 'fungal_net' : 'toxic_sump', historicalScar: scar.description }
+                'TOXIC_SUMP',
+                '~',
+                '#44FF00',
+                '#112200',
+                false,
+                { biome: 'toxic_sump', historicalScar: scar.description }
               );
               break;
             case 'transformed_biome':
@@ -1259,8 +1244,6 @@ export class ChunkManager {
                 tiles[ly][lx] = tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { biome: 'hydro_jungle', historicalScar: scar.description });
               } else if (scar.terrainEffect === 'CRYSTALLINE_GROWTH') {
                 tiles[ly][lx] = tile('CRYSTAL_ZONE', '#', '#44FFFF', '#002222', false, { biome: 'crystal_zone', historicalScar: scar.description });
-              } else if (scar.terrainEffect === 'FUNGAL_NET') {
-                tiles[ly][lx] = tile('FUNGAL_NET', '%', '#CC88FF', '#1A0022', true, { biome: 'fungal_net', historicalScar: scar.description });
               } else if (scar.terrainEffect === 'NANO_PLAGUE') {
                 tiles[ly][lx] = tile('NANO_PLAGUE', ':', '#888888', '#222222', true, { biome: 'nano_plague', historicalScar: scar.description });
               } else if (scar.terrainEffect === 'ALIEN_CRASH') {
@@ -1770,11 +1753,6 @@ export class SettlementGenerator {
         if (r < 0.30) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { buildingId: null });
         if (r < 0.45) return tile('DEEP_FOREST', 'T', '#00CC44', '#001A0A', false, { buildingId: null });
         return tile('GRASSLAND', '.', '#22AA44', '#001A0A', true, { buildingId: null });
-      },
-      fungal_net: () => {
-        if (r < 0.20) return tile('FUNGAL_NET', '%', '#CC88FF', '#1A0022', true, { buildingId: null });
-        if (r < 0.30) return tile('FUNGAL_NET', '.', '#9966CC', '#1A0022', true, { buildingId: null });
-        return tile('GRASSLAND', '.', '#886699', '#1A0022', true, { buildingId: null });
       },
       toxic_sump: () => {
         if (r < 0.15) return tile('TOXIC_SUMP', '~', '#44FF00', '#112200', false, { buildingId: null });
@@ -2318,7 +2296,6 @@ export class SettlementGenerator {
       inferno_core:    { wallFg: '#DD3311', wallBg: '#330500', floorFg: '#CC2200', floorBg: '#220000', windowFg: '#FF4422', doorFg: '#DD2200' },
       reactor_slag:    { wallFg: '#CC5522', wallBg: '#331100', floorFg: '#AA4411', floorBg: '#220800', windowFg: '#FF7733', doorFg: '#CC5511' },
       // Organic biomes
-      fungal_net:      { wallFg: '#AA66DD', wallBg: '#1A0022', floorFg: '#8844BB', floorBg: '#120018', windowFg: '#CC88FF', doorFg: '#9955CC' },
       hydro_jungle:    { wallFg: '#44AA66', wallBg: '#002211', floorFg: '#338855', floorBg: '#001A0A', windowFg: '#66CC88', doorFg: '#338844' },
       toxic_sump:      { wallFg: '#88AA44', wallBg: '#112200', floorFg: '#668833', floorBg: '#0A1800', windowFg: '#AACC55', doorFg: '#88AA33' },
       // Anomaly biomes
@@ -3536,10 +3513,7 @@ export class DungeonGenerator {
 
           if (isCave) {
             // Cave decorations
-            if (r < 0.04) {
-              const mushroomColor = rng.chance(0.5) ? '#DD88CC' : '#88DD88';
-              tiles[y][x] = tile('MUSHROOM', '\u2660', mushroomColor, tiles[y][x].bg, true);
-            } else if (r < 0.06 && depth > 3) {
+            if (r < 0.04 && depth > 3) {
               const crystalFg = rng.chance(0.7) ? '#44DDFF' : '#FF44DD';
               tiles[y][x] = tile('CRYSTAL', '\u25C6', crystalFg, tiles[y][x].bg, false);
             } else if (r < 0.09) {
