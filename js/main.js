@@ -145,6 +145,7 @@ class Game {
       crtScanlines: true,
       crtAberration: true,
       crtQuality: 'auto', // 'auto', 'low', 'medium', 'high', 'full'
+      crtResolution: 'auto', // 'auto', 'quarter', 'half', 'three-quarter', 'full' – CRT filter resolution
       fontSize: 16,
       touchControls: true,
       autoSaveInterval: 100, // turns
@@ -307,15 +308,16 @@ class Game {
   }
 
   _applyCrtQuality() {
-    const q = this.settings.crtQuality || 'auto';
-    const qualityMap = { low: 0.33, medium: 0.5, high: 0.75, full: 1.0 };
+    // crtResolution is the primary user-facing resolution control
+    const res = this.settings.crtResolution || 'auto';
+    const resMap = { quarter: 0.25, half: 0.5, 'three-quarter': 0.75, full: 1.0 };
     let scale;
-    if (q === 'auto') {
+    if (res === 'auto') {
       const totalPixels = this.renderer.canvas.width * this.renderer.canvas.height;
       const targetPixels = 800 * 600;
       scale = Math.min(1.0, Math.max(0.25, Math.sqrt(targetPixels / totalPixels)));
     } else {
-      scale = qualityMap[q] || 0.5;
+      scale = resMap[res] || 0.5;
     }
     this.renderer.setCrtScale(scale);
   }
@@ -2800,9 +2802,9 @@ class Game {
       if (key === '7') { this.settings.crtScanlines = !this.settings.crtScanlines; this._saveSettings(); }
       if (key === '8') { this.settings.crtAberration = !this.settings.crtAberration; this._saveSettings(); }
       if (key === '`' || key === '~') {
-        const modes = ['auto', 'low', 'medium', 'high', 'full'];
-        const idx = modes.indexOf(this.settings.crtQuality);
-        this.settings.crtQuality = modes[(idx + 1) % modes.length];
+        const modes = ['auto', 'quarter', 'half', 'three-quarter', 'full'];
+        const idx = modes.indexOf(this.settings.crtResolution);
+        this.settings.crtResolution = modes[(idx + 1) % modes.length];
         this._applyCrtQuality();
         this._saveSettings();
       }

@@ -2558,7 +2558,7 @@ export class UIManager {
         { key: '6', label: 'Phosphor Glow', value: settings.crtGlow !== false ? 'ON' : 'OFF', color: settings.crtGlow !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
         { key: '7', label: 'Scanlines', value: settings.crtScanlines !== false ? 'ON' : 'OFF', color: settings.crtScanlines !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
         { key: '8', label: 'Chroma Aberr.', value: settings.crtAberration !== false ? 'ON' : 'OFF', color: settings.crtAberration !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
-        { key: '`', label: 'CRT Quality', value: (settings.crtQuality || 'auto').toUpperCase(), color: COLORS.BRIGHT_YELLOW },
+        { key: '`', label: 'CRT Resolution', value: (settings.crtResolution || 'auto').toUpperCase(), color: COLORS.BRIGHT_YELLOW },
       ];
 
       for (const item of subItems) {
