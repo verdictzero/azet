@@ -1748,7 +1748,7 @@ export class UIManager {
         const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
         const sdxN = sunDir.dx / sdMag;
         const sdyN = sunDir.dy / sdMag;
-        const maxRayLen = viewW + viewH;
+        const maxRayLen = 5;
 
         for (let wy_off = 0; wy_off < worldH; wy_off++) {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
@@ -1774,7 +1774,7 @@ export class UIManager {
                       const key = `${shx},${shy}`;
                       const existing = shadowCells.get(key) || 0;
                       const dist = i / maxRayLen;
-                      const fadedAlpha = baseAlpha * (1.0 - dist * 0.5);
+                      const fadedAlpha = baseAlpha * Math.pow(1.0 - dist, 2);
                       shadowCells.set(key, Math.min(shadowMax, existing + fadedAlpha));
                     }
                   }
@@ -1786,53 +1786,8 @@ export class UIManager {
         }
       }
 
-      // ── Collect sun/moon-facing lit cells (opposite side from shadows) for directional brightening ──
-      const sunlitCells = new Map(); // "sx,sy" -> intensity (0-1)
-      if (sunDir) {
-        // The sun shines FROM the opposite direction of dx/dy (shadows go in dx/dy direction)
-        // So the sun-facing side of objects is the OPPOSITE of shadow direction
-        const sunFromX = -(sunDir.dx || 0);
-        const sunFromY = -(Math.round(sunDir.dy) || 0);
-        for (let wy_off = 0; wy_off < worldH; wy_off++) {
-          for (let wx_off = 0; wx_off < worldW; wx_off++) {
-            const wx = camX + wx_off;
-            const wy = camY + wy_off;
-            if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
-            const t = settlement.tiles[wy][wx];
-            if (!t) continue;
-            const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
-            if (height > 0) {
-              // Mark 1-2 tiles on the sun-facing side as lit
-              const litLen = Math.min(2, Math.max(1, Math.round(height * 0.5)));
-              for (let i = 1; i <= litLen; i++) {
-                // Only highlight ground-level tiles — skip if destination is also raised
-                const destWx = wx + sunFromX * i;
-                const destWy = wy + sunFromY * i;
-                if (destWy >= 0 && destWy < settlement.tiles.length && destWx >= 0 && destWx < settlement.tiles[0].length) {
-                  const destTile = settlement.tiles[destWy][destWx];
-                  if (!destTile) continue;
-                  const destH = SETTLEMENT_HEIGHTS[destTile.type] || CHAR_HEIGHTS[destTile.char] || (!destTile.walkable && destTile.char !== '.' ? 1 : 0);
-                  if (destH >= height) continue;
-                }
-                const litBaseX = wx_off * density + sunFromX * i * density;
-                const litBaseY = wy_off * density + sunFromY * i * density;
-                for (let sdy = 0; sdy < density; sdy++) {
-                  for (let sdx = 0; sdx < density; sdx++) {
-                    const lx = Math.floor(litBaseX) + sdx;
-                    const ly = Math.floor(litBaseY) + sdy;
-                    if (lx >= 0 && lx < viewW && ly >= 0 && ly < viewH) {
-                      const key = `${lx},${ly}`;
-                      const falloff = 1.0 / i;
-                      const existing = sunlitCells.get(key) || 0;
-                      sunlitCells.set(key, Math.min(0.6, existing + falloff * 0.35));
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      // Edge highlights disabled — using soft gradient shadows instead
+      const sunlitCells = new Map();
 
       // Render tiles with density expansion
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
@@ -1907,10 +1862,10 @@ export class UIManager {
         let rayIntMul, edgeBoost;
         if (isDay) {
           rayIntMul = 0.25 + sunWarmth * 0.15;
-          edgeBoost = 0.02 + sunWarmth * 0.02;
+          edgeBoost = 0.01 + sunWarmth * 0.01;
         } else {
           rayIntMul = 0.18;
-          edgeBoost = 0.015;
+          edgeBoost = 0.008;
         }
         for (let sy = 0; sy < viewH; sy++) {
           for (let sx = 0; sx < viewW; sx++) {
@@ -1925,7 +1880,7 @@ export class UIManager {
             const nearCanopy = canopyNearbyCells.has(key);
             const proj = sx * perpX + sy * perpY;
             const rayNoise = r._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
-            if (rayNoise > 0.05) {
+            if (rayNoise > 0.45) {
               const alongProj = sx * alongX + sy * alongY;
               const rayT = (alongProj - minAlong) / alongRange;
               let tint;
@@ -1954,10 +1909,13 @@ export class UIManager {
                   tint = '#' + [tR, tG, tB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 }
               }
-              let intensity = ((rayNoise - 0.05) / 0.95 * 0.08 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
+              let intensity = ((rayNoise - 0.45) / 0.55 * 0.08 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
               const dimFactor = 1.0 - rayT * 0.25;
               intensity *= dimFactor;
               if (nearCanopy) intensity *= 1.15;
+              // Temporal fade in/out for sparse sun rays
+              const fadeCycle = Math.sin(ts * 0.15 + proj * 0.1) * 0.35 + 0.65;
+              intensity *= fadeCycle;
               godRayCells.push(sx, sy, Math.min(0.12, intensity), tint);
             }
           }
@@ -2107,18 +2065,7 @@ export class UIManager {
       }
     }
 
-    // Edge highlights — palette-shift brightening within original color range
-    // Uses a near-white neutral tint at very low alpha for subtle edge definition
-    if (sunlitCells.size > 0) {
-      const brightMul = isDay ? (0.03 + sunWarmth * 0.04) : 0.025;
-      // Neutral highlight: white with very slight cool bias — stays within palette
-      const hlTint = isDay ? '#F0F2F8' : '#BBCCDD';
-      for (const [key, intensity] of sunlitCells) {
-        const [sx, sy] = key.split(',').map(Number);
-        if (shadowCells.has(key)) continue;
-        renderer.brightenCell(viewLeft + sx, viewTop + sy, intensity * brightMul, hlTint);
-      }
-    }
+    // Edge highlights disabled
 
     // Ambient fill — extremely subtle, barely perceptible directional bias
     if (isDay && sunWarmth > 0.2) {

@@ -4283,17 +4283,15 @@ class Game {
           }
         }
 
-        // Render sun-facing highlights on raised object edges
+        // Gradient directional darkening on forest/object interiors
         if (this._highlightBuf) {
-          const hBuf = this._highlightBuf;
-          const owDir = this.timeSystem.getSunDirection();
-          const hlTint = owDir.isDay ? '#FFEEAA' : '#AABBDD';
-          for (let hy = 0; hy < sH; hy++) {
-            const rowOff = hy * sW;
-            for (let hx = 0; hx < sW; hx++) {
-              const intensity = hBuf[rowOff + hx];
-              if (intensity > 0) {
-                this.renderer.brightenCell(viewLeft + hx, viewTop + hy, intensity, hlTint);
+          const gBuf = this._highlightBuf;
+          for (let gy = 0; gy < sH; gy++) {
+            const rowOff = gy * sW;
+            for (let gx = 0; gx < sW; gx++) {
+              const alpha = gBuf[rowOff + gx];
+              if (alpha > 0) {
+                this.renderer.darkenCell(viewLeft + gx, viewTop + gy, alpha);
               }
             }
           }
@@ -4338,8 +4336,11 @@ class Game {
                 }
                 const proj = sx * perpX + sy * perpY;
                 const rayN = this.renderer._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
-                if (rayN > 0.05) {
-                  const intensity = (rayN - 0.05) / 0.95 * 0.15 + (nearShadow ? 0.08 : 0);
+                if (rayN > 0.45) {
+                  let intensity = (rayN - 0.45) / 0.55 * 0.15 + (nearShadow ? 0.04 : 0);
+                  // Temporal fade in/out for sparse sun rays
+                  const fadeCycle = Math.sin(ts * 0.15 + proj * 0.1) * 0.35 + 0.65;
+                  intensity *= fadeCycle;
                   const alongProj = sx * alongX + sy * alongY;
                   const rayT = (alongProj - minAlong) / alongRange;
                   cells.push(sx, sy, Math.min(0.25, intensity), rayT);
@@ -4556,8 +4557,8 @@ class Game {
       const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
       const sdx = sunDir.dx / sdMag;
       const sdy = sunDir.dy / sdMag;
-      // Max ray steps to reach viewport edge
-      const maxRayLen = viewW + viewH;
+      // Max ray steps: 5 blocks for short, soft shadows
+      const maxRayLen = 5;
 
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
         for (let wx_off = 0; wx_off < worldW; wx_off++) {
@@ -4566,8 +4567,13 @@ class Game {
           const tile = this.overworld.getTile(wx, wy);
           const height = Game.TILE_HEIGHTS[tile.type] || 0;
           if (height > 0) {
-            // Shadow alpha scales with height
-            const shadowAlpha = (sunDir.isDay ? 0.25 : 0.15) + Math.min(0.15, height * 0.03);
+            // Halve shadow alpha for vegetation to soften forest edge contrast
+            const isVegetation = tile.type === 'TREE' || tile.type === 'PINE' || tile.type === 'PALM' ||
+              tile.type === 'TREE_CANOPY' || tile.type === 'TREE_TRUNK' || tile.type === 'FOREST' ||
+              tile.type === 'DEEP_FOREST' || tile.type === 'CANOPY' || tile.type === 'PINE_STAND' ||
+              tile.type === 'SPARSE_TREES';
+            const baseShadow = sunDir.isDay ? 0.25 : 0.15;
+            const shadowAlpha = (isVegetation ? baseShadow * 0.5 : baseShadow) + Math.min(0.15, height * 0.03);
             const shadowMax = sunDir.isDay ? 0.65 : 0.45;
             // Cast infinitely linear shadow ray from this object to viewport edge
             for (let i = 1; i <= maxRayLen; i++) {
@@ -4581,9 +4587,9 @@ class Game {
                   if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
                     anyInBounds = true;
                     const idx = shy * viewW + shx;
-                    // Fade shadow slightly over distance
+                    // Quadratic fade for soft gradient shadow edge
                     const dist = i / maxRayLen;
-                    const fadedAlpha = shadowAlpha * (1.0 - dist * 0.5);
+                    const fadedAlpha = shadowAlpha * Math.pow(1.0 - dist, 2);
                     shadowBuf[idx] = Math.min(shadowMax, shadowBuf[idx] + fadedAlpha);
                   }
                 }
@@ -4591,24 +4597,26 @@ class Game {
               if (!anyInBounds) break; // past viewport edge
             }
 
-            // Highlight sun-facing edges (opposite side from shadow direction)
-            const hlLen = Math.max(1, Math.round(height * 0.5));
-            const hlIntensity = sunDir.isDay ? 0.18 : 0.08;
-            for (let i = 1; i <= hlLen; i++) {
-              const destWxOff = wx_off - Math.round(sdx * i);
-              const destWyOff = wy_off - Math.round(sdy * i);
-              const destTile = this.overworld.getTile(camX + destWxOff, camY + destWyOff);
-              const destHeight = Game.TILE_HEIGHTS[destTile.type] || 0;
-              if (destHeight >= height) continue;
-              const hlBaseX = wx_off * density - sdx * i * density;
-              const hlBaseY = wy_off * density - sdy * i * density;
-              for (let hdy = 0; hdy < density; hdy++) {
-                for (let hdx = 0; hdx < density; hdx++) {
-                  const hlx = Math.floor(hlBaseX) + hdx;
-                  const hly = Math.floor(hlBaseY) + hdy;
-                  if (hlx >= 0 && hlx < viewW && hly >= 0 && hly < viewH) {
-                    const idx = hly * viewW + hlx;
-                    highlightBuf[idx] = Math.min(0.3, highlightBuf[idx] + hlIntensity / i);
+            // Gradient directional lighting: depth-based darkening for forest interiors
+            // Walk backward toward sun to count consecutive raised neighbors
+            let depth = 0;
+            for (let d = 1; d <= 5; d++) {
+              const checkX = wx - Math.round(sdx * d);
+              const checkY = wy - Math.round(sdy * d);
+              const checkTile = this.overworld.getTile(checkX, checkY);
+              const checkH = Game.TILE_HEIGHTS[checkTile.type] || 0;
+              if (checkH > 0) depth++;
+              else break;
+            }
+            if (depth > 0) {
+              const darkenAlpha = Math.min(0.12, depth * 0.025);
+              for (let dy = 0; dy < density; dy++) {
+                for (let dx = 0; dx < density; dx++) {
+                  const px = wx_off * density + dx;
+                  const py = wy_off * density + dy;
+                  if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
+                    const idx = py * viewW + px;
+                    highlightBuf[idx] = darkenAlpha;
                   }
                 }
               }
