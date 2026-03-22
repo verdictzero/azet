@@ -4339,13 +4339,13 @@ class Game {
                 const wideN = this.renderer._godRayNoise.noise2D(proj * 0.08 + ts * 0.02, ts * 0.015 + 50.0);
                 const rayN = thinN * 0.5 + wideN * 0.5;
                 if (rayN > 0.18) {
-                  let intensity = (rayN - 0.18) / 0.82 * 0.15 + (nearShadow ? 0.04 : 0);
+                  let intensity = (rayN - 0.18) / 0.82 * 0.20 + (nearShadow ? 0.054 : 0);
                   // Temporal fade in/out for sparse sun rays
                   const fadeCycle = Math.sin(ts * 0.15 + proj * 0.1) * 0.35 + 0.65;
                   intensity *= fadeCycle;
                   const alongProj = sx * alongX + sy * alongY;
                   const rayT = (alongProj - minAlong) / alongRange;
-                  cells.push(sx, sy, Math.min(0.25, intensity), rayT);
+                  cells.push(sx, sy, Math.min(0.34, intensity), rayT);
                 }
               }
             }

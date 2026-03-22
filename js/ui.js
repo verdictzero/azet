@@ -1861,11 +1861,11 @@ export class UIManager {
         const alongRange = maxAlong - minAlong || 1;
         let rayIntMul, edgeBoost;
         if (isDay) {
-          rayIntMul = 0.25 + sunWarmth * 0.15;
-          edgeBoost = 0.01 + sunWarmth * 0.01;
+          rayIntMul = 0.34 + sunWarmth * 0.20;
+          edgeBoost = 0.014 + sunWarmth * 0.014;
         } else {
-          rayIntMul = 0.18;
-          edgeBoost = 0.008;
+          rayIntMul = 0.24;
+          edgeBoost = 0.011;
         }
         for (let sy = 0; sy < viewH; sy++) {
           for (let sx = 0; sx < viewW; sx++) {
@@ -1911,14 +1911,14 @@ export class UIManager {
                   tint = '#' + [tR, tG, tB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 }
               }
-              let intensity = ((rayNoise - 0.18) / 0.82 * 0.08 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
+              let intensity = ((rayNoise - 0.18) / 0.82 * 0.108 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
               const dimFactor = 1.0 - rayT * 0.25;
               intensity *= dimFactor;
               if (nearCanopy) intensity *= 1.15;
               // Temporal fade in/out for sparse sun rays
               const fadeCycle = Math.sin(ts * 0.15 + proj * 0.1) * 0.35 + 0.65;
               intensity *= fadeCycle;
-              godRayCells.push(sx, sy, Math.min(0.12, intensity), tint);
+              godRayCells.push(sx, sy, Math.min(0.16, intensity), tint);
             }
           }
         }
