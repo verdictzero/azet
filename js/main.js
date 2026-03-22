@@ -4479,6 +4479,8 @@ class Game {
     CRANE_BOOM: 6, CRANE_SUPPORT: 5, CRANE_HOOK: 2, CRANE_CROSSBEAM: 4,
     CRANE_MACHINERY: 3, CRANE_BASIN: 0, CRANE_PLATFORM: 1, CRANE_FRAME: 2,
     MECH_GEAR: 2, MECH_PIPE: 2, MECH_VALVE: 1, MECH_CONDUIT: 2,
+    // Colony substructure tears (negative = recessed, receives shadow)
+    TEAR_GRID: -2, TEAR_DARK_METAL: -2,
     // Anomaly biome tiles
     CRYSTAL_ZONE: 2, HYDRO_JUNGLE: 2,
     // Wetland & vegetation
@@ -4565,7 +4567,21 @@ class Game {
           const wx = camX + wx_off;
           const wy = camY + wy_off;
           const tile = this.overworld.getTile(wx, wy);
-          const height = Game.TILE_HEIGHTS[tile.type] || 0;
+          const height = Game.TILE_HEIGHTS[tile.type] || (tile.depth || 0);
+          // Recessed tiles (negative depth) receive permanent self-shadow
+          if (height < 0) {
+            const recessShadow = Math.min(0.5, Math.abs(height) * 0.2);
+            for (let dy = 0; dy < density; dy++) {
+              for (let dx = 0; dx < density; dx++) {
+                const px = wx_off * density + dx;
+                const py = wy_off * density + dy;
+                if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
+                  const idx = py * viewW + px;
+                  shadowBuf[idx] = Math.min(0.65, shadowBuf[idx] + recessShadow);
+                }
+              }
+            }
+          }
           if (height > 0) {
             // Halve shadow alpha for vegetation to soften forest edge contrast
             const isVegetation = tile.type === 'TREE' || tile.type === 'PINE' || tile.type === 'PALM' ||
