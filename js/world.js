@@ -1066,9 +1066,7 @@ export class ChunkManager {
     // Remove small isolated non-walkable clusters (< 25 tiles) to prevent movement frustration
     this._removeSmallBlockers(tiles);
 
-    // Surface structures disabled — simplifying to fields/forests/mountains for now
-    // const structures = this._placeStructures(cx, cy, tiles);
-    const structures = [];
+    const structures = this._placeStructures(cx, cy, tiles);
     const locations = this._placeChunkLocations(cx, cy, tiles);
     const chunk = { tiles, locations, structures, cx, cy };
     this.chunks.set(key, chunk);
