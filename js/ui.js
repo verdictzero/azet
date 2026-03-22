@@ -1761,6 +1761,7 @@ export class UIManager {
             const wy = camY + wy_off;
             if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
             const t = settlement.tiles[wy][wx];
+            if (!t) continue;
             const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
             if (height > 0) {
               // Cast infinitely linear shadow to viewport edge
@@ -1803,6 +1804,7 @@ export class UIManager {
             const wy = camY + wy_off;
             if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
             const t = settlement.tiles[wy][wx];
+            if (!t) continue;
             const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
             if (height > 0) {
               // Mark 1-2 tiles on the sun-facing side as lit
@@ -1813,6 +1815,7 @@ export class UIManager {
                 const destWy = wy + sunFromY * i;
                 if (destWy >= 0 && destWy < settlement.tiles.length && destWx >= 0 && destWx < settlement.tiles[0].length) {
                   const destTile = settlement.tiles[destWy][destWx];
+                  if (!destTile) continue;
                   const destH = SETTLEMENT_HEIGHTS[destTile.type] || CHAR_HEIGHTS[destTile.char] || (!destTile.walkable && destTile.char !== '.' ? 1 : 0);
                   if (destH >= height) continue;
                 }
@@ -1843,6 +1846,7 @@ export class UIManager {
           const wy = camY + wy_off;
           if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
             const tile = settlement.tiles[wy][wx];
+            if (!tile) continue;
 
             if (density === 1) {
               const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
@@ -1877,7 +1881,7 @@ export class UIManager {
             const wx = camX + wx_off;
             const wy = camY + wy_off;
             if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
-              if (settlement.tiles[wy][wx].type === 'TREE_CANOPY') {
+              if (settlement.tiles[wy][wx] && settlement.tiles[wy][wx].type === 'TREE_CANOPY') {
                 for (let cdy = -2; cdy <= 2; cdy++) {
                   for (let cdx = -2; cdx <= 2; cdx++) {
                     const nsx = wx_off * density + cdx;
@@ -1985,6 +1989,7 @@ export class UIManager {
             const wy = camY + wy_off;
             if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
             const t = settlement.tiles[wy][wx];
+            if (!t) continue;
             const prof = LIGHT_TILES[t.type] || (t.char === '\u263C' ? LIGHT_TILES['\u263C'] : null);
             if (prof) lampSources.push({ wx_off, wy_off, wx, wy, prof });
           }
@@ -2028,6 +2033,7 @@ export class UIManager {
               const wy = camY + wy_off;
               if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
               const t = settlement.tiles[wy][wx];
+              if (!t) continue;
               if (t.type === 'DOOR' || t.type === 'WINDOW') {
                 const wRad = 3;
                 const wph = (wx * 0.5 + wy * 0.3) % 6.28;
