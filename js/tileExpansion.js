@@ -264,6 +264,48 @@ const BRIDGE_3x3 = [
   [['\u2550','=','\u2550'],['=','\u2550','='],['|','=','|']],
 ];
 
+// ── Colony substructure tear patterns ────────────────
+
+const TEAR_DIRT_2x2 = [
+  [['\u00B7','.'],['.', '\u00B7']],
+  [['.', '\u00B7'],['\u00B7','.']],
+];
+
+const TEAR_DIRT_3x3 = [
+  [['\u00B7','.','\u00B7'],['.','\u00B7','.'],['\u00B7','.','\u00B7']],
+  [['.','\u00B7','.'],['\u00B7','.','\u00B7'],['.','\u00B7','.']],
+];
+
+const TEAR_LIGHT_METAL_2x2 = [
+  [['\u2591','\u2500'],['\u2500','\u2591']],
+  [['\u2500','\u2591'],['\u2591','\u2500']],
+];
+
+const TEAR_LIGHT_METAL_3x3 = [
+  [['\u2591','\u2500','\u2591'],['\u2500','\u2591','\u2500'],['\u2591','\u2500','\u2591']],
+  [['\u2500','\u2591','\u2500'],['\u2591','\u2500','\u2591'],['\u2500','\u2591','\u2500']],
+];
+
+const TEAR_DARK_METAL_2x2 = [
+  [['\u2592','\u2550'],['\u2550','\u2592']],
+  [['\u2550','\u2592'],['\u2592','\u2550']],
+];
+
+const TEAR_DARK_METAL_3x3 = [
+  [['\u2592','\u2550','\u2592'],['\u2550','\u2592','\u2550'],['\u2592','\u2550','\u2592']],
+  [['\u2550','\u2592','\u2550'],['\u2592','\u2550','\u2592'],['\u2550','\u2592','\u2550']],
+];
+
+const TEAR_GRID_2x2 = [
+  [['\u256C','\u2550'],['\u2551','\u256C']],
+  [['\u2550','\u256C'],['\u256C','\u2551']],
+];
+
+const TEAR_GRID_3x3 = [
+  [['\u256C','\u2550','\u256C'],['\u2551','\u256C','\u2551'],['\u256C','\u2550','\u256C']],
+  [['\u2550','\u256C','\u2550'],['\u256C','\u2551','\u256C'],['\u2550','\u256C','\u2550']],
+];
+
 // ── Category → pattern mapping ──────────────────────
 
 const TYPE_PATTERNS = {
@@ -401,6 +443,12 @@ const TYPE_PATTERNS = {
 
   // Organic
   MOSS:           { 2: FUNGAL_2x2, 3: FUNGAL_3x3 },
+
+  // Colony substructure tears
+  TEAR_DIRT:        { 2: TEAR_DIRT_2x2, 3: TEAR_DIRT_3x3 },
+  TEAR_LIGHT_METAL: { 2: TEAR_LIGHT_METAL_2x2, 3: TEAR_LIGHT_METAL_3x3 },
+  TEAR_DARK_METAL:  { 2: TEAR_DARK_METAL_2x2, 3: TEAR_DARK_METAL_3x3 },
+  TEAR_GRID:        { 2: TEAR_GRID_2x2, 3: TEAR_GRID_3x3 },
 };
 
 // Simple hash for spatial variation
