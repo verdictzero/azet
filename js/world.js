@@ -138,7 +138,7 @@ export class OverworldGenerator {
 
     const locations = [];
     let idCounter = 0;
-    const minDist = 6;
+    const minDist = 12;
 
     for (const def of locationDefs) {
       const count = rng.nextInt(def.min, def.max);
@@ -232,7 +232,7 @@ export class OverworldGenerator {
       // Carve road path
       const from = toConnect[bestFrom];
       const to = toConnect[bestTo];
-      const path = this._findOverworldPath(tiles, from.x, from.y, to.x, to.y, width, height);
+      const path = this._findOverworldPath(rng, tiles, from.x, from.y, to.x, to.y, width, height);
       if (path) {
         roads.push({ from: from.id, to: to.id, path });
         for (const p of path) {
@@ -249,15 +249,51 @@ export class OverworldGenerator {
     return roads;
   }
 
-  _findOverworldPath(tiles, sx, sy, ex, ey, width, height) {
+  _findOverworldPath(rng, tiles, sx, sy, ex, ey, width, height) {
     const isWalkable = (x, y) => {
       if (x < 0 || y < 0 || x >= width || y >= height) return false;
       const t = tiles[y][x];
-      // Allow shallows for bridges, but discourage it; block deep lakes and high peaks
       if (t.type === 'OCEAN' || t.type === 'MOUNTAIN') return false;
       return true;
     };
-    return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
+
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 6) {
+      return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
+    }
+
+    // Perpendicular direction for offset
+    const perpX = -dy / dist;
+    const perpY = dx / dist;
+
+    const numWaypoints = dist > 20 ? 3 : dist > 10 ? 2 : 1;
+    const waypoints = [{ x: sx, y: sy }];
+
+    for (let i = 0; i < numWaypoints; i++) {
+      const t = (i + 1) / (numWaypoints + 1);
+      const midX = sx + dx * t;
+      const midY = sy + dy * t;
+      const maxOffset = dist * 0.3;
+      const offset = (rng.next() - 0.5) * 2 * maxOffset;
+      const wpx = Math.round(Math.max(0, Math.min(width - 1, midX + perpX * offset)));
+      const wpy = Math.round(Math.max(0, Math.min(height - 1, midY + perpY * offset)));
+      waypoints.push({ x: wpx, y: wpy });
+    }
+    waypoints.push({ x: ex, y: ey });
+
+    const fullPath = [];
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const wp0 = waypoints[i];
+      const wp1 = waypoints[i + 1];
+      const seg = AStar.findPath(wp0.x, wp0.y, wp1.x, wp1.y, isWalkable, 5000);
+      if (!seg) return null;
+      for (let j = (i === 0 ? 0 : 1); j < seg.length; j++) {
+        fullPath.push(seg[j]);
+      }
+    }
+    return fullPath;
   }
 
   _getLocation(locations, x, y) {
@@ -1347,12 +1383,12 @@ export class ChunkManager {
     const ox = cx * CHUNK_SIZE;
     const oy = cy * CHUNK_SIZE;
 
-    // 0-2 locations per chunk
+    // 0-2 locations per chunk (sparse distribution)
     const roll = rng.next();
-    const count = roll < 0.45 ? 0 : roll < 0.82 ? 1 : 2;
+    const count = roll < 0.65 ? 0 : roll < 0.95 ? 1 : 2;
 
     const locations = [];
-    const minDist = 6;
+    const minDist = 15;
 
     for (let i = 0; i < count; i++) {
       // Pick a weighted random location type
@@ -1481,7 +1517,7 @@ export class ChunkManager {
     if (connectable.length < 2) return;
 
     // Build MST on nearby locations (within ~40 tiles)
-    const maxRoadDist = 40;
+    const maxRoadDist = 30;
     const edges = [];
     for (let i = 0; i < connectable.length; i++) {
       for (let j = i + 1; j < connectable.length; j++) {
@@ -1535,7 +1571,54 @@ export class ChunkManager {
       if (t.type === 'OCEAN' || t.type === 'MOUNTAIN') return false;
       return true;
     };
-    return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
+
+    // Generate 1-3 waypoints offset from the direct line to create meandering
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 8) {
+      // Short roads don't need meandering
+      return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
+    }
+
+    // Deterministic RNG from endpoint coords
+    const waypointRng = new SeededRNG(this.seed + sx * 7919 + sy * 6271 + ex * 4219 + ey * 3037);
+
+    // Perpendicular direction
+    const perpX = -dy / dist;
+    const perpY = dx / dist;
+
+    // Number of waypoints based on distance
+    const numWaypoints = dist > 25 ? 3 : dist > 15 ? 2 : 1;
+    const waypoints = [{ x: sx, y: sy }];
+
+    for (let i = 0; i < numWaypoints; i++) {
+      const t = (i + 1) / (numWaypoints + 1); // evenly spaced along line
+      const midX = sx + dx * t;
+      const midY = sy + dy * t;
+      // Offset perpendicular by up to 30% of total distance
+      const maxOffset = dist * 0.3;
+      const offset = (waypointRng.next() - 0.5) * 2 * maxOffset;
+      waypoints.push({
+        x: Math.round(midX + perpX * offset),
+        y: Math.round(midY + perpY * offset),
+      });
+    }
+    waypoints.push({ x: ex, y: ey });
+
+    // A* between consecutive waypoints, concatenate
+    const fullPath = [];
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const wp0 = waypoints[i];
+      const wp1 = waypoints[i + 1];
+      const seg = AStar.findPath(wp0.x, wp0.y, wp1.x, wp1.y, isWalkable, 5000);
+      if (!seg) return null; // if any segment fails, no road
+      // Skip first point of subsequent segments to avoid duplicates
+      for (let j = (i === 0 ? 0 : 1); j < seg.length; j++) {
+        fullPath.push(seg[j]);
+      }
+    }
+    return fullPath;
   }
 }
 
