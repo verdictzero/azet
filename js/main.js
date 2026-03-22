@@ -4560,7 +4560,7 @@ class Game {
       const sdx = sunDir.dx / sdMag;
       const sdy = sunDir.dy / sdMag;
       // Max ray steps: 5 blocks for short, soft shadows
-      const maxRayLen = 5;
+      const maxRayLen = 6;
 
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
         for (let wx_off = 0; wx_off < worldW; wx_off++) {
@@ -4570,14 +4570,14 @@ class Game {
           const height = Game.TILE_HEIGHTS[tile.type] || (tile.depth || 0);
           // Recessed tiles (negative depth) receive permanent self-shadow
           if (height < 0) {
-            const recessShadow = Math.min(0.5, Math.abs(height) * 0.2);
+            const recessShadow = Math.min(0.625, Math.abs(height) * 0.25);
             for (let dy = 0; dy < density; dy++) {
               for (let dx = 0; dx < density; dx++) {
                 const px = wx_off * density + dx;
                 const py = wy_off * density + dy;
                 if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
                   const idx = py * viewW + px;
-                  shadowBuf[idx] = Math.min(0.65, shadowBuf[idx] + recessShadow);
+                  shadowBuf[idx] = Math.min(0.8125, shadowBuf[idx] + recessShadow);
                 }
               }
             }
@@ -4588,9 +4588,9 @@ class Game {
               tile.type === 'TREE_CANOPY' || tile.type === 'TREE_TRUNK' || tile.type === 'FOREST' ||
               tile.type === 'DEEP_FOREST' || tile.type === 'CANOPY' || tile.type === 'PINE_STAND' ||
               tile.type === 'SPARSE_TREES';
-            const baseShadow = sunDir.isDay ? 0.25 : 0.15;
-            const shadowAlpha = (isVegetation ? baseShadow * 0.5 : baseShadow) + Math.min(0.15, height * 0.03);
-            const shadowMax = sunDir.isDay ? 0.65 : 0.45;
+            const baseShadow = sunDir.isDay ? 0.3125 : 0.1875;
+            const shadowAlpha = (isVegetation ? baseShadow * 0.5 : baseShadow) + Math.min(0.1875, height * 0.0375);
+            const shadowMax = sunDir.isDay ? 0.8125 : 0.5625;
             // Cast infinitely linear shadow ray from this object to viewport edge
             for (let i = 1; i <= maxRayLen; i++) {
               const shBaseX = wx_off * density + sdx * i * density;

@@ -1742,13 +1742,13 @@ export class UIManager {
       // Collect infinitely linear shadows (in screen coords) — works for both sun and moon
       const shadowCells = new Map();
       if (sunDir) {
-        const shadowAlpha = isDay ? 0.16 : 0.10;
-        const shadowMax = isDay ? 0.42 : 0.25;
+        const shadowAlpha = isDay ? 0.20 : 0.125;
+        const shadowMax = isDay ? 0.525 : 0.3125;
         // Normalized shadow direction for ray marching
         const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
         const sdxN = sunDir.dx / sdMag;
         const sdyN = sunDir.dy / sdMag;
-        const maxRayLen = 5;
+        const maxRayLen = 6;
 
         for (let wy_off = 0; wy_off < worldH; wy_off++) {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
@@ -1760,7 +1760,7 @@ export class UIManager {
             const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
             if (height > 0) {
               // Cast infinitely linear shadow to viewport edge
-              const baseAlpha = shadowAlpha + Math.min(0.1, height * 0.02);
+              const baseAlpha = shadowAlpha + Math.min(0.125, height * 0.025);
               for (let i = 1; i <= maxRayLen; i++) {
                 const shBaseX = wx_off * density + sdxN * i * density;
                 const shBaseY = wy_off * density + sdyN * i * density;

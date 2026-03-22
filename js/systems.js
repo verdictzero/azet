@@ -1323,8 +1323,8 @@ export class TimeSystem {
     const dx = -lightDx;
     const dy = -lightDy;
     // Always long shadows (golden hour feel): clamp minimum shadowLength
-    const rawShadowLen = elevation > 0.03 ? Math.min(8, 1.2 / elevation) : 8;
-    const shadowLength = Math.max(3, rawShadowLen);
+    const rawShadowLen = elevation > 0.03 ? Math.min(10, 1.5 / elevation) : 10;
+    const shadowLength = Math.max(4, rawShadowLen);
 
     return { dx, dy, elevation, shadowLength, isDay, lightDx, lightDy };
   }
