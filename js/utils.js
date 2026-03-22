@@ -160,6 +160,99 @@ export class PerlinNoise {
 }
 
 // ----------------------------------------------------------------------------
+// CellularNoise — Worley/Voronoi noise for smooth contiguous regions
+// ----------------------------------------------------------------------------
+
+export class CellularNoise {
+  constructor(rng, density = 1.0) {
+    // Pre-generate feature points for a grid of cells
+    // Each grid cell gets one random feature point
+    this._points = new Map();
+    this._rng = rng;
+    this._density = density;
+    // Cache seeds for deterministic per-cell point generation
+    this._seedX = Math.floor(rng.next() * 2147483647);
+    this._seedY = Math.floor(rng.next() * 2147483647);
+    this._seedId = Math.floor(rng.next() * 2147483647);
+  }
+
+  // Deterministic hash for grid cell -> feature point
+  _hash(ix, iy, seed) {
+    let h = (ix * 374761393 + iy * 668265263 + seed) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h = h ^ (h >>> 16);
+    return ((h >>> 0) / 4294967296);
+  }
+
+  // Returns { f1, f2, cellId, cellX, cellY } where:
+  //   f1 = distance to nearest feature point (0..~1)
+  //   f2 = distance to second nearest
+  //   cellId = unique ID for the nearest cell region
+  //   cellX/cellY = grid coords of nearest cell
+  noise2D(x, y) {
+    const sx = x * this._density;
+    const sy = y * this._density;
+    const ix = Math.floor(sx);
+    const iy = Math.floor(sy);
+
+    let minDist1 = 999, minDist2 = 999;
+    let nearestCellX = 0, nearestCellY = 0;
+
+    // Check 3x3 neighborhood
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const cx = ix + dx;
+        const cy = iy + dy;
+        // Deterministic feature point within this cell
+        const px = cx + this._hash(cx, cy, this._seedX);
+        const py = cy + this._hash(cx, cy, this._seedY);
+        const ddx = sx - px;
+        const ddy = sy - py;
+        const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (dist < minDist1) {
+          minDist2 = minDist1;
+          minDist1 = dist;
+          nearestCellX = cx;
+          nearestCellY = cy;
+        } else if (dist < minDist2) {
+          minDist2 = dist;
+        }
+      }
+    }
+
+    // cellId: deterministic unique identifier per Voronoi cell
+    const cellId = this._hash(nearestCellX, nearestCellY, this._seedId);
+
+    return {
+      f1: minDist1,
+      f2: minDist2,
+      edge: minDist2 - minDist1, // 0 at edges, larger inside cells
+      cellId,
+      cellX: nearestCellX,
+      cellY: nearestCellY,
+    };
+  }
+
+  // Multi-scale cellular noise - returns smoother, blended regions
+  // scale controls the size of cells, octaves adds detail
+  fbm(x, y, scale = 1.0, octaves = 2) {
+    let result = this.noise2D(x * scale, y * scale);
+    if (octaves <= 1) return result;
+    // For multi-octave, blend in finer detail but keep primary cell assignment
+    let detailEdge = 0;
+    let amp = 0.5;
+    for (let i = 1; i < octaves; i++) {
+      const s = scale * Math.pow(2, i);
+      const detail = this.noise2D(x * s, y * s);
+      detailEdge += detail.edge * amp;
+      amp *= 0.5;
+    }
+    result.edge = result.edge * 0.7 + detailEdge * 0.3;
+    return result;
+  }
+}
+
+// ----------------------------------------------------------------------------
 // BinaryHeap — Min-heap used internally by A* pathfinding
 // ----------------------------------------------------------------------------
 
