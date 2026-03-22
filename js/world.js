@@ -108,8 +108,8 @@ export class OverworldGenerator {
     if (h < 0.55) {
       let prox = (h - 0.3) / 0.25;                                // 0 = far from forest, 1 = near forest
       prox = Math.max(0, Math.min(1, prox + (d - 0.5) * 0.15));   // detail noise adds organic jitter
-      const fg = _lerpColor('#88aa44', '#44cc44', prox);            // yellowish-green → rich green
-      const bg = _lerpColor('#161a0d', '#112211', prox);            // warm dark → cool dark green
+      const fg = _lerpColor('#99aa33', '#33dd44', prox);            // dry yellow-green → lush vivid green
+      const bg = _lerpColor('#1a1a08', '#0a2210', prox);            // warm olive dark → cool dark green
       return tile('GRASSLAND', '.', fg, bg, true, { biome: 'grassland' });
     }
 
