@@ -105,6 +105,11 @@ export class Renderer {
     this.densityLevel = 1;    // density zoom: 1, 2, or 3
     this._baseFontSize = null; // stored when zoom is applied
 
+    // CRT post-processing resolution scaling
+    this.crtScale = 0.5;      // render CRT effects at this fraction of full res (0.25–1.0)
+    this._crtCanvas = null;    // offscreen canvas for downscaled CRT effects
+    this._crtCtx = null;
+
     // Noise for grass wind animation & god rays
     this._grassNoise = new PerlinNoise(new SeededRNG(42));
     this._grassNoise2 = new PerlinNoise(new SeededRNG(137));
@@ -180,6 +185,25 @@ export class Renderer {
     this.densityLevel = Math.max(1, Math.min(3, Math.round(level)));
     this.zoomLevel = this.densityLevel; // keep in sync for compat
     this.invalidate();
+  }
+
+  setCrtScale(scale) {
+    this.crtScale = Math.max(0.25, Math.min(1.0, scale));
+    this._updateCrtCanvas();
+  }
+
+  _updateCrtCanvas() {
+    const w = Math.max(1, Math.floor(this.canvas.width * this.crtScale));
+    const h = Math.max(1, Math.floor(this.canvas.height * this.crtScale));
+    if (!this._crtCanvas) {
+      this._crtCanvas = document.createElement('canvas');
+      this._crtCtx = this._crtCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    if (this._crtCanvas.width !== w || this._crtCanvas.height !== h) {
+      this._crtCanvas.width = w;
+      this._crtCanvas.height = h;
+      this._crtCtx.imageSmoothingEnabled = false;
+    }
   }
 
   set enableCRT(val) {
@@ -785,9 +809,36 @@ export class Renderer {
   postProcess() {
     if (!this.effectsEnabled) return;
     const opts = this.crtOptions || {};
-    if (opts.crtGlow !== false) this.applyPhosphorGlow();
+    const scale = this.crtScale;
+
+    if (scale < 1) {
+      // Route expensive pixel-manipulation effects through a smaller offscreen canvas
+      this._updateCrtCanvas();
+      const crtCtx = this._crtCtx;
+      const cw = this._crtCanvas.width;
+      const ch = this._crtCanvas.height;
+
+      // Downscale main canvas → CRT canvas
+      crtCtx.drawImage(this.canvas, 0, 0, cw, ch);
+
+      // Expensive effects on smaller canvas
+      if (opts.crtGlow !== false) this._applyPhosphorGlowOn(crtCtx, cw, ch);
+      if (opts.crtAberration !== false) this._applyChromaAberrationOn(crtCtx, cw, ch);
+
+      // Upscale CRT canvas back to main canvas
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(this._crtCanvas, 0, 0, this.canvas.width, this.canvas.height);
+      ctx.restore();
+    } else {
+      // Full-res path (original behavior)
+      if (opts.crtGlow !== false) this.applyPhosphorGlow();
+      if (opts.crtAberration !== false) this.applyChromaAberration();
+    }
+
+    // Cheap overlay effects always run on main canvas (just fillRect / gradient calls)
     if (opts.crtScanlines !== false) this.applyScanlines();
-    if (opts.crtAberration !== false) this.applyChromaAberration();
     this.applyFlicker();
     this.applyVignette();
     this.applyGlitch();
@@ -879,6 +930,72 @@ export class Renderer {
         dst[i + 3] = 255;
       }
       // Last pixel: clamp B source to w-1
+      dst[end] = src[end - 4];
+      dst[end + 1] = src[end + 1];
+      dst[end + 2] = src[end + 2];
+      dst[end + 3] = 255;
+    }
+    ctx.putImageData(shifted, 0, 0);
+  }
+
+  /**
+   * Phosphor glow on an arbitrary canvas context (for downscaled CRT path).
+   */
+  _applyPhosphorGlowOn(ctx, w, h) {
+    this._glowFrame = (this._glowFrame || 0) + 1;
+    if (this._glowFrame % 2 !== 0) return;
+
+    const scale = 0.25;
+    const sw = Math.max(1, Math.floor(w * scale));
+    const sh = Math.max(1, Math.floor(h * scale));
+
+    if (!this._glowCanvas) {
+      this._glowCanvas = document.createElement('canvas');
+    }
+    this._glowCanvas.width = sw;
+    this._glowCanvas.height = sh;
+
+    const gCtx = this._glowCanvas.getContext('2d');
+    gCtx.filter = 'blur(3px)';
+    gCtx.drawImage(this._crtCanvas, 0, 0, sw, sh);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.10;
+    ctx.drawImage(this._glowCanvas, 0, 0, w, h);
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 30, 0.015)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * Chromatic aberration on an arbitrary canvas context (for downscaled CRT path).
+   */
+  _applyChromaAberrationOn(ctx, w, h) {
+    if (w === 0 || h === 0) return;
+
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const src = imgData.data;
+    const shifted = ctx.createImageData(w, h);
+    const dst = shifted.data;
+    const stride = w * 4;
+
+    for (let y = 0; y < h; y++) {
+      const rowOff = y * stride;
+      dst[rowOff] = src[rowOff];
+      dst[rowOff + 1] = src[rowOff + 1];
+      dst[rowOff + 2] = src[rowOff + 6];
+      dst[rowOff + 3] = 255;
+      const end = rowOff + (w - 1) * 4;
+      for (let i = rowOff + 4; i < end; i += 4) {
+        dst[i] = src[i - 4];
+        dst[i + 1] = src[i + 1];
+        dst[i + 2] = src[i + 6];
+        dst[i + 3] = 255;
+      }
       dst[end] = src[end - 4];
       dst[end + 1] = src[end + 1];
       dst[end + 2] = src[end + 2];
