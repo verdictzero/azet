@@ -1678,6 +1678,7 @@ export class UIManager {
   // ─── LOCATION VIEW ───
 
   drawLocationOverview(settlement, npcs, player, camera, sunDir, hour) {
+    this._locationLighting = null; // clear stale data
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -1807,6 +1808,14 @@ export class UIManager {
               // Mark 1-2 tiles on the sun-facing side as lit
               const litLen = Math.min(2, Math.max(1, Math.round(height * 0.5)));
               for (let i = 1; i <= litLen; i++) {
+                // Only highlight ground-level tiles — skip if destination is also raised
+                const destWx = wx + sunFromX * i;
+                const destWy = wy + sunFromY * i;
+                if (destWy >= 0 && destWy < settlement.tiles.length && destWx >= 0 && destWx < settlement.tiles[0].length) {
+                  const destTile = settlement.tiles[destWy][destWx];
+                  const destH = SETTLEMENT_HEIGHTS[destTile.type] || CHAR_HEIGHTS[destTile.char] || (!destTile.walkable && destTile.char !== '.' ? 1 : 0);
+                  if (destH >= height) continue;
+                }
                 const litBaseX = wx_off * density + sunFromX * i * density;
                 const litBaseY = wy_off * density + sunFromY * i * density;
                 for (let sdy = 0; sdy < density; sdy++) {
@@ -1857,38 +1866,8 @@ export class UIManager {
         }
       }
 
-      // ── Apply shadow darkening with color-tinted shadows ──
-      for (const [key, alpha] of shadowCells) {
-        const [sx, sy] = key.split(',').map(Number);
-        r.darkenCell(viewLeft + sx, viewTop + sy, alpha);
-        // Tint shadows with time-of-day color (cool blue midday, warm purple at sunset)
-        if (shadowTint !== '#000000') {
-          r.tintCell(viewLeft + sx, viewTop + sy, shadowTint, alpha * 0.3);
-        }
-      }
-
-      // ── Directional brightening — sun/moon-facing sides of objects get warm/cool light ──
-      if (sunlitCells.size > 0) {
-        const brightMul = isDay ? (0.08 + sunWarmth * 0.14) : 0.06;
-        const hlTint = isDay ? sunTint : '#AABBDD';
-        for (const [key, intensity] of sunlitCells) {
-          const [sx, sy] = key.split(',').map(Number);
-          if (shadowCells.has(key)) continue;
-          r.brightenCell(viewLeft + sx, viewTop + sy, intensity * brightMul, hlTint);
-        }
-      }
-
-      // ── Ambient directional warmth — unshadowed open areas get subtle sun tint ──
-      if (isDay && sunWarmth > 0.15) {
-        const ambientAlpha = sunWarmth * 0.06; // very subtle: 0 at midday, ~0.06 at peak golden hour
-        for (let sy = 0; sy < viewH; sy++) {
-          for (let sx = 0; sx < viewW; sx++) {
-            const key = `${sx},${sy}`;
-            if (shadowCells.has(key)) continue;
-            r.tintCell(viewLeft + sx, viewTop + sy, sunTint, ambientAlpha);
-          }
-        }
-      }
+      // ── Store lighting data for post-endFrame application ──
+      // (Canvas effects applied before endFrame get overwritten, so we defer them)
 
       // Pre-compute canopy proximity set for dappled light effect
       const canopyNearbyCells = new Set();
@@ -1914,24 +1893,22 @@ export class UIManager {
         }
       }
 
-      // ── God rays / moonbeams — works day and night with time-shifted colors ──
+      // Compute god ray cells
+      const godRayCells = []; // flat array: [sx, sy, intensity, tint, ...]
       if (sunDir && r._godRayNoise && shadowCells.size > 0) {
         const perpX = -(sunDir.dy || 0);
         const perpY = sunDir.dx || 0;
         const ts = Date.now() / 1000;
-        // Along-ray direction for color temperature gradient
         const alongX = sunDir.dx || 0;
         const alongY = sunDir.dy || 0;
         const ac0 = 0, ac1 = (viewW - 1) * alongX, ac2 = (viewH - 1) * alongY, ac3 = ac1 + ac2;
         const minAlong = Math.min(ac0, ac1, ac2, ac3);
         const maxAlong = Math.max(ac0, ac1, ac2, ac3);
         const alongRange = maxAlong - minAlong || 1;
-        // Ray color shifts with time of day
         let rayIntMul, edgeBoost;
         if (isDay) {
-          // God rays more visible at golden hour, subtler at midday
-          rayIntMul = 0.7 + sunWarmth * 0.8; // 0.7 midday → 1.5 golden hour
-          edgeBoost = 0.06 + sunWarmth * 0.08; // stronger edge highlight at golden hour
+          rayIntMul = 0.7 + sunWarmth * 0.8;
+          edgeBoost = 0.06 + sunWarmth * 0.08;
         } else {
           rayIntMul = 0.55;
           edgeBoost = 0.05;
@@ -1940,7 +1917,6 @@ export class UIManager {
           for (let sx = 0; sx < viewW; sx++) {
             const key = `${sx},${sy}`;
             if (shadowCells.has(key)) continue;
-            // Edge highlighting: check adjacency to shadow for rim light
             let nearShadow = false;
             for (let nd = 1; nd <= 2; nd++) {
               const checkX = sx + Math.round((sunDir.dx || 0) * nd);
@@ -1951,31 +1927,26 @@ export class UIManager {
             const proj = sx * perpX + sy * perpY;
             const rayNoise = r._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
             if (rayNoise > 0.05) {
-              // Along-ray factor: 0 = near sun (cool/bright), 1 = far from sun (warm/dim)
               const alongProj = sx * alongX + sy * alongY;
               const rayT = (alongProj - minAlong) / alongRange;
               let tint;
               if (isDay) {
-                // Cool origin → warm far end, shifted by sunWarmth
-                // Origin (rayT=0): cooler white-blue, Far (rayT=1): warm gold
-                const baseR = 221 + sunWarmth * 10;   // slightly warmer base at golden hour
+                const baseR = 221 + sunWarmth * 10;
                 const baseG = 238 - sunWarmth * 30;
                 const baseB = 240 - sunWarmth * 80;
-                const tR = Math.round(baseR + rayT * (255 - baseR));          // →255
-                const tG = Math.round(baseG - rayT * (baseG - 178 + sunWarmth * 30));  // →178 (more golden at far end)
-                const tB = Math.round(baseB - rayT * (baseB - 50 + sunWarmth * 40));   // →50 (deep gold at far end)
+                const tR = Math.round(baseR + rayT * (255 - baseR));
+                const tG = Math.round(baseG - rayT * (baseG - 178 + sunWarmth * 30));
+                const tB = Math.round(baseB - rayT * (baseB - 50 + sunWarmth * 40));
                 if (nearCanopy) {
-                  // Canopy light is slightly muted/greener
                   tint = '#' + [Math.round(tR * 0.86), Math.round(Math.min(255, tG * 1.0)), Math.round(tB * 0.85)]
                     .map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 } else {
                   tint = '#' + [tR, tG, tB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 }
               } else {
-                // Night: cool silver-blue origin → slightly warmer blue far end
-                const tR = Math.round(170 + rayT * 18);   // 170→188
-                const tG = Math.round(187 - rayT * 10);   // 187→177
-                const tB = Math.round(221 - rayT * 30);   // 221→191
+                const tR = Math.round(170 + rayT * 18);
+                const tG = Math.round(187 - rayT * 10);
+                const tB = Math.round(221 - rayT * 30);
                 if (nearCanopy) {
                   tint = '#' + [Math.round(tR * 0.8), Math.round(tG * 0.82), Math.round(tB * 0.85)]
                     .map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
@@ -1984,17 +1955,17 @@ export class UIManager {
                 }
               }
               let intensity = ((rayNoise - 0.05) / 0.95 * 0.15 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
-              // Dim far end, brighten origin
               const dimFactor = 1.0 - rayT * 0.35;
               intensity *= dimFactor;
               if (nearCanopy) intensity *= 1.3;
-              r.brightenCell(viewLeft + sx, viewTop + sy, Math.min(0.30, intensity), tint);
+              godRayCells.push(sx, sy, Math.min(0.30, intensity), tint);
             }
           }
         }
       }
 
-      // ── Lamp/torch glow in settlements (day: subtle warm. dusk/dawn: medium. night: vivid) ──
+      // Compute lamp glow operations
+      const lampGlowOps = []; // [{col, row, color, alpha}, ...]
       if (settlement.tiles) {
         const LIGHT_TILES = {
           '\u263C': { r: 1.0, g: 0.85, b: 0.3, rad: 4, int: 0.6, spd: 2.5 },   // ☼ lamp
@@ -2004,11 +1975,9 @@ export class UIManager {
           'TORCH':     { r: 1.0, g: 0.7, b: 0.3, rad: 4, int: 0.65, spd: 3.2 },
         };
         const lt = Date.now() / 1000;
-        // Lamp visibility ramps up at sunset, peaks at night, fades at sunrise
-        // Day mid: 0.3, golden hour: 0.6, night: 1.0
         let lampMul;
         if (isNight) { lampMul = 1.0; }
-        else { lampMul = 0.3 + sunWarmth * 0.35; } // 0.3 midday, 0.65 golden hour
+        else { lampMul = 0.3 + sunWarmth * 0.35; }
         const lampSources = [];
         for (let wy_off = 0; wy_off < worldH; wy_off++) {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
@@ -2041,18 +2010,18 @@ export class UIManager {
               if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
               const falloff = Math.max(0, 1 - dist / rad);
               const alpha = falloff * falloff * baseInt;
-              for (let sdy = 0; sdy < density; sdy++) {
-                for (let sdx = 0; sdx < density; sdx++) {
-                  r.tintCell(viewLeft + tx * density + sdx, viewTop + ty * density + sdy, tintColor, alpha);
+              for (let sdy2 = 0; sdy2 < density; sdy2++) {
+                for (let sdx2 = 0; sdx2 < density; sdx2++) {
+                  lampGlowOps.push(viewLeft + tx * density + sdx2, viewTop + ty * density + sdy2, tintColor, alpha);
                 }
               }
             }
           }
         }
 
-        // ── Window/door warm glow — visible at dusk and night ──
+        // Compute door/window warm glow
         if (isNight || sunWarmth > 0.3) {
-          const doorMul = isNight ? 1.0 : sunWarmth * 0.8; // fades in during golden hour
+          const doorMul = isNight ? 1.0 : sunWarmth * 0.8;
           for (let wy_off = 0; wy_off < worldH; wy_off++) {
             for (let wx_off = 0; wx_off < worldW; wx_off++) {
               const wx = camX + wx_off;
@@ -2072,9 +2041,9 @@ export class UIManager {
                     if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
                     const falloff = Math.max(0, 1 - dist / wRad);
                     const alpha = falloff * falloff * 0.35 * wFlicker * doorMul;
-                    for (let sdy = 0; sdy < density; sdy++) {
-                      for (let sdx = 0; sdx < density; sdx++) {
-                        r.tintCell(viewLeft + tx * density + sdx, viewTop + ty * density + sdy, '#FFCC66', alpha);
+                    for (let sdy2 = 0; sdy2 < density; sdy2++) {
+                      for (let sdx2 = 0; sdx2 < density; sdx2++) {
+                        lampGlowOps.push(viewLeft + tx * density + sdx2, viewTop + ty * density + sdy2, '#FFCC66', alpha);
                       }
                     }
                   }
@@ -2084,6 +2053,13 @@ export class UIManager {
           }
         }
       }
+
+      // Store all lighting data for application after endFrame
+      this._locationLighting = {
+        shadowCells, shadowTint, sunlitCells, sunTint, sunWarmth,
+        isDay, isNight, viewLeft, viewTop, viewW, viewH,
+        godRayCells, lampGlowOps,
+      };
 
       // Draw NPCs
       if (npcs) {
@@ -2106,6 +2082,59 @@ export class UIManager {
           r.drawChar(viewLeft + px * density + entityOff, viewTop + py * density + entityOff, '@', playerColor);
         }
       }
+    }
+  }
+
+  /**
+   * Apply stored location lighting effects to canvas (must be called after endFrame).
+   */
+  applyLocationLighting(renderer) {
+    const L = this._locationLighting;
+    if (!L) return;
+    const { shadowCells, shadowTint, sunlitCells, sunTint, sunWarmth,
+            isDay, isNight, viewLeft, viewTop, viewW, viewH,
+            godRayCells, lampGlowOps } = L;
+
+    // Shadow darkening with color-tinted shadows
+    for (const [key, alpha] of shadowCells) {
+      const [sx, sy] = key.split(',').map(Number);
+      renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+      if (shadowTint !== '#000000') {
+        renderer.tintCell(viewLeft + sx, viewTop + sy, shadowTint, alpha * 0.3);
+      }
+    }
+
+    // Directional brightening — sun/moon-facing sides of objects
+    if (sunlitCells.size > 0) {
+      const brightMul = isDay ? (0.08 + sunWarmth * 0.14) : 0.06;
+      const hlTint = isDay ? sunTint : '#AABBDD';
+      for (const [key, intensity] of sunlitCells) {
+        const [sx, sy] = key.split(',').map(Number);
+        if (shadowCells.has(key)) continue;
+        renderer.brightenCell(viewLeft + sx, viewTop + sy, intensity * brightMul, hlTint);
+      }
+    }
+
+    // Ambient directional warmth — unshadowed open areas get subtle sun tint
+    if (isDay && sunWarmth > 0.15) {
+      const ambientAlpha = sunWarmth * 0.06;
+      for (let sy = 0; sy < viewH; sy++) {
+        for (let sx = 0; sx < viewW; sx++) {
+          const key = `${sx},${sy}`;
+          if (shadowCells.has(key)) continue;
+          renderer.tintCell(viewLeft + sx, viewTop + sy, sunTint, ambientAlpha);
+        }
+      }
+    }
+
+    // God rays / moonbeams
+    for (let i = 0; i < godRayCells.length; i += 4) {
+      renderer.brightenCell(viewLeft + godRayCells[i], viewTop + godRayCells[i + 1], godRayCells[i + 2], godRayCells[i + 3]);
+    }
+
+    // Lamp, torch, door, and window glow
+    for (let i = 0; i < lampGlowOps.length; i += 4) {
+      renderer.tintCell(lampGlowOps[i], lampGlowOps[i + 1], lampGlowOps[i + 2], lampGlowOps[i + 3]);
     }
   }
 

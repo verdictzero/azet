@@ -4343,6 +4343,11 @@ class Game {
         }
       }
 
+      // Apply town/settlement lighting effects (deferred past endFrame so they survive)
+      if (this.state === 'LOCATION' && this.ui._locationLighting) {
+        this.ui.applyLocationLighting(this.renderer);
+      }
+
       // Apply cloud overlay and cloud shadows in overworld
       if (this.state === 'OVERWORLD' && this.cloudSystem && !this.debug.disableClouds) {
         const camX = Math.floor(this.camera.x);
@@ -4636,6 +4641,12 @@ class Game {
             const hlLen = Math.max(1, Math.round(height * 0.5));
             const hlIntensity = sunDir.isDay ? 0.18 : 0.08;
             for (let i = 1; i <= hlLen; i++) {
+              // Only highlight ground-level tiles — skip if destination is also raised
+              const destWxOff = wx_off - Math.round(sdx * i);
+              const destWyOff = wy_off - Math.round(sdy * i);
+              const destTile = this.overworld.getTile(camX + destWxOff, camY + destWyOff);
+              const destHeight = Game.TILE_HEIGHTS[destTile.type] || 0;
+              if (destHeight >= height) continue;
               const hlBaseX = wx_off * density - sdx * i * density;
               const hlBaseY = wy_off * density - sdy * i * density;
               for (let hdy = 0; hdy < density; hdy++) {
