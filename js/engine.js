@@ -84,7 +84,7 @@ export class Renderer {
    */
   constructor(canvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d', { willReadFrequently: true });
+    this.ctx = canvas.getContext('2d');
 
     this.fontSize = 16;
     this.fontFamily = "'Noto Sans Mono', 'DejaVu Sans Mono', 'Courier New', Courier, monospace";
@@ -197,7 +197,7 @@ export class Renderer {
     const h = Math.max(1, Math.floor(this.canvas.height * this.crtScale));
     if (!this._crtCanvas) {
       this._crtCanvas = document.createElement('canvas');
-      this._crtCtx = this._crtCanvas.getContext('2d', { willReadFrequently: true });
+      this._crtCtx = this._crtCanvas.getContext('2d');
     }
     if (this._crtCanvas.width !== w || this._crtCanvas.height !== h) {
       this._crtCanvas.width = w;
@@ -899,8 +899,7 @@ export class Renderer {
 
   /**
    * Subtle chromatic aberration: shift R left, B right by 1px.
-   * Optimized: eliminated Math.max/min per-pixel, uses pre-computed
-   * row offsets and direct array indexing for the inner loop.
+   * GPU-accelerated via canvas composite operations (no getImageData).
    */
   applyChromaAberration() {
     const ctx = this.ctx;
@@ -908,34 +907,70 @@ export class Renderer {
     const h = this.canvas.height;
     if (w === 0 || h === 0) return;
 
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const src = imgData.data;
-    const shifted = ctx.createImageData(w, h);
-    const dst = shifted.data;
-    const stride = w * 4;
-
-    for (let y = 0; y < h; y++) {
-      const rowOff = y * stride;
-      // First pixel: clamp R source to 0
-      dst[rowOff] = src[rowOff];
-      dst[rowOff + 1] = src[rowOff + 1];
-      dst[rowOff + 2] = src[rowOff + 6]; // B from x+1
-      dst[rowOff + 3] = 255;
-      // Middle pixels: no clamping needed
-      const end = rowOff + (w - 1) * 4;
-      for (let i = rowOff + 4; i < end; i += 4) {
-        dst[i] = src[i - 4];      // R from left
-        dst[i + 1] = src[i + 1];  // G stays
-        dst[i + 2] = src[i + 6];  // B from right
-        dst[i + 3] = 255;
-      }
-      // Last pixel: clamp B source to w-1
-      dst[end] = src[end - 4];
-      dst[end + 1] = src[end + 1];
-      dst[end + 2] = src[end + 2];
-      dst[end + 3] = 255;
+    // Snapshot the current frame
+    if (!this._aberrationSrc) {
+      this._aberrationSrc = document.createElement('canvas');
+      this._aberrationSrcCtx = this._aberrationSrc.getContext('2d');
     }
-    ctx.putImageData(shifted, 0, 0);
+    if (this._aberrationSrc.width !== w || this._aberrationSrc.height !== h) {
+      this._aberrationSrc.width = w;
+      this._aberrationSrc.height = h;
+    }
+    this._aberrationSrcCtx.clearRect(0, 0, w, h);
+    this._aberrationSrcCtx.drawImage(this.canvas, 0, 0);
+
+    ctx.clearRect(0, 0, w, h);
+    this._applyChromaPass(ctx, this._aberrationSrc, w, h);
+  }
+
+  /**
+   * 3-pass GPU chromatic aberration: R(-1px), G(center), B(+1px)
+   */
+  _applyChromaPass(ctx, src, w, h) {
+    // We need 3 temp canvases for each color channel
+    if (!this._chrR) {
+      this._chrR = document.createElement('canvas');
+      this._chrG = document.createElement('canvas');
+      this._chrB = document.createElement('canvas');
+    }
+    for (const c of [this._chrR, this._chrG, this._chrB]) {
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    }
+
+    // Red: shift left 1px, multiply with red
+    const rCtx = this._chrR.getContext('2d');
+    rCtx.clearRect(0, 0, w, h);
+    rCtx.drawImage(src, -1, 0);
+    rCtx.globalCompositeOperation = 'multiply';
+    rCtx.fillStyle = '#ff0000';
+    rCtx.fillRect(0, 0, w, h);
+    rCtx.globalCompositeOperation = 'source-over';
+
+    // Green: center, multiply with green
+    const gCtx = this._chrG.getContext('2d');
+    gCtx.clearRect(0, 0, w, h);
+    gCtx.drawImage(src, 0, 0);
+    gCtx.globalCompositeOperation = 'multiply';
+    gCtx.fillStyle = '#00ff00';
+    gCtx.fillRect(0, 0, w, h);
+    gCtx.globalCompositeOperation = 'source-over';
+
+    // Blue: shift right 1px, multiply with blue
+    const bCtx = this._chrB.getContext('2d');
+    bCtx.clearRect(0, 0, w, h);
+    bCtx.drawImage(src, 1, 0);
+    bCtx.globalCompositeOperation = 'multiply';
+    bCtx.fillStyle = '#0000ff';
+    bCtx.fillRect(0, 0, w, h);
+    bCtx.globalCompositeOperation = 'source-over';
+
+    // Combine: additive blend all 3 channels
+    ctx.drawImage(this._chrR, 0, 0);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this._chrG, 0, 0);
+    ctx.drawImage(this._chrB, 0, 0);
+    ctx.restore();
   }
 
   /**
@@ -973,35 +1008,25 @@ export class Renderer {
 
   /**
    * Chromatic aberration on an arbitrary canvas context (for downscaled CRT path).
+   * GPU-accelerated via canvas composite operations.
    */
   _applyChromaAberrationOn(ctx, w, h) {
     if (w === 0 || h === 0) return;
 
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const src = imgData.data;
-    const shifted = ctx.createImageData(w, h);
-    const dst = shifted.data;
-    const stride = w * 4;
-
-    for (let y = 0; y < h; y++) {
-      const rowOff = y * stride;
-      dst[rowOff] = src[rowOff];
-      dst[rowOff + 1] = src[rowOff + 1];
-      dst[rowOff + 2] = src[rowOff + 6];
-      dst[rowOff + 3] = 255;
-      const end = rowOff + (w - 1) * 4;
-      for (let i = rowOff + 4; i < end; i += 4) {
-        dst[i] = src[i - 4];
-        dst[i + 1] = src[i + 1];
-        dst[i + 2] = src[i + 6];
-        dst[i + 3] = 255;
-      }
-      dst[end] = src[end - 4];
-      dst[end + 1] = src[end + 1];
-      dst[end + 2] = src[end + 2];
-      dst[end + 3] = 255;
+    // Snapshot current content of the target canvas
+    if (!this._crtAberSrc) {
+      this._crtAberSrc = document.createElement('canvas');
+      this._crtAberSrcCtx = this._crtAberSrc.getContext('2d');
     }
-    ctx.putImageData(shifted, 0, 0);
+    if (this._crtAberSrc.width !== w || this._crtAberSrc.height !== h) {
+      this._crtAberSrc.width = w;
+      this._crtAberSrc.height = h;
+    }
+    this._crtAberSrcCtx.clearRect(0, 0, w, h);
+    this._crtAberSrcCtx.drawImage(ctx.canvas, 0, 0);
+
+    ctx.clearRect(0, 0, w, h);
+    this._applyChromaPass(ctx, this._crtAberSrc, w, h);
   }
 
   /**
@@ -1039,6 +1064,7 @@ export class Renderer {
 
   /**
    * Rare glitch: horizontal row shift triggered by damage or random chance.
+   * GPU-accelerated via drawImage clipping (no getImageData).
    */
   applyGlitch() {
     if (!this._glitchActive && Math.random() > 0.002) return;
@@ -1048,15 +1074,26 @@ export class Renderer {
     const ch = this.cellHeight;
     const rows = this.rows;
 
+    // Snapshot current frame for self-draw
+    if (!this._glitchCanvas) {
+      this._glitchCanvas = document.createElement('canvas');
+      this._glitchCtx = this._glitchCanvas.getContext('2d');
+    }
+    if (this._glitchCanvas.width !== w || this._glitchCanvas.height !== this.canvas.height) {
+      this._glitchCanvas.width = w;
+      this._glitchCanvas.height = this.canvas.height;
+    }
+    this._glitchCtx.drawImage(this.canvas, 0, 0);
+
     const glitchRows = Math.floor(Math.random() * 3) + 1;
     for (let i = 0; i < glitchRows; i++) {
       const row = Math.floor(Math.random() * rows);
       const shift = (Math.random() * 6 - 3) | 0;
       const y = row * ch;
-      const imgData = ctx.getImageData(0, y, w, ch);
+      // Clear the row, then draw shifted slice from snapshot
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, y, w, ch);
-      ctx.putImageData(imgData, shift, y);
+      ctx.drawImage(this._glitchCanvas, 0, y, w, ch, shift, y, w, ch);
     }
     this._glitchActive = false;
   }
