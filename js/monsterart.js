@@ -488,15 +488,15 @@ const ARCHETYPE_ART = {
     '  ∙ ╲▒░╱ ·   ',
     '   · ∙ · ∙   ',
   ],
-  hound: [
-    '   ╱╲  ╱╲    ',
-    '  ╱●╲╲╱╱●╲   ',
-    '  ╲══╲╱══╱   ',
+  repair_drone: [
+    '   ╱════╲    ',
+    '  ╱●╗╔╗●╲   ',
+    '  ║══╬╬══║   ',
     '  ║▓████▓║   ',
-    '  ║██████║   ',
-    '  ║▓▓▓▓▓▓║   ',
-    ' ╱╱║    ║╲╲  ',
-    ' ╱╱ ║  ║ ╲╲  ',
+    '  ╲▓████▓╱   ',
+    ' ╱╱║╱╲╲║╲╲  ',
+    ' ║╱╱    ╲╲║  ',
+    ' ╱╱      ╲╲  ',
   ],
   // ── New archetypes for temperature biomes ──
   serpent: [
@@ -582,7 +582,7 @@ const NAME_TO_ARCHETYPE = {
   'Coolant Gel': 'slime', 'Acid Slime': 'slime', 'Sludge Crawler': 'slime',
   'Dissolving Hulk': 'slime', 'Dissolving Rat': 'slime',
   // Critters
-  'Duct Rat': 'critter', 'Feral Colony Cat': 'critter', 'Mutant Amphibian': 'critter',
+  'Duct Rat': 'critter', 'Rogue Multiped Repair Drone': 'repair_drone', 'Mutant Amphibian': 'critter',
   'Feral Livestock': 'critter', 'Char Crawler': 'critter',
   // Swarms / insects
   'Bioluminescent Moth': 'swarm', 'Pollinator Swarm': 'swarm', 'Shard Swarm': 'swarm',
@@ -636,26 +636,26 @@ const NAME_TO_ARCHETYPE = {
   // Swirl / temporal anomalies
   'Time Loop Entity': 'swirl', 'Gravity Maw': 'swirl',
   'Recursive Entity': 'swirl', 'Memory Overflow': 'swirl', 'Pixel Storm': 'swirl',
-  // Hounds / pack predators
-  'Hull Hound': 'hound', 'Cryo Hound': 'hound', 'Feral Hound Pack': 'hound',
-  'Spore Hound': 'hound', 'Xeno Hound': 'hound', 'Crystal Hound': 'hound',
-  'Nano Hound': 'hound', 'Assimilated Hound': 'hound',
+  // Rogue repair drones
+  'Rogue Hull Repair Drone': 'repair_drone', 'Cryo Repair Drone': 'repair_drone', 'Rogue Repair Drone Pack': 'repair_drone',
+  'Xeno Repair Drone': 'repair_drone', 'Crystal Repair Drone': 'repair_drone',
+  'Nano Repair Drone': 'repair_drone', 'Assimilated Repair Drone': 'repair_drone',
   // Existing archetypes for new enemies
   'Cable Strangler': 'parasite', 'Echo Bat': 'swarm', 'Memory Phantom': 'wraith',
   'Grief Echo': 'wraith', 'Gravity Leech': 'parasite', 'Corridor Creeper': 'critter',
   'Loot Mimic': 'wall', 'Lost Child Echo': 'wraith', 'Crop Mimic': 'wall',
   // Temperature biome enemies — cold
-  'Frost Stalker': 'hound', 'Blizzard Drone': 'drone', 'Frozen Shambler': 'humanoid',
-  'Ice Mite': 'critter', 'Tundra Wolf': 'hound', 'Permafrost Sentinel': 'sentinel',
+  'Frost Stalker': 'spider', 'Blizzard Drone': 'drone', 'Frozen Shambler': 'humanoid',
+  'Ice Mite': 'critter', 'Tundra Repair Drone': 'repair_drone', 'Permafrost Sentinel': 'sentinel',
   'Cryo Beetle': 'beetle', 'Glacial Worm': 'worm', 'Frozen Core': 'golem',
   'Ice Phantom': 'wraith', 'Void Drifter': 'walker', 'Star Phantom': 'wraith',
-  'Vacuum Stalker': 'hound', 'Null Sentinel': 'sentinel', 'Event Horizon': 'swirl',
+  'Vacuum Stalker': 'spider', 'Null Sentinel': 'sentinel', 'Event Horizon': 'swirl',
   'Grid Crawler': 'critter', 'Conduit Worm': 'worm', 'Structural Sentinel': 'sentinel',
   'Foundation Golem': 'golem',
   // Temperature biome enemies — hot
   'Sand Crawler': 'scorpion', 'Heat Mirage': 'swirl', 'Dune Scorpion': 'scorpion',
   'Sun Bleached Sentinel': 'sentinel', 'Desert Raider': 'humanoid', 'Dust Devil': 'elemental',
-  'Cinder Hound': 'hound', 'Scorched Raider': 'humanoid', 'Ember Swarm': 'swarm',
+  'Cinder Repair Drone': 'repair_drone', 'Scorched Raider': 'humanoid', 'Ember Swarm': 'swarm',
   'Heat Warden': 'sentinel', 'Ash Wraith': 'wraith',
   'Lava Serpent': 'serpent', 'Magma Beetle': 'beetle', 'Cinder Wraith': 'wraith',
   'Molten Sentinel': 'sentinel', 'Lava Jellyfish': 'jellyfish',
@@ -692,7 +692,7 @@ export function getMonsterArt(creature) {
     else if (lower.includes('mech') || lower.includes('automaton') || lower.includes('harvester')) lines = ARCHETYPE_ART.mech;
     else if (lower.includes('vine') || lower.includes('tendril') || lower.includes('root')) lines = ARCHETYPE_ART.vine;
     else if (lower.includes('slime') || lower.includes('gel') || lower.includes('sludge') || lower.includes('ooze')) lines = ARCHETYPE_ART.slime;
-    else if (lower.includes('rat') || lower.includes('cat') || lower.includes('amphibian') || lower.includes('livestock')) lines = ARCHETYPE_ART.critter;
+    else if (lower.includes('rat') || lower.includes('amphibian') || lower.includes('livestock')) lines = ARCHETYPE_ART.critter;
     else if (lower.includes('swarm') || lower.includes('moth') || lower.includes('pollinator')) lines = ARCHETYPE_ART.swarm;
     else if (lower.includes('wraith') || lower.includes('specter') || lower.includes('phantom') || lower.includes('ghost') || lower.includes('shade')) lines = ARCHETYPE_ART.wraith;
     else if (lower.includes('scorpion') || lower.includes('borer')) lines = ARCHETYPE_ART.scorpion;
@@ -709,7 +709,7 @@ export function getMonsterArt(creature) {
     else if (lower.includes('eye') || lower.includes('watcher')) lines = ARCHETYPE_ART.eye;
     else if (lower.includes('turret') || lower.includes('junction') || lower.includes('sentry')) lines = ARCHETYPE_ART.turret;
     else if (lower.includes('amalgam') || lower.includes('cluster')) lines = ARCHETYPE_ART.amalgam;
-    else if (lower.includes('hound')) lines = ARCHETYPE_ART.hound;
+    else if (lower.includes('repair drone')) lines = ARCHETYPE_ART.repair_drone;
     else if (lower.includes('shimmer') || lower.includes('loop') || lower.includes('recursive') || lower.includes('overflow') || lower.includes('pixel storm') || lower.includes('gravity maw')) lines = ARCHETYPE_ART.swirl;
     else if (lower.includes('mimic')) lines = ARCHETYPE_ART.wall;
     else if (lower.includes('echo') || lower.includes('grief')) lines = ARCHETYPE_ART.wraith;

@@ -425,7 +425,7 @@ export class QuestSystem {
     ];
 
     this._monsterNames = [
-      'Feral Hounds', 'Rogue Security Bots', 'Rust Raiders', 'Tunnel Rats',
+      'Rogue Repair Drones', 'Rogue Security Bots', 'Rust Raiders', 'Tunnel Rats',
       'Maintenance Spiders', 'Corrupted Wardens', 'Hull Wraiths', 'Acid Crawlers',
       'Shadow Stalkers', 'Defense Drones', 'Swarm Beetles', 'Malfunctioning Sentries',
       'Blight Molds', 'Void Leeches', 'Stone Borers', 'Storm Elementals',
