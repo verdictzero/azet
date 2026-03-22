@@ -1078,7 +1078,7 @@ export class ChunkManager {
   }
 
   _applyTears(cx, cy, tiles) {
-    const TEAR_SCALE = TERRAIN_SCALE * 1.5;
+    const TEAR_SCALE = TERRAIN_SCALE * 0.8;
     const LAND_TYPES = new Set([
       'GRASSLAND', 'FOREST', 'DEEP_FOREST', 'MEADOW', 'TALL_GRASS',
       'SCRUBLAND', 'BARREN_WASTE', 'FIELD', 'SPARSE_TREES',
@@ -1096,13 +1096,13 @@ export class ChunkManager {
         const wy = oy + ly;
         const tearVal = (this.tearNoise.fbm(wx * TEAR_SCALE + 300, wy * TEAR_SCALE + 300, 4) + 1) / 2;
 
-        if (tearVal > 0.90) {
+        if (tearVal > 0.72) {
           tiles[ly][lx] = tile('TEAR_GRID', '#', '#C0C0C0', '#1A1A1A', false, { tearZone: true });
-        } else if (tearVal > 0.86) {
+        } else if (tearVal > 0.65) {
           tiles[ly][lx] = tile('TEAR_DARK_METAL', '\u2592', '#707070', '#2A2A2A', false, { tearZone: true });
-        } else if (tearVal > 0.82) {
+        } else if (tearVal > 0.58) {
           tiles[ly][lx] = tile('TEAR_LIGHT_METAL', '\u2591', '#A0A0A0', '#505050', false, { tearZone: true });
-        } else if (tearVal > 0.78) {
+        } else if (tearVal > 0.52) {
           tiles[ly][lx] = tile('TEAR_DIRT', '\u00B7', '#8B6914', '#3D2B08', false, { tearZone: true });
         }
       }
