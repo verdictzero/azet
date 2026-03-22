@@ -1397,6 +1397,9 @@ export class InputManager {
     this._repeatTimer = null;         // setTimeout handle
     this._repeatIntervalTimer = null; // setInterval handle
 
+    // Game state provider callback (set by Game to query current state)
+    this._gameStateProvider = null;
+
     // Direction keys eligible for repeat
     this._repeatableKeys = new Set([
       'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
@@ -1469,6 +1472,9 @@ export class InputManager {
   _startRepeat(key) {
     this._stopRepeat();
     this._repeatKey = key;
+    // Use slower repeat on overworld (50% speed)
+    const state = this._gameStateProvider ? this._gameStateProvider() : null;
+    const interval = state === 'OVERWORLD' ? this._repeatInterval * 2 : this._repeatInterval;
     // After initial delay, start firing repeats at interval
     this._repeatTimer = setTimeout(() => {
       this._repeatIntervalTimer = setInterval(() => {
@@ -1477,7 +1483,7 @@ export class InputManager {
         } else {
           this._stopRepeat();
         }
-      }, this._repeatInterval);
+      }, interval);
     }, this._repeatDelay);
   }
 

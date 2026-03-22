@@ -219,6 +219,9 @@ class Game {
     this.showDebugButtons = false; // toggle debug button bar
     this._debugButtonRects = [];   // hit areas for debug buttons
 
+    // Wire game state provider so input can adjust repeat speed per state
+    this.input._gameStateProvider = () => this.state;
+
     // Wire debug state provider so touch buttons can show toggle indicators
     this.input._debugStateProvider = () => ({
       invincible: this.debug.invincible,
