@@ -4227,22 +4227,28 @@ class Game {
       if (weatherAmbient) {
         let wAlpha = weatherAmbient.tintAlpha;
         if (weatherAmbient.pulseSpeed > 0) {
-          const pulse = Math.sin(Date.now() / 1000 * weatherAmbient.pulseSpeed) * weatherAmbient.pulseAmount;
+          const pulse = Math.sin((this.renderer._frameTimeSec || Date.now() / 1000) * weatherAmbient.pulseSpeed) * weatherAmbient.pulseAmount;
           wAlpha = Math.max(0, Math.min(1, wAlpha + pulse));
         }
         this.renderer.tintViewport(weatherAmbient.tintColor, wAlpha, viewLeft, viewTop, viewW, viewH);
 
-        // Brightness shift across viewport
+        // Brightness shift across viewport (single tint call instead of per-cell)
         const bShift = weatherAmbient.brightnessShift;
         if (bShift < 0) {
-          const darkAlpha = Math.abs(bShift);
-          for (let sy = 0; sy < viewH; sy++)
-            for (let sx = 0; sx < viewW; sx++)
-              this.renderer.darkenCell(viewLeft + sx, viewTop + sy, darkAlpha);
+          this.renderer.tintViewport('#000000', Math.abs(bShift), viewLeft, viewTop, viewW, viewH);
         } else if (bShift > 0) {
-          for (let sy = 0; sy < viewH; sy++)
-            for (let sx = 0; sx < viewW; sx++)
-              this.renderer.brightenCell(viewLeft + sx, viewTop + sy, bShift);
+          // Screen-blend bright tint over viewport
+          const ctx = this.renderer.ctx;
+          const x = viewLeft * this.renderer.cellWidth;
+          const y = viewTop * this.renderer.cellHeight;
+          const w = viewW * this.renderer.cellWidth;
+          const h = viewH * this.renderer.cellHeight;
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';
+          ctx.globalAlpha = bShift;
+          ctx.fillStyle = '#FFEEAA';
+          ctx.fillRect(x, y, w, h);
+          ctx.restore();
         }
 
         // Lightning flashes for high-energy weather
@@ -4258,26 +4264,41 @@ class Game {
       }
 
       // Apply shadow darkening in overworld (post-process on canvas)
-      if (this.state === 'OVERWORLD' && this._shadowCells) {
-        for (const [key, alpha] of this._shadowCells) {
-          const [sx, sy] = key.split(',').map(Number);
-          this.renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+      if (this.state === 'OVERWORLD' && this._shadowBufData) {
+        const sBuf = this._shadowBufData;
+        const sW = this._shadowViewW;
+        const sH = this._shadowViewH;
+        for (let sy = 0; sy < sH; sy++) {
+          const rowOff = sy * sW;
+          for (let sx = 0; sx < sW; sx++) {
+            const alpha = sBuf[rowOff + sx];
+            if (alpha > 0) {
+              this.renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+            }
+          }
         }
 
         // Render sun-facing highlights on raised object edges
-        if (this._highlightCells) {
+        if (this._highlightBuf) {
+          const hBuf = this._highlightBuf;
           const owDir = this.timeSystem.getSunDirection();
           const hlTint = owDir.isDay ? '#FFEEAA' : '#AABBDD';
-          for (const [key, intensity] of this._highlightCells) {
-            const [hx, hy] = key.split(',').map(Number);
-            this.renderer.brightenCell(viewLeft + hx, viewTop + hy, intensity, hlTint);
+          for (let hy = 0; hy < sH; hy++) {
+            const rowOff = hy * sW;
+            for (let hx = 0; hx < sW; hx++) {
+              const intensity = hBuf[rowOff + hx];
+              if (intensity > 0) {
+                this.renderer.brightenCell(viewLeft + hx, viewTop + hy, intensity, hlTint);
+              }
+            }
           }
         }
 
         // God rays / sunbeams in unshadowed areas (throttled: recompute every 3rd frame)
         // Works for both sun (day) and moon (night)
         const owSunDir = this.timeSystem.getSunDirection();
-        if (this._shadowCells.size > 0 && this.renderer._godRayNoise) {
+        const hasShadows = sBuf.some(v => v > 0);
+        if (hasShadows && this.renderer._godRayNoise) {
           this._godRayFrame++;
           const camX = Math.floor(this.camera.x);
           const camY = Math.floor(this.camera.y);
@@ -4289,7 +4310,7 @@ class Game {
             const cells = [];
             const perpX = -(owSunDir.dy || 0);
             const perpY = owSunDir.dx || 0;
-            const ts = Date.now() / 1000;
+            const ts = (this.renderer._frameTimeSec || Date.now() / 1000);
             // Along-ray direction (shadow direction = away from sun)
             const alongX = owSunDir.dx || 0;
             const alongY = owSunDir.dy || 0;
@@ -4298,21 +4319,22 @@ class Game {
             const minAlong = Math.min(c0, c1, c2, c3);
             const maxAlong = Math.max(c0, c1, c2, c3);
             const alongRange = maxAlong - minAlong || 1;
-            for (let sy = 0; sy < viewH; sy++) {
-              for (let sx = 0; sx < viewW; sx++) {
-                const key = `${sx},${sy}`;
-                if (this._shadowCells.has(key)) continue;
+            for (let sy = 0; sy < sH; sy++) {
+              const rowOff = sy * sW;
+              for (let sx = 0; sx < sW; sx++) {
+                if (sBuf[rowOff + sx] > 0) continue;
                 let nearShadow = false;
                 for (let nd = 1; nd <= 2; nd++) {
-                  const ckx = sx + Math.round((owSunDir.dx || 0) * nd);
-                  const cky = sy + Math.round((owSunDir.dy || 0) * nd);
-                  if (this._shadowCells.has(`${ckx},${cky}`)) { nearShadow = true; break; }
+                  const ckx = sx + Math.round(alongX * nd);
+                  const cky = sy + Math.round(alongY * nd);
+                  if (ckx >= 0 && ckx < sW && cky >= 0 && cky < sH && sBuf[cky * sW + ckx] > 0) {
+                    nearShadow = true; break;
+                  }
                 }
                 const proj = sx * perpX + sy * perpY;
                 const rayN = this.renderer._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
                 if (rayN > 0.05) {
                   const intensity = (rayN - 0.05) / 0.95 * 0.15 + (nearShadow ? 0.08 : 0);
-                  // Along-ray factor: 0 = near sun (cool/bright), 1 = far from sun (warm/dim)
                   const alongProj = sx * alongX + sy * alongY;
                   const rayT = (alongProj - minAlong) / alongRange;
                   cells.push(sx, sy, Math.min(0.25, intensity), rayT);
@@ -4328,15 +4350,13 @@ class Game {
             const t = gc[i + 3]; // 0=near source (cool/bright), 1=far (warm/dim)
             let cR, cG, cB;
             if (isGodRayDay) {
-              // Sunlight: Cool origin #DDEEFF → Warm far end #FFCC66
-              cR = Math.round(221 + t * 34);   // 221→255
-              cG = Math.round(238 - t * 34);   // 238→204
-              cB = Math.round(255 - t * 153);  // 255→102
+              cR = Math.round(221 + t * 34);
+              cG = Math.round(238 - t * 34);
+              cB = Math.round(255 - t * 153);
             } else {
-              // Moonlight: Cool silver #AABBDD → Pale blue #8899CC
-              cR = Math.round(170 - t * 34);   // 170→136
-              cG = Math.round(187 - t * 34);   // 187→153
-              cB = Math.round(221 - t * 17);   // 221→204
+              cR = Math.round(170 - t * 34);
+              cG = Math.round(187 - t * 34);
+              cB = Math.round(221 - t * 17);
             }
             const tint = '#' + [cR, cG, cB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
             const dimFactor = isGodRayDay ? (1.0 - t * 0.35) : (0.6 - t * 0.2);
@@ -4470,6 +4490,9 @@ class Game {
       }
     }
 
+    // Flush all batched overlay operations (darken/brighten/tint) in one go
+    this.renderer.flushOverlayBatches();
+
     // Update-available banner overlay
     if (this._updateAvailable) {
       const elapsed = Date.now() - this._updateDetectedAt;
@@ -4594,11 +4617,17 @@ class Game {
     // Center offset for entities within their expanded tile (0 for d=1, 0 for d=2, 1 for d=3)
     const entityOff = Math.floor(density / 2);
 
-    // Collect shadow cells with infinitely linear shadow rays (in screen coords)
-    const shadowCells = new Map(); // "sx,sy" -> alpha
-    // Collect highlight cells on sun-facing edges of raised objects
-    const highlightCells = new Map(); // "sx,sy" -> intensity
-    if (!this.debug.disableShadows) {
+    // Shadow and highlight buffers (flat Float32Arrays indexed by screen coords)
+    // Cache: only recompute when camera moves or sun direction changes
+    const shadowKey = `${camX},${camY},${sunDir.dx.toFixed(2)},${sunDir.dy.toFixed(2)},${density},${viewW},${viewH}`;
+    let shadowBuf, highlightBuf;
+    if (!this.debug.disableShadows && this._shadowCacheKey === shadowKey && this._shadowBuf) {
+      shadowBuf = this._shadowBuf;
+      highlightBuf = this._highlightBuf;
+    } else if (!this.debug.disableShadows) {
+      shadowBuf = new Float32Array(viewW * viewH);
+      highlightBuf = new Float32Array(viewW * viewH);
+
       // Normalized shadow direction for ray marching
       const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
       const sdx = sunDir.dx / sdMag;
@@ -4627,12 +4656,11 @@ class Game {
                   const shy = Math.floor(shBaseY) + sdy2;
                   if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
                     anyInBounds = true;
-                    const key = `${shx},${shy}`;
-                    const existing = shadowCells.get(key) || 0;
+                    const idx = shy * viewW + shx;
                     // Fade shadow slightly over distance
                     const dist = i / maxRayLen;
                     const fadedAlpha = shadowAlpha * (1.0 - dist * 0.5);
-                    shadowCells.set(key, Math.min(shadowMax, existing + fadedAlpha));
+                    shadowBuf[idx] = Math.min(shadowMax, shadowBuf[idx] + fadedAlpha);
                   }
                 }
               }
@@ -4643,7 +4671,6 @@ class Game {
             const hlLen = Math.max(1, Math.round(height * 0.5));
             const hlIntensity = sunDir.isDay ? 0.18 : 0.08;
             for (let i = 1; i <= hlLen; i++) {
-              // Only highlight ground-level tiles — skip if destination is also raised
               const destWxOff = wx_off - Math.round(sdx * i);
               const destWyOff = wy_off - Math.round(sdy * i);
               const destTile = this.overworld.getTile(camX + destWxOff, camY + destWyOff);
@@ -4656,9 +4683,8 @@ class Game {
                   const hlx = Math.floor(hlBaseX) + hdx;
                   const hly = Math.floor(hlBaseY) + hdy;
                   if (hlx >= 0 && hlx < viewW && hly >= 0 && hly < viewH) {
-                    const key = `${hlx},${hly}`;
-                    const existing = highlightCells.get(key) || 0;
-                    highlightCells.set(key, Math.min(0.3, existing + hlIntensity / i));
+                    const idx = hly * viewW + hlx;
+                    highlightBuf[idx] = Math.min(0.3, highlightBuf[idx] + hlIntensity / i);
                   }
                 }
               }
@@ -4666,8 +4692,17 @@ class Game {
           }
         }
       }
+      this._shadowCacheKey = shadowKey;
+      this._shadowBuf = shadowBuf;
+      this._highlightBuf = highlightBuf;
+    } else {
+      shadowBuf = null;
+      highlightBuf = null;
+      this._shadowCacheKey = null;
+      this._shadowBuf = null;
+      this._highlightBuf = null;
     }
-    this._highlightCells = highlightCells;
+    this._highlightBuf = highlightBuf;
 
     // Render tiles with density expansion
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
@@ -4779,19 +4814,20 @@ class Game {
           for (const struct of chunk.structures) {
             for (const light of struct.lights) {
               const rad = light.radius;
+              const radSq = rad * rad;
+              // Precompute color string once per light (not per cell!)
+              const tintColor = `#${Math.round(light.r * 255).toString(16).padStart(2, '0')}${Math.round(light.g * 255).toString(16).padStart(2, '0')}${Math.round(light.b * 255).toString(16).padStart(2, '0')}`;
+              const intensityFactor = light.intensity * 0.4;
               for (let ldy = -rad; ldy <= rad; ldy++) {
                 for (let ldx = -rad; ldx <= rad; ldx++) {
-                  const dist = Math.sqrt(ldx * ldx + ldy * ldy);
-                  if (dist > rad) continue;
+                  const distSq = ldx * ldx + ldy * ldy;
+                  if (distSq > radSq) continue;
                   const wx_off = light.x + ldx - camX;
                   const wy_off = light.y + ldy - camY;
                   if (wx_off < 0 || wx_off >= worldW || wy_off < 0 || wy_off >= worldH) continue;
-                  const falloff = Math.max(0, 1 - dist / rad);
-                  const alpha = falloff * falloff * light.intensity * 0.4;
-                  const hexR = Math.round(light.r * 255).toString(16).padStart(2, '0');
-                  const hexG = Math.round(light.g * 255).toString(16).padStart(2, '0');
-                  const hexB = Math.round(light.b * 255).toString(16).padStart(2, '0');
-                  const tintColor = `#${hexR}${hexG}${hexB}`;
+                  const dist = Math.sqrt(distSq);
+                  const falloff = 1 - dist / rad;
+                  const alpha = falloff * falloff * intensityFactor;
                   // Tint all screen cells for this world tile
                   for (let sdy = 0; sdy < density; sdy++) {
                     for (let sdx = 0; sdx < density; sdx++) {
@@ -4827,68 +4863,79 @@ class Game {
         GLITCH_ZONE: { hMin: 300, hMax: 360, int: 0.24, spd: 2.0,  rad: 1, pat: 'flicker' },
         ABYSS:       { hMin: 240, hMax: 280, int: 0.08, spd: 0.3,  rad: 1, pat: 'pulse' },
       };
-      const now = Date.now() / 1000;
-      // Collect glow sources then apply (allows light-bleed to neighbours)
-      const glowCells = []; // {wx_off, wy_off, profile, wx, wy}
+      const now = r._frameTimeSec || Date.now() / 1000;
+      // HSL to hex helper (hoisted out of loop)
+      const _hue2rgb = (p, q, t2) => { if (t2 < 0) t2++; if (t2 > 1) t2--; return t2 < 1/6 ? p + (q-p)*6*t2 : t2 < 1/2 ? q : t2 < 2/3 ? p + (q-p)*(2/3-t2)*6 : p; };
+      const _hex2 = new Array(256);
+      for (let i = 0; i < 256; i++) _hex2[i] = i.toString(16).padStart(2, '0');
+
+      // Precompute distance table for radius 2 (max glow radius)
+      // distTable[dy+2][dx+2] = sqrt(dx*dx + dy*dy)
+      if (!this._glowDistTable) {
+        this._glowDistTable = [];
+        for (let dy = -2; dy <= 2; dy++) {
+          const row = [];
+          for (let dx = -2; dx <= 2; dx++) row.push(Math.sqrt(dx * dx + dy * dy));
+          this._glowDistTable.push(row);
+        }
+      }
+      const distTable = this._glowDistTable;
+      const playerX = this.player.position.x, playerY = this.player.position.y;
+
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
         for (let wx_off = 0; wx_off < worldW; wx_off++) {
           const wx = camX + wx_off;
           const wy = camY + wy_off;
           const tile = this.overworld.getTile(wx, wy);
           const prof = NIGHT_GLOW[tile.type];
-          if (prof) glowCells.push({ wx_off, wy_off, prof, wx, wy });
-        }
-      }
-      for (const gc of glowCells) {
-        const { wx_off, wy_off, prof, wx, wy } = gc;
-        // Per-tile phase offset for organic feel (positional hash)
-        const phaseOff = (wx * 0.137 + wy * 0.293) % 6.28;
-        const t = now * prof.spd + phaseOff;
-        let hue, sat, lit;
-        if (prof.pat === 'wave') {
-          const phase = Math.sin(t * 1.8) * 0.5 + 0.5;
-          hue = prof.hMin + (prof.hMax - prof.hMin) * phase;
-          sat = 70 + phase * 25;
-          lit = 55 + Math.sin(t * 2.2) * 15;
-        } else if (prof.pat === 'pulse') {
-          const phase = Math.sin(t * 2.5) * 0.5 + 0.5;
-          hue = (prof.hMin + prof.hMax) * 0.5;
-          sat = 75 + phase * 20;
-          lit = 50 + phase * 25;
-        } else { // flicker
-          const base = Math.sin(t * 3.0) * 0.5 + 0.5;
-          const jitter = Math.sin(t * 7.3) * 0.15 + Math.sin(t * 13.1) * 0.1;
-          const phase = Math.max(0, Math.min(1, base + jitter));
-          hue = prof.hMin + (prof.hMax - prof.hMin) * phase;
-          sat = 85;
-          lit = 45 + phase * 30;
-        }
-        // Convert HSL to hex for tintCell
-        const h = hue / 360, s = sat / 100, l = lit / 100;
-        const hue2rgb = (p, q, t2) => { if (t2 < 0) t2++; if (t2 > 1) t2--; return t2 < 1/6 ? p + (q-p)*6*t2 : t2 < 1/2 ? q : t2 < 2/3 ? p + (q-p)*(2/3-t2)*6 : p; };
-        const q = l < 0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
-        const rr = Math.round(hue2rgb(p,q,h+1/3)*255).toString(16).padStart(2,'0');
-        const gg = Math.round(hue2rgb(p,q,h)*255).toString(16).padStart(2,'0');
-        const bb = Math.round(hue2rgb(p,q,h-1/3)*255).toString(16).padStart(2,'0');
-        const glowColor = `#${rr}${gg}${bb}`;
-        // Apply glow to tile itself + bleed to surrounding tiles
-        const rad = prof.rad;
-        for (let ldy = -rad; ldy <= rad; ldy++) {
-          for (let ldx = -rad; ldx <= rad; ldx++) {
-            const dist = Math.sqrt(ldx * ldx + ldy * ldy);
-            if (dist > rad) continue;
-            const tx = wx_off + ldx;
-            const ty = wy_off + ldy;
-            if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
-            // Check fog: skip if this target cell is fogged
-            const twx = camX + tx, twy = camY + ty;
-            const tdist = distance(twx, twy, this.player.position.x, this.player.position.y);
-            if (tdist > viewRange) continue;
-            const falloff = Math.max(0, 1 - dist / Math.max(rad, 1));
-            const alpha = falloff * falloff * prof.int;
-            for (let sdy = 0; sdy < density; sdy++) {
-              for (let sdx = 0; sdx < density; sdx++) {
-                r.tintCell(viewLeft + tx * density + sdx, viewTop + ty * density + sdy, glowColor, alpha);
+          if (!prof) continue;
+
+          // Per-tile phase offset for organic feel (positional hash)
+          const phaseOff = (wx * 0.137 + wy * 0.293) % 6.28;
+          const t = now * prof.spd + phaseOff;
+          let hue, sat, lit;
+          if (prof.pat === 'wave') {
+            const phase = Math.sin(t * 1.8) * 0.5 + 0.5;
+            hue = prof.hMin + (prof.hMax - prof.hMin) * phase;
+            sat = 70 + phase * 25;
+            lit = 55 + Math.sin(t * 2.2) * 15;
+          } else if (prof.pat === 'pulse') {
+            const phase = Math.sin(t * 2.5) * 0.5 + 0.5;
+            hue = (prof.hMin + prof.hMax) * 0.5;
+            sat = 75 + phase * 20;
+            lit = 50 + phase * 25;
+          } else { // flicker
+            const base = Math.sin(t * 3.0) * 0.5 + 0.5;
+            const jitter = Math.sin(t * 7.3) * 0.15 + Math.sin(t * 13.1) * 0.1;
+            const phase = Math.max(0, Math.min(1, base + jitter));
+            hue = prof.hMin + (prof.hMax - prof.hMin) * phase;
+            sat = 85;
+            lit = 45 + phase * 30;
+          }
+          // Convert HSL to hex for tintCell
+          const h = hue / 360, s = sat / 100, l = lit / 100;
+          const q = l < 0.5 ? l*(1+s) : l+s-l*s, pp = 2*l-q;
+          const glowColor = `#${_hex2[Math.round(_hue2rgb(pp,q,h+1/3)*255)]}${_hex2[Math.round(_hue2rgb(pp,q,h)*255)]}${_hex2[Math.round(_hue2rgb(pp,q,h-1/3)*255)]}`;
+          // Apply glow to tile itself + bleed to surrounding tiles
+          const rad = prof.rad;
+          for (let ldy = -rad; ldy <= rad; ldy++) {
+            for (let ldx = -rad; ldx <= rad; ldx++) {
+              const dist = distTable[ldy + 2][ldx + 2];
+              if (dist > rad) continue;
+              const tx = wx_off + ldx;
+              const ty = wy_off + ldy;
+              if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
+              // Check fog: skip if this target cell is fogged
+              const twx = camX + tx, twy = camY + ty;
+              const ddx = twx - playerX, ddy = twy - playerY;
+              const tdist = Math.abs(ddx) + Math.abs(ddy); // Manhattan distance (cheaper)
+              if (tdist > viewRange * 1.4) continue; // Approximate with manhattan
+              const falloff = Math.max(0, 1 - dist / Math.max(rad, 1));
+              const alpha = falloff * falloff * prof.int;
+              for (let sdy = 0; sdy < density; sdy++) {
+                for (let sdx = 0; sdx < density; sdx++) {
+                  r.tintCell(viewLeft + tx * density + sdx, viewTop + ty * density + sdy, glowColor, alpha);
+                }
               }
             }
           }
@@ -4897,7 +4944,9 @@ class Game {
     }
 
     // Store shadow data for post-process tinting pass
-    this._shadowCells = shadowCells;
+    this._shadowBufData = shadowBuf;
+    this._shadowViewW = viewW;
+    this._shadowViewH = viewH;
 
     // Render weather particles (screen-space, works at any density)
     const weatherEffect = this.weatherSystem.getVisualEffect();
@@ -4956,7 +5005,7 @@ class Game {
 
       // Dynamic light sources (fireplaces, lava, ruins crystals, etc.)
       // Time-based modulation for organic flickering/pulsing
-      const lt = Date.now() / 1000;
+      const lt = (r._frameTimeSec || Date.now() / 1000);
       for (let ty = Math.max(0, offsetY); ty < Math.min(dh, offsetY + worldH); ty++) {
         for (let tx = Math.max(0, offsetX); tx < Math.min(dw, offsetX + worldW); tx++) {
           const tile = this.currentDungeon.tiles[ty]?.[tx];
