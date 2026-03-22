@@ -1742,8 +1742,8 @@ export class UIManager {
       // Collect infinitely linear shadows (in screen coords) — works for both sun and moon
       const shadowCells = new Map();
       if (sunDir) {
-        const shadowAlpha = isDay ? 0.12 : 0.08;
-        const shadowMax = isDay ? 0.35 : 0.2;
+        const shadowAlpha = isDay ? 0.16 : 0.10;
+        const shadowMax = isDay ? 0.42 : 0.25;
         // Normalized shadow direction for ray marching
         const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
         const sdxN = sunDir.dx / sdMag;
