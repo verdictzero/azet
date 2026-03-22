@@ -3153,14 +3153,20 @@ class Game {
     }
 
     // Random encounter on overworld (modified by events, weather, and night/light)
-    const baseEncounterRate = 0.03 * this.activeEffects.encounterRateMultiplier;
+    // Reduced base rate + cooldown to prevent frustrating back-to-back encounters
+    if (!this._encounterCooldown) this._encounterCooldown = 0;
+    if (this._encounterCooldown > 0) this._encounterCooldown--;
+    const baseEncounterRate = 0.015 * this.activeEffects.encounterRateMultiplier;
     const isNight = !this.timeSystem.isDaytime();
     const lightInfo = this.player.hasLightSource();
     let nightBonus = 1.0;
     if (isNight) {
       nightBonus = lightInfo.hasLight ? 1.3 : 2.0;
     }
-    if (!this.debug.noEncounters && this.rng.chance(baseEncounterRate * nightBonus)) {
+    // Special events (e.g. BREACH_SWARM with encounterRateMultiplier >= 2) bypass cooldown
+    const bypassCooldown = this.activeEffects.encounterRateMultiplier >= 2;
+    if (!this.debug.noEncounters && (bypassCooldown || this._encounterCooldown <= 0) && this.rng.chance(baseEncounterRate * nightBonus)) {
+      this._encounterCooldown = 18; // suppress encounters for ~18 steps after one
       const tileBiome = tile.biome || 'forest';
       const enemy = this.creatureGen.generate(this.rng, tileBiome, 1, this.player.stats.level);
       enemy.position = { x: nx, y: ny };
@@ -4231,9 +4237,20 @@ class Game {
           this.renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
         }
 
-        // God rays in unshadowed areas (throttled: recompute every 3rd frame)
+        // Render sun-facing highlights on raised object edges
+        if (this._highlightCells) {
+          const owDir = this.timeSystem.getSunDirection();
+          const hlTint = owDir.isDay ? '#FFEEAA' : '#AABBDD';
+          for (const [key, intensity] of this._highlightCells) {
+            const [hx, hy] = key.split(',').map(Number);
+            this.renderer.brightenCell(viewLeft + hx, viewTop + hy, intensity, hlTint);
+          }
+        }
+
+        // God rays / sunbeams in unshadowed areas (throttled: recompute every 3rd frame)
+        // Works for both sun (day) and moon (night)
         const owSunDir = this.timeSystem.getSunDirection();
-        if (owSunDir.isDay && this._shadowCells.size > 0 && this.renderer._godRayNoise) {
+        if (this._shadowCells.size > 0 && this.renderer._godRayNoise) {
           this._godRayFrame++;
           const camX = Math.floor(this.camera.x);
           const camY = Math.floor(this.camera.y);
@@ -4279,14 +4296,23 @@ class Game {
           }
           // Replay cached cells with color temperature gradient
           const gc = this._godRayCachedCells;
+          const isGodRayDay = owSunDir.isDay;
           for (let i = 0; i < gc.length; i += 4) {
-            const t = gc[i + 3]; // 0=near sun (cool/bright), 1=far (warm/dim)
-            // Cool origin: #DDEEFF → Warm far end: #FFCC66
-            const cR = Math.round(221 + t * 34);   // 221→255
-            const cG = Math.round(238 - t * 34);   // 238→204
-            const cB = Math.round(255 - t * 153);   // 255→102
+            const t = gc[i + 3]; // 0=near source (cool/bright), 1=far (warm/dim)
+            let cR, cG, cB;
+            if (isGodRayDay) {
+              // Sunlight: Cool origin #DDEEFF → Warm far end #FFCC66
+              cR = Math.round(221 + t * 34);   // 221→255
+              cG = Math.round(238 - t * 34);   // 238→204
+              cB = Math.round(255 - t * 153);  // 255→102
+            } else {
+              // Moonlight: Cool silver #AABBDD → Pale blue #8899CC
+              cR = Math.round(170 - t * 34);   // 170→136
+              cG = Math.round(187 - t * 34);   // 187→153
+              cB = Math.round(221 - t * 17);   // 221→204
+            }
             const tint = '#' + [cR, cG, cB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
-            const dimFactor = 1.0 - t * 0.35; // brighter at origin, dimmer at far end
+            const dimFactor = isGodRayDay ? (1.0 - t * 0.35) : (0.6 - t * 0.2);
             this.renderer.brightenCell(viewLeft + gc[i], viewTop + gc[i + 1], gc[i + 2] * dimFactor, tint);
           }
         }
@@ -4536,9 +4562,18 @@ class Game {
     // Center offset for entities within their expanded tile (0 for d=1, 0 for d=2, 1 for d=3)
     const entityOff = Math.floor(density / 2);
 
-    // Collect shadow cells if daytime or moonlit (in screen coords)
+    // Collect shadow cells with infinitely linear shadow rays (in screen coords)
     const shadowCells = new Map(); // "sx,sy" -> alpha
+    // Collect highlight cells on sun-facing edges of raised objects
+    const highlightCells = new Map(); // "sx,sy" -> intensity
     if (!this.debug.disableShadows) {
+      // Normalized shadow direction for ray marching
+      const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
+      const sdx = sunDir.dx / sdMag;
+      const sdy = sunDir.dy / sdMag;
+      // Max ray steps to reach viewport edge
+      const maxRayLen = viewW + viewH;
+
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
         for (let wx_off = 0; wx_off < worldW; wx_off++) {
           const wx = camX + wx_off;
@@ -4546,20 +4581,46 @@ class Game {
           const tile = this.overworld.getTile(wx, wy);
           const height = Game.TILE_HEIGHTS[tile.type] || 0;
           if (height > 0) {
-            const len = Math.min(height + 1, Math.round(sunDir.shadowLength * height * 0.8));
-            const shadowAlpha = sunDir.isDay ? 0.35 : 0.20;
-            for (let i = 1; i <= len; i++) {
-              // Shadow in screen coords
-              const shBaseX = wx_off * density + sunDir.dx * i * density;
-              const shBaseY = wy_off * density + Math.round(sunDir.dy) * i * density;
-              for (let sdy = 0; sdy < density; sdy++) {
-                for (let sdx = 0; sdx < density; sdx++) {
-                  const shx = Math.floor(shBaseX) + sdx;
-                  const shy = Math.floor(shBaseY) + sdy;
+            // Shadow alpha scales with height
+            const shadowAlpha = (sunDir.isDay ? 0.25 : 0.15) + Math.min(0.15, height * 0.03);
+            const shadowMax = sunDir.isDay ? 0.65 : 0.45;
+            // Cast infinitely linear shadow ray from this object to viewport edge
+            for (let i = 1; i <= maxRayLen; i++) {
+              const shBaseX = wx_off * density + sdx * i * density;
+              const shBaseY = wy_off * density + sdy * i * density;
+              let anyInBounds = false;
+              for (let sdy2 = 0; sdy2 < density; sdy2++) {
+                for (let sdx2 = 0; sdx2 < density; sdx2++) {
+                  const shx = Math.floor(shBaseX) + sdx2;
+                  const shy = Math.floor(shBaseY) + sdy2;
                   if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
+                    anyInBounds = true;
                     const key = `${shx},${shy}`;
                     const existing = shadowCells.get(key) || 0;
-                    shadowCells.set(key, Math.min(0.65, existing + shadowAlpha));
+                    // Fade shadow slightly over distance
+                    const dist = i / maxRayLen;
+                    const fadedAlpha = shadowAlpha * (1.0 - dist * 0.5);
+                    shadowCells.set(key, Math.min(shadowMax, existing + fadedAlpha));
+                  }
+                }
+              }
+              if (!anyInBounds) break; // past viewport edge
+            }
+
+            // Highlight sun-facing edges (opposite side from shadow direction)
+            const hlLen = Math.max(1, Math.round(height * 0.5));
+            const hlIntensity = sunDir.isDay ? 0.18 : 0.08;
+            for (let i = 1; i <= hlLen; i++) {
+              const hlBaseX = wx_off * density - sdx * i * density;
+              const hlBaseY = wy_off * density - sdy * i * density;
+              for (let hdy = 0; hdy < density; hdy++) {
+                for (let hdx = 0; hdx < density; hdx++) {
+                  const hlx = Math.floor(hlBaseX) + hdx;
+                  const hly = Math.floor(hlBaseY) + hdy;
+                  if (hlx >= 0 && hlx < viewW && hly >= 0 && hly < viewH) {
+                    const key = `${hlx},${hly}`;
+                    const existing = highlightCells.get(key) || 0;
+                    highlightCells.set(key, Math.min(0.3, existing + hlIntensity / i));
                   }
                 }
               }
@@ -4568,6 +4629,7 @@ class Game {
         }
       }
     }
+    this._highlightCells = highlightCells;
 
     // Render tiles with density expansion
     for (let wy_off = 0; wy_off < worldH; wy_off++) {

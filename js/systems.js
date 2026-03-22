@@ -1302,24 +1302,31 @@ export class TimeSystem {
     let angle, elevation;
 
     if (isDay) {
-      // Map 6-20 to 0-PI (sunrise east to sunset west)
+      // Sun traverses top 180° arc: -PI/2 (left/sunrise) → 0 (top/noon) → PI/2 (right/sunset)
       const t = (h - 6) / 14; // 0 at sunrise, 1 at sunset
-      angle = t * Math.PI; // 0=east, PI=west
-      elevation = Math.sin(t * Math.PI); // peaks at noon
+      angle = (t - 0.5) * Math.PI; // -PI/2 → 0 → PI/2
+      elevation = Math.sin(t * Math.PI); // peaks at solar noon
     } else {
-      // Moon: map 20-6 (next day) to 0-PI
+      // Moon traverses bottom 180° arc: -PI/2 (left/moonrise) → 0 (bottom/midnight) → PI/2 (right/moonset)
       const nightH = h >= 20 ? h - 20 : h + 4;
-      const t = nightH / 10;
-      angle = t * Math.PI;
-      elevation = Math.sin(t * Math.PI) * 0.4; // moon lower
+      const t = nightH / 10; // 0 at moonrise, 1 at moonset
+      angle = (t - 0.5) * Math.PI;
+      elevation = Math.sin(t * Math.PI) * 0.4; // moon lower arc
     }
 
+    // Light source direction: sun = top arc, moon = bottom arc
+    // dx = horizontal (sin of angle): negative = from left, positive = from right
+    // dy: sun shines downward from top arc, moon shines upward from bottom arc
+    const lightDx = Math.sin(angle);
+    const lightDy = isDay ? -Math.cos(angle) : Math.cos(angle);
     // Shadow direction is opposite the light source
-    const dx = -Math.cos(angle);
-    const dy = -0.5; // slight downward bias (isometric feel)
-    const shadowLength = elevation > 0.03 ? Math.min(8, 1.2 / elevation) : 8;
+    const dx = -lightDx;
+    const dy = -lightDy;
+    // Always long shadows (golden hour feel): clamp minimum shadowLength
+    const rawShadowLen = elevation > 0.03 ? Math.min(8, 1.2 / elevation) : 8;
+    const shadowLength = Math.max(3, rawShadowLen);
 
-    return { dx: Math.round(dx), dy: Math.round(dy), elevation, shadowLength, isDay };
+    return { dx, dy, elevation, shadowLength, isDay, lightDx, lightDy };
   }
 }
 

@@ -1701,35 +1701,28 @@ export class UIManager {
     };
 
     // ── Time-of-day lighting phase ──
-    // Compute color temperature + intensity modifiers for the current hour
+    // Permanent golden hour feel: always high warmth for long dramatic shadows/highlights
     const h = hour || 12;
     const isDay = sunDir && sunDir.isDay;
     const isNight = sunDir && !sunDir.isDay;
-    // Golden hour: dawn (5-7.5), dusk (17.5-20). Peak warmth at h=6 and h=19.
-    // Midday (10-14) is neutral/cool white. In-between is gentle warm.
-    let sunWarmth = 0;    // 0=neutral, 1=deep golden
+    // Minimum warmth of 0.5 gives permanent golden hour feel — always long shadows
+    let sunWarmth = 0.5; // baseline golden
     let sunTint = '#FFFFFF';
     let shadowTint = '#000000';
     if (isDay) {
       if (h < 7.5) {
-        // Dawn golden hour: peaks around h=6
-        sunWarmth = Math.max(0, 1.0 - Math.abs(h - 6) / 1.5);
+        sunWarmth = Math.max(0.5, 1.0 - Math.abs(h - 6) / 1.5);
       } else if (h > 17) {
-        // Dusk golden hour: peaks around h=19
-        sunWarmth = Math.max(0, 1.0 - Math.abs(h - 19) / 2.0);
+        sunWarmth = Math.max(0.5, 1.0 - Math.abs(h - 19) / 2.0);
       } else if (h >= 7.5 && h <= 10) {
-        // Morning warmup fade
-        sunWarmth = 0.2 * (1 - (h - 7.5) / 2.5);
+        sunWarmth = Math.max(0.5, 0.2 * (1 - (h - 7.5) / 2.5) + 0.5);
       } else if (h >= 14 && h <= 17) {
-        // Afternoon warm fade-in
-        sunWarmth = 0.2 * ((h - 14) / 3.0);
+        sunWarmth = Math.max(0.5, 0.2 * ((h - 14) / 3.0) + 0.5);
       }
-      // Sun tint color: neutral white → warm gold → deep orange based on warmth
       const tR = Math.round(255);
-      const tG = Math.round(255 - sunWarmth * 70);   // 255→185 (less green = warmer)
-      const tB = Math.round(255 - sunWarmth * 155);   // 255→100 (much less blue = golden)
+      const tG = Math.round(255 - sunWarmth * 70);
+      const tB = Math.round(255 - sunWarmth * 155);
       sunTint = '#' + [tR, tG, tB].map(v => Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
-      // Shadows shift from cool blue (midday) to warm purple (golden hour)
       const sR = Math.round(sunWarmth * 30);
       const sG = Math.round(0);
       const sB = Math.round(30 + sunWarmth * 20);
@@ -1737,6 +1730,7 @@ export class UIManager {
     } else if (isNight) {
       sunTint = '#AABBDD';
       shadowTint = '#000011';
+      sunWarmth = 0.5; // moon also gets golden-hour-length shadows
     }
 
     // Draw settlement map tiles with camera
@@ -1749,13 +1743,17 @@ export class UIManager {
       const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - worldW) / 2));
       const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - worldH) / 2));
 
-      // Collect shadows (in screen coords) — works for both sun and moon
+      // Collect infinitely linear shadows (in screen coords) — works for both sun and moon
       const shadowCells = new Map();
       if (sunDir) {
-        // Moon shadows are softer and longer; sun shadows are sharper
         const shadowAlpha = isDay ? 0.3 : 0.15;
         const shadowMax = isDay ? 0.7 : 0.45;
-        const lengthMul = isDay ? 0.7 : 0.9;
+        // Normalized shadow direction for ray marching
+        const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
+        const sdxN = sunDir.dx / sdMag;
+        const sdyN = sunDir.dy / sdMag;
+        const maxRayLen = viewW + viewH;
+
         for (let wy_off = 0; wy_off < worldH; wy_off++) {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
             const wx = camX + wx_off;
@@ -1764,30 +1762,36 @@ export class UIManager {
             const t = settlement.tiles[wy][wx];
             const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
             if (height > 0) {
-              const len = Math.min(height + 1, Math.round(sunDir.shadowLength * height * lengthMul));
-              for (let i = 1; i <= len; i++) {
-                const shBaseX = wx_off * density + sunDir.dx * i * density;
-                const shBaseY = wy_off * density + Math.round(sunDir.dy) * i * density;
+              // Cast infinitely linear shadow to viewport edge
+              const baseAlpha = shadowAlpha + Math.min(0.1, height * 0.02);
+              for (let i = 1; i <= maxRayLen; i++) {
+                const shBaseX = wx_off * density + sdxN * i * density;
+                const shBaseY = wy_off * density + sdyN * i * density;
+                let anyInBounds = false;
                 for (let sdy = 0; sdy < density; sdy++) {
                   for (let sdx = 0; sdx < density; sdx++) {
                     const shx = Math.floor(shBaseX) + sdx;
                     const shy = Math.floor(shBaseY) + sdy;
                     if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
+                      anyInBounds = true;
                       const key = `${shx},${shy}`;
                       const existing = shadowCells.get(key) || 0;
-                      shadowCells.set(key, Math.min(shadowMax, existing + shadowAlpha));
+                      const dist = i / maxRayLen;
+                      const fadedAlpha = baseAlpha * (1.0 - dist * 0.5);
+                      shadowCells.set(key, Math.min(shadowMax, existing + fadedAlpha));
                     }
                   }
                 }
+                if (!anyInBounds) break;
               }
             }
           }
         }
       }
 
-      // ── Collect sun-facing lit cells (opposite side from shadows) for directional brightening ──
+      // ── Collect sun/moon-facing lit cells (opposite side from shadows) for directional brightening ──
       const sunlitCells = new Map(); // "sx,sy" -> intensity (0-1)
-      if (sunDir && isDay) {
+      if (sunDir) {
         // The sun shines FROM the opposite direction of dx/dy (shadows go in dx/dy direction)
         // So the sun-facing side of objects is the OPPOSITE of shadow direction
         const sunFromX = -(sunDir.dx || 0);
@@ -1863,14 +1867,14 @@ export class UIManager {
         }
       }
 
-      // ── Directional sun brightening — sun-facing sides of objects get warm light ──
-      if (isDay && sunlitCells.size > 0) {
-        // Intensity scaled by elevation: stronger at golden hour (low sun), subtler at midday
-        const brightMul = 0.08 + sunWarmth * 0.14; // 0.08 at midday → 0.22 at golden hour
+      // ── Directional brightening — sun/moon-facing sides of objects get warm/cool light ──
+      if (sunlitCells.size > 0) {
+        const brightMul = isDay ? (0.08 + sunWarmth * 0.14) : 0.06;
+        const hlTint = isDay ? sunTint : '#AABBDD';
         for (const [key, intensity] of sunlitCells) {
           const [sx, sy] = key.split(',').map(Number);
-          if (shadowCells.has(key)) continue; // don't brighten if also in shadow
-          r.brightenCell(viewLeft + sx, viewTop + sy, intensity * brightMul, sunTint);
+          if (shadowCells.has(key)) continue;
+          r.brightenCell(viewLeft + sx, viewTop + sy, intensity * brightMul, hlTint);
         }
       }
 
@@ -2917,7 +2921,7 @@ export class UIManager {
     r.drawString(bx + 3, by + 6, '[', COLORS.BRIGHT_BLACK);
     r.drawString(bx + 4, by + 6, bar, COLORS.BRIGHT_CYAN);
     r.drawString(bx + 4 + barW, by + 6, ']', COLORS.BRIGHT_BLACK);
-    r.drawString(bx + 4 + barW + 2, by + 6, pctText, COLORS.WHITE);
+    r.drawString(bx + Math.floor((boxW - pctText.length) / 2), by + 8, pctText, COLORS.WHITE);
 
     // Animated dots
     const dots = '.'.repeat(Math.floor(t / 2) % 4);

@@ -1172,6 +1172,9 @@ export class ChunkManager {
     // Apply historical map scars — overwrite terrain in scar zones
     this._applyMapScarsToChunk(cx, cy, tiles);
 
+    // Remove small isolated non-walkable clusters (< 25 tiles) to prevent movement frustration
+    this._removeSmallBlockers(tiles);
+
     const structures = this._placeStructures(cx, cy, tiles);
     const locations = this._placeChunkLocations(cx, cy, tiles);
     const chunk = { tiles, locations, structures, cx, cy };
@@ -1306,6 +1309,65 @@ export class ChunkManager {
             tiles[ly][lx] = tile('RUBBLE', '.', '#555544', '#222211', true, {
               biome: 'ruins', historicalScar: tiles[ly][lx].historicalScar,
             });
+          }
+        }
+      }
+    }
+  }
+
+  _removeSmallBlockers(tiles) {
+    const S = CHUNK_SIZE;
+    const MIN_CLUSTER = 25; // minimum 5x5 equivalent cluster size
+    const visited = new Uint8Array(S * S);
+    // Water biomes are exempt — ponds and lakes are fine
+    const WATER_TYPES = new Set(['ABYSS', 'DEEP_OCEAN', 'OCEAN', 'SHALLOWS', 'TIDAL_POOL', 'SHOAL',
+      'MIRE', 'BOG', 'TOXIC_SUMP', 'DEEP_LAKE']);
+    // Walkable replacement for non-walkable terrain by biome
+    const REPLACEMENTS = {
+      forest: { type: 'SPARSE_TREES', char: '\u03C4', fg: '#338833', bg: '#0a1a0a', biome: 'forest' },
+      mountain: { type: 'HIGHLAND', char: '\u2206', fg: '#AABBAA', bg: '#222222', biome: 'hills' },
+      hills: { type: 'ROLLING_HILLS', char: '\u2312', fg: '#BBAA77', bg: '#2a2a1a', biome: 'hills' },
+      crystal_zone: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
+      grassland: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
+    };
+    const DEFAULT_REPLACE = { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' };
+
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const idx = y * S + x;
+        if (visited[idx]) continue;
+        const t = tiles[y][x];
+        if (t.walkable || t.structure || t.locationId || WATER_TYPES.has(t.type)) {
+          visited[idx] = 1;
+          continue;
+        }
+        // Flood-fill to find connected non-walkable cluster
+        const cluster = [];
+        const stack = [[x, y]];
+        visited[idx] = 1;
+        while (stack.length > 0) {
+          const [cx, cy] = stack.pop();
+          cluster.push([cx, cy]);
+          for (const [nx, ny] of [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]]) {
+            if (nx < 0 || nx >= S || ny < 0 || ny >= S) continue;
+            const ni = ny * S + nx;
+            if (visited[ni]) continue;
+            const nt = tiles[ny][nx];
+            if (nt.walkable || nt.structure || nt.locationId || WATER_TYPES.has(nt.type)) {
+              visited[ni] = 1;
+              continue;
+            }
+            visited[ni] = 1;
+            stack.push([nx, ny]);
+          }
+        }
+        // Convert small clusters to walkable terrain
+        if (cluster.length < MIN_CLUSTER) {
+          for (const [cx, cy] of cluster) {
+            const orig = tiles[cy][cx];
+            const biome = orig.biome || 'grassland';
+            const rep = REPLACEMENTS[biome] || DEFAULT_REPLACE;
+            tiles[cy][cx] = tile(rep.type, rep.char, rep.fg, rep.bg, true, { biome: rep.biome });
           }
         }
       }
