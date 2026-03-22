@@ -1060,13 +1060,15 @@ export class ChunkManager {
       }
     }
 
-    // Apply historical map scars — overwrite terrain in scar zones
-    this._applyMapScarsToChunk(cx, cy, tiles);
+    // Historical scars disabled — will re-add with lore-relevant features later
+    // this._applyMapScarsToChunk(cx, cy, tiles);
 
     // Remove small isolated non-walkable clusters (< 25 tiles) to prevent movement frustration
     this._removeSmallBlockers(tiles);
 
-    const structures = this._placeStructures(cx, cy, tiles);
+    // Surface structures disabled — simplifying to fields/forests/mountains for now
+    // const structures = this._placeStructures(cx, cy, tiles);
+    const structures = [];
     const locations = this._placeChunkLocations(cx, cy, tiles);
     const chunk = { tiles, locations, structures, cx, cy };
     this.chunks.set(key, chunk);
