@@ -144,6 +144,7 @@ class Game {
       crtGlow: true,
       crtScanlines: true,
       crtAberration: true,
+      crtQuality: 'auto', // 'auto', 'low', 'medium', 'high', 'full'
       fontSize: 16,
       touchControls: true,
       autoSaveInterval: 100, // turns
@@ -296,12 +297,27 @@ class Game {
 
   handleResize() {
     this.renderer.resize();
+    this._applyCrtQuality();
     this.camera.viewportCols = this.renderer.cols - 2;
     this.camera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
     if (this.locationCamera) {
       this.locationCamera.viewportCols = this.renderer.cols - 2;
       this.locationCamera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
     }
+  }
+
+  _applyCrtQuality() {
+    const q = this.settings.crtQuality || 'auto';
+    const qualityMap = { low: 0.33, medium: 0.5, high: 0.75, full: 1.0 };
+    let scale;
+    if (q === 'auto') {
+      const totalPixels = this.renderer.canvas.width * this.renderer.canvas.height;
+      const targetPixels = 800 * 600;
+      scale = Math.min(1.0, Math.max(0.25, Math.sqrt(targetPixels / totalPixels)));
+    } else {
+      scale = qualityMap[q] || 0.5;
+    }
+    this.renderer.setCrtScale(scale);
   }
 
   _handleCanvasClick(e) {
@@ -2783,6 +2799,13 @@ class Game {
       if (key === '6') { this.settings.crtGlow = !this.settings.crtGlow; this._saveSettings(); }
       if (key === '7') { this.settings.crtScanlines = !this.settings.crtScanlines; this._saveSettings(); }
       if (key === '8') { this.settings.crtAberration = !this.settings.crtAberration; this._saveSettings(); }
+      if (key === '`' || key === '~') {
+        const modes = ['auto', 'low', 'medium', 'high', 'full'];
+        const idx = modes.indexOf(this.settings.crtQuality);
+        this.settings.crtQuality = modes[(idx + 1) % modes.length];
+        this._applyCrtQuality();
+        this._saveSettings();
+      }
     }
   }
 
@@ -3717,6 +3740,7 @@ class Game {
     if (this.renderer) {
       this.renderer.enableCRT = this.settings.crtEffects;
       this.renderer.crtOptions = this.settings;
+      this._applyCrtQuality();
     }
     if (this.input) this.input.enableTouch = this.settings.touchControls;
     if (this.music) {
@@ -3732,6 +3756,7 @@ class Game {
     // Apply settings immediately
     this.renderer.enableCRT = this.settings.crtEffects;
     this.renderer.crtOptions = this.settings;
+    this._applyCrtQuality();
     this.input.enableTouch = this.settings.touchControls;
     if (this.music) {
       this.music.setVolume(this.settings.musicVolume);
