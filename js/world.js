@@ -315,6 +315,7 @@ export class ChunkManager {
     this.anomalyNoise = new PerlinNoise(initRng);
     this.detailNoise = new PerlinNoise(initRng);
     this.temperatureNoise = new PerlinNoise(initRng);
+    this.tearNoise = new PerlinNoise(initRng);
     this._terrainGen = new OverworldGenerator(); // reuse _terrainFromNoise
 
     this.chunks = new Map();       // "cx,cy" -> { tiles: [][], locations: [] }
@@ -1063,6 +1064,9 @@ export class ChunkManager {
     // Historical scars disabled — will re-add with lore-relevant features later
     // this._applyMapScarsToChunk(cx, cy, tiles);
 
+    // Apply colony substructure tears — patches where floor is torn revealing metal grid
+    this._applyTears(cx, cy, tiles);
+
     // Remove small isolated non-walkable clusters (< 25 tiles) to prevent movement frustration
     this._removeSmallBlockers(tiles);
 
@@ -1071,6 +1075,38 @@ export class ChunkManager {
     const chunk = { tiles, locations, structures, cx, cy };
     this.chunks.set(key, chunk);
     return chunk;
+  }
+
+  _applyTears(cx, cy, tiles) {
+    const TEAR_SCALE = TERRAIN_SCALE * 1.5;
+    const LAND_TYPES = new Set([
+      'GRASSLAND', 'FOREST', 'DEEP_FOREST', 'MEADOW', 'TALL_GRASS',
+      'SCRUBLAND', 'BARREN_WASTE', 'FIELD', 'SPARSE_TREES',
+    ]);
+    const ox = cx * CHUNK_SIZE;
+    const oy = cy * CHUNK_SIZE;
+
+    for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const t = tiles[ly][lx];
+        if (!LAND_TYPES.has(t.type)) continue;
+        if (t.structure || t.locationId) continue;
+
+        const wx = ox + lx;
+        const wy = oy + ly;
+        const tearVal = (this.tearNoise.fbm(wx * TEAR_SCALE + 300, wy * TEAR_SCALE + 300, 4) + 1) / 2;
+
+        if (tearVal > 0.90) {
+          tiles[ly][lx] = tile('TEAR_GRID', '#', '#C0C0C0', '#1A1A1A', false, { tearZone: true });
+        } else if (tearVal > 0.86) {
+          tiles[ly][lx] = tile('TEAR_DARK_METAL', '\u2592', '#707070', '#2A2A2A', false, { tearZone: true });
+        } else if (tearVal > 0.82) {
+          tiles[ly][lx] = tile('TEAR_LIGHT_METAL', '\u2591', '#A0A0A0', '#505050', false, { tearZone: true });
+        } else if (tearVal > 0.78) {
+          tiles[ly][lx] = tile('TEAR_DIRT', '\u00B7', '#8B6914', '#3D2B08', false, { tearZone: true });
+        }
+      }
+    }
   }
 
   _applyMapScarsToChunk(cx, cy, tiles) {
@@ -1225,7 +1261,7 @@ export class ChunkManager {
         const idx = y * S + x;
         if (visited[idx]) continue;
         const t = tiles[y][x];
-        if (t.walkable || t.structure || t.locationId || WATER_TYPES.has(t.type)) {
+        if (t.walkable || t.structure || t.locationId || t.tearZone || WATER_TYPES.has(t.type)) {
           visited[idx] = 1;
           continue;
         }
