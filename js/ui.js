@@ -1882,7 +1882,7 @@ export class UIManager {
             const thinNoise = r._godRayNoise.noise2D(proj * 0.25 + ts * 0.03, ts * 0.02);
             const wideNoise = r._godRayNoise.noise2D(proj * 0.08 + ts * 0.02, ts * 0.015 + 50.0);
             const rayNoise = thinNoise * 0.5 + wideNoise * 0.5;
-            if (rayNoise > 0.35) {
+            if (rayNoise > 0.18) {
               const alongProj = sx * alongX + sy * alongY;
               const rayT = (alongProj - minAlong) / alongRange;
               let tint;
@@ -1911,7 +1911,7 @@ export class UIManager {
                   tint = '#' + [tR, tG, tB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 }
               }
-              let intensity = ((rayNoise - 0.35) / 0.65 * 0.08 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
+              let intensity = ((rayNoise - 0.18) / 0.82 * 0.08 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
               const dimFactor = 1.0 - rayT * 0.25;
               intensity *= dimFactor;
               if (nearCanopy) intensity *= 1.15;
