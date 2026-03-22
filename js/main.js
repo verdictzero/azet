@@ -123,7 +123,10 @@ class Game {
     this.canvas = document.getElementById('game-canvas');
     this.renderer = new Renderer(this.canvas);
     this.input = new InputManager();
-    this.camera = new Camera(this.renderer.cols - 2, this.renderer.rows - LAYOUT.HUD_TOTAL);
+    this.camera = new Camera(
+      Math.floor((this.renderer.cols - 2) / this.renderer.densityLevel),
+      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / this.renderer.densityLevel)
+    );
     this.locationCamera = null;
     this.ui = new UIManager(this.renderer);
     this.music = new MusicManager();
@@ -302,11 +305,12 @@ class Game {
   handleResize() {
     this.renderer.resize();
     this._applyCrtQuality();
-    this.camera.viewportCols = this.renderer.cols - 2;
-    this.camera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    const density = this.renderer.densityLevel;
+    this.camera.viewportCols = Math.floor((this.renderer.cols - 2) / density);
+    this.camera.viewportRows = Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density);
     if (this.locationCamera) {
-      this.locationCamera.viewportCols = this.renderer.cols - 2;
-      this.locationCamera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+      this.locationCamera.viewportCols = Math.floor((this.renderer.cols - 2) / density);
+      this.locationCamera.viewportRows = Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density);
     }
   }
 
@@ -1029,8 +1033,8 @@ class Game {
 
     // Create location camera
     this.locationCamera = new Camera(
-      this.renderer.cols - 2,
-      this.renderer.rows - LAYOUT.HUD_TOTAL
+      Math.floor((this.renderer.cols - 2) / this.renderer.densityLevel),
+      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / this.renderer.densityLevel)
     );
     this.locationCamera.follow(this.player);
     this.locationCamera.x = this.locationCamera.targetX;
