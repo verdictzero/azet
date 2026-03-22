@@ -1087,8 +1087,8 @@ export class ChunkManager {
     const oy = cy * CHUNK_SIZE;
 
     // Border around chunk to detect tear centers in neighboring chunks
-    const BORDER = 5;
-    const CORE_THRESHOLD = 0.78;
+    const BORDER = 8;
+    const CORE_THRESHOLD = 0.74;
 
     // Pass 1: find tear core positions (exposed substructure centers)
     // Sample chunk + border for cross-chunk tear rings
@@ -1106,29 +1106,36 @@ export class ChunkManager {
 
     if (cores.length === 0) return;
 
-    // Pass 2: assign concentric rings based on Chebyshev distance to nearest core
+    // Pass 2: assign concentric rings with noise-warped distance for irregular edges
     for (let ly = 0; ly < CHUNK_SIZE; ly++) {
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
         const t = tiles[ly][lx];
         if (!LAND_TYPES.has(t.type)) continue;
         if (t.structure || t.locationId) continue;
 
-        let minDist = Infinity;
+        const wx = ox + lx;
+        const wy = oy + ly;
+
+        let minRawDist = Infinity;
         for (const c of cores) {
           const d = Math.max(Math.abs(lx - c.lx), Math.abs(ly - c.ly));
-          if (d < minDist) minDist = d;
+          if (d < minRawDist) minRawDist = d;
         }
 
-        // Ring 0: exposed substructure, 1: dark metal, 2: light metal, 3: dirt, 4: grass
-        if (minDist === 0) {
+        // Warp distance with detail noise for irregular, organic edges
+        const warp = (this.detailNoise.fbm(wx * 0.15, wy * 0.15, 2) + 1) / 2; // 0–1
+        const minDist = minRawDist + (warp - 0.5) * 2.5; // ±1.25 cell jitter
+
+        // Expanded rings: 0–1 grid, 1–2 dark metal, 2–3 light metal, 3–5 dirt, 5–8 grass
+        if (minDist < 1) {
           tiles[ly][lx] = tile('TEAR_GRID', '#', '#C0C0C0', '#1A1A1A', false, { tearZone: true, depth: -2 });
-        } else if (minDist === 1) {
+        } else if (minDist < 2) {
           tiles[ly][lx] = tile('TEAR_DARK_METAL', '\u2592', '#707070', '#2A2A2A', false, { tearZone: true, depth: -2 });
-        } else if (minDist === 2) {
+        } else if (minDist < 3) {
           tiles[ly][lx] = tile('TEAR_LIGHT_METAL', '\u2591', '#A0A0A0', '#505050', true, { tearZone: true });
-        } else if (minDist === 3) {
+        } else if (minDist < 5) {
           tiles[ly][lx] = tile('TEAR_DIRT', '\u00B7', '#8B6914', '#3D2B08', true, { tearZone: true });
-        } else if (minDist === 4) {
+        } else if (minDist < 8) {
           tiles[ly][lx] = tile('TEAR_GRASS', ',', '#338833', '#0E1E0E', true, { tearZone: true });
         }
       }
