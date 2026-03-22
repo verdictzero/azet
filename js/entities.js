@@ -1967,7 +1967,7 @@ const CREATURE_TABLES = {
     { name: 'Void Sentinel', char: 'V', color: '#AAAA88', behavior: 'patrol', hp: 28, attack: 5, defense: 6, xpBase: 35, ability: 'signalJam', faction: 'ASSIMILATED' },
     { name: 'Hull Borer', char: 'B', color: '#CCAA66', behavior: 'ambush', hp: 40, attack: 10, defense: 3, xpBase: 55, faction: 'ALIEN' },
     { name: 'Radiation Shade', char: 'h', color: '#CCAA88', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15, faction: 'ALIEN' },
-    { name: 'Hull Hound', char: 'h', color: '#BB9966', behavior: 'aggressive', hp: 18, attack: 7, defense: 3, xpBase: 25, faction: 'ALIEN' },
+    { name: 'Rogue Hull Repair Drone', char: 'r', color: '#BB9966', behavior: 'aggressive', hp: 18, attack: 7, defense: 3, xpBase: 25, faction: 'MALFUNCTIONING' },
     { name: 'Gravity Leech', char: 'g', color: '#8877AA', behavior: 'ambush', hp: 12, attack: 5, defense: 2, xpBase: 20, ability: 'gravCrush', faction: 'ALIEN' },
     { name: 'Stellar Jellyfish', char: 'J', color: '#AABBDD', behavior: 'patrol', hp: 20, attack: 6, defense: 1, xpBase: 28, ability: 'entropyField', faction: 'ALIEN' },
   ],
@@ -1997,10 +1997,10 @@ const CREATURE_TABLES = {
   // COLONY COMMONS — Open habitation areas with low-level strays
   grassland: [
     { name: 'Stray Service Bot', char: 'd', color: '#AAAAAA', behavior: 'patrol', hp: 8, attack: 3, defense: 2, xpBase: 8, faction: 'MALFUNCTIONING' },
-    { name: 'Feral Colony Cat', char: 'c', color: '#AA8866', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 5, faction: 'MUTANT' },
+    { name: 'Rogue Multiped Repair Drone', char: 'r', color: '#AA8866', behavior: 'patrol', hp: 8, attack: 3, defense: 2, xpBase: 8, faction: 'MALFUNCTIONING' },
     { name: 'Rogue Courier Drone', char: 'q', color: '#8888CC', behavior: 'aggressive', hp: 10, attack: 4, defense: 1, xpBase: 12, faction: 'MALFUNCTIONING' },
     { name: 'Scavenger', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 14, attack: 4, defense: 3, xpBase: 15 },
-    { name: 'Feral Hound Pack', char: 'h', color: '#AA7755', behavior: 'aggressive', hp: 10, attack: 5, defense: 2, xpBase: 14, faction: 'MUTANT' },
+    { name: 'Rogue Repair Drone Pack', char: 'r', color: '#AA7755', behavior: 'aggressive', hp: 12, attack: 5, defense: 3, xpBase: 14, faction: 'MALFUNCTIONING' },
     { name: 'Sparking Junction', char: 'j', color: '#AABB44', behavior: 'patrol', hp: 12, attack: 4, defense: 4, xpBase: 15, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
     { name: 'Lost Child Echo', char: 'e', color: '#8888CC', behavior: 'coward', hp: 5, attack: 1, defense: 0, xpBase: 8, ability: 'memoryLeech', faction: 'ASSIMILATED' },
   ],
@@ -2032,7 +2032,7 @@ const CREATURE_TABLES = {
     { name: 'Cryo Specter', char: 'C', color: '#AADDFF', behavior: 'ambush', hp: 18, attack: 6, defense: 2, xpBase: 25, ability: 'empPulse', faction: 'ALIEN' },
     { name: 'Ice Borer', char: 'B', color: '#6699BB', behavior: 'aggressive', hp: 20, attack: 8, defense: 4, xpBase: 30, faction: 'MUTANT' },
     { name: 'Frozen Colonist', char: 'z', color: '#88AACC', behavior: 'coward', hp: 12, attack: 3, defense: 3, xpBase: 8, faction: 'ASSIMILATED' },
-    { name: 'Cryo Hound', char: 'h', color: '#88BBDD', behavior: 'aggressive', hp: 22, attack: 7, defense: 4, xpBase: 28, faction: 'MUTANT' },
+    { name: 'Cryo Repair Drone', char: 'r', color: '#88BBDD', behavior: 'aggressive', hp: 22, attack: 7, defense: 4, xpBase: 28, faction: 'MALFUNCTIONING' },
     { name: 'Temporal Frost', char: '?', color: '#AACCEE', behavior: 'ambush', hp: 14, attack: 5, defense: 3, xpBase: 22, ability: 'timeFracture', faction: 'ALIEN' },
     { name: 'Frozen Watcher', char: '@', color: '#99BBDD', behavior: 'patrol', hp: 20, attack: 4, defense: 8, xpBase: 25, ability: 'empPulse', faction: 'MALFUNCTIONING' },
   ],
@@ -2063,7 +2063,7 @@ const CREATURE_TABLES = {
     { name: 'Xenomorph Scout', char: 'x', color: '#DD22DD', behavior: 'aggressive', hp: 18, attack: 10, defense: 3, xpBase: 35, faction: 'ALIEN' },
     { name: 'Artifact Guardian', char: 'G', color: '#FF88FF', behavior: 'aggressive', hp: 75, attack: 14, defense: 8, xpBase: 130, ability: 'empPulse', isBoss: true, faction: 'ALIEN' },
     { name: 'Beacon Drone', char: 'b', color: '#CC66CC', behavior: 'coward', hp: 10, attack: 3, defense: 2, xpBase: 12, ability: 'signalJam', faction: 'ALIEN' },
-    { name: 'Xeno Hound', char: 'h', color: '#DD44DD', behavior: 'aggressive', hp: 24, attack: 9, defense: 4, xpBase: 35, ability: 'voidDrain', faction: 'ALIEN' },
+    { name: 'Xeno Repair Drone', char: 'r', color: '#DD44DD', behavior: 'aggressive', hp: 24, attack: 9, defense: 4, xpBase: 35, ability: 'voidDrain', faction: 'ALIEN' },
     { name: 'Beacon Eye', char: '@', color: '#EE66EE', behavior: 'patrol', hp: 20, attack: 6, defense: 5, xpBase: 28, ability: 'psionicLash', faction: 'ALIEN' },
     { name: 'Temporal Sentry', char: 'T', color: '#CC88DD', behavior: 'patrol', hp: 28, attack: 7, defense: 8, xpBase: 40, ability: 'timeFracture', faction: 'ALIEN' },
   ],
@@ -2074,7 +2074,7 @@ const CREATURE_TABLES = {
     { name: 'Resonance Phantom', char: 'R', color: '#22DDDD', behavior: 'ambush', hp: 15, attack: 9, defense: 2, xpBase: 30, ability: 'empPulse', faction: 'ALIEN' },
     { name: 'Shard Swarm', char: 's', color: '#66FFFF', behavior: 'aggressive', hp: 8, attack: 12, defense: 0, xpBase: 20, faction: 'ALIEN' },
     { name: 'Prism Core', char: 'P', color: '#88FFFF', behavior: 'aggressive', hp: 60, attack: 10, defense: 10, xpBase: 100, ability: 'overcharge', isBoss: true, faction: 'ALIEN' },
-    { name: 'Crystal Hound', char: 'h', color: '#55EEFF', behavior: 'aggressive', hp: 20, attack: 8, defense: 6, xpBase: 28, faction: 'ALIEN' },
+    { name: 'Crystal Repair Drone', char: 'r', color: '#55EEFF', behavior: 'aggressive', hp: 20, attack: 8, defense: 6, xpBase: 28, faction: 'ALIEN' },
     { name: 'Resonance Eye', char: '@', color: '#44DDEE', behavior: 'patrol', hp: 16, attack: 7, defense: 4, xpBase: 25, ability: 'echoScream', faction: 'ALIEN' },
     { name: 'Lattice Amalgam', char: 'A', color: '#66EEFF', behavior: 'aggressive', hp: 35, attack: 8, defense: 10, xpBase: 42, ability: 'mirrorShield', faction: 'ALIEN' },
   ],
@@ -2109,7 +2109,7 @@ const CREATURE_TABLES = {
     { name: 'Grey Tide', char: 'T', color: '#BBBBBB', behavior: 'aggressive', hp: 70, attack: 12, defense: 8, xpBase: 120, ability: 'naniteInjection', isBoss: true, faction: 'ASSIMILATED' },
     { name: 'Grey Centipede', char: '~', color: '#888888', behavior: 'ambush', hp: 20, attack: 6, defense: 4, xpBase: 22, ability: 'naniteInjection', faction: 'ASSIMILATED' },
     { name: 'Disassembler Eye', char: '@', color: '#999999', behavior: 'patrol', hp: 22, attack: 5, defense: 5, xpBase: 25, ability: 'entropyField', faction: 'ASSIMILATED' },
-    { name: 'Nano Hound', char: 'h', color: '#AAAAAA', behavior: 'aggressive', hp: 16, attack: 8, defense: 2, xpBase: 22, faction: 'ASSIMILATED' },
+    { name: 'Nano Repair Drone', char: 'r', color: '#AAAAAA', behavior: 'aggressive', hp: 16, attack: 8, defense: 2, xpBase: 22, faction: 'ASSIMILATED' },
   ],
 
   // ASSIMILATION FRONT — Alien biomass consuming colony structure
@@ -2120,7 +2120,7 @@ const CREATURE_TABLES = {
     { name: 'Assimilation Engine', char: 'E', color: '#FF0044', behavior: 'aggressive', hp: 80, attack: 14, defense: 7, xpBase: 130, ability: 'assimilate', isBoss: true, faction: 'ASSIMILATED' },
     { name: 'Bone Amalgam', char: 'A', color: '#CC1144', behavior: 'aggressive', hp: 35, attack: 10, defense: 6, xpBase: 42, ability: 'symbioticBurst', faction: 'ASSIMILATED' },
     { name: 'Neural Watcher', char: '@', color: '#DD2255', behavior: 'patrol', hp: 28, attack: 6, defense: 7, xpBase: 35, ability: 'psionicLash', faction: 'ASSIMILATED' },
-    { name: 'Assimilated Hound', char: 'h', color: '#BB1144', behavior: 'aggressive', hp: 20, attack: 9, defense: 4, xpBase: 30, ability: 'assimilate', faction: 'ASSIMILATED' },
+    { name: 'Assimilated Repair Drone', char: 'r', color: '#BB1144', behavior: 'aggressive', hp: 20, attack: 9, defense: 4, xpBase: 30, ability: 'assimilate', faction: 'ASSIMILATED' },
   ],
 
   // ── TEMPERATURE GRADIENT BIOMES ──
@@ -2131,7 +2131,7 @@ const CREATURE_TABLES = {
     { name: 'Blizzard Drone', char: 'd', color: '#99BBDD', behavior: 'patrol', hp: 14, attack: 5, defense: 4, xpBase: 18, faction: 'MALFUNCTIONING' },
     { name: 'Frozen Shambler', char: 'z', color: '#77AABB', behavior: 'patrol', hp: 20, attack: 4, defense: 6, xpBase: 15, faction: 'ASSIMILATED' },
     { name: 'Ice Mite', char: 'm', color: '#AADDFF', behavior: 'coward', hp: 6, attack: 3, defense: 1, xpBase: 8, faction: 'MUTANT' },
-    { name: 'Tundra Wolf', char: 'w', color: '#88AACC', behavior: 'aggressive', hp: 16, attack: 8, defense: 2, xpBase: 20, faction: 'MUTANT' },
+    { name: 'Tundra Repair Drone', char: 'r', color: '#88AACC', behavior: 'aggressive', hp: 16, attack: 8, defense: 2, xpBase: 20, faction: 'MALFUNCTIONING' },
     { name: 'Permafrost Sentinel', char: 'S', color: '#6699BB', behavior: 'patrol', hp: 28, attack: 6, defense: 8, xpBase: 30, faction: 'MALFUNCTIONING' },
     { name: 'Frost Monarch', char: 'K', color: '#AAEEFF', behavior: 'aggressive', hp: 65, attack: 12, defense: 8, xpBase: 100, ability: 'empPulse', isBoss: true, faction: 'ALIEN' },
   ],
@@ -2177,7 +2177,7 @@ const CREATURE_TABLES = {
 
   // SCORCHED WASTE — Super-heated, cracked earth
   scorched_waste: [
-    { name: 'Cinder Hound', char: 'h', color: '#DD6622', behavior: 'aggressive', hp: 20, attack: 8, defense: 3, xpBase: 25, faction: 'MUTANT' },
+    { name: 'Cinder Repair Drone', char: 'r', color: '#DD6622', behavior: 'aggressive', hp: 20, attack: 8, defense: 3, xpBase: 25, faction: 'MALFUNCTIONING' },
     { name: 'Scorched Raider', char: 'R', color: '#CC5511', behavior: 'aggressive', hp: 24, attack: 9, defense: 4, xpBase: 30 },
     { name: 'Ember Swarm', char: 's', color: '#FF8844', behavior: 'patrol', hp: 10, attack: 6, defense: 0, xpBase: 18, faction: 'MUTANT' },
     { name: 'Heat Warden', char: 'W', color: '#EE7733', behavior: 'patrol', hp: 30, attack: 7, defense: 8, xpBase: 35, ability: 'thermalOverload', faction: 'MALFUNCTIONING' },
