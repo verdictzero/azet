@@ -230,9 +230,13 @@ export class Renderer {
   // ── Frame lifecycle ─────────────────────────
 
   /**
-   * Start a new frame: clear the working buffer.
+   * Start a new frame: clear the working buffer and cache frame time.
    */
   beginFrame() {
+    // Cache time once per frame — avoid Date.now() per tile
+    this._frameTime = Date.now();
+    this._frameTimeSec = this._frameTime / 1000;
+
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const cell = this.buffer[r][c];
@@ -268,7 +272,20 @@ export class Renderer {
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     ctx.textBaseline = 'top';
 
+    // Batch background fills: merge horizontal runs of same bg color
+    let lastBg = null;
+    let runStartC = 0;
+    let runRow = 0;
+
+    const flushBgRun = () => {
+      if (lastBg !== null) {
+        ctx.fillStyle = lastBg;
+        ctx.fillRect(runStartC * cw, runRow * ch, (this._runEndC - runStartC) * cw, ch);
+      }
+    };
+
     for (let r = 0; r < this.rows; r++) {
+      lastBg = null;
       for (let c = 0; c < this.cols; c++) {
         const cell = this.buffer[r][c];
 
@@ -280,20 +297,43 @@ export class Renderer {
             prev.fg === cell.fg &&
             prev.bg === cell.bg
           ) {
+            if (lastBg !== null) { flushBgRun(); lastBg = null; }
             continue;
           }
         }
 
-        const x = c * cw;
-        const y = r * ch;
+        // Extend or start bg run
+        if (cell.bg === lastBg && r === runRow) {
+          this._runEndC = c + 1;
+        } else {
+          if (lastBg !== null) flushBgRun();
+          lastBg = cell.bg;
+          runStartC = c;
+          runRow = r;
+          this._runEndC = c + 1;
+        }
+      }
+      if (lastBg !== null) { flushBgRun(); lastBg = null; }
+    }
 
-        // Background
-        ctx.fillStyle = cell.bg;
-        ctx.fillRect(x, y, cw, ch);
+    // Draw foreground characters
+    let lastFg = null;
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.buffer[r][c];
 
-        // Foreground character
+        if (hasPrev) {
+          const prev = this.prevBuffer[r][c];
+          if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) continue;
+        }
+
         if (cell.char !== ' ') {
-          ctx.fillStyle = cell.fg;
+          if (cell.fg !== lastFg) {
+            ctx.fillStyle = cell.fg;
+            lastFg = cell.fg;
+          }
+          const x = c * cw;
+          const y = r * ch;
           // Safety: check if non-ASCII char is wider than cell (enemy art only)
           if (cell.safety && cell.char.charCodeAt(0) > 127) {
             const w = this._charWidthCache[cell.char];
@@ -301,7 +341,7 @@ export class Renderer {
               this._charWidthCache[cell.char] = ctx.measureText(cell.char).width;
             }
             if ((this._charWidthCache[cell.char] || 0) > cw * 1.3) {
-              ctx.fillText('?', x, y); // replace overly wide chars
+              ctx.fillText('?', x, y);
               continue;
             }
           }
@@ -316,14 +356,28 @@ export class Renderer {
     if (forceFullRedraw) {
       this.prevBuffer = [];
     } else {
-      this.prevBuffer = [];
-      for (let r = 0; r < this.rows; r++) {
-        const row = [];
-        for (let c = 0; c < this.cols; c++) {
-          const s = this.buffer[r][c];
-          row.push({ char: s.char, fg: s.fg, bg: s.bg });
+      if (!this.prevBuffer.length) {
+        // Allocate prevBuffer once, reuse
+        this.prevBuffer = [];
+        for (let r = 0; r < this.rows; r++) {
+          const row = [];
+          for (let c = 0; c < this.cols; c++) {
+            const s = this.buffer[r][c];
+            row.push({ char: s.char, fg: s.fg, bg: s.bg });
+          }
+          this.prevBuffer.push(row);
         }
-        this.prevBuffer.push(row);
+      } else {
+        // Reuse existing objects to avoid GC pressure
+        for (let r = 0; r < this.rows; r++) {
+          for (let c = 0; c < this.cols; c++) {
+            const s = this.buffer[r][c];
+            const p = this.prevBuffer[r][c];
+            p.char = s.char;
+            p.fg = s.fg;
+            p.bg = s.bg;
+          }
+        }
       }
     }
   }
@@ -517,52 +571,96 @@ export class Renderer {
 
   /**
    * Darken a specific cell by blending with a color.
-   * Used for shadows.
+   * Used for shadows. Queues to batch for efficient rendering.
    */
   darkenCell(col, row, alpha) {
     if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
     if (alpha <= 0) return;
-    const ctx = this.ctx;
-    const x = col * this.cellWidth;
-    const y = row * this.cellHeight;
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
-    ctx.restore();
+    if (!this._darkenBatch) this._darkenBatch = [];
+    this._darkenBatch.push(col, row, alpha);
   }
 
   /**
    * Brighten a specific cell with a warm tint (for god rays).
+   * Queues to batch for efficient rendering.
    */
   brightenCell(col, row, alpha, tintColor) {
     if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
     if (alpha <= 0) return;
-    const ctx = this.ctx;
-    const x = col * this.cellWidth;
-    const y = row * this.cellHeight;
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = tintColor || '#FFEEAA';
-    ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
-    ctx.restore();
+    if (!this._brightenBatch) this._brightenBatch = [];
+    this._brightenBatch.push(col, row, alpha, tintColor || '#FFEEAA');
   }
 
   /**
    * Apply light color tinting to a cell (for colored light sources).
+   * Queues to batch for efficient rendering.
    */
   tintCell(col, row, color, alpha) {
     if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
     if (alpha <= 0) return;
+    if (!this._tintBatch) this._tintBatch = [];
+    this._tintBatch.push(col, row, color, alpha);
+  }
+
+  /**
+   * Flush all queued darken/brighten/tint operations in batched canvas calls.
+   * Call this once after all overlay operations are done for the frame.
+   */
+  flushOverlayBatches() {
     const ctx = this.ctx;
-    const x = col * this.cellWidth;
-    const y = row * this.cellHeight;
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
-    ctx.restore();
+    const cw = this.cellWidth;
+    const ch = this.cellHeight;
+
+    // Flush darken batch (all same color #000, varying alpha)
+    if (this._darkenBatch && this._darkenBatch.length > 0) {
+      const batch = this._darkenBatch;
+      ctx.fillStyle = '#000000';
+      // Group by quantized alpha to reduce state changes
+      // Sort by alpha for fewer globalAlpha switches
+      for (let i = 0; i < batch.length; i += 3) {
+        ctx.globalAlpha = batch[i + 2];
+        ctx.fillRect(batch[i] * cw, batch[i + 1] * ch, cw, ch);
+      }
+      this._darkenBatch.length = 0;
+    }
+
+    // Flush brighten batch (screen composite, varying color+alpha)
+    if (this._brightenBatch && this._brightenBatch.length > 0) {
+      const batch = this._brightenBatch;
+      ctx.globalCompositeOperation = 'screen';
+      let lastColor = null;
+      for (let i = 0; i < batch.length; i += 4) {
+        const color = batch[i + 3];
+        if (color !== lastColor) {
+          ctx.fillStyle = color;
+          lastColor = color;
+        }
+        ctx.globalAlpha = batch[i + 2];
+        ctx.fillRect(batch[i] * cw, batch[i + 1] * ch, cw, ch);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      this._brightenBatch.length = 0;
+    }
+
+    // Flush tint batch (normal composite, varying color+alpha)
+    if (this._tintBatch && this._tintBatch.length > 0) {
+      const batch = this._tintBatch;
+      let lastColor = null;
+      for (let i = 0; i < batch.length; i += 4) {
+        const color = batch[i + 2];
+        if (color !== lastColor) {
+          ctx.fillStyle = color;
+          lastColor = color;
+        }
+        ctx.globalAlpha = batch[i + 3];
+        ctx.fillRect(batch[i] * cw, batch[i + 1] * ch, cw, ch);
+      }
+      this._tintBatch.length = 0;
+    }
+
+    // Restore default state
+    ctx.globalAlpha = 1.0;
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   // ── Animated color cycling ────────────────
@@ -574,7 +672,7 @@ export class Renderer {
    * @returns {string} the current animated color
    */
   getAnimatedColor(baseColor, tileType) {
-    const t = Date.now() / 500;
+    const t = (this._frameTime || Date.now()) / 500;
     const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
 
     switch (tileType) {
@@ -712,7 +810,7 @@ export class Renderer {
    * @returns {string} the current animated character
    */
   getAnimatedChar(baseChar, tileType, worldX, worldY) {
-    const t = Date.now();
+    const t = this._frameTime || Date.now();
     switch (baseChar) {
       // Trees: fast fluid sway
       case '\u2663': // ♣
@@ -777,7 +875,7 @@ export class Renderer {
    */
   getAnimatedColorWithPos(baseColor, tileType, worldX, worldY) {
     if (tileType === 'GRASSLAND' && worldX !== undefined && worldY !== undefined) {
-      const ts = Date.now() / 1000;
+      const ts = this._frameTimeSec || Date.now() / 1000;
       const windAngle = 0.3;
       const cosW = Math.cos(windAngle), sinW = Math.sin(windAngle);
       const along = worldX * cosW + worldY * sinW;
