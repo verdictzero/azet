@@ -12,6 +12,14 @@ function tile(type, char, fg, bg, walkable, extra) {
   return { type, char, fg, bg, walkable, ...extra };
 }
 
+function _lerpColor(a, b, t) {
+  const av = parseInt(a.slice(1), 16), bv = parseInt(b.slice(1), 16);
+  const r = Math.round(((av >> 16) & 0xff) + t * (((bv >> 16) & 0xff) - ((av >> 16) & 0xff)));
+  const g = Math.round(((av >> 8) & 0xff) + t * (((bv >> 8) & 0xff) - ((av >> 8) & 0xff)));
+  const bl = Math.round((av & 0xff) + t * ((bv & 0xff) - (av & 0xff)));
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1);
+}
+
 function makeTileGrid(w, h, fillFn) {
   const tiles = [];
   for (let y = 0; y < h; y++) {
@@ -97,7 +105,13 @@ export class OverworldGenerator {
     if (h < 0.3) return tile('SHALLOWS', '~', '#4488ff', '#000066', true, { biome: 'lake' });
 
     // ── GRASSLAND (h 0.3 - 0.55) ──
-    if (h < 0.55) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
+    if (h < 0.55) {
+      let prox = (h - 0.3) / 0.25;                                // 0 = far from forest, 1 = near forest
+      prox = Math.max(0, Math.min(1, prox + (d - 0.5) * 0.15));   // detail noise adds organic jitter
+      const fg = _lerpColor('#88aa44', '#44cc44', prox);            // yellowish-green → rich green
+      const bg = _lerpColor('#161a0d', '#112211', prox);            // warm dark → cool dark green
+      return tile('GRASSLAND', '.', fg, bg, true, { biome: 'grassland' });
+    }
 
     // ── FOREST (h 0.55 - 0.7) — trees ──
     if (h < 0.62) return tile('FOREST', '\u2663', '#22AA22', '#0a1a0a', true, { biome: 'forest' });
