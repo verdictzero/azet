@@ -89,119 +89,23 @@ export class OverworldGenerator {
   }
 
   _terrainFromNoise(h, m, a = 0, d = 0.5, t = 0.5, cellEdge = 1.0, subEdge = 1.0) {
-    // cellEdge: distance to Voronoi cell boundary (0 = at edge, larger = deep inside)
-    // subEdge: finer sub-cell boundary distance
-    // These ensure biomes form smooth, contiguous cellular regions
+    // Simplified terrain: grass, trees, mountains, water (rivers/lakes)
 
-    // Smooth interpolation factor: how "deep" into a biome cell we are
-    const interior = Math.min(1.0, cellEdge * 3.0); // 0 at boundary, 1 well inside
-
-    // === ANOMALY BIOMES — cluster at cell boundaries for organic placement ===
-    // Anomalies now concentrate at Voronoi boundaries (a is pre-blended with edge proximity)
-
-    // Void Rift: tears in reality (very rare)
-    if (a > 0.92 && h < 0.4) return tile('VOID_RIFT', ' ', '#220044', '#000000', true, { biome: 'void_rift' });
-    // Alien Crash Site: embedded xeno-vessel wreckage
-    if (a > 0.9) return tile('ALIEN_CRASH', '*', '#FF44FF', '#220022', true, { biome: 'alien_crash' });
-    // Data Corruption: ship systems haywire
-    if (a > 0.85 && m >= 0.3 && m <= 0.6) return tile('GLITCH_ZONE', '?', '#FF0088', '#110011', true, { biome: 'glitch_zone' });
-    // Assimilation Front: alien biomass consuming colony structure
-    if (a > 0.82 && h > 0.5) return tile('ASSIMILATED', '=', '#AA0044', '#110000', true, { biome: 'assimilated' });
-    // Hull Breach: exposed outer hull, vacuum-adjacent sectors
-    if (a > 0.8 && h < 0.35) return tile('HULL_BREACH', '%', '#8899AA', '#111122', true, { biome: 'hull_breach' });
-    // Nano-Plague Zone: grey goo dissolving everything
-    if (a > 0.78 && h >= 0.4 && h <= 0.7) return tile('NANO_PLAGUE', ':', '#888888', '#222222', true, { biome: 'nano_plague' });
-    // Reactor Slag: molten areas around failed reactors
-    if (a > 0.75 && h > 0.7) return tile('REACTOR_SLAG', '~', '#FF6622', '#331100', true, { biome: 'reactor_slag' });
-    // Frozen Deck: cryogenics failure, frost-covered corridors
-    if (a > 0.7 && h < 0.5 && m > 0.6) return tile('FROZEN_DECK', '.', '#AADDFF', '#112233', true, { biome: 'frozen_deck' });
-    // Crystalline Growth: alien mineral formations
-    if (a > 0.7 && h > 0.6 && m < 0.3) return tile('CRYSTAL_ZONE', '#', '#44FFFF', '#002222', false, { biome: 'crystal_zone' });
-    // Toxic Sump: waste processing overflow
-    if (a > 0.6 && h < 0.3) return tile('TOXIC_SUMP', '~', '#44FF00', '#112200', false, { biome: 'toxic_sump' });
-    // Hydroponic Jungle: agri-domes gone wild
-    if (a > 0.5 && h >= 0.4 && h <= 0.65 && m > 0.75) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { biome: 'hydro_jungle' });
-
-    // === TEMPERATURE GRADIENT BIOMES — smooth contiguous zones via cellular+latitude ===
-    // Temperature now smoothly defines frozen/desertified areas as gradients
-
-    // ── FROZEN ZONE (smooth cold gradient) ──
-    if (t < 0.08 && h < 0.45) {
-      if (d > 0.7) return tile('VOID_EXPOSURE', '*', '#FFFFFF', '#000004', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
-      if (d > 0.5) return tile('VOID_EXPOSURE', '~', '#6644CC', '#000008', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
-      return tile('VOID_EXPOSURE', '.', '#334466', '#000008', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
-    }
-    if (t < 0.10 && h >= 0.45) return tile('STRUCTURAL_GRID', '+', '#667788', '#0A0A15', true, { biome: 'structural_grid', temperature: 'extreme_cold' });
-    if (t < 0.16 && h > 0.3) return tile('PERMAFROST', '#', '#88BBDD', '#0A1A2A', true, { biome: 'permafrost', temperature: 'extreme_cold' });
-    if (t < 0.22 && h > 0.3) return tile('FROZEN_WASTE', ':', '#99CCEE', '#0E1E2E', true, { biome: 'frozen_waste', temperature: 'cold' });
-    if (t < 0.26 && h > 0.3) return tile('TUNDRA', '.', '#AACCDD', '#112233', true, { biome: 'tundra', temperature: 'cold' });
-    if (t < 0.30 && h > 0.35) return tile('TAIGA', '\u2660', '#447766', '#0A1A15', true, { biome: 'taiga', temperature: 'cold' });
-    if (t < 0.34 && h > 0.35) return tile('BOREAL_FOREST', '\u2663', '#558855', '#0A1A0A', true, { biome: 'boreal_forest', temperature: 'cold' });
-    if (t < 0.37 && h > 0.35) return tile('FROST_MARGIN', ',', '#99BBCC', '#112228', true, { biome: 'boreal_forest', temperature: 'cold' });
-
-    // ── HEAT ZONE (smooth hot gradient) ──
-    if (t > 0.93 && h > 0.3) return tile('INFERNO_CORE', '#', '#FF2200', '#440000', true, { biome: 'inferno_core', temperature: 'extreme_hot' });
-    if (t > 0.88 && h > 0.3) return tile('MAGMA_FIELDS', '~', '#FF4400', '#550000', true, { biome: 'magma_fields', temperature: 'extreme_hot' });
-    if (t > 0.83 && h > 0.3) return tile('SCORCHED_WASTE', ':', '#FF8844', '#441100', true, { biome: 'scorched_waste', temperature: 'hot' });
-    if (t > 0.78 && h >= 0.3 && h <= 0.65) return tile('DESERT', '~', '#DDBB44', '#332200', true, { biome: 'desert', temperature: 'hot' });
-    if (t > 0.72 && h >= 0.3 && h <= 0.65) return tile('SAVANNAH', ';', '#BBAA44', '#2A2200', true, { biome: 'savannah', temperature: 'warm' });
-    if (t > 0.67 && h >= 0.35 && h <= 0.65) return tile('DRY_WOODLAND', '\u03C4', '#888833', '#1A1A0A', true, { biome: 'dry_woodland', temperature: 'warm' });
-    if (t > 0.63 && h >= 0.3 && h <= 0.6) return tile('HEAT_MARGIN', '.', '#CCAA55', '#2A1A00', true, { biome: 'dry_woodland', temperature: 'warm' });
-
-    // === NATURAL BIOMES — cellular noise provides contiguous regions ===
-    // Within each Voronoi cell, height+moisture define the biome consistently
-
-    // ── WATER & DEPTH (h < 0.3) ──
-    if (h < 0.08) return tile('ABYSS', '\u2591', '#000044', '#000011', false, { biome: 'ocean' });
-    if (h < 0.15) return tile('DEEP_OCEAN', '\u2248', '#000088', '#000044', false, { biome: 'ocean' });
-    if (h < 0.2) return tile('OCEAN', '\u223D', '#0044AA', '#000055', false, { biome: 'ocean' });
+    // ── WATER (h < 0.3) — forms rivers and lakes ──
+    if (h < 0.18) return tile('OCEAN', '\u223D', '#0044AA', '#000055', false, { biome: 'ocean' });
     if (h < 0.27) return tile('SHALLOWS', '~', '#4488ff', '#000066', false, { biome: 'lake' });
-    if (h < 0.3 && m > 0.6) return tile('TIDAL_POOL', '\u25CC', '#66AADD', '#001133', true, { biome: 'shore' });
-    if (h < 0.3) return tile('SHOAL', '\u00B7', '#88BBCC', '#112233', true, { biome: 'shore' });
+    if (h < 0.3) return tile('SHALLOWS', '~', '#4488ff', '#000066', true, { biome: 'lake' });
 
-    // ── WETLANDS & LOW GROUND (h 0.3 - 0.45) ──
-    if (h < 0.36 && m > 0.7) return tile('MIRE', '~', '#228844', '#112211', true, { biome: 'swamp' });
-    if (h < 0.36 && m > 0.55) return tile('BOG', '\u224B', '#336633', '#0a1a0a', true, { biome: 'swamp' });
-    if (h < 0.40 && m > 0.65) return tile('MARSH_REEDS', '\u2307', '#55AA44', '#112211', true, { biome: 'swamp' });
-    if (h < 0.40 && m < 0.35) return tile('MUDFLAT', '\u2234', '#AA8844', '#221100', true, { biome: 'badlands' });
-    if (h < 0.45 && m < 0.2) return tile('SALT_FLAT', '\u2043', '#CCBB99', '#332211', true, { biome: 'badlands' });
-    if (h < 0.42 && m >= 0.2 && m < 0.35 && d > 0.75) return tile('DRY_RIVERBED', '\u2240', '#AA9966', '#332211', true, { biome: 'badlands' });
-
-    // ── LOWLANDS & PLAINS (h 0.42 - 0.55) ──
-    if (h < 0.55 && m < 0.25) return tile('BARREN_WASTE', '.', '#ddcc44', '#332200', true, { biome: 'badlands' });
-    if (h < 0.55 && m >= 0.25 && m < 0.4) return tile('SCRUBLAND', ';', '#99AA44', '#1a1a0a', true, { biome: 'grassland' });
-    if (h < 0.5 && m >= 0.4 && m < 0.55) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
-    if (h < 0.5 && m >= 0.55 && m < 0.7) return tile('MEADOW', ',', '#66DD66', '#112a11', true, { biome: 'grassland' });
-    if (h < 0.5 && m >= 0.7) return tile('TALL_GRASS', '\u0131', '#33BB33', '#0a1a0a', true, { biome: 'grassland' });
+    // ── GRASSLAND (h 0.3 - 0.55) ──
     if (h < 0.55) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
 
-    // ── FOREST ZONE (h 0.5 - 0.7) ──
-    // Sub-cell edges create natural clearings and transitions within forest
-    if (h < 0.58 && m < 0.35) return tile('SPARSE_TREES', '\u03C4', '#338833', '#0a1a0a', true, { biome: 'forest' });
-    if (h < 0.62 && m <= 0.55) return tile('FOREST', '\u2663', '#22AA22', '#0a1a0a', true, { biome: 'forest' });
-    if (h < 0.62 && m > 0.55) return tile('DEEP_FOREST', '\u2660', '#116611', '#060f06', true, { biome: 'forest' });
-    if (h < 0.68 && m > 0.6) return tile('CANOPY', '\u03A8', '#0A8810', '#040d04', false, { biome: 'forest' });
-    if (h < 0.7 && m <= 0.6) return tile('PINE_STAND', '\u21DF', '#226622', '#0a0f0a', true, { biome: 'forest' });
-    // Boulder field and ruins use sub-cell edges for natural clustering
-    if (h >= 0.58 && h < 0.7 && d > 0.85 && subEdge < 0.3) return tile('BOULDER_FIELD', '\u25CF', '#888877', '#222211', false, { biome: 'forest' });
-    if (h >= 0.55 && h < 0.68 && d > 0.92 && subEdge < 0.2) return tile('ANCIENT_RUINS', '\u03A0', '#887766', '#221111', true, { biome: 'forest' });
+    // ── FOREST (h 0.55 - 0.7) — trees ──
+    if (h < 0.62) return tile('FOREST', '\u2663', '#22AA22', '#0a1a0a', true, { biome: 'forest' });
+    if (h < 0.7) return tile('DEEP_FOREST', '\u2660', '#116611', '#060f06', true, { biome: 'forest' });
 
-    // ── HILLS & FOOTHILLS (h 0.68 - 0.8) ──
-    if (h < 0.72) return tile('FOOTHILL', '\u2229', '#AABB88', '#222211', true, { biome: 'hills' });
-    if (h < 0.76) return tile('ROLLING_HILLS', '\u2312', '#BBAA77', '#2a2a1a', true, { biome: 'hills' });
-    if (h < 0.8 && d > 0.8) return tile('RIDGE', '\u2261', '#BBAA99', '#333322', true, { biome: 'hills' });
-    if (h < 0.8 && m < 0.3) return tile('ROCKY_SLOPE', '\u2592', '#998877', '#333322', true, { biome: 'hills' });
-    if (h < 0.8) return tile('HIGHLAND', '\u2206', '#AABBAA', '#222222', true, { biome: 'hills' });
-
-    // ── MOUNTAIN ZONE (h 0.8+) ──
-    if (h >= 0.8 && h < 0.86 && d > 0.93) return tile('CAVE_MOUTH', '\u25D7', '#665544', '#221100', true, { biome: 'mountain' });
-    if (h >= 0.82 && d > 0.9 && m < 0.3) return tile('THERMAL_VENT', '\u229B', '#FF8844', '#331100', true, { biome: 'mountain' });
-    if (h < 0.84) return tile('MOUNTAIN_BASE', '\u2593', '#AAAAAA', '#333333', false, { biome: 'mountain' });
-    if (h < 0.88) return tile('MOUNTAIN', '\u25B3', '#BBBBBB', '#444444', false, { biome: 'mountain' });
-    if (h < 0.92) return tile('CRAG', '\u25C7', '#CCCCCC', '#555555', false, { biome: 'mountain' });
-    if (h < 0.96 && m > 0.5) return tile('SNOWCAP', '\u2746', '#DDEEFF', '#667799', false, { biome: 'mountain' });
-    if (h < 0.96) return tile('HIGH_PEAK', '\u25B2', '#ffffff', '#666688', false, { biome: 'mountain' });
-    return tile('SUMMIT', '\u25C6', '#EEEEFF', '#8888AA', false, { biome: 'mountain' });
+    // ── MOUNTAIN (h 0.7+) ──
+    if (h < 0.82) return tile('MOUNTAIN_BASE', '\u2593', '#AAAAAA', '#333333', false, { biome: 'mountain' });
+    return tile('MOUNTAIN', '\u25B3', '#BBBBBB', '#444444', false, { biome: 'mountain' });
   }
 
   _placeLocations(rng, tiles, width, height) {
@@ -250,7 +154,7 @@ export class OverworldGenerator {
 
           // Must be on walkable, non-water, non-mountain terrain
           if (!t.walkable) continue;
-          if (t.type === 'SHALLOWS' || t.type === 'DEEP_LAKE' || t.type === 'MOUNTAIN' || t.type === 'HIGH_PEAK') continue;
+          if (t.type === 'SHALLOWS' || t.type === 'OCEAN' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE') continue;
 
           // Minimum distance from existing locations
           let tooClose = false;
@@ -333,7 +237,7 @@ export class OverworldGenerator {
         roads.push({ from: from.id, to: to.id, path });
         for (const p of path) {
           const t = tiles[p.y][p.x];
-          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'BARREN_WASTE' || t.type === 'DEEP_FOREST') {
+          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'DEEP_FOREST') {
             tiles[p.y][p.x] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
           } else if (t.type === 'SHALLOWS') {
             tiles[p.y][p.x] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
@@ -350,7 +254,7 @@ export class OverworldGenerator {
       if (x < 0 || y < 0 || x >= width || y >= height) return false;
       const t = tiles[y][x];
       // Allow shallows for bridges, but discourage it; block deep lakes and high peaks
-      if (t.type === 'DEEP_LAKE' || t.type === 'HIGH_PEAK') return false;
+      if (t.type === 'OCEAN' || t.type === 'MOUNTAIN') return false;
       return true;
     };
     return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
@@ -1307,14 +1211,11 @@ export class ChunkManager {
     const MIN_CLUSTER = 25; // minimum 5x5 equivalent cluster size
     const visited = new Uint8Array(S * S);
     // Water biomes are exempt — ponds and lakes are fine
-    const WATER_TYPES = new Set(['ABYSS', 'DEEP_OCEAN', 'OCEAN', 'SHALLOWS', 'TIDAL_POOL', 'SHOAL',
-      'MIRE', 'BOG', 'TOXIC_SUMP', 'DEEP_LAKE']);
+    const WATER_TYPES = new Set(['OCEAN', 'SHALLOWS']);
     // Walkable replacement for non-walkable terrain by biome
     const REPLACEMENTS = {
-      forest: { type: 'SPARSE_TREES', char: '\u03C4', fg: '#338833', bg: '#0a1a0a', biome: 'forest' },
-      mountain: { type: 'HIGHLAND', char: '\u2206', fg: '#AABBAA', bg: '#222222', biome: 'hills' },
-      hills: { type: 'ROLLING_HILLS', char: '\u2312', fg: '#BBAA77', bg: '#2a2a1a', biome: 'hills' },
-      crystal_zone: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
+      forest: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
+      mountain: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
       grassland: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
     };
     const DEFAULT_REPLACE = { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' };
@@ -1400,7 +1301,7 @@ export class ChunkManager {
         const t = tiles[ly][lx];
 
         if (!t.walkable) continue;
-        if (t.type === 'SHALLOWS' || t.type === 'DEEP_LAKE' || t.type === 'MOUNTAIN' || t.type === 'HIGH_PEAK') continue;
+        if (t.type === 'SHALLOWS' || t.type === 'OCEAN' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE') continue;
 
         const wx = ox + lx;
         const wy = oy + ly;
@@ -1548,7 +1449,7 @@ export class ChunkManager {
           const lx = ((p.x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
           const ly = ((p.y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
           const t = chunk.tiles[ly][lx];
-          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'BARREN_WASTE' || t.type === 'DEEP_FOREST') {
+          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'DEEP_FOREST') {
             chunk.tiles[ly][lx] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
           } else if (t.type === 'SHALLOWS') {
             chunk.tiles[ly][lx] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
@@ -1562,7 +1463,7 @@ export class ChunkManager {
     const self = this;
     const isWalkable = (x, y) => {
       const t = self.getTile(x, y);
-      if (t.type === 'DEEP_LAKE' || t.type === 'HIGH_PEAK') return false;
+      if (t.type === 'OCEAN' || t.type === 'MOUNTAIN') return false;
       return true;
     };
     return AStar.findPath(sx, sy, ex, ey, isWalkable, 5000);
@@ -1735,147 +1636,16 @@ export class SettlementGenerator {
       return tile('GRASSLAND', ',', '#44aa44', '#112211', true, { buildingId: null });
     }
 
-    if (dist <= 10) {
-      // Near outskirts: gardens, fences, fields, animal pens
-      if (r < 0.04) return tile('FENCE', '\u2502', '#aa6622', '#112211', false, { buildingId: null }); // │
-      if (r < 0.06) return tile('WELL', '\u25CE', '#4488ff', '#112211', false, { buildingId: null }); // ◎
-      if (r < 0.10) return tile('GARDEN', '\u273B', '#66CC66', '#112211', true, { buildingId: null }); // ✻
-      if (r < 0.13) return tile('FLOWER_BED', '\u2740', '#FF88AA', '#112211', true, { buildingId: null }); // ❀
-      if (r < 0.22) return tile('FIELD', '\u2261', '#aaaa22', '#222211', true, { buildingId: null }); // ≡
-      if (r < 0.26) return tile('HAY_BALE', '\u2593', '#CCAA44', '#112211', false, { buildingId: null }); // ▓
-      if (r < 0.28) return tile('ANIMAL_PEN', '\u25A1', '#AA6622', '#112211', false, { buildingId: null }); // □
-      if (r < 0.35) return tile('TREE', '\u2663', '#228822', '#112211', false, { buildingId: null }); // ♣
+    if (dist <= 15) {
+      // Near outskirts: grass with occasional trees
+      if (r < 0.10) return tile('TREE', '\u2663', '#228822', '#112211', false, { buildingId: null });
       return tile('GRASSLAND', ',', '#55bb55', '#112211', true, { buildingId: null });
     }
 
-    if (dist <= 20) {
-      // Mid outskirts: sparser, more trees, occasional farm buildings
-      if (r < 0.15) return tile('TREE', 't', '#228822', '#0a1a0a', false, { buildingId: null });
-      if (r < 0.20) return tile('TREE', 'T', '#116611', '#0a1a0a', false, { buildingId: null });
-      if (r < 0.22) return tile('CRATE', '\u25AA', '#886644', '#112211', false, { buildingId: null }); // ▪
-      if (r < 0.25) return tile('SIGNPOST', '\u2691', '#aa8866', '#112211', false, { buildingId: null }); // ⚑
-      return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
-    }
-
-    // Far outskirts: wild terrain based on biome
-    const biomeTerrains = {
-      grassland: () => {
-        if (r < 0.10) return tile('DEEP_FOREST', 'T', '#22aa22', '#0a1a0a', false, { buildingId: null });
-        if (r < 0.20) return tile('FOREST', 't', '#116611', '#0a1a0a', false, { buildingId: null });
-        return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
-      },
-      forest: () => {
-        if (r < 0.35) return tile('DEEP_FOREST', 'T', '#22aa22', '#0a1a0a', false, { buildingId: null });
-        if (r < 0.55) return tile('FOREST', 't', '#116611', '#0a1a0a', false, { buildingId: null });
-        return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
-      },
-      swamp: () => {
-        if (r < 0.20) return tile('MIRE', '~', '#228844', '#112211', true, { buildingId: null });
-        if (r < 0.30) return tile('TREE', 'T', '#116611', '#0a1a0a', false, { buildingId: null });
-        return tile('GRASSLAND', '.', '#33aa44', '#112211', true, { buildingId: null });
-      },
-      badlands: () => {
-        if (r < 0.10) return tile('MOUNTAIN', '^', '#cccccc', '#333333', false, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#ddcc44', '#332200', true, { buildingId: null });
-      },
-      mountain: () => {
-        if (r < 0.15) return tile('MOUNTAIN', '^', '#cccccc', '#333333', false, { buildingId: null });
-        if (r < 0.25) return tile('FOREST', 't', '#116611', '#0a1a0a', false, { buildingId: null });
-        return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
-      },
-      hull_breach: () => {
-        if (r < 0.15) return tile('HULL_BREACH', '%', '#667788', '#111122', true, { buildingId: null });
-        if (r < 0.25) return tile('HULL_BREACH', '.', '#556677', '#111122', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#778899', '#111122', true, { buildingId: null });
-      },
-      reactor_slag: () => {
-        if (r < 0.10) return tile('REACTOR_SLAG', '~', '#FF6622', '#331100', true, { buildingId: null });
-        if (r < 0.25) return tile('BARREN_WASTE', '.', '#AA6633', '#221100', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#886644', '#221100', true, { buildingId: null });
-      },
-      frozen_deck: () => {
-        if (r < 0.15) return tile('FROZEN_DECK', '.', '#AADDFF', '#112233', true, { buildingId: null });
-        if (r < 0.25) return tile('FROZEN_DECK', '*', '#88BBDD', '#112233', false, { buildingId: null });
-        return tile('GRASSLAND', '.', '#88BBCC', '#112233', true, { buildingId: null });
-      },
-      hydro_jungle: () => {
-        if (r < 0.30) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { buildingId: null });
-        if (r < 0.45) return tile('DEEP_FOREST', 'T', '#00CC44', '#001A0A', false, { buildingId: null });
-        return tile('GRASSLAND', '.', '#22AA44', '#001A0A', true, { buildingId: null });
-      },
-      toxic_sump: () => {
-        if (r < 0.15) return tile('TOXIC_SUMP', '~', '#44FF00', '#112200', false, { buildingId: null });
-        if (r < 0.30) return tile('MIRE', '~', '#338800', '#112200', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#667744', '#112200', true, { buildingId: null });
-      },
-      alien_crash: () => {
-        if (r < 0.15) return tile('ALIEN_CRASH', '*', '#FF44FF', '#220022', true, { buildingId: null });
-        if (r < 0.25) return tile('ALIEN_CRASH', '.', '#CC44CC', '#220022', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#886688', '#220022', true, { buildingId: null });
-      },
-      crystal_zone: () => {
-        if (r < 0.20) return tile('CRYSTAL_ZONE', '#', '#44FFFF', '#002222', false, { buildingId: null });
-        if (r < 0.30) return tile('CRYSTAL_ZONE', '.', '#22AAAA', '#002222', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#448888', '#002222', true, { buildingId: null });
-      },
-      void_rift: () => {
-        if (r < 0.15) return tile('VOID_RIFT', ' ', '#220044', '#000000', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#332244', '#000011', true, { buildingId: null });
-      },
-      glitch_zone: () => {
-        if (r < 0.20) return tile('GLITCH_ZONE', '?', '#FF0088', '#110011', true, { buildingId: null });
-        if (r < 0.30) return tile('GLITCH_ZONE', '.', '#CC0066', '#110011', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#884466', '#110011', true, { buildingId: null });
-      },
-      nano_plague: () => {
-        if (r < 0.25) return tile('NANO_PLAGUE', ':', '#888888', '#222222', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#666666', '#222222', true, { buildingId: null });
-      },
-      assimilated: () => {
-        if (r < 0.20) return tile('ASSIMILATED', '=', '#AA0044', '#110000', true, { buildingId: null });
-        if (r < 0.35) return tile('ASSIMILATED', '.', '#882244', '#110000', true, { buildingId: null });
-        return tile('BARREN_WASTE', '.', '#664444', '#110000', true, { buildingId: null });
-      },
-      // Temperature gradient biomes — cold
-      tundra: () => {
-        if (r < 0.15) return tile('TUNDRA', '#', '#88BBDD', '#0A1A2A', false, { buildingId: null });
-        if (r < 0.25) return tile('TUNDRA', '*', '#77AACC', '#112233', false, { buildingId: null });
-        return tile('TUNDRA', '.', '#AACCDD', '#112233', true, { buildingId: null });
-      },
-      permafrost: () => {
-        if (r < 0.20) return tile('PERMAFROST', '#', '#77AACC', '#081018', false, { buildingId: null });
-        return tile('PERMAFROST', '.', '#88BBDD', '#0A1A2A', true, { buildingId: null });
-      },
-      void_exposure: () => {
-        if (r < 0.10) return tile('VOID_EXPOSURE', '*', '#FFFFFF', '#000008', true, { buildingId: null });
-        return tile('STRUCTURAL_GRID', '+', '#556677', '#060610', true, { buildingId: null });
-      },
-      structural_grid: () => {
-        if (r < 0.25) return tile('STRUCTURAL_GRID', '+', '#667788', '#0A0A15', true, { buildingId: null });
-        return tile('STRUCTURAL_GRID', '.', '#556677', '#060610', true, { buildingId: null });
-      },
-      // Temperature gradient biomes — hot
-      desert: () => {
-        if (r < 0.10) return tile('DESERT', '~', '#CCAA33', '#332200', true, { buildingId: null });
-        if (r < 0.20) return tile('BARREN_WASTE', '.', '#AA8844', '#2A1A00', true, { buildingId: null });
-        return tile('DESERT', '.', '#DDBB44', '#332200', true, { buildingId: null });
-      },
-      scorched_waste: () => {
-        if (r < 0.15) return tile('SCORCHED_WASTE', ':', '#DD7733', '#441100', true, { buildingId: null });
-        return tile('SCORCHED_WASTE', '.', '#FF8844', '#441100', true, { buildingId: null });
-      },
-      magma_fields: () => {
-        if (r < 0.20) return tile('MAGMA_FIELDS', '~', '#FF4400', '#550000', false, { buildingId: null });
-        return tile('SCORCHED_WASTE', '.', '#CC5522', '#330800', true, { buildingId: null });
-      },
-      inferno_core: () => {
-        if (r < 0.25) return tile('INFERNO_CORE', '~', '#FF2200', '#440000', false, { buildingId: null });
-        return tile('MAGMA_FIELDS', '.', '#DD3300', '#330000', true, { buildingId: null });
-      },
-    };
-
-    const gen = biomeTerrains[biome] || biomeTerrains.grassland;
-    return gen();
+    // Far outskirts: grass with more trees
+    if (r < 0.15) return tile('TREE', '\u2663', '#228822', '#0a1a0a', false, { buildingId: null });
+    if (r < 0.25) return tile('TREE', '\u2660', '#116611', '#0a1a0a', false, { buildingId: null });
+    return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { buildingId: null });
   }
 
   _generateOutskirtRoads(rng, tiles, pad, coreW, coreH, totalW, totalH) {
@@ -1884,25 +1654,25 @@ export class SettlementGenerator {
 
     // Road going south from settlement
     for (let y = pad + coreH; y < totalH - 2; y++) {
-      if (tiles[y][cx].type === 'GRASSLAND' || tiles[y][cx].type === 'FIELD') {
+      if (tiles[y][cx].type === 'GRASSLAND') {
         tiles[y][cx] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
       }
     }
     // Road going north
     for (let y = pad - 1; y >= 2; y--) {
-      if (tiles[y][cx].type === 'GRASSLAND' || tiles[y][cx].type === 'FIELD') {
+      if (tiles[y][cx].type === 'GRASSLAND') {
         tiles[y][cx] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
       }
     }
     // Road going east
     for (let x = pad + coreW; x < totalW - 2; x++) {
-      if (tiles[cy][x].type === 'GRASSLAND' || tiles[cy][x].type === 'FIELD') {
+      if (tiles[cy][x].type === 'GRASSLAND') {
         tiles[cy][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
       }
     }
     // Road going west
     for (let x = pad - 1; x >= 2; x--) {
-      if (tiles[cy][x].type === 'GRASSLAND' || tiles[cy][x].type === 'FIELD') {
+      if (tiles[cy][x].type === 'GRASSLAND') {
         tiles[cy][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
       }
     }
@@ -2051,7 +1821,7 @@ export class SettlementGenerator {
     // Get biome-specific building theme
     const biomeTheme = this._getBiomeTheme(biome);
 
-    // Central plaza
+    // Central plaza — simple open area
     const plazaW = type === 'city' ? 8 : type === 'town' ? 6 : 4;
     const plazaH = type === 'city' ? 6 : type === 'town' ? 5 : 3;
     const plazaX = Math.floor((w - plazaW) / 2);
@@ -2059,47 +1829,18 @@ export class SettlementGenerator {
 
     for (let y = plazaY; y < plazaY + plazaH; y++) {
       for (let x = plazaX; x < plazaX + plazaW; x++) {
-        // Cobblestone plaza with variation
-        const ph = ((x * 31 + y * 17) & 0xFFFF) / 65536;
-        if (ph < 0.6) {
-          tiles[y][x] = tile('COBBLESTONE', '\u25AA', '#BBAA77', '#332211', true, { buildingId: null }); // ▪
-        } else if (ph < 0.85) {
-          tiles[y][x] = tile('COBBLESTONE', '\u00B7', '#AA9966', '#332211', true, { buildingId: null }); // ·
-        } else {
-          tiles[y][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
-        }
+        tiles[y][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
       }
     }
 
-    // Place a fountain in center of plaza
     const fcx = plazaX + Math.floor(plazaW / 2);
     const fcy = plazaY + Math.floor(plazaH / 2);
-    tiles[fcy][fcx] = tile('FOUNTAIN', '\u00a4', '#4488ff', '#223344', false, { buildingId: null });
 
-    // Decorations around the fountain
-    // Benches facing the fountain
-    if (fcx - 2 >= plazaX) tiles[fcy][fcx - 2] = tile('BENCH', '\u2564', '#886644', '#332211', false, { buildingId: null });
-    if (fcx + 2 < plazaX + plazaW) tiles[fcy][fcx + 2] = tile('BENCH', '\u2564', '#886644', '#332211', false, { buildingId: null });
-
-    // Lamp posts at plaza corners
-    const plazaCorners = [
-      [plazaX, plazaY], [plazaX + plazaW - 1, plazaY],
-      [plazaX, plazaY + plazaH - 1], [plazaX + plazaW - 1, plazaY + plazaH - 1],
-    ];
-    for (const [lx, ly] of plazaCorners) {
-      tiles[ly][lx] = tile('LAMP_POST', '\u263C', '#FFDD44', '#332211', false, { buildingId: null });
-    }
-
-    // Statue in cities
-    if (type === 'city' && fcy - 1 >= plazaY) {
-      tiles[fcy - 1][fcx] = tile('STATUE', '\u03A9', '#AAAAAA', '#332211', false, { buildingId: null });
-    }
-
-    // Determine building count based on type
+    // Determine building count based on type — just core buildings
     const buildingCounts = {
-      village: { house: 3, tavern: 1, shop: 1, garden: 1 },
-      town: { house: 6, tavern: 1, shop: 2, blacksmith: 1, temple: 1, market_stall: 2, watchtower: 1, garden: 1 },
-      city: { house: 10, tavern: 2, shop: 3, blacksmith: 2, temple: 1, guild_hall: 1, barracks: 1, market_stall: 4, watchtower: 2, warehouse: 1, garden: 2 },
+      village: { house: 3, tavern: 1, shop: 1 },
+      town: { house: 6, tavern: 1, shop: 2, blacksmith: 1, temple: 1 },
+      city: { house: 10, tavern: 2, shop: 3, blacksmith: 2, temple: 1, guild_hall: 1, barracks: 1 },
     };
 
     const counts = buildingCounts[type] || buildingCounts.village;
@@ -2116,16 +1857,8 @@ export class SettlementGenerator {
 
     // Place buildings around the plaza
     for (const bType of shuffled) {
-      const bw = bType === 'market_stall' ? rng.nextInt(3, 4) :
-        bType === 'watchtower' ? rng.nextInt(3, 4) :
-        bType === 'warehouse' ? rng.nextInt(7, 10) :
-        bType === 'garden' ? rng.nextInt(5, 7) :
-        rng.nextInt(5, 8);
-      const bh = bType === 'market_stall' ? rng.nextInt(3, 3) :
-        bType === 'watchtower' ? rng.nextInt(3, 4) :
-        bType === 'warehouse' ? rng.nextInt(5, 7) :
-        bType === 'garden' ? rng.nextInt(5, 7) :
-        rng.nextInt(5, 7);
+      const bw = rng.nextInt(5, 8);
+      const bh = rng.nextInt(5, 7);
 
       let bestX = -1, bestY = -1;
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -2153,27 +1886,13 @@ export class SettlementGenerator {
       if (bestX === -1) continue;
 
       const bid = buildings.length;
-      if (bType === 'garden') {
-        // Garden: open fenced area with dense foliage
-        this._carveGarden(rng, tiles, bestX, bestY, bw, bh, bid);
-      } else if (bType === 'watchtower') {
-        // Watchtower: small building with roof and battlement markers
-        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid, biomeTheme);
-        this._decorateWatchtower(tiles, bestX, bestY, bw, bh, bid);
-      } else if (bType === 'warehouse') {
-        // Warehouse: large building with crates inside
-        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid, biomeTheme);
-        this._decorateWarehouse(rng, tiles, bestX, bestY, bw, bh, bid);
-      } else {
-        this._carveBuilding(tiles, bestX, bestY, bw, bh, bid, biomeTheme);
-      }
+      this._carveBuilding(tiles, bestX, bestY, bw, bh, bid, biomeTheme);
       placed.push({ x: bestX - 1, y: bestY - 1, w: bw + 2, h: bh + 2 });
 
       const nameMap = {
         tavern: 'Tavern', shop: 'General Store', blacksmith: 'Smithy',
         temple: 'Temple', house: 'Dwelling', guild_hall: 'Guild Hall',
-        barracks: 'Guard Post', market_stall: 'Market Stall',
-        watchtower: 'Watchtower', warehouse: 'Warehouse', garden: 'Garden',
+        barracks: 'Guard Post',
       };
 
       buildings.push({
@@ -2186,8 +1905,7 @@ export class SettlementGenerator {
       const roleMap = {
         tavern: 'innkeeper', shop: 'merchant', blacksmith: 'blacksmith',
         temple: 'priest', house: 'villager', guild_hall: 'guildmaster',
-        barracks: 'guard', market_stall: 'merchant',
-        watchtower: 'guard', warehouse: 'merchant', garden: 'villager',
+        barracks: 'guard',
       };
       npcSlots.push({
         buildingId: bid,
@@ -2204,11 +1922,7 @@ export class SettlementGenerator {
       this._carveRoad(tiles, doorX, doorY + 1, fcx, fcy, w, h);
     }
 
-    // Place multi-tile trees before scattering small decorations
-    this._placeMultiTileTrees(rng, tiles, w, h, placed, type);
-
-    // Scatter decorations (with reduced single-tile trees)
-    this._scatterDecorations(rng, tiles, w, h, biome, placed);
+    // Towns are just buildings and grass — no extra decorations
   }
 
   // ── Multi-tile tree templates and placement ──
