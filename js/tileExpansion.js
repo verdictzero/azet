@@ -266,6 +266,16 @@ const BRIDGE_3x3 = [
 
 // ── Colony substructure tear patterns ────────────────
 
+const TEAR_GRASS_2x2 = [
+  [[',','.'],['.', ',']],
+  [['.',','],[',','.']],
+];
+
+const TEAR_GRASS_3x3 = [
+  [[',','.',','],['.',',' ,'.'],[',','.',',']],
+  [['.',',','.'],[',','.',','],['.', ',','.']],
+];
+
 const TEAR_DIRT_2x2 = [
   [['\u00B7','.'],['.', '\u00B7']],
   [['.', '\u00B7'],['\u00B7','.']],
@@ -445,6 +455,7 @@ const TYPE_PATTERNS = {
   MOSS:           { 2: FUNGAL_2x2, 3: FUNGAL_3x3 },
 
   // Colony substructure tears
+  TEAR_GRASS:       { 2: TEAR_GRASS_2x2, 3: TEAR_GRASS_3x3 },
   TEAR_DIRT:        { 2: TEAR_DIRT_2x2, 3: TEAR_DIRT_3x3 },
   TEAR_LIGHT_METAL: { 2: TEAR_LIGHT_METAL_2x2, 3: TEAR_LIGHT_METAL_3x3 },
   TEAR_DARK_METAL:  { 2: TEAR_DARK_METAL_2x2, 3: TEAR_DARK_METAL_3x3 },
