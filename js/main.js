@@ -4222,44 +4222,46 @@ class Game {
       this.timeSystem.hour = origHour;
       this.renderer.tintViewport(tint.color, tint.alpha, viewLeft, viewTop, viewW, viewH);
 
-      // Apply weather ambient lighting
-      const weatherAmbient = this.weatherSystem.getAmbientEffect();
-      if (weatherAmbient) {
-        let wAlpha = weatherAmbient.tintAlpha;
-        if (weatherAmbient.pulseSpeed > 0) {
-          const pulse = Math.sin((this.renderer._frameTimeSec || Date.now() / 1000) * weatherAmbient.pulseSpeed) * weatherAmbient.pulseAmount;
-          wAlpha = Math.max(0, Math.min(1, wAlpha + pulse));
-        }
-        this.renderer.tintViewport(weatherAmbient.tintColor, wAlpha, viewLeft, viewTop, viewW, viewH);
+      // Apply weather ambient lighting (skip in overworld — weather disabled there)
+      if (this.state !== 'OVERWORLD') {
+        const weatherAmbient = this.weatherSystem.getAmbientEffect();
+        if (weatherAmbient) {
+          let wAlpha = weatherAmbient.tintAlpha;
+          if (weatherAmbient.pulseSpeed > 0) {
+            const pulse = Math.sin((this.renderer._frameTimeSec || Date.now() / 1000) * weatherAmbient.pulseSpeed) * weatherAmbient.pulseAmount;
+            wAlpha = Math.max(0, Math.min(1, wAlpha + pulse));
+          }
+          this.renderer.tintViewport(weatherAmbient.tintColor, wAlpha, viewLeft, viewTop, viewW, viewH);
 
-        // Brightness shift across viewport (single tint call instead of per-cell)
-        const bShift = weatherAmbient.brightnessShift;
-        if (bShift < 0) {
-          this.renderer.tintViewport('#000000', Math.abs(bShift), viewLeft, viewTop, viewW, viewH);
-        } else if (bShift > 0) {
-          // Screen-blend bright tint over viewport
-          const ctx = this.renderer.ctx;
-          const x = viewLeft * this.renderer.cellWidth;
-          const y = viewTop * this.renderer.cellHeight;
-          const w = viewW * this.renderer.cellWidth;
-          const h = viewH * this.renderer.cellHeight;
-          ctx.save();
-          ctx.globalCompositeOperation = 'screen';
-          ctx.globalAlpha = bShift;
-          ctx.fillStyle = '#FFEEAA';
-          ctx.fillRect(x, y, w, h);
-          ctx.restore();
-        }
+          // Brightness shift across viewport (single tint call instead of per-cell)
+          const bShift = weatherAmbient.brightnessShift;
+          if (bShift < 0) {
+            this.renderer.tintViewport('#000000', Math.abs(bShift), viewLeft, viewTop, viewW, viewH);
+          } else if (bShift > 0) {
+            // Screen-blend bright tint over viewport
+            const ctx = this.renderer.ctx;
+            const x = viewLeft * this.renderer.cellWidth;
+            const y = viewTop * this.renderer.cellHeight;
+            const w = viewW * this.renderer.cellWidth;
+            const h = viewH * this.renderer.cellHeight;
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.globalAlpha = bShift;
+            ctx.fillStyle = '#FFEEAA';
+            ctx.fillRect(x, y, w, h);
+            ctx.restore();
+          }
 
-        // Lightning flashes for high-energy weather
-        const weather = this.weatherSystem.current;
-        const wIntensity = this.weatherSystem.intensity;
-        let flashChance = 0, flashColor = '#FFFFFF';
-        if (weather === 'storm') { flashChance = wIntensity * 0.005; flashColor = '#FFFFFF'; }
-        else if (weather === 'ion_storm') { flashChance = wIntensity * 0.008; flashColor = '#FFFF44'; }
-        else if (weather === 'data_storm') { flashChance = wIntensity * 0.006; flashColor = '#FF0088'; }
-        if (flashChance > 0 && Math.random() < flashChance) {
-          this.renderer.flash(flashColor, 0.6 + Math.random() * 0.3);
+          // Lightning flashes for high-energy weather
+          const weather = this.weatherSystem.current;
+          const wIntensity = this.weatherSystem.intensity;
+          let flashChance = 0, flashColor = '#FFFFFF';
+          if (weather === 'storm') { flashChance = wIntensity * 0.005; flashColor = '#FFFFFF'; }
+          else if (weather === 'ion_storm') { flashChance = wIntensity * 0.008; flashColor = '#FFFF44'; }
+          else if (weather === 'data_storm') { flashChance = wIntensity * 0.006; flashColor = '#FF0088'; }
+          if (flashChance > 0 && Math.random() < flashChance) {
+            this.renderer.flash(flashColor, 0.6 + Math.random() * 0.3);
+          }
         }
       }
 
@@ -4370,88 +4372,7 @@ class Game {
         this.ui.applyLocationLighting(this.renderer);
       }
 
-      // Apply cloud overlay and cloud shadows in overworld
-      if (this.state === 'OVERWORLD' && this.cloudSystem && !this.debug.disableClouds) {
-        const camX = Math.floor(this.camera.x);
-        const camY = Math.floor(this.camera.y);
-        const dLevel = this.renderer.densityLevel;
-        const cloudWorldW = Math.ceil(viewW / dLevel);
-        const cloudWorldH = Math.ceil(viewH / dLevel);
-        const sunDir = this.timeSystem.getSunDirection();
-        const isDay = this.timeSystem.isDaytime();
-
-        // Shadow offset: high sun → close shadow, low sun → far shadow
-        const shadowDist = sunDir.elevation > 0.05
-          ? Math.min(8, Math.round(2.0 / sunDir.elevation))
-          : 8;
-        const shOffX = Math.round(sunDir.dx * shadowDist);
-        const shOffY = Math.round(sunDir.dy * shadowDist);
-
-        const castShadows = isDay && sunDir.elevation > 0.05;
-        const alphaMul = isDay ? 0.18 : 0.06;
-        const rr = this.renderer;
-        if (dLevel === 1) {
-          // Fast path: no inner density loops needed
-          for (let wy_off = 0; wy_off < cloudWorldH; wy_off++) {
-            for (let wx_off = 0; wx_off < cloudWorldW; wx_off++) {
-              const cDensity = this.cloudSystem.getCloudDensity(camX + wx_off, camY + wy_off);
-              if (cDensity > 0) {
-                if (wx_off < viewW && wy_off < viewH) {
-                  rr.tintCell(viewLeft + wx_off, viewTop + wy_off, '#CCCCEE', cDensity * alphaMul);
-                }
-                if (castShadows) {
-                  const shwx = wx_off + shOffX;
-                  const shwy = wy_off + shOffY;
-                  if (shwx >= 0 && shwx < cloudWorldW && shwy >= 0 && shwy < cloudWorldH
-                      && shwx < viewW && shwy < viewH) {
-                    rr.darkenCell(viewLeft + shwx, viewTop + shwy, cDensity * 0.20);
-                  }
-                }
-              }
-            }
-          }
-        } else {
-          for (let wy_off = 0; wy_off < cloudWorldH; wy_off++) {
-            for (let wx_off = 0; wx_off < cloudWorldW; wx_off++) {
-              const cDensity = this.cloudSystem.getCloudDensity(camX + wx_off, camY + wy_off);
-              if (cDensity > 0) {
-                const cloudAlpha = cDensity * alphaMul;
-                const baseX = wx_off * dLevel;
-                const baseY = wy_off * dLevel;
-                for (let sdy = 0; sdy < dLevel; sdy++) {
-                  const screenY = baseY + sdy;
-                  if (screenY >= viewH) break;
-                  for (let sdx = 0; sdx < dLevel; sdx++) {
-                    const screenX = baseX + sdx;
-                    if (screenX < viewW) {
-                      rr.tintCell(viewLeft + screenX, viewTop + screenY, '#CCCCEE', cloudAlpha);
-                    }
-                  }
-                }
-                if (castShadows) {
-                  const shwx = wx_off + shOffX;
-                  const shwy = wy_off + shOffY;
-                  if (shwx >= 0 && shwx < cloudWorldW && shwy >= 0 && shwy < cloudWorldH) {
-                    const shadowAlpha = cDensity * 0.20;
-                    const shBaseX = shwx * dLevel;
-                    const shBaseY = shwy * dLevel;
-                    for (let sdy = 0; sdy < dLevel; sdy++) {
-                      const screenY = shBaseY + sdy;
-                      if (screenY >= viewH) break;
-                      for (let sdx = 0; sdx < dLevel; sdx++) {
-                        const screenX = shBaseX + sdx;
-                        if (screenX < viewW) {
-                          rr.darkenCell(viewLeft + screenX, viewTop + screenY, shadowAlpha);
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      // Cloud overlay and shadows disabled — focus on clean lighting
 
       // Apply colored light glow for player light source at night
       if (!this.timeSystem.isDaytime()) {
@@ -4947,18 +4868,6 @@ class Game {
     this._shadowBufData = shadowBuf;
     this._shadowViewW = viewW;
     this._shadowViewH = viewH;
-
-    // Render weather particles (screen-space, works at any density)
-    const weatherEffect = this.weatherSystem.getVisualEffect();
-    if (weatherEffect) {
-      for (let sy = 0; sy < viewH; sy++) {
-        for (let sx = 0; sx < viewW; sx++) {
-          if (Math.random() < weatherEffect.density) {
-            r.drawChar(viewLeft + sx, viewTop + sy, weatherEffect.char, weatherEffect.fg);
-          }
-        }
-      }
-    }
 
     // Render particle effects
     this.particles.update();

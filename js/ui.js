@@ -1687,16 +1687,12 @@ export class UIManager {
     const viewW = cols - 2;
     const viewH = rows - LAYOUT.HUD_TOTAL;
 
-    // Tile height lookup for settlement shadow casting
+    // Tile height lookup for settlement shadow casting — buildings only
     const SETTLEMENT_HEIGHTS = {
-      WALL: 3, BUILDING_WALL: 3, FENCE: 1, COLUMN: 2,
-      TREE_CANOPY: 4, TREE_TRUNK: 2,
+      WALL: 3, BUILDING_WALL: 3,
     };
-    // Character-based heights for decorations
+    // Character-based heights for decorations — buildings only
     const CHAR_HEIGHTS = {
-      '\u2663': 2, '\u2660': 2, 'T': 2, // trees: ♣ ♠ T
-      '\u263C': 1, // lamp ☼
-      '\u03A9': 2, // statue Ω
       '\u25D9': 3, // castle corner ◙
       '\u2565': 2, // battlement ╥
     };
