@@ -4811,6 +4811,9 @@ class Game {
         VOID_RIFT:   { hMin: 260, hMax: 310, int: 0.20, spd: 0.5,  rad: 2, pat: 'pulse' },
         GLITCH_ZONE: { hMin: 300, hMax: 360, int: 0.24, spd: 2.0,  rad: 1, pat: 'flicker' },
         ABYSS:       { hMin: 240, hMax: 280, int: 0.08, spd: 0.3,  rad: 1, pat: 'pulse' },
+        TEAR_GRID:       { hMin: 180, hMax: 220, int: 0.20, spd: 0.6, rad: 1, pat: 'tear_pulse' },
+        TEAR_DARK_METAL: { hMin: 190, hMax: 230, int: 0.15, spd: 0.5, rad: 1, pat: 'tear_pulse' },
+        TEAR_LIGHT_METAL:{ hMin: 170, hMax: 210, int: 0.10, spd: 0.4, rad: 0, pat: 'tear_pulse' },
       };
       const now = r._frameTimeSec || Date.now() / 1000;
       // HSL to hex helper (hoisted out of loop)
@@ -4853,6 +4856,16 @@ class Game {
             hue = (prof.hMin + prof.hMax) * 0.5;
             sat = 75 + phase * 20;
             lit = 50 + phase * 25;
+          } else if (prof.pat === 'tear_pulse') {
+            // Noise-distributed pulse: each tile gets its own random frequency/phase
+            const noiseFreq = 0.7 + ((wx * 13 + wy * 7) % 17) / 17 * 0.8; // 0.7–1.5
+            const noisePhase = ((wx * 31 + wy * 53) % 97) / 97 * 6.28;
+            const pulse = Math.sin(t * noiseFreq * 2.0 + noisePhase) * 0.5 + 0.5;
+            const secondary = Math.sin(t * noiseFreq * 0.7 + noisePhase * 1.3) * 0.3;
+            const combined = Math.max(0, Math.min(1, pulse + secondary));
+            hue = (prof.hMin + prof.hMax) * 0.5;
+            sat = 60 + combined * 30;
+            lit = 35 + combined * 35;
           } else { // flicker
             const base = Math.sin(t * 3.0) * 0.5 + 0.5;
             const jitter = Math.sin(t * 7.3) * 0.15 + Math.sin(t * 13.1) * 0.1;
