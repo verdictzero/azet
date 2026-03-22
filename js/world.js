@@ -1060,8 +1060,8 @@ export class ChunkManager {
       }
     }
 
-    // Apply historical map scars — overwrite terrain in scar zones
-    this._applyMapScarsToChunk(cx, cy, tiles);
+    // Historical scars disabled — will re-add with lore-relevant features later
+    // this._applyMapScarsToChunk(cx, cy, tiles);
 
     // Remove small isolated non-walkable clusters (< 25 tiles) to prevent movement frustration
     this._removeSmallBlockers(tiles);
