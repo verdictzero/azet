@@ -1698,36 +1698,35 @@ export class UIManager {
     };
 
     // ── Time-of-day lighting phase ──
-    // Permanent golden hour feel: always high warmth for long dramatic shadows/highlights
+    // Subtle, low-contrast lighting — palette shifts rather than warm overlays
     const h = hour || 12;
     const isDay = sunDir && sunDir.isDay;
     const isNight = sunDir && !sunDir.isDay;
-    // Minimum warmth of 0.5 gives permanent golden hour feel — always long shadows
-    let sunWarmth = 0.5; // baseline golden
+    // Low warmth baseline for subtle directional cues without golden-hour saturation
+    let sunWarmth = 0.15; // subtle baseline
     let sunTint = '#FFFFFF';
     let shadowTint = '#000000';
     if (isDay) {
+      // Gentle time-of-day variation — dawn/dusk slightly warmer, midday neutral
       if (h < 7.5) {
-        sunWarmth = Math.max(0.5, 1.0 - Math.abs(h - 6) / 1.5);
+        sunWarmth = Math.max(0.15, 0.35 - Math.abs(h - 6) / 6.0);
       } else if (h > 17) {
-        sunWarmth = Math.max(0.5, 1.0 - Math.abs(h - 19) / 2.0);
-      } else if (h >= 7.5 && h <= 10) {
-        sunWarmth = Math.max(0.5, 0.2 * (1 - (h - 7.5) / 2.5) + 0.5);
-      } else if (h >= 14 && h <= 17) {
-        sunWarmth = Math.max(0.5, 0.2 * ((h - 14) / 3.0) + 0.5);
+        sunWarmth = Math.max(0.15, 0.35 - Math.abs(h - 19) / 6.0);
       }
-      const tR = Math.round(255);
-      const tG = Math.round(255 - sunWarmth * 70);
-      const tB = Math.round(255 - sunWarmth * 155);
+      // Sun tint: mostly white with very subtle warmth
+      const tR = 255;
+      const tG = Math.round(255 - sunWarmth * 20);
+      const tB = Math.round(255 - sunWarmth * 40);
       sunTint = '#' + [tR, tG, tB].map(v => Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
-      const sR = Math.round(sunWarmth * 30);
-      const sG = Math.round(0);
-      const sB = Math.round(30 + sunWarmth * 20);
+      // Shadow tint: very subtle cool blue, not warm
+      const sR = 0;
+      const sG = 0;
+      const sB = Math.round(15 + sunWarmth * 10);
       shadowTint = '#' + [sR, sG, sB].map(v => v.toString(16).padStart(2,'0')).join('');
     } else if (isNight) {
       sunTint = '#AABBDD';
-      shadowTint = '#000011';
-      sunWarmth = 0.5; // moon also gets golden-hour-length shadows
+      shadowTint = '#000008';
+      sunWarmth = 0.15;
     }
 
     // Draw settlement map tiles with camera
@@ -1743,8 +1742,8 @@ export class UIManager {
       // Collect infinitely linear shadows (in screen coords) — works for both sun and moon
       const shadowCells = new Map();
       if (sunDir) {
-        const shadowAlpha = isDay ? 0.3 : 0.15;
-        const shadowMax = isDay ? 0.7 : 0.45;
+        const shadowAlpha = isDay ? 0.12 : 0.08;
+        const shadowMax = isDay ? 0.35 : 0.2;
         // Normalized shadow direction for ray marching
         const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
         const sdxN = sunDir.dx / sdMag;
@@ -1825,7 +1824,7 @@ export class UIManager {
                       const key = `${lx},${ly}`;
                       const falloff = 1.0 / i;
                       const existing = sunlitCells.get(key) || 0;
-                      sunlitCells.set(key, Math.min(1.0, existing + falloff * 0.6));
+                      sunlitCells.set(key, Math.min(0.6, existing + falloff * 0.35));
                     }
                   }
                 }
@@ -1907,11 +1906,11 @@ export class UIManager {
         const alongRange = maxAlong - minAlong || 1;
         let rayIntMul, edgeBoost;
         if (isDay) {
-          rayIntMul = 0.7 + sunWarmth * 0.8;
-          edgeBoost = 0.06 + sunWarmth * 0.08;
+          rayIntMul = 0.25 + sunWarmth * 0.15;
+          edgeBoost = 0.02 + sunWarmth * 0.02;
         } else {
-          rayIntMul = 0.55;
-          edgeBoost = 0.05;
+          rayIntMul = 0.18;
+          edgeBoost = 0.015;
         }
         for (let sy = 0; sy < viewH; sy++) {
           for (let sx = 0; sx < viewW; sx++) {
@@ -1931,34 +1930,35 @@ export class UIManager {
               const rayT = (alongProj - minAlong) / alongRange;
               let tint;
               if (isDay) {
-                const baseR = 221 + sunWarmth * 10;
-                const baseG = 238 - sunWarmth * 30;
-                const baseB = 240 - sunWarmth * 80;
+                // Neutral white-blue rays — subtle, not golden
+                const baseR = 230;
+                const baseG = 235;
+                const baseB = 242;
                 const tR = Math.round(baseR + rayT * (255 - baseR));
-                const tG = Math.round(baseG - rayT * (baseG - 178 + sunWarmth * 30));
-                const tB = Math.round(baseB - rayT * (baseB - 50 + sunWarmth * 40));
+                const tG = Math.round(baseG - rayT * 8);
+                const tB = Math.round(baseB - rayT * 12);
                 if (nearCanopy) {
-                  tint = '#' + [Math.round(tR * 0.86), Math.round(Math.min(255, tG * 1.0)), Math.round(tB * 0.85)]
+                  tint = '#' + [Math.round(tR * 0.92), Math.round(Math.min(255, tG * 0.98)), Math.round(tB * 0.95)]
                     .map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 } else {
                   tint = '#' + [tR, tG, tB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 }
               } else {
-                const tR = Math.round(170 + rayT * 18);
-                const tG = Math.round(187 - rayT * 10);
-                const tB = Math.round(221 - rayT * 30);
+                const tR = Math.round(170 + rayT * 10);
+                const tG = Math.round(180 + rayT * 5);
+                const tB = Math.round(210 - rayT * 10);
                 if (nearCanopy) {
-                  tint = '#' + [Math.round(tR * 0.8), Math.round(tG * 0.82), Math.round(tB * 0.85)]
+                  tint = '#' + [Math.round(tR * 0.88), Math.round(tG * 0.9), Math.round(tB * 0.92)]
                     .map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 } else {
                   tint = '#' + [tR, tG, tB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
                 }
               }
-              let intensity = ((rayNoise - 0.05) / 0.95 * 0.15 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
-              const dimFactor = 1.0 - rayT * 0.35;
+              let intensity = ((rayNoise - 0.05) / 0.95 * 0.08 + (nearShadow ? edgeBoost : 0)) * rayIntMul;
+              const dimFactor = 1.0 - rayT * 0.25;
               intensity *= dimFactor;
-              if (nearCanopy) intensity *= 1.3;
-              godRayCells.push(sx, sy, Math.min(0.30, intensity), tint);
+              if (nearCanopy) intensity *= 1.15;
+              godRayCells.push(sx, sy, Math.min(0.12, intensity), tint);
             }
           }
         }
@@ -2097,19 +2097,22 @@ export class UIManager {
             isDay, isNight, viewLeft, viewTop, viewW, viewH,
             godRayCells, lampGlowOps } = L;
 
-    // Shadow darkening with color-tinted shadows
+    // Shadow darkening — low contrast, subtle depth
     for (const [key, alpha] of shadowCells) {
       const [sx, sy] = key.split(',').map(Number);
       renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+      // Very subtle cool tint in shadows
       if (shadowTint !== '#000000') {
-        renderer.tintCell(viewLeft + sx, viewTop + sy, shadowTint, alpha * 0.3);
+        renderer.tintCell(viewLeft + sx, viewTop + sy, shadowTint, alpha * 0.15);
       }
     }
 
-    // Directional brightening — sun/moon-facing sides of objects
+    // Edge highlights — palette-shift brightening within original color range
+    // Uses a near-white neutral tint at very low alpha for subtle edge definition
     if (sunlitCells.size > 0) {
-      const brightMul = isDay ? (0.08 + sunWarmth * 0.14) : 0.06;
-      const hlTint = isDay ? sunTint : '#AABBDD';
+      const brightMul = isDay ? (0.03 + sunWarmth * 0.04) : 0.025;
+      // Neutral highlight: white with very slight cool bias — stays within palette
+      const hlTint = isDay ? '#F0F2F8' : '#BBCCDD';
       for (const [key, intensity] of sunlitCells) {
         const [sx, sy] = key.split(',').map(Number);
         if (shadowCells.has(key)) continue;
@@ -2117,9 +2120,9 @@ export class UIManager {
       }
     }
 
-    // Ambient directional warmth — unshadowed open areas get subtle sun tint
-    if (isDay && sunWarmth > 0.15) {
-      const ambientAlpha = sunWarmth * 0.06;
+    // Ambient fill — extremely subtle, barely perceptible directional bias
+    if (isDay && sunWarmth > 0.2) {
+      const ambientAlpha = sunWarmth * 0.015;
       for (let sy = 0; sy < viewH; sy++) {
         for (let sx = 0; sx < viewW; sx++) {
           const key = `${sx},${sy}`;
@@ -2129,7 +2132,7 @@ export class UIManager {
       }
     }
 
-    // God rays / moonbeams
+    // God rays / moonbeams — subtle volumetric hints
     for (let i = 0; i < godRayCells.length; i += 4) {
       renderer.brightenCell(viewLeft + godRayCells[i], viewTop + godRayCells[i + 1], godRayCells[i + 2], godRayCells[i + 3]);
     }

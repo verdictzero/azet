@@ -2,7 +2,7 @@
 // world.js — World generation for ASCIIQUEST, a colony salvage roguelike
 // ============================================================================
 
-import { SeededRNG, PerlinNoise, AStar, distance, floodFill } from './utils.js';
+import { SeededRNG, PerlinNoise, CellularNoise, AStar, distance, floodFill } from './utils.js';
 
 // ============================================================================
 // Tile definition helpers
@@ -37,17 +37,46 @@ export class OverworldGenerator {
     const detailNoise = new PerlinNoise(rng);
     const temperatureNoise = new PerlinNoise(rng);
 
+    // Cellular noise for smooth contiguous biome regions
+    const biomeCell = new CellularNoise(rng, 0.8);  // large cells for primary biome zones
+    const subCell = new CellularNoise(rng, 2.0);    // finer sub-regions within biomes
+
     // Generate base terrain
     const tiles = makeTileGrid(width, height, (x, y) => {
       const nx = x / width;
       const ny = y / height;
-      const h = (heightNoise.fbm(nx * 2, ny * 2, 6) + 1) / 2;
-      const m = (moistureNoise.fbm(nx * 2 + 100, ny * 2 + 100, 5) + 1) / 2;
-      const a = (anomalyNoise.fbm(nx * 1, ny * 1, 4) + 1) / 2;
+
+      // Height: blend Perlin elevation with cellular structure for smoother landforms
+      const hPerlin = (heightNoise.fbm(nx * 2, ny * 2, 6) + 1) / 2;
+      const cell = biomeCell.noise2D(nx * 3, ny * 3);
+      const subCellData = subCell.noise2D(nx * 6, ny * 6);
+      // Cell-based height contribution: each Voronoi cell has a base elevation
+      const cellElevation = cell.cellId;
+      // Blend: Perlin provides shape, cellular provides contiguous regions
+      const h = hPerlin * 0.6 + cellElevation * 0.35 + subCellData.cellId * 0.05;
+
+      // Moisture: Perlin with cellular smoothing for contiguous wet/dry zones
+      const mPerlin = (moistureNoise.fbm(nx * 2 + 100, ny * 2 + 100, 5) + 1) / 2;
+      const mCell = cell.cellId * 0.618 % 1.0; // derive moisture tendency from cell
+      const m = mPerlin * 0.55 + mCell * 0.45;
+
+      // Anomaly: keep Perlin-based but use cell edges for concentration
+      const aRaw = (anomalyNoise.fbm(nx * 1, ny * 1, 4) + 1) / 2;
+      // Anomalies cluster at Voronoi cell boundaries (low edge = near boundary)
+      const a = aRaw * 0.7 + (1.0 - Math.min(1.0, cell.edge * 2.5)) * 0.3;
+
+      // Detail noise for sub-biome features
       const d = (detailNoise.fbm(nx * 4, ny * 4, 3) + 1) / 2;
-      // Very low-frequency temperature noise for massive contiguous biome regions
-      const t = (temperatureNoise.fbm(nx * 0.5 + 200, ny * 0.5 + 200, 3) + 1) / 2;
-      return this._terrainFromNoise(h, m, a, d, t);
+
+      // Temperature: smooth gradient from latitude + low-freq noise
+      // Latitude contribution: poles cold, equator warm
+      const latGrad = 1.0 - Math.abs(ny - 0.5) * 2.0; // 0 at edges, 1 at center
+      const tNoise = (temperatureNoise.fbm(nx * 0.5 + 200, ny * 0.5 + 200, 3) + 1) / 2;
+      // Cell-based temperature clustering for contiguous climate zones
+      const tCell = cell.cellId * 0.382 % 1.0; // golden-ratio derived for good distribution
+      const t = latGrad * 0.35 + tNoise * 0.35 + tCell * 0.3;
+
+      return this._terrainFromNoise(h, m, a, d, t, cell.edge, subCellData.edge);
     });
 
     // Place locations
@@ -59,8 +88,16 @@ export class OverworldGenerator {
     return { tiles, width, height, locations, roads, getLocation: (x, y) => this._getLocation(locations, x, y) };
   }
 
-  _terrainFromNoise(h, m, a = 0, d = 0.5, t = 0.5) {
-    // === ANOMALY BIOMES — checked first; high 'a' threshold keeps them rare ===
+  _terrainFromNoise(h, m, a = 0, d = 0.5, t = 0.5, cellEdge = 1.0, subEdge = 1.0) {
+    // cellEdge: distance to Voronoi cell boundary (0 = at edge, larger = deep inside)
+    // subEdge: finer sub-cell boundary distance
+    // These ensure biomes form smooth, contiguous cellular regions
+
+    // Smooth interpolation factor: how "deep" into a biome cell we are
+    const interior = Math.min(1.0, cellEdge * 3.0); // 0 at boundary, 1 well inside
+
+    // === ANOMALY BIOMES — cluster at cell boundaries for organic placement ===
+    // Anomalies now concentrate at Voronoi boundaries (a is pre-blended with edge proximity)
 
     // Void Rift: tears in reality (very rare)
     if (a > 0.92 && h < 0.4) return tile('VOID_RIFT', ' ', '#220044', '#000000', true, { biome: 'void_rift' });
@@ -85,135 +122,85 @@ export class OverworldGenerator {
     // Hydroponic Jungle: agri-domes gone wild
     if (a > 0.5 && h >= 0.4 && h <= 0.65 && m > 0.75) return tile('HYDRO_JUNGLE', '&', '#00FF66', '#002211', true, { biome: 'hydro_jungle' });
 
-    // === TEMPERATURE GRADIENT BIOMES — massive contiguous regions ===
+    // === TEMPERATURE GRADIENT BIOMES — smooth contiguous zones via cellular+latitude ===
+    // Temperature now smoothly defines frozen/desertified areas as gradients
 
-    // ── EXTREME COLD (colony hull breach → vacuum exposure) ──
-    // Void Exposure: near hull breach edge, stars visible through cracks, force field shimmering
-    if (t < 0.05 && h < 0.45) {
-      // Dynamic visual: cracks show space, force field shimmers between them
+    // ── FROZEN ZONE (smooth cold gradient) ──
+    if (t < 0.08 && h < 0.45) {
       if (d > 0.7) return tile('VOID_EXPOSURE', '*', '#FFFFFF', '#000004', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
       if (d > 0.5) return tile('VOID_EXPOSURE', '~', '#6644CC', '#000008', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
       return tile('VOID_EXPOSURE', '.', '#334466', '#000008', true, { biome: 'void_exposure', temperature: 'extreme_cold' });
     }
-    // Structural Grid: exposed colony substructure below damaged habitat layer
-    if (t < 0.08 && h >= 0.45) return tile('STRUCTURAL_GRID', '+', '#667788', '#0A0A15', true, { biome: 'structural_grid', temperature: 'extreme_cold' });
-    // Permafrost: deep frozen ground, cryogenics cascade failure
-    if (t < 0.14 && h > 0.3) return tile('PERMAFROST', '#', '#88BBDD', '#0A1A2A', true, { biome: 'permafrost', temperature: 'extreme_cold' });
-    // Frozen Waste: blizzard wasteland, ice sheets and howling wind
-    if (t < 0.20 && h > 0.3) return tile('FROZEN_WASTE', ':', '#99CCEE', '#0E1E2E', true, { biome: 'frozen_waste', temperature: 'cold' });
-    // Tundra: frozen grassland, creeping cold from hull damage
-    if (t < 0.24 && h > 0.3) return tile('TUNDRA', '.', '#AACCDD', '#112233', true, { biome: 'tundra', temperature: 'cold' });
-    // Taiga: dense evergreen cold forest, snow-dusted conifers
-    if (t < 0.28 && h > 0.35) return tile('TAIGA', '\u2660', '#447766', '#0A1A15', true, { biome: 'taiga', temperature: 'cold' });
-    // Boreal Forest: cold coniferous forest, birch and spruce
-    if (t < 0.32 && h > 0.35) return tile('BOREAL_FOREST', '\u2663', '#558855', '#0A1A0A', true, { biome: 'boreal_forest', temperature: 'cold' });
-    // Frost Margin: transition zone, patchy ice on temperate ground
-    if (t < 0.35 && h > 0.35) return tile('FROST_MARGIN', ',', '#99BBCC', '#112228', true, { biome: 'boreal_forest', temperature: 'cold' });
+    if (t < 0.10 && h >= 0.45) return tile('STRUCTURAL_GRID', '+', '#667788', '#0A0A15', true, { biome: 'structural_grid', temperature: 'extreme_cold' });
+    if (t < 0.16 && h > 0.3) return tile('PERMAFROST', '#', '#88BBDD', '#0A1A2A', true, { biome: 'permafrost', temperature: 'extreme_cold' });
+    if (t < 0.22 && h > 0.3) return tile('FROZEN_WASTE', ':', '#99CCEE', '#0E1E2E', true, { biome: 'frozen_waste', temperature: 'cold' });
+    if (t < 0.26 && h > 0.3) return tile('TUNDRA', '.', '#AACCDD', '#112233', true, { biome: 'tundra', temperature: 'cold' });
+    if (t < 0.30 && h > 0.35) return tile('TAIGA', '\u2660', '#447766', '#0A1A15', true, { biome: 'taiga', temperature: 'cold' });
+    if (t < 0.34 && h > 0.35) return tile('BOREAL_FOREST', '\u2663', '#558855', '#0A1A0A', true, { biome: 'boreal_forest', temperature: 'cold' });
+    if (t < 0.37 && h > 0.35) return tile('FROST_MARGIN', ',', '#99BBCC', '#112228', true, { biome: 'boreal_forest', temperature: 'cold' });
 
-    // ── EXTREME HEAT (reactor meltdown → thermal cascade) ──
-    // Inferno Core: hellish reactor meltdown zone, rivers of molten metal
-    if (t > 0.95 && h > 0.3) return tile('INFERNO_CORE', '#', '#FF2200', '#440000', true, { biome: 'inferno_core', temperature: 'extreme_hot' });
-    // Magma Fields: molten hull plating, pools and streams of metal
-    if (t > 0.90 && h > 0.3) return tile('MAGMA_FIELDS', '~', '#FF4400', '#550000', true, { biome: 'magma_fields', temperature: 'extreme_hot' });
-    // Scorched Waste: super-heated, cracked earth, shimmering air
-    if (t > 0.85 && h > 0.3) return tile('SCORCHED_WASTE', ':', '#FF8844', '#441100', true, { biome: 'scorched_waste', temperature: 'hot' });
-    // Desert: arid heated terrain, dunes of synthetic soil
-    if (t > 0.80 && h >= 0.3 && h <= 0.65) return tile('DESERT', '~', '#DDBB44', '#332200', true, { biome: 'desert', temperature: 'hot' });
-    // Savannah: dry grassland with scattered drought-resistant trees
-    if (t > 0.74 && h >= 0.3 && h <= 0.65) return tile('SAVANNAH', ';', '#BBAA44', '#2A2200', true, { biome: 'savannah', temperature: 'warm' });
-    // Dry Woodland: thinning forest, warm and dry, sparse canopy
-    if (t > 0.68 && h >= 0.35 && h <= 0.65) return tile('DRY_WOODLAND', '\u03C4', '#888833', '#1A1A0A', true, { biome: 'dry_woodland', temperature: 'warm' });
-    // Heat Margin: transition zone, dry and warm
-    if (t > 0.65 && h >= 0.3 && h <= 0.6) return tile('HEAT_MARGIN', '.', '#CCAA55', '#2A1A00', true, { biome: 'dry_woodland', temperature: 'warm' });
+    // ── HEAT ZONE (smooth hot gradient) ──
+    if (t > 0.93 && h > 0.3) return tile('INFERNO_CORE', '#', '#FF2200', '#440000', true, { biome: 'inferno_core', temperature: 'extreme_hot' });
+    if (t > 0.88 && h > 0.3) return tile('MAGMA_FIELDS', '~', '#FF4400', '#550000', true, { biome: 'magma_fields', temperature: 'extreme_hot' });
+    if (t > 0.83 && h > 0.3) return tile('SCORCHED_WASTE', ':', '#FF8844', '#441100', true, { biome: 'scorched_waste', temperature: 'hot' });
+    if (t > 0.78 && h >= 0.3 && h <= 0.65) return tile('DESERT', '~', '#DDBB44', '#332200', true, { biome: 'desert', temperature: 'hot' });
+    if (t > 0.72 && h >= 0.3 && h <= 0.65) return tile('SAVANNAH', ';', '#BBAA44', '#2A2200', true, { biome: 'savannah', temperature: 'warm' });
+    if (t > 0.67 && h >= 0.35 && h <= 0.65) return tile('DRY_WOODLAND', '\u03C4', '#888833', '#1A1A0A', true, { biome: 'dry_woodland', temperature: 'warm' });
+    if (t > 0.63 && h >= 0.3 && h <= 0.6) return tile('HEAT_MARGIN', '.', '#CCAA55', '#2A1A00', true, { biome: 'dry_woodland', temperature: 'warm' });
 
-    // === EXPANDED NATURAL BIOMES — finer height/moisture subdivisions ===
+    // === NATURAL BIOMES — cellular noise provides contiguous regions ===
+    // Within each Voronoi cell, height+moisture define the biome consistently
 
     // ── WATER & DEPTH (h < 0.3) ──
-    // Abyssal depths: darkest water, near-black
     if (h < 0.08) return tile('ABYSS', '\u2591', '#000044', '#000011', false, { biome: 'ocean' });
-    // Deep ocean: dark blue expanse
     if (h < 0.15) return tile('DEEP_OCEAN', '\u2248', '#000088', '#000044', false, { biome: 'ocean' });
-    // Open ocean: medium-depth water
     if (h < 0.2) return tile('OCEAN', '\u223D', '#0044AA', '#000055', false, { biome: 'ocean' });
-    // Shallows: lighter coastal water
     if (h < 0.27) return tile('SHALLOWS', '~', '#4488ff', '#000066', false, { biome: 'lake' });
-    // Tidal pools: very shallow, walkable in wet areas
     if (h < 0.3 && m > 0.6) return tile('TIDAL_POOL', '\u25CC', '#66AADD', '#001133', true, { biome: 'shore' });
-    // Shoals: sandy shallows, barely above water
     if (h < 0.3) return tile('SHOAL', '\u00B7', '#88BBCC', '#112233', true, { biome: 'shore' });
 
     // ── WETLANDS & LOW GROUND (h 0.3 - 0.45) ──
-    // Mire: deep swamp, high moisture
     if (h < 0.36 && m > 0.7) return tile('MIRE', '~', '#228844', '#112211', true, { biome: 'swamp' });
-    // Bog: waterlogged ground
     if (h < 0.36 && m > 0.55) return tile('BOG', '\u224B', '#336633', '#0a1a0a', true, { biome: 'swamp' });
-    // Marsh reeds: tall wetland vegetation
     if (h < 0.40 && m > 0.65) return tile('MARSH_REEDS', '\u2307', '#55AA44', '#112211', true, { biome: 'swamp' });
-    // Mudflat: drying ground, low moisture
     if (h < 0.40 && m < 0.35) return tile('MUDFLAT', '\u2234', '#AA8844', '#221100', true, { biome: 'badlands' });
-    // Salt flat: arid, cracked earth
     if (h < 0.45 && m < 0.2) return tile('SALT_FLAT', '\u2043', '#CCBB99', '#332211', true, { biome: 'badlands' });
-    // Dry riverbed: ancient waterways
     if (h < 0.42 && m >= 0.2 && m < 0.35 && d > 0.75) return tile('DRY_RIVERBED', '\u2240', '#AA9966', '#332211', true, { biome: 'badlands' });
 
     // ── LOWLANDS & PLAINS (h 0.42 - 0.55) ──
-    // Barren waste: arid scrub
     if (h < 0.55 && m < 0.25) return tile('BARREN_WASTE', '.', '#ddcc44', '#332200', true, { biome: 'badlands' });
-    // Scrubland: sparse dry bushes
     if (h < 0.55 && m >= 0.25 && m < 0.4) return tile('SCRUBLAND', ';', '#99AA44', '#1a1a0a', true, { biome: 'grassland' });
-    // Grassland: open plains
     if (h < 0.5 && m >= 0.4 && m < 0.55) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
-    // Meadow: lush flowering fields
     if (h < 0.5 && m >= 0.55 && m < 0.7) return tile('MEADOW', ',', '#66DD66', '#112a11', true, { biome: 'grassland' });
-    // Tall grass: dense high vegetation
     if (h < 0.5 && m >= 0.7) return tile('TALL_GRASS', '\u0131', '#33BB33', '#0a1a0a', true, { biome: 'grassland' });
-    // Default grassland for remaining plains
     if (h < 0.55) return tile('GRASSLAND', '.', '#44cc44', '#112211', true, { biome: 'grassland' });
 
     // ── FOREST ZONE (h 0.5 - 0.7) ──
-    // Sparse trees: scattered woodland edge
+    // Sub-cell edges create natural clearings and transitions within forest
     if (h < 0.58 && m < 0.35) return tile('SPARSE_TREES', '\u03C4', '#338833', '#0a1a0a', true, { biome: 'forest' });
-    // Forest: standard deciduous woodland
     if (h < 0.62 && m <= 0.55) return tile('FOREST', '\u2663', '#22AA22', '#0a1a0a', true, { biome: 'forest' });
-    // Deep forest: dense canopy, high moisture
     if (h < 0.62 && m > 0.55) return tile('DEEP_FOREST', '\u2660', '#116611', '#060f06', true, { biome: 'forest' });
-    // Dense canopy: impenetrable old-growth
     if (h < 0.68 && m > 0.6) return tile('CANOPY', '\u03A8', '#0A8810', '#040d04', false, { biome: 'forest' });
-    // Pine stand: coniferous highland forest
     if (h < 0.7 && m <= 0.6) return tile('PINE_STAND', '\u21DF', '#226622', '#0a0f0a', true, { biome: 'forest' });
-    // Boulder field: rocky clearings in forest (detail noise driven)
-    if (h >= 0.58 && h < 0.7 && d > 0.85) return tile('BOULDER_FIELD', '\u25CF', '#888877', '#222211', false, { biome: 'forest' });
-    // Ancient ruins: crumbling structures (rare detail feature)
-    if (h >= 0.55 && h < 0.68 && d > 0.92) return tile('ANCIENT_RUINS', '\u03A0', '#887766', '#221111', true, { biome: 'forest' });
+    // Boulder field and ruins use sub-cell edges for natural clustering
+    if (h >= 0.58 && h < 0.7 && d > 0.85 && subEdge < 0.3) return tile('BOULDER_FIELD', '\u25CF', '#888877', '#222211', false, { biome: 'forest' });
+    if (h >= 0.55 && h < 0.68 && d > 0.92 && subEdge < 0.2) return tile('ANCIENT_RUINS', '\u03A0', '#887766', '#221111', true, { biome: 'forest' });
 
     // ── HILLS & FOOTHILLS (h 0.68 - 0.8) ──
-    // Foothills: gentle rises
     if (h < 0.72) return tile('FOOTHILL', '\u2229', '#AABB88', '#222211', true, { biome: 'hills' });
-    // Rolling hills: undulating terrain
     if (h < 0.76) return tile('ROLLING_HILLS', '\u2312', '#BBAA77', '#2a2a1a', true, { biome: 'hills' });
-    // Ridge: exposed ridgeline (detail noise)
     if (h < 0.8 && d > 0.8) return tile('RIDGE', '\u2261', '#BBAA99', '#333322', true, { biome: 'hills' });
-    // Rocky slope: dry eroded hillside
     if (h < 0.8 && m < 0.3) return tile('ROCKY_SLOPE', '\u2592', '#998877', '#333322', true, { biome: 'hills' });
-    // Highland: elevated green terrain
     if (h < 0.8) return tile('HIGHLAND', '\u2206', '#AABBAA', '#222222', true, { biome: 'hills' });
 
     // ── MOUNTAIN ZONE (h 0.8+) ──
-    // Cave mouth: rare entrance in mountainside
     if (h >= 0.8 && h < 0.86 && d > 0.93) return tile('CAVE_MOUTH', '\u25D7', '#665544', '#221100', true, { biome: 'mountain' });
-    // Thermal vent: volcanic fissure (rare)
     if (h >= 0.82 && d > 0.9 && m < 0.3) return tile('THERMAL_VENT', '\u229B', '#FF8844', '#331100', true, { biome: 'mountain' });
-    // Mountain base: lower rocky slopes
     if (h < 0.84) return tile('MOUNTAIN_BASE', '\u2593', '#AAAAAA', '#333333', false, { biome: 'mountain' });
-    // Mountain: solid rock faces
     if (h < 0.88) return tile('MOUNTAIN', '\u25B3', '#BBBBBB', '#444444', false, { biome: 'mountain' });
-    // Crag: jagged upper peaks
     if (h < 0.92) return tile('CRAG', '\u25C7', '#CCCCCC', '#555555', false, { biome: 'mountain' });
-    // Snowcap: snow-covered high peaks (high moisture)
     if (h < 0.96 && m > 0.5) return tile('SNOWCAP', '\u2746', '#DDEEFF', '#667799', false, { biome: 'mountain' });
-    // High peak: towering summits
     if (h < 0.96) return tile('HIGH_PEAK', '\u25B2', '#ffffff', '#666688', false, { biome: 'mountain' });
-    // Summit: the very highest points
     return tile('SUMMIT', '\u25C6', '#EEEEFF', '#8888AA', false, { biome: 'mountain' });
   }
 
