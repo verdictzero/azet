@@ -1502,8 +1502,9 @@ export class InputManager {
       B: 'Escape',          // Cancel / Back
       X: 't',               // Context: talk
       Y: 'e',               // Context: enter
+      INTERACT: 'Enter',    // Context-sensitive interact (center d-pad)
       START: 'gamepad:menu', // FF-style menu
-      SELECT: 'wait',       // Wait / skip turn
+      SELECT: 'Enter',      // Interact / skip
       L1: '-', R1: '+',
       L2: '-', R2: '+',
     },
@@ -1645,20 +1646,6 @@ export class InputManager {
         btn.addEventListener('touchcancel', deactivate, { passive: false });
         btn.addEventListener('mousedown', activate);
         btn.addEventListener('mouseup', deactivate);
-      } else if (btnId === 'WAIT') {
-        // Wait/center — single fire, sends 'wait'
-        const fire = (e) => {
-          e.preventDefault();
-          btn.classList.add('pressed');
-          if (navigator.vibrate) navigator.vibrate(12);
-          this.lastAction = 'wait';
-        };
-        const release = () => btn.classList.remove('pressed');
-        btn.addEventListener('touchstart', fire, { passive: false });
-        btn.addEventListener('touchend', release, { passive: false });
-        btn.addEventListener('touchcancel', release, { passive: false });
-        btn.addEventListener('mousedown', fire);
-        btn.addEventListener('mouseup', release);
       } else {
         // Face / shoulder / meta: single fire, resolved per state
         const fire = (e) => {
