@@ -549,7 +549,7 @@ export class UIManager {
 
     // In non-compact mode, title is centered within the crystal; in compact, it starts at blockTop
     const artStartY = compact ? blockTop : blockTop + Math.floor(CRYSTAL_HEIGHT / 2) - Math.floor(title.length / 2);
-    const artStartX = Math.floor((cols - titleWidth) / 2);
+    const artStartX = 2;
     const waveColors = [COLORS.BLUE, COLORS.BRIGHT_BLUE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_WHITE, COLORS.BRIGHT_CYAN, COLORS.BRIGHT_BLUE];
 
     // ── Layer 0.5: Animated crystal behind title card ──
@@ -688,7 +688,7 @@ export class UIManager {
 
     if (this.versionString) {
       const vLabel = `[${this.versionString}]`;
-      r.drawString(Math.floor((cols - vLabel.length) / 2), titleBlockEnd,
+      r.drawString(2, titleBlockEnd,
         vLabel, COLORS.BRIGHT_BLACK, COLORS.BLACK);
     }
 
@@ -705,7 +705,7 @@ export class UIManager {
 
     if (totalMenuWidth <= cols - 2) {
       // === All items fit: render centered on one line ===
-      let curX = Math.floor((cols - totalMenuWidth) / 2);
+      let curX = 2;
       for (let i = 0; i < menuItems.length; i++) {
         const sel = i === this.selectedIndex;
         const label = sel ? `[${menuItems[i]}]` : ` ${menuItems[i]} `;
@@ -752,7 +752,7 @@ export class UIManager {
 
       // Center the visible content within the available space
       const contentW = widthUsed + (showLeftArrow ? arrowW : 0) + (showRightArrow ? arrowW : 0);
-      let curX = Math.max(1, Math.floor((cols - contentW) / 2));
+      let curX = 2;
 
       if (showLeftArrow) {
         r.drawString(curX, menuY, '\u25C4 ', COLORS.BRIGHT_YELLOW, COLORS.BLACK);
@@ -775,7 +775,7 @@ export class UIManager {
     }
 
     const footer = '\u25C4 \u25BA Select  \u00B7  Enter Confirm';
-    r.drawString(Math.floor((cols - footer.length) / 2), rows - 2, footer, COLORS.BRIGHT_BLACK, COLORS.BLACK);
+    r.drawString(2, rows - 2, footer, COLORS.BRIGHT_BLACK, COLORS.BLACK);
   }
 
   // ─── CHARACTER CREATION (FF-style) ───
@@ -789,7 +789,7 @@ export class UIManager {
 
     const panelW = Math.min(cols - 4, 56);
     const panelH = Math.min(rows - 4, 24);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' New Character ');
@@ -928,7 +928,7 @@ export class UIManager {
 
     // FF dialogue: wide centered panel
     const panelW = Math.min(cols - 4, 64);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
 
     // Calculate total height to center vertically
     const textH = 6;
@@ -1001,7 +1001,7 @@ export class UIManager {
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 65);
     const panelH = Math.min(rows - 4, 28);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     // Shard display box (top-right, FF-style)
@@ -1107,7 +1107,7 @@ export class UIManager {
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 60);
     const panelH = Math.min(rows - 4, 30);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     // Title box
@@ -1173,7 +1173,7 @@ export class UIManager {
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 58);
     const panelH = Math.min(rows - 4, 28);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
     const halfW = Math.floor(panelW / 2);
 
@@ -1282,7 +1282,7 @@ export class UIManager {
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 55);
     const panelH = Math.min(rows - 4, 28);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Factions ');
@@ -1348,7 +1348,7 @@ export class UIManager {
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 60);
     const panelH = Math.min(rows - 4, 25);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Quests ');
@@ -2126,7 +2126,7 @@ export class UIManager {
     const rows = r.rows;
     const panelW = Math.min(cols - 4, 76);
     const panelH = Math.min(rows - 2, 40);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     const tabs = ['Keys', 'Inventory', 'Explore', 'Dungeons', 'Combat', 'NPCs', 'Systems', 'Tips'];
@@ -2483,11 +2483,11 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
 
-    // Menu panel — right side of screen
+    // Menu panel — left side of screen
     const panelW = Math.min(28, cols - 4);
     const itemCount = menuItems.length;
     const panelH = itemCount * 2 + 7; // 2 lines per item + header + footer
-    const px = cols - panelW - 2;
+    const px = 2;
     const py = Math.max(2, Math.floor((rows - panelH) / 2));
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Menu ');
@@ -2541,7 +2541,7 @@ export class UIManager {
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 50);
     const panelH = settings.crtEffects ? 35 : 26;
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Config ');
@@ -2611,7 +2611,7 @@ export class UIManager {
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 8, 40);
     const panelH = 8;
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg);
@@ -2756,7 +2756,7 @@ export class UIManager {
 
     const panelW = Math.min(cols - 2, 70);
     const panelH = Math.min(rows - 2, 35);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Quest Compass ');
@@ -3050,7 +3050,7 @@ export class UIManager {
     const rows = r.rows;
     const panelW = Math.min(cols - 4, 72);
     const panelH = Math.min(rows - 2, 38);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
     const bg = COLORS.FF_BLUE_DARK;
     const w = panelW - 4;
@@ -3367,7 +3367,7 @@ export class UIManager {
     const rows = r.rows;
     const panelW = Math.min(cols - 4, 80);
     const panelH = Math.min(rows - 2, 42);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
     const bg = COLORS.FF_BLUE_DARK;
 
@@ -3749,7 +3749,7 @@ export class UIManager {
     const rows = r.rows;
     const panelW = Math.min(cols - 2, 80);
     const panelH = Math.min(rows - 2, 40);
-    const px = Math.floor((cols - panelW) / 2);
+    const px = 2;
     const py = Math.floor((rows - panelH) / 2);
     const bg = COLORS.FF_BLUE_DARK;
     const w = panelW - 4;
