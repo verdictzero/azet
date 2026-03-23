@@ -33,11 +33,11 @@ html, body {
 /* ── Virtual Gamepad ── */
 #touch-controls {
   position: fixed;
-  bottom: 0;
+  bottom: 25%;
   right: 0;
   z-index: 10;
   pointer-events: none;
-  padding: 0 calc(env(safe-area-inset-right, 8px) + 18px) calc(env(safe-area-inset-bottom, 8px) + 24px) 0;
+  padding: 0 calc(env(safe-area-inset-right, 8px) + 18px) 0 0;
 }
 
 #touch-controls.hidden {
