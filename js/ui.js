@@ -974,7 +974,7 @@ export class UIManager {
     if (options.length > 0) {
       const optBoxH = options.length + 2;
       const optW = Math.min(panelW, 40);
-      const optX = px + panelW - optW;
+      const optX = px;
       const optY = dialogY + dialogH;
 
       // Clamp to screen bounds
@@ -2483,11 +2483,11 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
 
-    // Menu panel — right side of screen
+    // Menu panel — left side of screen
     const panelW = Math.min(28, cols - 4);
     const itemCount = menuItems.length;
     const panelH = itemCount * 2 + 7; // 2 lines per item + header + footer
-    const px = cols - panelW - 2;
+    const px = 2;
     const py = Math.max(2, Math.floor((rows - panelH) / 2));
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Menu ');
