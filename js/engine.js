@@ -101,8 +101,8 @@ export class Renderer {
     this._charWidthCache = {};
 
     this.effectsEnabled = false; // visual FX disabled for now (toggle with settings)
-    this.zoomLevel = 1;       // legacy compat
-    this.densityLevel = 1;    // density zoom: 1, 2, or 3
+    this.zoomLevel = 3;       // legacy compat
+    this.densityLevel = 3;    // density zoom: 1, 2, or 3
     this._baseFontSize = null; // stored when zoom is applied
 
     // CRT post-processing resolution scaling

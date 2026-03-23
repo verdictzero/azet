@@ -123,7 +123,11 @@ class Game {
     this.canvas = document.getElementById('game-canvas');
     this.renderer = new Renderer(this.canvas);
     this.input = new InputManager();
-    this.camera = new Camera(this.renderer.cols - 2, this.renderer.rows - LAYOUT.HUD_TOTAL);
+    const initDensity = this.renderer.densityLevel;
+    this.camera = new Camera(
+      Math.floor((this.renderer.cols - 2) / initDensity),
+      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / initDensity)
+    );
     this.locationCamera = null;
     this.ui = new UIManager(this.renderer);
     this.music = new MusicManager();
