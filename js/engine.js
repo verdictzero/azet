@@ -668,7 +668,7 @@ export class Renderer {
   /**
    * Return an animated color for special tile types.
    * @param {string} baseColor - the tile's static fg color
-   * @param {string} tileType - SHALLOWS, DEEP_LAKE, LAVA, FIREPLACE, etc.
+   * @param {string} tileType - RIVER_WATER, LAVA, FIREPLACE, etc.
    * @returns {string} the current animated color
    */
   getAnimatedColor(baseColor, tileType) {
@@ -676,33 +676,8 @@ export class Renderer {
     const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
 
     switch (tileType) {
-      // ── Water types (depth gradient) ──
-      case 'VERY_DEEP_WATER': {
-        const vdeep = ['#001155', '#001044', '#001266'];
-        return vdeep[Math.floor(t * 0.4) % vdeep.length];
-      }
-      case 'DEEP_WATER': {
-        const dw = ['#002277', '#001E66', '#002888'];
-        return dw[Math.floor(t * 0.6) % dw.length];
-      }
-      case 'ABYSS': {
-        const abyssColors = ['#000033', '#000022', '#000044'];
-        return abyssColors[Math.floor(t * 0.5) % abyssColors.length];
-      }
-      case 'DEEP_OCEAN':
-      case 'DEEP_LAKE': {
-        const deeps = ['#000088', '#000066', '#001199'];
-        return deeps[Math.floor(t) % deeps.length];
-      }
-      case 'OCEAN': {
-        const oceans = ['#0044AA', '#0055BB', '#003399'];
-        return oceans[Math.floor(t) % oceans.length];
-      }
-      case 'MEDIUM_WATER': {
-        const meds = ['#2266CC', '#2A70DD', '#1E5EBB'];
-        return meds[Math.floor(t) % meds.length];
-      }
-      case 'SHALLOWS':
+      // ── Water types ──
+      case 'RIVER_WATER':
       case 'WATER': {
         const blues = ['#4488FF', '#4D90FF', '#3B80EE'];
         return blues[Math.floor(t) % blues.length];

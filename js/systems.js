@@ -1690,8 +1690,7 @@ export class WeatherSystem {
       forest:       ['clear', 'cloudy', 'rain', 'fog', 'rain'],
       grassland:    ['clear', 'clear', 'cloudy', 'rain'],
       mountain:     ['clear', 'cloudy', 'snow', 'storm', 'ion_storm'],
-      ocean:        ['clear', 'rain', 'storm'],
-      lake:         ['clear', 'rain', 'storm', 'fog'],
+      river:        ['clear', 'rain', 'storm', 'fog'],
       // Colony infrastructure biomes
       hull_breach:  ['clear', 'ion_storm', 'storm', 'ion_storm'],
       reactor_slag: ['ember_rain', 'ember_rain', 'clear', 'ember_rain'],
