@@ -104,15 +104,6 @@ const WATER_3x3 = [
   [['\u2248','~','\u2248'],['~','\u2248','~'],['\u2248','~','\u2248']],
 ];
 
-const DEEP_WATER_2x2 = [
-  [['\u2248','\u2593'],['\u2593','\u2248']],
-  [['\u2593','\u2248'],['\u2248','\u2593']],
-];
-
-const DEEP_WATER_3x3 = [
-  [['\u2248','\u2593','\u2248'],['\u2593','\u2248','\u2593'],['\u2248','\u2593','\u2248']],
-  [['\u2593','\u2248','\u2593'],['\u2248','\u223D','\u2248'],['\u2593','\u2248','\u2593']],
-];
 
 const MOUNTAIN_2x2 = [
   [['\u25B3','\u2593'],['\u2593','\u25B3']],
@@ -361,17 +352,7 @@ const TYPE_PATTERNS = {
   HYDRO_JUNGLE:   { 2: DEEP_FOREST_2x2, 3: DEEP_FOREST_3x3 },
 
   // Water (depth gradient)
-  VERY_DEEP_WATER:{ 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },
-  DEEP_WATER:     { 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },
-  OCEAN:          { 2: WATER_2x2, 3: WATER_3x3 },
-  MEDIUM_WATER:   { 2: WATER_2x2, 3: WATER_3x3 },
-  SHALLOWS:       { 2: WATER_2x2, 3: WATER_3x3 },
   RIVER_WATER:    { 2: WATER_2x2, 3: WATER_3x3 },
-  TIDAL_POOL:     { 2: WATER_2x2, 3: WATER_3x3 },
-  SHOAL:          { 2: WATER_2x2, 3: WATER_3x3 },
-  DEEP_OCEAN:     { 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },
-  ABYSS:          { 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },
-  PUDDLE:         { 2: WATER_2x2, 3: WATER_3x3 },
 
   // Shoreline
   INNER_SHORE:    { 2: GRASS_2x2, 3: GRASS_3x3 },

@@ -5035,15 +5035,7 @@ class Game {
     // ── Night glow for flowing/luminous tiles (pulsating, color-shifting, organic) ──
     if (isNight) {
       const NIGHT_GLOW = {
-        VERY_DEEP_WATER: { hMin: 210, hMax: 250, int: 0.08, spd: 0.4, rad: 1, pat: 'wave' },
-        DEEP_WATER:  { hMin: 200, hMax: 240, int: 0.10, spd: 0.5,  rad: 1, pat: 'wave' },
-        OCEAN:       { hMin: 190, hMax: 220, int: 0.12, spd: 0.8,  rad: 1, pat: 'wave' },
-        MEDIUM_WATER:{ hMin: 180, hMax: 215, int: 0.13, spd: 0.9,  rad: 1, pat: 'wave' },
-        DEEP_OCEAN:  { hMin: 200, hMax: 240, int: 0.10, spd: 0.6,  rad: 1, pat: 'wave' },
-        DEEP_LAKE:   { hMin: 200, hMax: 240, int: 0.10, spd: 0.6,  rad: 1, pat: 'wave' },
-        SHALLOWS:    { hMin: 170, hMax: 210, int: 0.14, spd: 1.0,  rad: 1, pat: 'wave' },
         RIVER_WATER: { hMin: 175, hMax: 210, int: 0.13, spd: 0.9,  rad: 1, pat: 'wave' },
-        WATER:       { hMin: 180, hMax: 215, int: 0.12, spd: 0.8,  rad: 1, pat: 'wave' },
         TIDAL_POOL:  { hMin: 175, hMax: 220, int: 0.16, spd: 1.2,  rad: 1, pat: 'wave' },
         RIVER:       { hMin: 180, hMax: 210, int: 0.13, spd: 0.9,  rad: 1, pat: 'wave' },
         STREAM:      { hMin: 180, hMax: 210, int: 0.11, spd: 0.9,  rad: 1, pat: 'wave' },
