@@ -2037,6 +2037,27 @@ const CREATURE_TABLES = {
     { name: 'Frozen Watcher', char: '@', color: '#99BBDD', behavior: 'patrol', hp: 20, attack: 4, defense: 8, xpBase: 25, ability: 'empPulse', faction: 'MALFUNCTIONING' },
   ],
 
+  // RIVERBANK — Eroded coolant channels with amphibious threats
+  shore: [
+    { name: 'Shore Crawler', char: 'c', color: '#5588AA', behavior: 'ambush', hp: 14, attack: 5, defense: 3, xpBase: 18, faction: 'MUTANT' },
+    { name: 'Rusted Fisher Bot', char: 'F', color: '#8899AA', behavior: 'patrol', hp: 20, attack: 6, defense: 5, xpBase: 25, faction: 'MALFUNCTIONING' },
+    { name: 'Mud Lurker', char: 'L', color: '#667755', behavior: 'ambush', hp: 16, attack: 7, defense: 2, xpBase: 22, ability: 'toxinSpray', faction: 'MUTANT' },
+    { name: 'Coolant Eel', char: 'e', color: '#44AACC', behavior: 'aggressive', hp: 10, attack: 6, defense: 1, xpBase: 15, faction: 'MUTANT' },
+    { name: 'Drift Scavenger', char: 'S', color: '#779988', behavior: 'coward', hp: 12, attack: 4, defense: 3, xpBase: 12, faction: 'MUTANT' },
+    { name: 'Bank Turret', char: 'T', color: '#6688AA', behavior: 'patrol', hp: 22, attack: 7, defense: 6, xpBase: 30, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
+    { name: 'Bilge Amalgam', char: 'A', color: '#558877', behavior: 'aggressive', hp: 30, attack: 8, defense: 5, xpBase: 38, ability: 'corrosiveSpit', faction: 'MUTANT' },
+  ],
+
+  // COOLANT RIVER — Flooded corridors with aquatic mutations
+  river: [
+    { name: 'Current Jellyfish', char: 'J', color: '#4488DD', behavior: 'patrol', hp: 12, attack: 5, defense: 1, xpBase: 15, ability: 'chainLightning', faction: 'MUTANT' },
+    { name: 'Pipe Leviathan', char: 'P', color: '#336699', behavior: 'aggressive', hp: 45, attack: 10, defense: 6, xpBase: 60, ability: 'gravCrush', isBoss: true, faction: 'MUTANT' },
+    { name: 'Flooded Sentry', char: 's', color: '#5577AA', behavior: 'aggressive', hp: 18, attack: 6, defense: 4, xpBase: 22, faction: 'MALFUNCTIONING' },
+    { name: 'Depth Worm', char: 'w', color: '#335577', behavior: 'ambush', hp: 16, attack: 7, defense: 2, xpBase: 20, ability: 'corrosiveSpit', faction: 'MUTANT' },
+    { name: 'Aquatic Drone', char: 'd', color: '#6699BB', behavior: 'patrol', hp: 14, attack: 5, defense: 3, xpBase: 16, faction: 'MALFUNCTIONING' },
+    { name: 'Brine Spider', char: 'a', color: '#447788', behavior: 'ambush', hp: 10, attack: 6, defense: 1, xpBase: 14, ability: 'toxinSpray', faction: 'MUTANT' },
+  ],
+
   // HYDROPONIC JUNGLE — Agri-domes gone wild with rampant growth
   hydro_jungle: [
     { name: 'Apex Vine-Maw', char: 'V', color: '#00FF66', behavior: 'aggressive', hp: 28, attack: 10, defense: 3, xpBase: 40, ability: 'toxinSpray', faction: 'MUTANT' },
