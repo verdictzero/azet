@@ -3113,10 +3113,10 @@ class Game {
       this.ui.helpTab = 0;
       this.ui.helpScroll = 0;
       this.setState(this.prevState || 'OVERWORLD');
-    } else if (key === 'ArrowRight' || key === 'd' || key === 'D') {
+    } else if (key === 'ArrowRight' || key === 'd' || key === 'D' || key === '+') {
       this.ui.helpTab = (tab + 1) % tabCount;
       this.ui.helpScroll = 0;
-    } else if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
+    } else if (key === 'ArrowLeft' || key === 'a' || key === 'A' || key === '-') {
       this.ui.helpTab = (tab - 1 + tabCount) % tabCount;
       this.ui.helpScroll = 0;
     } else if (key === 'ArrowDown' || key === 's') {

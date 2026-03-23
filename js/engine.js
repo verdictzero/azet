@@ -1540,7 +1540,7 @@ export class InputManager {
       A: 'Enter', B: 'Escape',
       L2: '-', R2: '+',
     },
-    HELP: { B: 'Escape' },
+    HELP: { B: 'Escape', L1: 'ArrowLeft', R1: 'ArrowRight' },
     SETTINGS: {
       A: 'Enter', B: 'Escape',
     },
