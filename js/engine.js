@@ -1422,6 +1422,43 @@ export class InputManager {
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
 
+    // ── Physical Gamepad (Gamepad API) ──
+    this._gamepadIndex = null;           // index of connected gamepad
+    this._gamepadPrevButtons = [];       // button states from previous frame
+    this._gamepadPrevAxes = [0, 0, 0, 0]; // axis values from previous frame
+    this._gamepadDeadzone = 0.4;         // analog stick deadzone
+    this._gamepadRepeatKey = null;       // current repeating gamepad direction
+    this._gamepadRepeatTimer = null;
+    this._gamepadRepeatIntervalTimer = null;
+    this._gamepadEnabled = true;         // can be toggled in settings
+
+    // Standard Gamepad button index → virtual button name
+    // Based on the "Standard Gamepad" mapping:
+    // https://w3c.github.io/gamepad/#remapping
+    this._gamepadButtonMap = {
+      0: 'A',       // Bottom face button (A / Cross)
+      1: 'B',       // Right face button (B / Circle)
+      2: 'X',       // Left face button (X / Square)
+      3: 'Y',       // Top face button (Y / Triangle)
+      4: 'L1',      // Left shoulder
+      5: 'R1',      // Right shoulder
+      6: 'L2',      // Left trigger
+      7: 'R2',      // Right trigger
+      8: 'SELECT',  // Back / Select / Share
+      9: 'START',   // Start / Options
+      // 10: left stick press, 11: right stick press (unused)
+      12: 'UP',     // D-pad up
+      13: 'DOWN',   // D-pad down
+      14: 'LEFT',   // D-pad left
+      15: 'RIGHT',  // D-pad right
+    };
+
+    // Listen for gamepad connection / disconnection
+    this._onGamepadConnected = this._onGamepadConnected.bind(this);
+    this._onGamepadDisconnected = this._onGamepadDisconnected.bind(this);
+    window.addEventListener('gamepadconnected', this._onGamepadConnected);
+    window.addEventListener('gamepaddisconnected', this._onGamepadDisconnected);
+
     // Touch / dpad setup
     this._initTouchControls();
   }
@@ -1674,6 +1711,178 @@ export class InputManager {
     // Gamepad button actions are resolved dynamically via GAMEPAD_ACTIONS.
   }
 
+  // ── Physical Gamepad (Gamepad API) ─────────
+
+  _onGamepadConnected(e) {
+    if (this._gamepadIndex === null) {
+      this._gamepadIndex = e.gamepad.index;
+      console.log(`Gamepad connected: ${e.gamepad.id} [index ${e.gamepad.index}]`);
+    }
+  }
+
+  _onGamepadDisconnected(e) {
+    if (e.gamepad.index === this._gamepadIndex) {
+      console.log(`Gamepad disconnected: ${e.gamepad.id}`);
+      this._gamepadIndex = null;
+      this._stopGamepadRepeat();
+    }
+  }
+
+  /**
+   * Poll the physical gamepad and feed actions into the input system.
+   * Called once per frame from update().
+   */
+  _pollGamepad() {
+    if (!this._gamepadEnabled || this._gamepadIndex === null) return;
+
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gp = gamepads[this._gamepadIndex];
+    if (!gp || !gp.connected) return;
+
+    // ── Buttons ──
+    const prev = this._gamepadPrevButtons;
+    for (let i = 0; i < gp.buttons.length; i++) {
+      const btnName = this._gamepadButtonMap[i];
+      if (!btnName) continue;
+
+      const pressed = gp.buttons[i].pressed;
+      const wasPressed = prev[i] || false;
+
+      if (pressed && !wasPressed) {
+        // Button just pressed — resolve through GAMEPAD_ACTIONS
+        const key = this.resolveGamepadButton(btnName);
+        if (key) {
+          this.lastAction = key;
+          // D-pad buttons get repeat behavior
+          const dpadBtns = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+          if (dpadBtns.includes(btnName)) {
+            this._keysDown.add(key);
+            this._startGamepadRepeat(key);
+          }
+        }
+      } else if (!pressed && wasPressed) {
+        // Button released
+        const key = this.resolveGamepadButton(btnName);
+        if (key) {
+          this._keysDown.delete(key);
+          const dpadBtns = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+          if (dpadBtns.includes(btnName) && this._gamepadRepeatKey === key) {
+            this._stopGamepadRepeat();
+          }
+        }
+      }
+    }
+    // Snapshot button states
+    this._gamepadPrevButtons = gp.buttons.map(b => b.pressed);
+
+    // ── Left Analog Stick → D-pad ──
+    const axisX = gp.axes[0] || 0;
+    const axisY = gp.axes[1] || 0;
+    const dz = this._gamepadDeadzone;
+
+    // Derive digital direction from analog stick
+    let stickDir = null;
+    if (axisX < -dz) stickDir = 'LEFT';
+    else if (axisX > dz) stickDir = 'RIGHT';
+
+    let stickDirY = null;
+    if (axisY < -dz) stickDirY = 'UP';
+    else if (axisY > dz) stickDirY = 'DOWN';
+
+    // Previous stick state
+    const prevX = this._gamepadPrevAxes[0] || 0;
+    const prevY = this._gamepadPrevAxes[1] || 0;
+    let prevStickDir = null;
+    if (prevX < -dz) prevStickDir = 'LEFT';
+    else if (prevX > dz) prevStickDir = 'RIGHT';
+    let prevStickDirY = null;
+    if (prevY < -dz) prevStickDirY = 'UP';
+    else if (prevY > dz) prevStickDirY = 'DOWN';
+
+    // Horizontal axis edge
+    if (stickDir && stickDir !== prevStickDir) {
+      const key = this.resolveGamepadButton(stickDir);
+      if (key) {
+        this.lastAction = key;
+        this._keysDown.add(key);
+        this._startGamepadRepeat(key);
+      }
+    } else if (!stickDir && prevStickDir) {
+      const key = this.resolveGamepadButton(prevStickDir);
+      if (key) {
+        this._keysDown.delete(key);
+        if (this._gamepadRepeatKey === key) this._stopGamepadRepeat();
+      }
+    }
+
+    // Vertical axis edge
+    if (stickDirY && stickDirY !== prevStickDirY) {
+      const key = this.resolveGamepadButton(stickDirY);
+      if (key) {
+        this.lastAction = key;
+        this._keysDown.add(key);
+        this._startGamepadRepeat(key);
+      }
+    } else if (!stickDirY && prevStickDirY) {
+      const key = this.resolveGamepadButton(prevStickDirY);
+      if (key) {
+        this._keysDown.delete(key);
+        if (this._gamepadRepeatKey === key) this._stopGamepadRepeat();
+      }
+    }
+
+    this._gamepadPrevAxes = [axisX, axisY, gp.axes[2] || 0, gp.axes[3] || 0];
+  }
+
+  _startGamepadRepeat(key) {
+    this._stopGamepadRepeat();
+    this._gamepadRepeatKey = key;
+    const state = this._gameStateProvider ? this._gameStateProvider() : null;
+    const interval = state === 'OVERWORLD' ? this._repeatInterval * 2 : this._repeatInterval;
+    this._gamepadRepeatTimer = setTimeout(() => {
+      this._gamepadRepeatIntervalTimer = setInterval(() => {
+        if (this._keysDown.has(key)) {
+          this.lastAction = key;
+        } else {
+          this._stopGamepadRepeat();
+        }
+      }, interval);
+    }, this._repeatDelay);
+  }
+
+  _stopGamepadRepeat() {
+    this._gamepadRepeatKey = null;
+    if (this._gamepadRepeatTimer) {
+      clearTimeout(this._gamepadRepeatTimer);
+      this._gamepadRepeatTimer = null;
+    }
+    if (this._gamepadRepeatIntervalTimer) {
+      clearInterval(this._gamepadRepeatIntervalTimer);
+      this._gamepadRepeatIntervalTimer = null;
+    }
+  }
+
+  /**
+   * Set gamepad layout/mode (called from settings).
+   * @param {string} mode - e.g. 'standard', 'swapAB'
+   */
+  setGamepadLayout(mode) {
+    if (mode === 'swapAB') {
+      // Swap A/B to match Nintendo-style layout
+      this._gamepadButtonMap[0] = 'B';
+      this._gamepadButtonMap[1] = 'A';
+    } else {
+      // Standard Xbox/PlayStation layout
+      this._gamepadButtonMap[0] = 'A';
+      this._gamepadButtonMap[1] = 'B';
+    }
+  }
+
+  /** Whether a physical gamepad is currently connected */
+  get gamepadConnected() {
+    return this._gamepadIndex !== null;
+  }
+
   // ── Text input mode (mobile keyboard) ─────
 
   enterTextInputMode() {
@@ -1780,6 +1989,9 @@ export class InputManager {
    * Transitions pressed keys from "new" to "held".
    */
   update() {
+    // Poll physical gamepad before processing key states
+    this._pollGamepad();
+
     // Determine newly-pressed keys this frame
     this._keysPressed.clear();
     for (const key of this._keysDown) {
@@ -1798,6 +2010,9 @@ export class InputManager {
   destroy() {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('gamepadconnected', this._onGamepadConnected);
+    window.removeEventListener('gamepaddisconnected', this._onGamepadDisconnected);
+    this._stopGamepadRepeat();
   }
 }
 
