@@ -107,7 +107,7 @@ html, body {
   opacity: 1;
 }
 
-/* D-pad center (wait) */
+/* D-pad center (interact) */
 .gpad-btn.dpad.center {
   background: rgba(0, 170, 0, 0.18);
   border: 1.5px solid rgba(0, 255, 0, 0.22);

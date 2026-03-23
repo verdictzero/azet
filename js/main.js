@@ -1857,33 +1857,27 @@ class Game {
       this.movePlayerInLocation(dir.dx, dir.dy);
     }
 
-    // Bridge-specific: item pickup
-    if (this.currentSettlement && this.currentSettlement.isBridge) {
-      if (key === 'g' || key === 'G' || key === ',') {
-        const item = this.items.find(i =>
-          i.position && i.position.x === this.player.position.x && i.position.y === this.player.position.y);
-        if (item) {
-          if (this.player.inventory.length < 20) {
-            this.player.addItem(item);
-            this.items = this.items.filter(i => i !== item);
-            this.ui.addMessage(`Picked up ${item.name}.`, COLORS.BRIGHT_GREEN);
-            this.particles.emit(item.position.x, item.position.y, '+', COLORS.BRIGHT_GREEN, 3, 2, 8);
-          } else {
-            this.ui.addMessage('Inventory full!', COLORS.BRIGHT_RED);
-          }
-        }
-      }
+    // Item pickup (direct shortcut)
+    if (key === 'g' || key === 'G' || key === ',') {
+      this._tryPickupItem();
     }
 
-    // Talk to adjacent NPC
-    if (key === 't' || key === 'T' || key === 'Enter') {
+    // Talk to adjacent NPC (direct shortcut)
+    if (key === 't' || key === 'T') {
       const nearNPC = this.findAdjacentNPC();
-      if (nearNPC) {
-        this.startDialogue(nearNPC);
-      } else if (key === 'Enter') {
-        // Check for building entrances or other interactions
-        this.ui.addMessage('Nothing to interact with here.', COLORS.BRIGHT_BLACK);
-      }
+      if (nearNPC) { this.startDialogue(nearNPC); }
+      return;
+    }
+
+    // Context-sensitive interact (Enter / A / ACT button)
+    if (key === 'Enter') {
+      // Priority 1: Talk to adjacent NPC
+      const nearNPC = this.findAdjacentNPC();
+      if (nearNPC) { this.startDialogue(nearNPC); return; }
+      // Priority 2: Pick up item at feet
+      if (this._tryPickupItem()) return;
+      // Priority 3: Nothing nearby
+      this.ui.addMessage('Nothing to interact with here.', COLORS.BRIGHT_BLACK);
     }
   }
 
@@ -1933,30 +1927,27 @@ class Game {
       this.movePlayerInDungeon(dir.dx, dir.dy);
     }
 
-    // Pick up items
+    // Pick up items (direct shortcut)
     if (key === 'g' || key === 'G' || key === ',') {
-      const item = this.items.find(i =>
-        i.position && i.position.x === this.player.position.x && i.position.y === this.player.position.y);
-      if (item) {
-        if (this.player.inventory.length < 20) {
-          this.player.addItem(item);
-          this.items = this.items.filter(i => i !== item);
-          this.ui.addMessage(`Picked up ${item.name}.`, COLORS.BRIGHT_GREEN);
-          this.particles.emit(item.position.x, item.position.y, '+', COLORS.BRIGHT_GREEN, 3, 2, 8);
+      this._tryPickupItem();
+    }
 
-          // Update FETCH quest progress
-          const activeQuests = this.questSystem.getActiveQuests();
-          for (const quest of activeQuests) {
-            this.questSystem.updateProgress(quest.id, 'fetch', item.name, 1);
-            this.questSystem.updateProgress(quest.id, 'fetch', item.type, 1);
-            if (this.questSystem.checkCompletion(quest.id)) {
-              this.ui.addMessage(`Quest "${quest.title}" is ready to turn in!`, COLORS.BRIGHT_YELLOW);
-            }
-          }
-        } else {
-          this.ui.addMessage('Inventory full!', COLORS.BRIGHT_RED);
+    // Context-sensitive interact (Enter / A / ACT button)
+    if (key === 'Enter') {
+      // Priority 1: Pick up item at feet
+      if (this._tryPickupItem()) return;
+      // Priority 2: Use stairs if standing on them
+      if (this.currentDungeon && this.currentDungeon.tiles) {
+        const tile = this.currentDungeon.tiles[this.player.position.y]?.[this.player.position.x];
+        if (tile && (tile.type === 'STAIRS_DOWN' || tile.char === '>' || tile.type === 'STAIRS_UP' || tile.char === '<')) {
+          const stairKey = (tile.type === 'STAIRS_DOWN' || tile.char === '>') ? '>' : '<';
+          this.handleDungeonInput(stairKey);
+          return;
         }
       }
+      // Priority 3: Nothing nearby
+      this.ui.addMessage('Nothing to interact with here.', COLORS.BRIGHT_BLACK);
+      return;
     }
 
     // Use stairs
@@ -3662,12 +3653,9 @@ class Game {
     const tile = this.currentSettlement.tiles[ny][nx];
     if (tile.solid) return;
 
-    // Check NPC collision
+    // NPCs block movement — player must press interact to talk
     const npcAt = this.npcs.find(n => n.position.x === nx && n.position.y === ny);
-    if (npcAt) {
-      this.startDialogue(npcAt);
-      return;
-    }
+    if (npcAt) return;
 
     // Bridge-specific: enemy collision triggers combat
     if (this.currentSettlement.isBridge) {
@@ -3937,6 +3925,38 @@ class Game {
     if (this.player.isDead()) {
       this.setState('GAME_OVER');
     }
+  }
+
+  // ─── CONTEXT-SENSITIVE INTERACT HELPERS ───
+
+  /**
+   * Try to pick up an item at the player's current position.
+   * Returns true if an item interaction occurred (pickup or inventory full).
+   */
+  _tryPickupItem() {
+    const px = this.player.position.x;
+    const py = this.player.position.y;
+    const item = this.items.find(i =>
+      i.position && i.position.x === px && i.position.y === py);
+    if (!item) return false;
+    if (this.player.inventory.length >= 20) {
+      this.ui.addMessage('Inventory full!', COLORS.BRIGHT_RED);
+      return true;
+    }
+    this.player.addItem(item);
+    this.items = this.items.filter(i => i !== item);
+    this.ui.addMessage(`Picked up ${item.name}.`, COLORS.BRIGHT_GREEN);
+    this.particles.emit(px, py, '+', COLORS.BRIGHT_GREEN, 3, 2, 8);
+    // Update FETCH quest progress
+    const activeQuests = this.questSystem.getActiveQuests();
+    for (const quest of activeQuests) {
+      this.questSystem.updateProgress(quest.id, 'fetch', item.name, 1);
+      this.questSystem.updateProgress(quest.id, 'fetch', item.type, 1);
+      if (this.questSystem.checkCompletion(quest.id)) {
+        this.ui.addMessage(`Quest "${quest.title}" is ready to turn in!`, COLORS.BRIGHT_YELLOW);
+      }
+    }
+    return true;
   }
 
   // ─── NPC INTERACTION ───
