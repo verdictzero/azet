@@ -1278,24 +1278,25 @@ class Game {
   enterBridgeDungeon(location) {
     const id = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
     const rng = new SeededRNG(this.seed + id * 9000 + 77777);
-    this.currentFloor = 0;
 
-    // Determine which side the player approaches from
-    // Vertical bridges (rivers flow left-to-right): check Y position relative to bridge center
+    // Determine which side the player approaches from (north/top or south/bottom)
     const py = this.player.position.y;
     const bridgeMidY = location.bridgeStartY != null
       ? Math.floor((location.bridgeStartY + location.bridgeEndY) / 2)
       : location.bridgeY;
-    const enterFromWest = py <= bridgeMidY; // "west" = north side in dungeon terms
+    const enterFromNorth = py <= bridgeMidY;
 
-    const dungeon = this.bridgeGen.generate(rng, location);
-    this.currentDungeon = dungeon;
+    const bridge = this.bridgeGen.generate(rng, location);
+    this.currentSettlement = bridge;
+    this.currentSettlement.name = location.name || 'Ancient Bridge';
+    this.currentSettlement.locationData = location;
+    this.currentSettlement.isBridge = true;
     this.currentBridgeLocation = location;
 
     // Spawn enemies
     this.enemies = [];
-    if (dungeon.entitySpots) {
-      for (const spot of dungeon.entitySpots) {
+    if (bridge.entitySpots) {
+      for (const spot of bridge.entitySpots) {
         if (spot.type === 'enemy') {
           const creature = this.creatureGen.generate(rng, 'ruins', location.difficulty, this.player.stats.level);
           creature.position = { x: spot.x, y: spot.y };
@@ -1306,8 +1307,8 @@ class Game {
 
     // Place items
     this.items = [];
-    if (dungeon.entitySpots) {
-      for (const spot of dungeon.entitySpots) {
+    if (bridge.entitySpots) {
+      for (const spot of bridge.entitySpots) {
         if (spot.type === 'item') {
           const item = this.itemGen.generate(rng,
             rng.random(['weapon', 'armor', 'potion']),
@@ -1321,12 +1322,13 @@ class Game {
 
     // Spawn shop NPCs for bridge state 0
     this.npcs = [];
-    if (dungeon.entitySpots) {
-      for (const spot of dungeon.entitySpots) {
+    if (bridge.entitySpots) {
+      for (const spot of bridge.entitySpots) {
         if (spot.type === 'shop_npc') {
           const npc = {
             name: this.nameGen ? this.nameGen.generate(rng) : 'Bridge Merchant',
             role: 'merchant',
+            char: '\u263A', // ☺ merchant character
             position: { x: spot.x, y: spot.y },
             dialogue: { greeting: 'Wares for the weary traveler... this bridge has seen better days.' },
             inventory: this._generateShopInventory(rng, location.difficulty),
@@ -1336,37 +1338,49 @@ class Game {
       }
     }
 
-    // Place player at the appropriate entrance
-    const entranceRoom = enterFromWest
-      ? dungeon.rooms.find(r => r.type === 'entrance_west')
-      : dungeon.rooms.find(r => r.type === 'entrance_east');
-    if (entranceRoom) {
-      this.player.position.x = entranceRoom.x + Math.floor(entranceRoom.w / 2);
-      this.player.position.y = entranceRoom.y + Math.floor(entranceRoom.h / 2);
-    } else if (dungeon.rooms.length > 0) {
-      const fallback = dungeon.rooms[0];
-      this.player.position.x = fallback.x + Math.floor(fallback.w / 2);
-      this.player.position.y = fallback.y + Math.floor(fallback.h / 2);
+    // Place player at the correct end based on approach direction
+    const bridgeCenterX = bridge.bridgeX || Math.floor(bridge.width / 2);
+    if (enterFromNorth) {
+      // Entered from north on world map → start at top of sublevel
+      this.player.position.x = bridgeCenterX;
+      this.player.position.y = 2;
+    } else {
+      // Entered from south on world map → start at bottom of sublevel
+      this.player.position.x = bridgeCenterX;
+      this.player.position.y = bridge.height - 3;
     }
 
     // Mark the bridge as discovered
     location.discovered = true;
 
-    this.currentDungeonLocation = location;
+    // Set up LOCATION state (same as enterLocation — outdoor rendering with day/night)
+    this._preLocationZoom = this.renderer.densityLevel;
+    this.renderer.setZoom(3);
+
+    const density = this.renderer.densityLevel;
+    this.locationCamera = new Camera(
+      Math.floor((this.renderer.cols - 2) / density),
+      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density)
+    );
+    this.locationCamera.follow(this.player);
+    this.locationCamera.x = this.locationCamera.targetX;
+    this.locationCamera.y = this.locationCamera.targetY;
+
     this.gameContext.currentLocationName = location.name || 'Ancient Bridge';
-    this.setState('DUNGEON');
+    this.gameContext.currentLocation = location;
+    this.setState('LOCATION');
 
     // Flavor messages based on state
     if (location.bridgeState === 3) {
-      this.ui.addMessage('You step onto the ancient bridge... the structure groans ominously.', COLORS.BRIGHT_YELLOW);
-      this.ui.addMessage('Massive sections have collapsed. There is no way across.', COLORS.BRIGHT_RED);
+      this.ui.addMessage('You approach the ancient bridge. The structure groans ominously.', COLORS.BRIGHT_YELLOW);
+      this.ui.addMessage('Massive sections have collapsed into the water below. There is no way across.', COLORS.BRIGHT_RED);
     } else if (location.bridgeState === 0) {
-      this.ui.addMessage('You enter the bridge passage. Rusted metal walls echo your footsteps.', COLORS.BRIGHT_CYAN);
-      this.ui.addMessage('You hear voices ahead — merchants have set up shop in the ruins.', COLORS.BRIGHT_WHITE);
+      this.ui.addMessage('You arrive at the bridge crossing. The old metalwork gleams in the light.', COLORS.BRIGHT_CYAN);
+      this.ui.addMessage('Merchants have set up stalls near the bridge approach.', COLORS.BRIGHT_WHITE);
     } else if (location.bridgeState === 1) {
-      this.ui.addMessage('You enter the bridge passage. Something stirs in the darkness...', COLORS.BRIGHT_RED);
+      this.ui.addMessage('You arrive at the bridge crossing. Something watches from the far shore...', COLORS.BRIGHT_RED);
     } else {
-      this.ui.addMessage('You enter the abandoned bridge crossing. Silence greets you.', COLORS.BRIGHT_CYAN);
+      this.ui.addMessage('You arrive at the abandoned bridge crossing. Wind whistles through the old metalwork.', COLORS.BRIGHT_CYAN);
     }
   }
 
@@ -1378,13 +1392,19 @@ class Game {
         this._markBridgeBroken(bridgeLoc);
       }
 
-      this.currentDungeon = null;
+      this.currentSettlement = null;
       this.currentBridgeLocation = null;
       this.enemies = [];
       this.items = [];
       this.npcs = [];
 
-      // Place player on the correct side of the bridge
+      // Restore zoom level from before entering the bridge
+      if (this._preLocationZoom) {
+        this.renderer.setZoom(this._preLocationZoom);
+        this._preLocationZoom = null;
+      }
+
+      // Place player on the correct side of the bridge on the overworld
       if (bridgeLoc) {
         const bx = bridgeLoc.bridgeX != null ? bridgeLoc.bridgeX : bridgeLoc.x;
         if (exitSide === 'east') {
@@ -1396,9 +1416,9 @@ class Game {
           this.player.position.x = bx;
           this.player.position.y = (bridgeLoc.bridgeStartY != null ? bridgeLoc.bridgeStartY : bridgeLoc.bridgeY) - 1;
         }
-      } else if (this.currentDungeonLocation) {
-        this.player.position.x = this.currentDungeonLocation.x;
-        this.player.position.y = this.currentDungeonLocation.y;
+      } else if (this.gameContext.currentLocation) {
+        this.player.position.x = this.gameContext.currentLocation.x;
+        this.player.position.y = this.gameContext.currentLocation.y;
       }
 
       this.gameContext.currentLocationName = 'World';
@@ -1769,6 +1789,14 @@ class Game {
     if (key === '-') { this._zoomOut(); return; }
 
     if (key === 'Escape') {
+      // Bridge crossing: exit based on player Y position
+      if (this.currentSettlement && this.currentSettlement.isBridge) {
+        const bridgeLoc = this.currentBridgeLocation;
+        const midY = Math.floor(this.currentSettlement.height / 2);
+        const side = this.player.position.y < midY ? 'west' : 'east'; // west=north, east=south
+        this._exitBridgeDungeon(bridgeLoc, side);
+        return;
+      }
       // Leave location back to overworld with transition
       this.startTransition(() => {
         if (this.gameContext.currentLocation) {
@@ -1800,6 +1828,24 @@ class Game {
       this.movePlayerInLocation(dir.dx, dir.dy);
     }
 
+    // Bridge-specific: item pickup
+    if (this.currentSettlement && this.currentSettlement.isBridge) {
+      if (key === 'g' || key === 'G' || key === ',') {
+        const item = this.items.find(i =>
+          i.position && i.position.x === this.player.position.x && i.position.y === this.player.position.y);
+        if (item) {
+          if (this.player.inventory.length < 20) {
+            this.player.addItem(item);
+            this.items = this.items.filter(i => i !== item);
+            this.ui.addMessage(`Picked up ${item.name}.`, COLORS.BRIGHT_GREEN);
+            this.particles.emit(item.position.x, item.position.y, '+', COLORS.BRIGHT_GREEN, 3, 2, 8);
+          } else {
+            this.ui.addMessage('Inventory full!', COLORS.BRIGHT_RED);
+          }
+        }
+      }
+    }
+
     // Talk to adjacent NPC
     if (key === 't' || key === 'T' || key === 'Enter') {
       const nearNPC = this.findAdjacentNPC();
@@ -1827,16 +1873,6 @@ class Game {
     if (key === '-') { this._zoomOut(); return; }
 
     if (key === 'Escape') {
-      // Bridge dungeon: Escape exits to the side you entered from
-      if (this.currentDungeon && this.currentDungeon.isBridge) {
-        const bridgeLoc = this.currentBridgeLocation || this.currentDungeonLocation;
-        // Determine which side the player is closer to
-        const px = this.player.position.x;
-        const midX = Math.floor(this.currentDungeon.width / 2);
-        const side = px < midX ? 'west' : 'east';
-        this._exitBridgeDungeon(bridgeLoc, side);
-        return;
-      }
       this.startTransition(() => {
         this.currentDungeon = null;
         this.currentTower = null;
@@ -1966,12 +2002,7 @@ class Game {
             this.ui.addMessage(`You descend to floor ${this.currentFloor + 1}.`, COLORS.BRIGHT_YELLOW);
           }
         } else if (tile && (tile.type === 'STAIRS_UP' || tile.char === '<')) {
-          // Bridge dungeon exit: stairs lead to the appropriate side of the river
-          if (this.currentDungeon && this.currentDungeon.isBridge) {
-            const exitSide = tile.bridgeSide || 'west';
-            const bridgeLoc = this.currentBridgeLocation || this.currentDungeonLocation;
-            this._exitBridgeDungeon(bridgeLoc, exitSide);
-          } else if (this.currentFloor > 0) {
+          if (this.currentFloor > 0) {
             this.currentFloor--;
             if (this.currentTower) {
               this.currentDungeon = this.currentTower[this.currentFloor];
@@ -3553,6 +3584,22 @@ class Game {
     const nx = this.player.position.x + dx;
     const ny = this.player.position.y + dy;
 
+    // Bridge edge exit: walking off top or bottom exits the bridge zone
+    if (this.currentSettlement.isBridge) {
+      if (ny < 0) {
+        // Walked off the top → exit north
+        const bridgeLoc = this.currentBridgeLocation;
+        this._exitBridgeDungeon(bridgeLoc, 'west'); // west = north side
+        return;
+      }
+      if (ny >= this.currentSettlement.tiles.length) {
+        // Walked off the bottom → exit south
+        const bridgeLoc = this.currentBridgeLocation;
+        this._exitBridgeDungeon(bridgeLoc, 'east'); // east = south side
+        return;
+      }
+    }
+
     if (ny < 0 || ny >= this.currentSettlement.tiles.length) return;
     if (nx < 0 || nx >= this.currentSettlement.tiles[0].length) return;
 
@@ -3564,6 +3611,15 @@ class Game {
     if (npcAt) {
       this.startDialogue(npcAt);
       return;
+    }
+
+    // Bridge-specific: enemy collision triggers combat
+    if (this.currentSettlement.isBridge) {
+      const enemyAt = this.enemies.find(e => e.position.x === nx && e.position.y === ny);
+      if (enemyAt) {
+        this.startBattleTransition(enemyAt);
+        return;
+      }
     }
 
     this.player.position.x = nx;
@@ -4336,7 +4392,7 @@ class Game {
 
       case 'LOCATION':
         if (this.locationCamera) { this.locationCamera.follow(this.player); this.locationCamera.update(); }
-        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.timeSystem.getSunDirection(), this.timeSystem.hour);
+        this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.timeSystem.getSunDirection(), this.timeSystem.hour, this.currentSettlement && this.currentSettlement.isBridge ? this.enemies : null, this.currentSettlement && this.currentSettlement.isBridge ? this.items : null);
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
         this._renderQuestNavIndicator();
         break;

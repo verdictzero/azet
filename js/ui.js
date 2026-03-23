@@ -1677,7 +1677,7 @@ export class UIManager {
 
   // ─── LOCATION VIEW ───
 
-  drawLocationOverview(settlement, npcs, player, camera, sunDir, hour) {
+  drawLocationOverview(settlement, npcs, player, camera, sunDir, hour, enemies, items) {
     this._locationLighting = null; // clear stale data
     const r = this.renderer;
     const cols = r.cols;
@@ -2031,6 +2031,32 @@ export class UIManager {
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
             const npcColor = this.glow ? this.glow.getGlowColor('NPC', npc.color || COLORS.BRIGHT_CYAN) : (npc.color || COLORS.BRIGHT_CYAN);
             r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, npc.char, npcColor);
+          }
+        }
+      }
+
+      // Draw enemies (bridge zones)
+      if (enemies) {
+        for (const enemy of enemies) {
+          if (!enemy.position) continue;
+          const wx_off = enemy.position.x - camX;
+          const wy_off = enemy.position.y - camY;
+          if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
+            const enemyColor = this.glow ? this.glow.getGlowColor('ENEMY', COLORS.BRIGHT_RED) : COLORS.BRIGHT_RED;
+            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, enemy.char || 'E', enemyColor);
+          }
+        }
+      }
+
+      // Draw items on ground (bridge zones)
+      if (items) {
+        for (const item of items) {
+          if (!item.position) continue;
+          const wx_off = item.position.x - camX;
+          const wy_off = item.position.y - camY;
+          if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
+            const itemColor = this.glow ? this.glow.getGlowColor('ITEM', COLORS.BRIGHT_MAGENTA) : COLORS.BRIGHT_MAGENTA;
+            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, item.char || '!', itemColor);
           }
         }
       }
