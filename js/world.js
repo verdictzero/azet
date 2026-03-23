@@ -474,17 +474,17 @@ export class ChunkManager {
     const rv = this.riverNoise.fbm((wx + warpX) * RIVER_SCALE, (wy + warpY) * RIVER_SCALE, 4);
     // Rivers form where noise is near zero (creates narrow bands)
     const riverProximity = Math.abs(rv);
-    const RIVER_WIDTH = 0.04;  // narrow river channels
+    const RIVER_WIDTH = 0.07;  // wide river channels (at least 3 tiles)
     if (riverProximity < RIVER_WIDTH && h > 0.20 && h < 0.65) {
       // Carve river: lower height to create water channel with depth gradient
       const riverDepth = 1.0 - (riverProximity / RIVER_WIDTH); // 1.0 at center, 0 at edge
-      const carve = riverDepth * 0.22;  // max carve depth
+      const carve = riverDepth * 0.35;  // max carve depth
       h = Math.max(0.08, h - carve);
     }
     // Wider gentle lowering near rivers for natural valley
     else if (riverProximity < RIVER_WIDTH * 3 && h > 0.28 && h < 0.55) {
       const valleyDepth = 1.0 - (riverProximity / (RIVER_WIDTH * 3));
-      h -= valleyDepth * 0.04; // gentle valley
+      h -= valleyDepth * 0.05; // gentle valley
     }
 
     return this._terrainGen._terrainFromNoise(h, m, a, d, t);
@@ -1466,7 +1466,7 @@ export class ChunkManager {
         } else {
           if (waterStart !== -1) {
             const span = lx - waterStart;
-            if (span >= 7 && span <= 9) {
+            if (span >= 7 && span <= 14) {
               // Check land on both sides
               const leftTile = waterStart > 0 ? tiles[ly][waterStart - 1] : null;
               const rightTile = lx < CHUNK_SIZE ? tiles[ly][lx] : null;
