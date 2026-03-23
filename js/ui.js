@@ -2581,6 +2581,61 @@ export class UIManager {
     r.drawString(px + 2, py + panelH - 2, '\u25B2\u25BC:Select  A:Open  B:Close', COLORS.BRIGHT_BLACK, bg);
   }
 
+  // ─── REST ITEM SELECTION ───
+
+  drawRestItemSelect(renderer, restItems, cursor) {
+    const r = renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.FF_BLUE_DARK;
+
+    const itemCount = restItems.length;
+    const panelW = Math.min(36, cols - 4);
+    const panelH = itemCount * 2 + 7;
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.max(2, Math.floor((rows - panelH) / 2));
+
+    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Use Rest Item ');
+
+    // Header
+    r.drawString(px + 2, py + 2, 'Select an item to rest with:', COLORS.BRIGHT_WHITE, bg);
+
+    // Separator
+    r.drawString(px + 1, py + 3, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+
+    // Item list
+    const startY = py + 4;
+    for (let i = 0; i < itemCount; i++) {
+      const item = restItems[i];
+      const y = startY + i * 2;
+      const selected = i === cursor;
+      const fg = selected ? COLORS.BRIGHT_WHITE : COLORS.WHITE;
+
+      // Cursor
+      if (selected) {
+        r.drawString(px + 2, y, '\u25BA', COLORS.BRIGHT_YELLOW, bg);
+      }
+
+      // Item icon + name
+      r.drawString(px + 4, y, item.char || '\u25B2', item.color || COLORS.BRIGHT_CYAN, bg);
+      r.drawString(px + 6, y, item.name, fg, bg);
+
+      // Effect description on same line, right-aligned
+      let effectStr = '';
+      if (item.subtype === 'cottage') {
+        effectStr = 'Full HP+MP';
+      } else if (item.effect?.heal) {
+        effectStr = `+${item.effect.heal} HP`;
+      } else {
+        effectStr = '+10 HP';
+      }
+      r.drawString(px + panelW - effectStr.length - 2, y, effectStr, COLORS.BRIGHT_GREEN, bg);
+    }
+
+    // Footer
+    r.drawString(px + 2, py + panelH - 2, '\u25B2\u25BC:Select  Enter:Use  Esc:Back', COLORS.BRIGHT_BLACK, bg);
+  }
+
   // ─── SETTINGS (FF-style Config) ───
 
   drawSettings(settings) {
