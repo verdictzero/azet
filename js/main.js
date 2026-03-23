@@ -3082,13 +3082,6 @@ class Game {
       this.settings.showQuestNav = !this.settings.showQuestNav;
       this._saveSettings();
     }
-    // Gamepad layout toggle
-    if (key === 'g' || key === 'G') {
-      const mode = this.input._gamepadMode === 'compact' ? 'wide' : 'compact';
-      this.input.setGamepadLayout(mode);
-      this.settings.gamepadMode = mode;
-      this._saveSettings();
-    }
     // Music controls
     if (key === 'v' || key === 'V') {
       const steps = [0, 0.25, 0.5, 0.75, 1.0];

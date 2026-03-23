@@ -34,78 +34,34 @@ html, body {
 #touch-controls {
   position: fixed;
   bottom: 0;
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 10;
   pointer-events: none;
-  padding: 0 env(safe-area-inset-right, 8px) calc(env(safe-area-inset-bottom, 8px) + 12px) 0;
+  padding: 0 0 calc(env(safe-area-inset-bottom, 8px) + 12px) 0;
 }
 
 #touch-controls.hidden {
   display: none;
 }
 
-.gamepad-wrap {
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
+/* 3-wide vertically stacked grid */
+.touch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, clamp(44px, 12vw, 56px));
   gap: 4px;
-  align-items: center;
-}
-
-/* ── Shoulder buttons ── */
-.gamepad-shoulders {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  gap: 6px;
-}
-
-.shoulder-pair {
-  display: flex;
-  gap: 3px;
-}
-
-.shoulder-pair.right {
-  margin-left: auto;
-}
-
-/* ── Main body: D-pad | Center | Face ── */
-.gamepad-body {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* ── D-pad: 3×3 grid with diagonals ── */
-.gamepad-dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-}
-
-/* ── Center column: Select / Start ── */
-.gamepad-center {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: center;
   justify-content: center;
-  min-width: 36px;
+  padding: 6px 14px;
+  pointer-events: auto;
 }
 
-/* ── Face buttons: ABXY diamond ── */
-.gamepad-face {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 2px;
-  /* Y on top, X left, B right, A bottom */
+/* Empty spacer cell */
+.gpad-btn.empty {
+  visibility: hidden;
+  pointer-events: none;
+  border: none;
+  background: none;
 }
-
-.face-y { grid-column: 2; grid-row: 1; }
-.face-x { grid-column: 1; grid-row: 2; }
-.face-b { grid-column: 3; grid-row: 2; }
-.face-a { grid-column: 2; grid-row: 3; }
 
 /* ── Base button ── */
 .gpad-btn {
@@ -122,6 +78,7 @@ html, body {
   font-weight: 700;
   letter-spacing: 0.5px;
   padding: 0;
+  min-height: clamp(40px, 9.5vw, 48px);
 }
 
 .gpad-btn:active, .gpad-btn.pressed {
@@ -133,8 +90,6 @@ html, body {
   background: rgba(0, 170, 0, 0.3);
   border: 1.5px solid rgba(0, 255, 0, 0.45);
   color: rgba(0, 255, 0, 0.85);
-  width: clamp(34px, 9vw, 44px);
-  height: clamp(34px, 9vw, 44px);
   font-size: clamp(14px, 4vw, 20px);
 }
 .gpad-btn.dpad:active, .gpad-btn.dpad.pressed {
@@ -142,10 +97,8 @@ html, body {
   border-color: rgba(0, 255, 0, 0.8);
 }
 
-/* Diagonal buttons: slightly smaller */
+/* Diagonal buttons: slightly subdued */
 .gpad-btn.dpad.diag {
-  width: clamp(28px, 7vw, 36px);
-  height: clamp(28px, 7vw, 36px);
   font-size: clamp(11px, 3vw, 15px);
   border-radius: 8px;
   opacity: 0.75;
@@ -168,8 +121,6 @@ html, body {
 
 /* ── Face buttons (SNES colors) ── */
 .gpad-btn.face {
-  width: clamp(34px, 9vw, 44px);
-  height: clamp(34px, 9vw, 44px);
   border-radius: 50%;
   font-size: clamp(13px, 3.5vw, 17px);
 }
@@ -223,8 +174,6 @@ html, body {
   background: rgba(0, 170, 170, 0.25);
   border: 1.5px solid rgba(0, 255, 255, 0.4);
   color: rgba(0, 255, 255, 0.85);
-  width: clamp(36px, 10vw, 48px);
-  height: clamp(26px, 6vw, 32px);
   font-size: clamp(10px, 2.8vw, 13px);
   border-radius: 8px;
 }
@@ -238,9 +187,7 @@ html, body {
   background: rgba(170, 85, 255, 0.2);
   border: 1.5px solid rgba(170, 85, 255, 0.45);
   color: rgba(200, 150, 255, 0.85);
-  width: clamp(30px, 8vw, 38px);
-  height: clamp(22px, 5vw, 28px);
-  font-size: clamp(8px, 2.2vw, 11px);
+  font-size: clamp(10px, 2.8vw, 13px);
   border-radius: 12px;
 }
 .gpad-btn.meta:active, .gpad-btn.meta.pressed {
@@ -255,87 +202,19 @@ html, body {
   color: rgba(220, 170, 255, 0.95);
 }
 
-/* ══════════════════════════════════════════
-   COMPACT MODE (one-handed, bottom-right)
-   ══════════════════════════════════════════ */
-.gamepad-wrap.compact {
-  /* Stacks everything tighter for one-hand reach */
-  transform-origin: bottom right;
-}
-
-.gamepad-wrap.compact .gamepad-body {
-  gap: 4px;
-}
-
-.gamepad-wrap.compact .gamepad-shoulders {
-  gap: 4px;
-}
-
-/* ══════════════════════════════════════════
-   WIDE MODE (two-handed, split left/right)
-   ══════════════════════════════════════════ */
-#touch-controls.wide-mode {
-  left: 0;
-  right: 0;
-  padding-left: env(safe-area-inset-left, 8px);
-  padding-right: env(safe-area-inset-right, 8px);
-}
-
-#touch-controls.wide-mode .gamepad-wrap {
-  width: 100%;
-  max-width: 100vw;
-}
-
-#touch-controls.wide-mode .gamepad-shoulders {
-  width: 100%;
-  padding: 0 4px;
-}
-
-#touch-controls.wide-mode .gamepad-body {
-  width: 100%;
-  justify-content: space-between;
-  padding: 0 4px;
-}
-
-#touch-controls.wide-mode .gamepad-center {
-  flex-direction: row;
-  gap: 12px;
-}
-
 /* ── Landscape: tighten for short screens ── */
 @media (orientation: landscape) and (max-height: 500px) {
   #touch-controls {
     padding-bottom: calc(env(safe-area-inset-bottom, 4px) + 4px);
   }
 
-  .gpad-btn.dpad {
-    width: 30px;
-    height: 30px;
-    font-size: 14px;
+  .touch-grid {
+    grid-template-columns: repeat(3, 38px);
+    gap: 3px;
   }
 
-  .gpad-btn.dpad.diag {
-    width: 24px;
-    height: 24px;
-    font-size: 11px;
-  }
-
-  .gpad-btn.face {
-    width: 30px;
-    height: 30px;
-    font-size: 13px;
-  }
-
-  .gpad-btn.shoulder {
-    width: 34px;
-    height: 22px;
-    font-size: 10px;
-  }
-
-  .gpad-btn.meta {
-    width: 28px;
-    height: 20px;
-    font-size: 8px;
+  .gpad-btn {
+    min-height: 34px;
   }
 }
 
