@@ -146,6 +146,7 @@ class Game {
     this.gamepadMenuCursor = 0;
     this.GAMEPAD_MENU_ITEMS = [
       { label: 'Items',     icon: '\u2666', state: 'INVENTORY'     },
+      { label: 'Rest',      icon: '\u25B2', action: 'rest'         },
       { label: 'Character', icon: '\u263A', state: 'CHARACTER'     },
       { label: 'Quests',    icon: '!',      state: 'QUEST_LOG'     },
       { label: 'Map',       icon: '\u2593', state: 'MAP'           },
@@ -2642,6 +2643,8 @@ class Game {
         const item = items[this.ui.selectedIndex];
         if (item.type === 'potion' || item.type === 'food') {
           this.useItem(item);
+        } else if (item.type === 'rest') {
+          this.useItem(item);
         } else if (item.type === 'weapon' || item.type === 'armor') {
           this.player.equip(item);
           this.ui.addMessage(`Equipped ${item.name}.`, COLORS.BRIGHT_GREEN);
@@ -3480,6 +3483,9 @@ class Game {
       if (item.action === 'save') {
         this.saveGame(1, { exportFile: true });
         this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
+      } else if (item.action === 'rest') {
+        this.useRestItem();
+        this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
       } else if (item.state) {
         this.setState(item.state);
       }
@@ -4152,6 +4158,20 @@ class Game {
       this.player.heal(heal);
       this.player.removeItem(item.id);
       this.ui.addMessage(`Ate ${item.name}. Feel a bit better.`, COLORS.BRIGHT_GREEN);
+    } else if (item.type === 'rest') {
+      if (item.subtype === 'cottage') {
+        this.player.heal(this.player.stats.maxHp);
+        this.player.stats.mana = this.player.stats.maxMana;
+        this.statusEffects = this.statusEffects.filter(e => e.beneficial);
+        this.ui.addMessage(`Used ${item.name}. Fully restored! Status ailments cleared.`, COLORS.BRIGHT_GREEN);
+      } else {
+        const restore = item.effect?.heal || 20;
+        this.player.heal(restore);
+        this.ui.addMessage(`Used ${item.name}. Restored ${restore} HP.`, COLORS.BRIGHT_GREEN);
+      }
+      this.timeSystem.advance(8);
+      this.player.removeItem(item.id);
+      this.saveGame();
     } else if (item.type === 'scroll') {
       const effect = item.effect || {};
       if (effect.damage) {
@@ -4161,6 +4181,59 @@ class Game {
       }
       this.player.removeItem(item.id);
     }
+  }
+
+  // ─── REST (from Start Menu) ───
+
+  useRestItem() {
+    // Find a rest item in inventory (prefer Cottage > Tent > Sleeping Bag)
+    const restItems = this.player.inventory.filter(i => i.type === 'rest');
+    if (restItems.length === 0) {
+      this.ui.addMessage('You have no rest items! (Tent, Sleeping Bag, or Cottage required)', COLORS.BRIGHT_RED);
+      return;
+    }
+
+    // Prefer cottage first, then tent, then sleeping bag
+    const priority = ['cottage', 'tent', 'sleeping_bag'];
+    let chosen = null;
+    for (const sub of priority) {
+      chosen = restItems.find(i => i.subtype === sub);
+      if (chosen) break;
+    }
+    if (!chosen) chosen = restItems[0];
+
+    // Apply rest effects based on subtype
+    if (chosen.subtype === 'cottage') {
+      // Cottage: restore all stats and remove status ailments (does not resurrect dead)
+      this.player.heal(this.player.stats.maxHp);
+      this.player.stats.mana = this.player.stats.maxMana;
+      this.statusEffects = this.statusEffects.filter(e => e.beneficial);
+      this.ui.addMessage(`Used ${chosen.name}. Fully restored! Status ailments cleared.`, COLORS.BRIGHT_GREEN);
+    } else if (chosen.subtype === 'tent') {
+      // Tent: restore 20 HP
+      const restore = chosen.effect?.heal || 20;
+      this.player.heal(restore);
+      this.ui.addMessage(`Used ${chosen.name}. Restored ${restore} HP.`, COLORS.BRIGHT_GREEN);
+    } else if (chosen.subtype === 'sleeping_bag') {
+      // Sleeping Bag: restore 10 HP
+      const restore = chosen.effect?.heal || 10;
+      this.player.heal(restore);
+      this.ui.addMessage(`Used ${chosen.name}. Restored ${restore} HP.`, COLORS.BRIGHT_GREEN);
+    } else {
+      // Generic rest item
+      const restore = chosen.effect?.heal || 10;
+      this.player.heal(restore);
+      this.ui.addMessage(`Used ${chosen.name}. Restored ${restore} HP.`, COLORS.BRIGHT_GREEN);
+    }
+
+    // Advance time
+    this.timeSystem.advance(8);
+
+    // Consume the item
+    this.player.removeItem(chosen.id);
+
+    // Auto-save
+    this.saveGame();
   }
 
   // ─── SETTINGS ───

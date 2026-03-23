@@ -1662,6 +1662,23 @@ export class Player {
     }
 
     this.inventory = [];
+
+    // Start with 10 Tents
+    for (let i = 0; i < 10; i++) {
+      this.inventory.push({
+        id: `start_tent_${i}`,
+        name: 'Tent',
+        type: 'rest',
+        subtype: 'tent',
+        char: '\u25B2',
+        color: '#8B6914',
+        rarity: 'common',
+        value: 15,
+        effect: { heal: 20 },
+        description: 'A portable shelter. Rest to restore 20 HP.',
+      });
+    }
+
     this.abilities = (CLASS_ABILITIES[playerClass] || []).map(a => ({ ...a }));
     this.quests = { active: [], completed: [] };
     this.knownLocations = new Set();
