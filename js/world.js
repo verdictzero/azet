@@ -344,6 +344,13 @@ export class OverworldGenerator {
 const CHUNK_SIZE = 32;
 const TERRAIN_SCALE = 0.02;
 
+// ── Deterministic horizontal river system ──
+const RIVER_SPACING = 125;        // vertical distance between river center lines
+const RIVER_MEANDER_AMP = 35;     // max vertical offset from base Y
+const RIVER_MEANDER_FREQ = 0.015; // noise frequency for meander curves
+const RIVER_HALF_WIDTH = 1;       // tiles from center = 3 total water tiles
+const RIVER_SHORE_WIDTH = 1;      // 1 shore tile each side
+
 // Procedural name generator using syllable combination
 const NAME_PREFIXES = [
   'Rust', 'Iron', 'Hull', 'Grey', 'Steel', 'Vent', 'Deck', 'Arc', 'Core', 'Drift',
@@ -386,7 +393,7 @@ export class ChunkManager {
     this.temperatureNoise = new PerlinNoise(initRng);
     this.tearNoise = new PerlinNoise(initRng);
     this.riverNoise = new PerlinNoise(initRng);      // for meandering rivers
-    this.riverNoise2 = new PerlinNoise(initRng);      // secondary river warp
+    this._unusedNoise = new PerlinNoise(initRng);   // placeholder to keep RNG sequence stable
     this._terrainGen = new OverworldGenerator(); // reuse _terrainFromNoise
 
     this.chunks = new Map();       // "cx,cy" -> { tiles: [][], locations: [] }
@@ -452,6 +459,26 @@ export class ChunkManager {
 
   _chunkKey(cx, cy) { return `${cx},${cy}`; }
 
+  // ── Deterministic horizontal river helpers ──
+  _getRiverCenterY(wx, riverIndex) {
+    const baseY = riverIndex * RIVER_SPACING;
+    const offset = riverIndex * 1000;
+    const noiseVal = this.riverNoise.fbm(wx * RIVER_MEANDER_FREQ + offset, 0.5, 3);
+    return Math.round(baseY + noiseVal * RIVER_MEANDER_AMP);
+  }
+
+  _getRiverDistance(wx, wy) {
+    const baseIndex = Math.round(wy / RIVER_SPACING);
+    let minDist = Infinity;
+    for (let di = -1; di <= 1; di++) {
+      const ri = baseIndex + di;
+      const centerY = this._getRiverCenterY(wx, ri);
+      const dist = Math.abs(wy - centerY);
+      if (dist < minDist) minDist = dist;
+    }
+    return minDist;
+  }
+
   _chunkRng(cx, cy) {
     const h = (this.seed ^ (cx * 73856093) ^ (cy * 19349663)) >>> 0;
     return new SeededRNG(h);
@@ -465,26 +492,23 @@ export class ChunkManager {
     // Very low-frequency temperature noise for massive contiguous hot/cold regions
     const t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.1 + 200, wy * TERRAIN_SCALE * 0.1 + 200, 3) + 1) / 2;
 
-    // ── Meandering rivers ──
-    // Use domain-warped noise to create narrow winding channels
-    // Primary river paths at low frequency, warped for meandering
-    const RIVER_SCALE = TERRAIN_SCALE * 0.6;
-    const warpX = this.riverNoise2.fbm(wx * RIVER_SCALE * 0.3 + 500, wy * RIVER_SCALE * 0.3 + 500, 3) * 15;
-    const warpY = this.riverNoise2.fbm(wx * RIVER_SCALE * 0.3 + 700, wy * RIVER_SCALE * 0.3 + 700, 3) * 15;
-    const rv = this.riverNoise.fbm((wx + warpX) * RIVER_SCALE, (wy + warpY) * RIVER_SCALE, 4);
-    // Rivers form where noise is near zero (creates narrow bands)
-    const riverProximity = Math.abs(rv);
-    const RIVER_WIDTH = 0.07;  // wide river channels (at least 3 tiles)
-    if (riverProximity < RIVER_WIDTH && h > 0.20 && h < 0.65) {
-      // Carve river: lower height to create water channel with depth gradient
-      const riverDepth = 1.0 - (riverProximity / RIVER_WIDTH); // 1.0 at center, 0 at edge
-      const carve = riverDepth * 0.35;  // max carve depth
-      h = Math.max(0.08, h - carve);
+    // ── Deterministic horizontal rivers ──
+    const riverDist = this._getRiverDistance(wx, wy);
+    if (riverDist <= RIVER_HALF_WIDTH) {
+      // River water: 3 tiles wide, cuts through any terrain
+      if (h < 0.26) {
+        // Already ocean/lake — let normal water tile handle it
+        return this._terrainGen._terrainFromNoise(h, m, a, d, t);
+      }
+      return tile('RIVER_WATER', '~', '#4488ff', '#001144', false, { biome: 'river', waterDepth: 1 });
     }
-    // Wider gentle lowering near rivers for natural valley
-    else if (riverProximity < RIVER_WIDTH * 3 && h > 0.28 && h < 0.55) {
-      const valleyDepth = 1.0 - (riverProximity / (RIVER_WIDTH * 3));
-      h -= valleyDepth * 0.05; // gentle valley
+    if (riverDist <= RIVER_HALF_WIDTH + RIVER_SHORE_WIDTH) {
+      // Shoreline: 1 tile each side
+      if (h < 0.28) {
+        // Already water/shore area — don't draw river shore in ocean
+        return this._terrainGen._terrainFromNoise(h, m, a, d, t);
+      }
+      return tile('INNER_SHORE', '\u00B7', '#8B7D5B', '#2A2210', true, { biome: 'shore', waterDepth: -1 });
     }
 
     return this._terrainGen._terrainFromNoise(h, m, a, d, t);
@@ -1378,7 +1402,7 @@ export class ChunkManager {
     const MIN_CLUSTER = 25; // minimum 5x5 equivalent cluster size
     const visited = new Uint8Array(S * S);
     // Water biomes are exempt — ponds and lakes are fine
-    const WATER_TYPES = new Set(['OCEAN', 'SHALLOWS', 'MEDIUM_WATER', 'DEEP_WATER', 'VERY_DEEP_WATER']);
+    const WATER_TYPES = new Set(['OCEAN', 'SHALLOWS', 'MEDIUM_WATER', 'DEEP_WATER', 'VERY_DEEP_WATER', 'RIVER_WATER']);
     // Walkable replacement for non-walkable terrain by biome
     const REPLACEMENTS = {
       forest: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
@@ -1443,7 +1467,7 @@ export class ChunkManager {
   // ── Bridge detection: find horizontal water segments 7-9 cells wide ──
   _isWaterTile(t) {
     return t && (t.type === 'OCEAN' || t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER' ||
-                 t.type === 'DEEP_WATER' || t.type === 'VERY_DEEP_WATER');
+                 t.type === 'DEEP_WATER' || t.type === 'VERY_DEEP_WATER' || t.type === 'RIVER_WATER');
   }
 
   _isLandTile(t) {
@@ -1454,39 +1478,42 @@ export class ChunkManager {
     const rng = new SeededRNG(this.seed + cx * 31337 + cy * 7919 + 88888);
     const ox = cx * CHUNK_SIZE;
     const oy = cy * CHUNK_SIZE;
-    const WATER_TYPES = new Set(['OCEAN', 'SHALLOWS', 'MEDIUM_WATER', 'DEEP_WATER', 'VERY_DEEP_WATER']);
+    const WATER_TYPES = new Set(['OCEAN', 'SHALLOWS', 'MEDIUM_WATER', 'DEEP_WATER', 'VERY_DEEP_WATER', 'RIVER_WATER']);
 
-    // Scan each row for horizontal water segments of 7-9 cells
-    for (let ly = 2; ly < CHUNK_SIZE - 2; ly++) {
+    // Scan columns for vertical water segments (rivers now flow left-to-right)
+    for (let lx = 2; lx < CHUNK_SIZE - 2; lx++) {
+      // Only consider bridge-eligible X positions every ~50 world tiles
+      const worldX = ox + lx;
+      const bridgeHash = ((worldX * 73856093) ^ (this.seed)) >>> 0;
+      if (bridgeHash % 50 !== 0) continue;
+
       let waterStart = -1;
-      for (let lx = 1; lx < CHUNK_SIZE - 1; lx++) {
+      for (let ly = 1; ly < CHUNK_SIZE - 1; ly++) {
         const t = tiles[ly][lx];
         if (WATER_TYPES.has(t.type)) {
-          if (waterStart === -1) waterStart = lx;
+          if (waterStart === -1) waterStart = ly;
         } else {
           if (waterStart !== -1) {
-            const span = lx - waterStart;
-            if (span >= 7 && span <= 14) {
-              // Check land on both sides
-              const leftTile = waterStart > 0 ? tiles[ly][waterStart - 1] : null;
-              const rightTile = lx < CHUNK_SIZE ? tiles[ly][lx] : null;
-              const leftOk = leftTile && leftTile.walkable && !WATER_TYPES.has(leftTile.type);
-              const rightOk = rightTile && rightTile.walkable && !WATER_TYPES.has(rightTile.type);
+            const span = ly - waterStart;
+            if (span >= 3 && span <= 5) {
+              // Check walkable land above and below
+              const aboveTile = waterStart > 0 ? tiles[waterStart - 1][lx] : null;
+              const belowTile = ly < CHUNK_SIZE ? tiles[ly][lx] : null;
+              const aboveOk = aboveTile && aboveTile.walkable && !WATER_TYPES.has(aboveTile.type);
+              const belowOk = belowTile && belowTile.walkable && !WATER_TYPES.has(belowTile.type);
 
-              // Also check that the row above and below are mostly water (confirms horizontal river)
-              if (leftOk && rightOk) {
-                let aboveWater = 0, belowWater = 0;
-                for (let sx = waterStart; sx < lx; sx++) {
-                  if (ly > 0 && WATER_TYPES.has(tiles[ly - 1][sx].type)) aboveWater++;
-                  if (ly < CHUNK_SIZE - 1 && WATER_TYPES.has(tiles[ly + 1][sx].type)) belowWater++;
+              // Confirm water extends left and right (real river, not pond)
+              if (aboveOk && belowOk) {
+                let leftWater = 0, rightWater = 0;
+                for (let sy = waterStart; sy < ly; sy++) {
+                  if (lx > 0 && WATER_TYPES.has(tiles[sy][lx - 1].type)) leftWater++;
+                  if (lx < CHUNK_SIZE - 1 && WATER_TYPES.has(tiles[sy][lx + 1].type)) rightWater++;
                 }
                 const halfSpan = span / 2;
-                // At least half the cells above/below should be water (real river, not thin line)
-                if (aboveWater >= halfSpan && belowWater >= halfSpan) {
-                  // 55% chance to spawn a bridge
+                if (leftWater >= halfSpan && rightWater >= halfSpan) {
                   if (rng.next() < 0.55) {
-                    this._createBridgeLocation(cx, cy, tiles, locations, ox, oy, rng,
-                      waterStart, lx - 1, ly, span);
+                    this._createBridgeAtColumn(cx, cy, tiles, locations, ox, oy, rng,
+                      waterStart, ly - 1, lx, span);
                   }
                 }
               }
@@ -1498,10 +1525,10 @@ export class ChunkManager {
     }
   }
 
-  _createBridgeLocation(cx, cy, tiles, locations, ox, oy, rng, startX, endX, ly, span) {
-    const midX = Math.floor((startX + endX) / 2);
-    const wx = ox + midX;
-    const wy = oy + ly;
+  _createBridgeAtColumn(cx, cy, tiles, locations, ox, oy, rng, startY, endY, lx, span) {
+    const midY = Math.floor((startY + endY) / 2);
+    const wx = ox + lx;
+    const wy = oy + midY;
 
     // Check not too close to other locations
     for (const loc of locations) {
@@ -1529,7 +1556,7 @@ export class ChunkManager {
     else if (stateRoll < 0.80) bridgeState = 2;   // empty
     else bridgeState = 3;                          // broken
 
-    const id = (cx + 50000) * 100000 + (cy + 50000) * 10 + 9; // use 9 to avoid collision with regular location ids
+    const id = (cx + 50000) * 100000 + (cy + 50000) * 10 + 9;
     const bridgeName = this._generateName(rng, 'camp').replace(/ Camp| Den| Crossing| Lodge| Waypost/, '') + ' Bridge';
 
     const loc = {
@@ -1539,42 +1566,45 @@ export class ChunkManager {
       x: wx, y: wy,
       population: 0,
       difficulty: 2 + rng.nextInt(0, 3),
-      bridgeState,        // 0=enemies+shops, 1=enemies, 2=empty, 3=broken
+      bridgeState,
       bridgeSpan: span,
-      bridgeStartX: ox + startX,
-      bridgeEndX: ox + endX,
+      bridgeStartY: oy + startY,
+      bridgeEndY: oy + endY,
+      bridgeX: wx,
+      // Legacy compat: map to old fields for bridge dungeon generator
+      bridgeStartX: wx,
+      bridgeEndX: wx,
       bridgeY: wy,
-      discovered: false,  // becomes true after player enters
-      markedBroken: false, // becomes true if player discovers it's broken
+      discovered: false,
+      markedBroken: false,
     };
     locations.push(loc);
     this.locationMap.set(`${wx},${wy}`, loc);
 
-    // Place bridge entrance tiles on both sides and bridge span on the world map
-    // West entrance (land side)
-    const westX = startX - 1;
-    if (westX >= 0 && westX < CHUNK_SIZE) {
-      tiles[ly][westX] = tile('BRIDGE_ENTRANCE', '\u2302', '#AA8866', '#332211', true,
-        { biome: 'bridge', locationId: id, bridgeSide: 'west' });
-      this.locationMap.set(`${ox + westX},${wy}`, loc);
+    // North entrance (land side)
+    const northY = startY - 1;
+    if (northY >= 0 && northY < CHUNK_SIZE) {
+      tiles[northY][lx] = tile('BRIDGE_ENTRANCE', '\u2302', '#AA8866', '#332211', true,
+        { biome: 'bridge', locationId: id, bridgeSide: 'north' });
+      this.locationMap.set(`${wx},${oy + northY}`, loc);
     }
-    // East entrance (land side)
-    const eastX = endX + 1;
-    if (eastX >= 0 && eastX < CHUNK_SIZE) {
-      tiles[ly][eastX] = tile('BRIDGE_ENTRANCE', '\u2302', '#AA8866', '#332211', true,
-        { biome: 'bridge', locationId: id, bridgeSide: 'east' });
-      this.locationMap.set(`${ox + eastX},${wy}`, loc);
+    // South entrance (land side)
+    const southY = endY + 1;
+    if (southY >= 0 && southY < CHUNK_SIZE) {
+      tiles[southY][lx] = tile('BRIDGE_ENTRANCE', '\u2302', '#AA8866', '#332211', true,
+        { biome: 'bridge', locationId: id, bridgeSide: 'south' });
+      this.locationMap.set(`${wx},${oy + southY}`, loc);
     }
 
-    // Draw bridge structure across the water on world map
-    for (let bx = startX; bx <= endX; bx++) {
-      if (bx >= 0 && bx < CHUNK_SIZE) {
-        tiles[ly][bx] = tile('BRIDGE', '=', '#887766', '#222211', false,
+    // Draw bridge structure across the water (vertically)
+    for (let by = startY; by <= endY; by++) {
+      if (by >= 0 && by < CHUNK_SIZE) {
+        tiles[by][lx] = tile('BRIDGE', '=', '#887766', '#222211', false,
           { biome: 'bridge', locationId: id });
       }
     }
     // Center marker
-    tiles[ly][midX] = tile('LOCATION', '\u2302', '#CCAA88', '#332211', true,
+    tiles[midY][lx] = tile('LOCATION', '\u2302', '#CCAA88', '#332211', true,
       { biome: 'bridge', locationId: id });
   }
 
@@ -1767,7 +1797,7 @@ export class ChunkManager {
 
   _findPath(sx, sy, ex, ey) {
     const self = this;
-    const DEEP_WATER = new Set(['OCEAN', 'DEEP_WATER', 'VERY_DEEP_WATER', 'MOUNTAIN']);
+    const DEEP_WATER = new Set(['OCEAN', 'DEEP_WATER', 'VERY_DEEP_WATER', 'MOUNTAIN', 'RIVER_WATER']);
     const isWalkable = (x, y) => {
       const t = self.getTile(x, y);
       if (DEEP_WATER.has(t.type)) return false;

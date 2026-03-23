@@ -366,6 +366,7 @@ const TYPE_PATTERNS = {
   OCEAN:          { 2: WATER_2x2, 3: WATER_3x3 },
   MEDIUM_WATER:   { 2: WATER_2x2, 3: WATER_3x3 },
   SHALLOWS:       { 2: WATER_2x2, 3: WATER_3x3 },
+  RIVER_WATER:    { 2: WATER_2x2, 3: WATER_3x3 },
   TIDAL_POOL:     { 2: WATER_2x2, 3: WATER_3x3 },
   SHOAL:          { 2: WATER_2x2, 3: WATER_3x3 },
   DEEP_OCEAN:     { 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },

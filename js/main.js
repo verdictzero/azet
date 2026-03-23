@@ -1281,9 +1281,12 @@ class Game {
     this.currentFloor = 0;
 
     // Determine which side the player approaches from
-    const px = this.player.position.x;
-    const bridgeMidX = Math.floor((location.bridgeStartX + location.bridgeEndX) / 2);
-    const enterFromWest = px <= bridgeMidX;
+    // Vertical bridges (rivers flow left-to-right): check Y position relative to bridge center
+    const py = this.player.position.y;
+    const bridgeMidY = location.bridgeStartY != null
+      ? Math.floor((location.bridgeStartY + location.bridgeEndY) / 2)
+      : location.bridgeY;
+    const enterFromWest = py <= bridgeMidY; // "west" = north side in dungeon terms
 
     const dungeon = this.bridgeGen.generate(rng, location);
     this.currentDungeon = dungeon;
@@ -1383,14 +1386,15 @@ class Game {
 
       // Place player on the correct side of the bridge
       if (bridgeLoc) {
+        const bx = bridgeLoc.bridgeX != null ? bridgeLoc.bridgeX : bridgeLoc.x;
         if (exitSide === 'east') {
-          // Exit on east side — one tile east of bridge end
-          this.player.position.x = bridgeLoc.bridgeEndX + 1;
-          this.player.position.y = bridgeLoc.bridgeY;
+          // Exit on south side — one tile south of bridge end
+          this.player.position.x = bx;
+          this.player.position.y = (bridgeLoc.bridgeEndY != null ? bridgeLoc.bridgeEndY : bridgeLoc.bridgeY) + 1;
         } else {
-          // Exit on west side — one tile west of bridge start
-          this.player.position.x = bridgeLoc.bridgeStartX - 1;
-          this.player.position.y = bridgeLoc.bridgeY;
+          // Exit on north side — one tile north of bridge start
+          this.player.position.x = bx;
+          this.player.position.y = (bridgeLoc.bridgeStartY != null ? bridgeLoc.bridgeStartY : bridgeLoc.bridgeY) - 1;
         }
       } else if (this.currentDungeonLocation) {
         this.player.position.x = this.currentDungeonLocation.x;
@@ -1406,9 +1410,9 @@ class Game {
       this.setState('OVERWORLD');
 
       if (exitSide === 'east') {
-        this.ui.addMessage('You emerge from the east side of the bridge.', COLORS.WHITE);
+        this.ui.addMessage('You emerge from the south side of the bridge.', COLORS.WHITE);
       } else {
-        this.ui.addMessage('You emerge from the west side of the bridge.', COLORS.WHITE);
+        this.ui.addMessage('You emerge from the north side of the bridge.', COLORS.WHITE);
       }
     });
   }
@@ -1416,20 +1420,42 @@ class Game {
   _markBridgeBroken(bridgeLoc) {
     // Replace bridge tiles on the world map with red X markers
     if (!this.overworld) return;
-    const y = bridgeLoc.bridgeY;
-    for (let wx = bridgeLoc.bridgeStartX; wx <= bridgeLoc.bridgeEndX; wx++) {
-      const cx = Math.floor(wx / 32); // CHUNK_SIZE = 32
-      const cy = Math.floor(y / 32);
-      const key = `${cx},${cy}`;
-      const chunk = this.overworld.chunks.get(key);
-      if (chunk) {
-        const lx = ((wx % 32) + 32) % 32;
-        const ly = ((y % 32) + 32) % 32;
-        if (chunk.tiles[ly] && chunk.tiles[ly][lx]) {
-          chunk.tiles[ly][lx] = {
-            type: 'BROKEN_BRIDGE', char: 'X', fg: '#FF2222', bg: '#220000',
-            walkable: false, biome: 'bridge', broken: true,
-          };
+    if (bridgeLoc.bridgeStartY != null) {
+      // Vertical bridge (new horizontal river system)
+      const x = bridgeLoc.bridgeX;
+      for (let wy = bridgeLoc.bridgeStartY; wy <= bridgeLoc.bridgeEndY; wy++) {
+        const cx = Math.floor(x / 32);
+        const cy = Math.floor(wy / 32);
+        const key = `${cx},${cy}`;
+        const chunk = this.overworld.chunks.get(key);
+        if (chunk) {
+          const lx = ((x % 32) + 32) % 32;
+          const ly = ((wy % 32) + 32) % 32;
+          if (chunk.tiles[ly] && chunk.tiles[ly][lx]) {
+            chunk.tiles[ly][lx] = {
+              type: 'BROKEN_BRIDGE', char: 'X', fg: '#FF2222', bg: '#220000',
+              walkable: false, biome: 'bridge', broken: true,
+            };
+          }
+        }
+      }
+    } else {
+      // Legacy horizontal bridge
+      const y = bridgeLoc.bridgeY;
+      for (let wx = bridgeLoc.bridgeStartX; wx <= bridgeLoc.bridgeEndX; wx++) {
+        const cx = Math.floor(wx / 32);
+        const cy = Math.floor(y / 32);
+        const key = `${cx},${cy}`;
+        const chunk = this.overworld.chunks.get(key);
+        if (chunk) {
+          const lx = ((wx % 32) + 32) % 32;
+          const ly = ((y % 32) + 32) % 32;
+          if (chunk.tiles[ly] && chunk.tiles[ly][lx]) {
+            chunk.tiles[ly][lx] = {
+              type: 'BROKEN_BRIDGE', char: 'X', fg: '#FF2222', bg: '#220000',
+              walkable: false, biome: 'bridge', broken: true,
+            };
+          }
         }
       }
     }
@@ -5016,6 +5042,7 @@ class Game {
         DEEP_OCEAN:  { hMin: 200, hMax: 240, int: 0.10, spd: 0.6,  rad: 1, pat: 'wave' },
         DEEP_LAKE:   { hMin: 200, hMax: 240, int: 0.10, spd: 0.6,  rad: 1, pat: 'wave' },
         SHALLOWS:    { hMin: 170, hMax: 210, int: 0.14, spd: 1.0,  rad: 1, pat: 'wave' },
+        RIVER_WATER: { hMin: 175, hMax: 210, int: 0.13, spd: 0.9,  rad: 1, pat: 'wave' },
         WATER:       { hMin: 180, hMax: 215, int: 0.12, spd: 0.8,  rad: 1, pat: 'wave' },
         TIDAL_POOL:  { hMin: 175, hMax: 220, int: 0.16, spd: 1.2,  rad: 1, pat: 'wave' },
         RIVER:       { hMin: 180, hMax: 210, int: 0.13, spd: 0.9,  rad: 1, pat: 'wave' },
