@@ -3361,7 +3361,7 @@ export class UIManager {
 
   // ─── ALMANAC (World History Viewer) ───
 
-  drawAlmanac(worldHistoryGen, messageLog) {
+  drawAlmanac(worldHistoryGen, messageLog, player) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -3371,11 +3371,13 @@ export class UIManager {
     const py = Math.floor((rows - panelH) / 2);
     const bg = COLORS.FF_BLUE_DARK;
 
-    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Almanac ');
+    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Discovery Journal ');
 
-    // Tab bar (same pattern as drawHelp)
-    const tabs = ['Preamble', 'Timeline', 'Civs', 'Figures', 'Artifacts', 'Scars', 'Log'];
+    // New tabs: discovery-based instead of omniscient
+    const tabs = ['Journal', 'History', 'People', 'Artifacts', 'Rumors'];
     const tab = this.almanacTab || 0;
+    // Clamp tab to valid range for new tab count
+    const clampedTab = Math.min(tab, tabs.length - 1);
     const usableW = panelW - 4;
     const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
 
@@ -3403,7 +3405,7 @@ export class UIManager {
       let tx = startX;
       for (const i of rowIndices) {
         const label = tabLabels[i];
-        const color = i === tab ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
+        const color = i === clampedTab ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK;
         r.drawString(tx, py + 1 + rowIdx, label, color, bg);
         tx += label.length + 1;
       }
@@ -3415,302 +3417,141 @@ export class UIManager {
     const contentH = panelH - 4 - tabBarHeight;
     const w = panelW - 4;
 
-    // Build content lines: array of { t: string, c: color }
     const lines = [];
     const addLine = (text, color) => lines.push({ t: text || '', c: color || COLORS.WHITE });
     const addHeader = (text, color) => lines.push({ t: text, c: color || COLORS.BRIGHT_YELLOW });
     const addBlank = () => lines.push({ t: '', c: COLORS.WHITE });
 
-    const summary = worldHistoryGen ? worldHistoryGen.getSummary() : null;
+    const dl = player?.discoveredLore || {};
+    const emptyMsg = 'You haven\'t learned anything about this yet.';
+    const hintMsg = 'Talk to scholars, explore ruins, and listen carefully.';
 
-    if (!summary) {
-      addLine('No world history available.', COLORS.BRIGHT_BLACK);
-      addLine('Start a new game to generate history.', COLORS.BRIGHT_BLACK);
-    } else if (tab === 0) {
-      // Preamble / Pre-History
-      const pre = summary.preHistory;
-      if (pre && pre.vessel) {
-        addHeader('THE VESSEL', COLORS.BRIGHT_CYAN);
-        addLine(`  Name: ${pre.vessel.fullName || pre.vessel.name}`);
-        addLine(`  Class: ${pre.vessel.class || 'Colony Ship'}`);
-        addLine(`  Dimensions: ${pre.vessel.dimensions || 'Unknown'}`);
-        addLine(`  Crew: ${pre.vessel.crew ? pre.vessel.crew.toLocaleString() : 'Unknown'}`);
-        addLine(`  Destination: ${pre.vessel.destinationName || pre.vessel.destination || 'Unknown'}`);
-        addLine(`  Launch Year: ${pre.vessel.launchYear || 'Unknown'}`);
-        addBlank();
-
-        if (pre.builders) {
-          addHeader('THE BUILDERS', COLORS.BRIGHT_CYAN);
-          addLine(`  ${pre.builders.name || 'Unknown Organization'}`);
-          if (pre.builders.description) {
-            const desc = wordWrap(pre.builders.description, w - 4);
-            for (const line of desc) addLine(`  ${line}`, COLORS.BRIGHT_BLACK);
-          }
-          if (pre.builders.keyFigures) {
-            addBlank();
-            for (const fig of pre.builders.keyFigures) {
-              addLine(`  ${fig.name} - ${fig.title || fig.role}`, COLORS.BRIGHT_WHITE);
-            }
-          }
-          addBlank();
-        }
-
-        if (pre.mission) {
-          addHeader('THE MISSION', COLORS.BRIGHT_CYAN);
-          if (pre.mission.purpose) addLine(`  ${pre.mission.purpose}`);
-          if (pre.mission.method) addLine(`  Method: ${pre.mission.method}`, COLORS.BRIGHT_BLACK);
-          if (pre.mission.estimatedDuration) addLine(`  Duration: ${pre.mission.estimatedDuration} years`, COLORS.BRIGHT_BLACK);
-          addBlank();
-        }
-
-        if (pre.preHistoryEras) {
-          addHeader('PRE-HISTORY ERAS', COLORS.BRIGHT_CYAN);
-          for (const era of pre.preHistoryEras) {
-            addBlank();
-            const range = era.yearRange ? `[${era.yearRange[0]} to ${era.yearRange[1]}]` : '';
-            addLine(`  ${era.name} ${range}`, COLORS.BRIGHT_WHITE);
-            if (era.description) {
-              const desc = wordWrap(era.description, w - 4);
-              for (const line of desc) addLine(`  ${line}`, COLORS.BRIGHT_BLACK);
-            }
-            if (era.keyEvents) {
-              for (const ev of era.keyEvents) addLine(`    - ${ev}`, COLORS.WHITE);
-            }
-          }
-          addBlank();
-        }
-
-        if (pre.theForgetting) {
-          addHeader('THE FORGETTING', COLORS.BRIGHT_RED);
-          if (pre.theForgetting.causes) {
-            for (const cause of pre.theForgetting.causes) {
-              addLine(`  - ${cause}`, COLORS.WHITE);
-            }
-          }
-          if (pre.theForgetting.fragmentedMemories) {
-            addBlank();
-            addLine('  Fragmented Memories:', COLORS.BRIGHT_BLACK);
-            for (const mem of pre.theForgetting.fragmentedMemories) {
-              addLine(`    "${mem}"`, COLORS.BRIGHT_BLACK);
-            }
-          }
-        }
-      } else {
-        addLine('Pre-history data not available.', COLORS.BRIGHT_BLACK);
-      }
-    } else if (tab === 1) {
-      // Timeline — organized by eras with detail level indicators
-      addHeader(`WORLD TIMELINE — ${summary.totalYears.toLocaleString()} Years of History`, COLORS.BRIGHT_CYAN);
+    if (clampedTab === 0) {
+      // Journal — chronological summary of all discoveries
+      addHeader('DISCOVERY JOURNAL', COLORS.BRIGHT_CYAN);
       addBlank();
 
-      // Show eras as section headers with events grouped under them
-      const eras = summary.eras || [];
-      const timeline = summary.timeline || [];
-
-      // Pre-history events first
-      const preEvents = timeline.filter(e => e.isPreHistory);
-      if (preEvents.length > 0) {
-        addLine('  \u2550\u2550\u2550 PRE-HISTORY \u2550\u2550\u2550', COLORS.BRIGHT_YELLOW);
-        for (const ev of preEvents) {
-          if (ev.type === 'pre_history_era') {
-            addBlank();
-            addLine(`  ${ev.description.split(':')[0]}`, COLORS.BRIGHT_YELLOW);
-          } else {
-            const desc = wordWrap(`    [${ev.year}] ${ev.description}`, w);
-            for (let i = 0; i < desc.length; i++) {
-              addLine(desc[i], i === 0 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_BLACK);
-            }
-          }
+      // Gather all discovered entries, sorted by discovery time
+      const allEntries = [];
+      for (const [cat, entries] of Object.entries(dl)) {
+        if (!Array.isArray(entries)) continue;
+        for (const entry of entries) {
+          allEntries.push({ ...entry, category: cat });
         }
+      }
+      allEntries.sort((a, b) => (a.discoveredAt || 0) - (b.discoveredAt || 0));
+
+      if (allEntries.length === 0) {
+        addLine(`  ${emptyMsg}`, COLORS.BRIGHT_BLACK);
+        addLine(`  ${hintMsg}`, COLORS.BRIGHT_BLACK);
         addBlank();
-      }
-
-      // Post-Year-Zero eras
-      for (const era of eras) {
-        const detailTag = era.detailLevel === 'mythic' ? '\u2606 Legend' : era.detailLevel === 'ancient' ? '\u2605 Ancient' : '\u2726 Recent';
-        const headerColor = era.detailLevel === 'mythic' ? COLORS.BRIGHT_BLACK : era.detailLevel === 'ancient' ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_CYAN;
-        addLine(`  \u2550\u2550 ${era.name} (${era.startYear}-${era.endYear}) [${detailTag}] \u2550\u2550`, headerColor);
-
-        // Show era summary
-        if (era.summary) {
-          const sumLines = wordWrap(`    ${era.summary}`, w);
-          for (const l of sumLines) addLine(l, COLORS.BRIGHT_BLACK);
-        }
-
-        // For mythic eras, only show major events
-        const eraEvents = (era.events || []).filter(e =>
-          era.detailLevel === 'mythic' ? (e.importance === 'major' || e.type === 'era_start') :
-          era.detailLevel === 'ancient' ? (e.importance === 'major' || e.type === 'era_start' || e.type === 'war_start' || e.type === 'catastrophe') :
-          true
-        );
-
-        // Limit events shown per era to prevent overwhelming the scroll
-        const maxEvents = era.detailLevel === 'mythic' ? 5 : era.detailLevel === 'ancient' ? 10 : 20;
-        const shown = eraEvents.slice(0, maxEvents);
-
-        for (const ev of shown) {
-          if (ev.type === 'era_start') continue; // Already shown in header
-          const yearStr = `[${ev.year}]`;
-          const color = ev.type === 'war_start' || ev.type === 'great_crusade' ? COLORS.BRIGHT_RED
-            : ev.type === 'catastrophe' || ev.type === 'plague_spread' || ev.type === 'cyclic_collapse' ? COLORS.BRIGHT_RED
-            : ev.type === 'golden_age' || ev.type === 'tech_advancement' ? COLORS.BRIGHT_GREEN
-            : ev.type === 'civ_founded' || ev.type === 'civ_revived' ? COLORS.BRIGHT_CYAN
-            : ev.type === 'machine_cult_rise' || ev.type === 'messiah_event' ? COLORS.BRIGHT_MAGENTA
-            : ev.type === 'megastructure_discovery' || ev.type === 'encyclopedia_project' ? COLORS.BRIGHT_BLUE
-            : COLORS.WHITE;
-          const desc = wordWrap(`    ${yearStr} ${ev.description}`, w);
-          for (let i = 0; i < desc.length; i++) {
-            addLine(desc[i], i === 0 ? color : COLORS.BRIGHT_BLACK);
-          }
-        }
-
-        if (eraEvents.length > maxEvents) {
-          addLine(`    ...and ${eraEvents.length - maxEvents} more events`, COLORS.BRIGHT_BLACK);
-        }
-        addBlank();
-      }
-    } else if (tab === 2) {
-      // Civilizations
-      addHeader('CIVILIZATIONS', COLORS.BRIGHT_CYAN);
-      const civs = summary.civilizations || [];
-      for (const civ of civs) {
-        addBlank();
-        const status = civ.isActive ? '[Active]' : '[Fallen]';
-        const statusColor = civ.isActive ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED;
-        addLine(`  ${civ.name} ${status}`, statusColor);
-        if (civ.government) addLine(`    Government: ${civ.government}`, COLORS.WHITE);
-        if (civ.culturalValues && civ.culturalValues.length) addLine(`    Values: ${civ.culturalValues.join(', ')}`, COLORS.BRIGHT_BLACK);
-        if (civ.population) addLine(`    Population: ${civ.population.toLocaleString()}`, COLORS.WHITE);
-        if (civ.militaryStrength) addLine(`    Military: ${civ.militaryStrength}`, COLORS.WHITE);
-        if (civ.religion) addLine(`    Religion: ${civ.religion}`, COLORS.BRIGHT_BLACK);
-        if (civ.homeRegion) addLine(`    Home: ${civ.homeRegion}`, COLORS.BRIGHT_BLACK);
-        if (civ.controlledRegions && civ.controlledRegions.length) {
-          addLine(`    Regions: ${civ.controlledRegions.join(', ')}`, COLORS.BRIGHT_BLACK);
-        }
-      }
-    } else if (tab === 3) {
-      // Historical Figures
-      addHeader('HISTORICAL FIGURES', COLORS.BRIGHT_CYAN);
-      const figures = summary.historicalFigures || [];
-      for (const fig of figures) {
-        addBlank();
-        const name = fig.fullName || (fig.name && fig.name.full) || fig.name || 'Unknown';
-        const status = fig.isAlive ? '[Alive]' : '[Dead]';
-        const statusColor = fig.isAlive ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED;
-        addLine(`  ${name} ${status}`, statusColor);
-        if (fig.title) addLine(`    Title: ${fig.title}`, COLORS.WHITE);
-        if (fig.bornYear) {
-          const lifespan = fig.deathYear ? `${fig.bornYear} - ${fig.deathYear}` : `Born ${fig.bornYear}`;
-          addLine(`    Years: ${lifespan}`, COLORS.BRIGHT_BLACK);
-        }
-        if (fig.deeds && fig.deeds.length) {
-          for (const deed of fig.deeds.slice(0, 3)) {
-            const deedText = typeof deed === 'string' ? deed : deed.description || deed.deed || JSON.stringify(deed);
-            const wrapped = wordWrap(`    - ${deedText}`, w);
-            for (const line of wrapped) addLine(line, COLORS.WHITE);
-          }
-        }
-      }
-    } else if (tab === 4) {
-      // Artifacts & Religions
-      const artifacts = summary.artifacts || [];
-      const religions = summary.religions || [];
-
-      if (artifacts.length > 0) {
-        addHeader('ARTIFACTS', COLORS.BRIGHT_CYAN);
-        for (const art of artifacts) {
-          addBlank();
-          const lost = art.isLost ? ' [Lost]' : '';
-          const cursed = art.cursed ? ' [Cursed]' : '';
-          addLine(`  ${art.name}${cursed}${lost}`, art.cursed ? COLORS.BRIGHT_RED : COLORS.BRIGHT_WHITE);
-          if (art.description) {
-            const desc = wordWrap(art.description, w - 4);
-            for (const line of desc) addLine(`    ${line}`, COLORS.BRIGHT_BLACK);
-          }
-          if (art.type) addLine(`    Type: ${art.type}`, COLORS.WHITE);
-          if (art.creatorName) addLine(`    Creator: ${art.creatorName}`, COLORS.WHITE);
-          if (art.material) addLine(`    Material: ${art.material}`, COLORS.WHITE);
-        }
-      }
-
-      if (religions.length > 0) {
-        addBlank();
-        addHeader('RELIGIONS', COLORS.BRIGHT_CYAN);
-        for (const rel of religions) {
-          addBlank();
-          addLine(`  ${rel.name}`, COLORS.BRIGHT_WHITE);
-          if (rel.deity) {
-            const deity = typeof rel.deity === 'string' ? rel.deity : rel.deity.fullName || rel.deity.name || 'Unknown';
-            const domain = (rel.deity && rel.deity.domain) ? ` (${rel.deity.domain})` : '';
-            addLine(`    Deity: ${deity}${domain}`, COLORS.WHITE);
-          }
-          if (rel.followers) addLine(`    Followers: ${rel.followers.toLocaleString()}`, COLORS.BRIGHT_BLACK);
-          if (rel.tenets && rel.tenets.length) {
-            addLine(`    Tenets: ${rel.tenets.slice(0, 3).join(', ')}`, COLORS.BRIGHT_BLACK);
-          }
-        }
-      }
-
-      if (artifacts.length === 0 && religions.length === 0) {
-        addLine('No artifacts or religions recorded.', COLORS.BRIGHT_BLACK);
-      }
-    } else if (tab === 5) {
-      // Map Scars — historical events that left visible marks on the world
-      addHeader('MAP SCARS — The Land Remembers', COLORS.BRIGHT_CYAN);
-      addBlank();
-      const scars = summary.mapScars || [];
-      if (scars.length === 0) {
-        addLine('  No historical scars mark this world.', COLORS.BRIGHT_BLACK);
+        addLine('  Your journey of discovery begins now.', COLORS.BRIGHT_BLACK);
+        addLine('  Seek out scholars and priests for knowledge.', COLORS.BRIGHT_BLACK);
+        addLine('  Listen to rumors at taverns.', COLORS.BRIGHT_BLACK);
+        addLine('  Explore the world to uncover its secrets.', COLORS.BRIGHT_BLACK);
       } else {
-        // Group scars by type
-        const typeNames = {
-          slag_zone: 'Reactor Slag Zones', void_rift: 'Void Rifts', breach_zone: 'Hull Breaches',
-          war_ruins: 'War Ruins', monument: 'Monuments', plague_zone: 'Plague Grounds',
-          abandoned_district: 'Abandoned Districts', transformed_biome: 'Transformed Regions',
-          fortress: 'Ancient Fortresses', machine_shrine: 'Machine Shrines',
-          hidden_archive: 'Hidden Archives', megastructure: 'Megastructure Discoveries',
+        const catLabels = {
+          locations: 'Location', history: 'History', figures: 'Figure',
+          artifacts: 'Artifact', civilizations: 'Civilization', forbidden: 'Forbidden',
+          rumors: 'Rumor', traditions: 'Tradition', religions: 'Religion',
         };
-        const typeIcons = {
-          slag_zone: '\u2622', void_rift: '\u2727', breach_zone: '%',
-          war_ruins: '\u00a7', monument: '\u2666', plague_zone: '\u2620',
-          abandoned_district: '\u25A1', transformed_biome: '\u2042',
-          fortress: '\u2302', machine_shrine: '\u2726',
-          hidden_archive: '\u2261', megastructure: '\u25A0',
+        const catColors = {
+          locations: COLORS.BRIGHT_GREEN, history: COLORS.BRIGHT_CYAN,
+          figures: COLORS.BRIGHT_WHITE, artifacts: COLORS.BRIGHT_YELLOW,
+          civilizations: COLORS.BRIGHT_MAGENTA, forbidden: COLORS.BRIGHT_RED,
+          rumors: COLORS.WHITE, traditions: COLORS.BRIGHT_BLUE,
+          religions: COLORS.BRIGHT_MAGENTA,
         };
-        const grouped = {};
-        for (const scar of scars) {
-          const key = scar.type || 'other';
-          if (!grouped[key]) grouped[key] = [];
-          grouped[key].push(scar);
-        }
-        for (const [type, scarList] of Object.entries(grouped)) {
-          const icon = typeIcons[type] || '?';
-          addLine(`  ${icon} ${typeNames[type] || type.toUpperCase()} (${scarList.length})`, COLORS.BRIGHT_YELLOW);
-          for (const scar of scarList.slice(0, 8)) {
-            const desc = wordWrap(`    ${scar.description || 'Unknown event'} — ${scar.regionName || 'unknown region'}`, w);
-            const color = scar.severity > 0.7 ? COLORS.BRIGHT_RED : scar.severity > 0.4 ? COLORS.WHITE : COLORS.BRIGHT_BLACK;
-            for (const line of desc) addLine(line, color);
-          }
-          if (scarList.length > 8) {
-            addLine(`    ...and ${scarList.length - 8} more`, COLORS.BRIGHT_BLACK);
-          }
+
+        addLine(`  ${allEntries.length} discoveries recorded`, COLORS.BRIGHT_WHITE);
+        addBlank();
+
+        for (const entry of allEntries) {
+          const label = catLabels[entry.category] || entry.category;
+          const color = catColors[entry.category] || COLORS.WHITE;
+          addLine(`  [${label}] from ${entry.source || 'Unknown'}`, color);
+          const wrapped = wordWrap(entry.text, w - 4);
+          for (const line of wrapped) addLine(`    ${line}`, COLORS.BRIGHT_BLACK);
           addBlank();
         }
-        addLine(`  Total: ${scars.length} historical scars mark the landscape`, COLORS.BRIGHT_WHITE);
       }
-    } else if (tab === 6) {
-      // Message Log (reuse console log logic)
-      addHeader('MESSAGE LOG', COLORS.BRIGHT_CYAN);
+    } else if (clampedTab === 1) {
+      // History — discovered historical events, wars, traditions, religions
+      addHeader('DISCOVERED HISTORY', COLORS.BRIGHT_CYAN);
       addBlank();
-      const log = messageLog || [];
-      const total = log.length;
-      if (total === 0) {
-        addLine('No messages yet.', COLORS.BRIGHT_BLACK);
+
+      const historyEntries = [
+        ...(dl.history || []),
+        ...(dl.traditions || []),
+        ...(dl.religions || []),
+        ...(dl.civilizations || []),
+        ...(dl.forbidden || []),
+      ];
+
+      if (historyEntries.length === 0) {
+        addLine(`  ${emptyMsg}`, COLORS.BRIGHT_BLACK);
+        addLine(`  ${hintMsg}`, COLORS.BRIGHT_BLACK);
       } else {
-        // Oldest first
-        for (let i = total - 1; i >= 0; i--) {
-          const msg = log[i];
-          lines.push({ t: msg.text, c: msg.color || COLORS.WHITE });
+        for (const entry of historyEntries) {
+          addLine(`  Learned from ${entry.source || 'Unknown'}:`, COLORS.BRIGHT_YELLOW);
+          const wrapped = wordWrap(entry.text, w - 4);
+          for (const line of wrapped) addLine(`    ${line}`, COLORS.WHITE);
+          addBlank();
+        }
+      }
+    } else if (clampedTab === 2) {
+      // People — discovered historical figures and NPC stories
+      addHeader('PEOPLE & FIGURES', COLORS.BRIGHT_CYAN);
+      addBlank();
+
+      const figureEntries = dl.figures || [];
+      if (figureEntries.length === 0) {
+        addLine(`  ${emptyMsg}`, COLORS.BRIGHT_BLACK);
+        addLine('  Ask scholars about the great figures of history.', COLORS.BRIGHT_BLACK);
+      } else {
+        for (const entry of figureEntries) {
+          addLine(`  Learned from ${entry.source || 'Unknown'}:`, COLORS.BRIGHT_YELLOW);
+          const wrapped = wordWrap(entry.text, w - 4);
+          for (const line of wrapped) addLine(`    ${line}`, COLORS.WHITE);
+          addBlank();
+        }
+      }
+    } else if (clampedTab === 3) {
+      // Artifacts — discovered artifacts and relics
+      addHeader('ARTIFACTS & RELICS', COLORS.BRIGHT_CYAN);
+      addBlank();
+
+      const artifactEntries = dl.artifacts || [];
+      if (artifactEntries.length === 0) {
+        addLine(`  ${emptyMsg}`, COLORS.BRIGHT_BLACK);
+        addLine('  Explore ruins and ask scholars about lost relics.', COLORS.BRIGHT_BLACK);
+      } else {
+        for (const entry of artifactEntries) {
+          addLine(`  Learned from ${entry.source || 'Unknown'}:`, COLORS.BRIGHT_YELLOW);
+          const wrapped = wordWrap(entry.text, w - 4);
+          for (const line of wrapped) addLine(`    ${line}`, COLORS.WHITE);
+          addBlank();
+        }
+      }
+    } else if (clampedTab === 4) {
+      // Rumors — collected gossip and hearsay
+      addHeader('RUMORS & GOSSIP', COLORS.BRIGHT_CYAN);
+      addBlank();
+
+      const rumorEntries = [
+        ...(dl.rumors || []),
+        ...(dl.locations || []),
+      ];
+
+      if (rumorEntries.length === 0) {
+        addLine(`  ${emptyMsg}`, COLORS.BRIGHT_BLACK);
+        addLine('  Visit taverns and talk to people around town.', COLORS.BRIGHT_BLACK);
+      } else {
+        for (const entry of rumorEntries) {
+          addLine(`  ${entry.source || 'Someone'} said:`, COLORS.BRIGHT_YELLOW);
+          const wrapped = wordWrap(`"${entry.text}"`, w - 4);
+          for (const line of wrapped) addLine(`    ${line}`, COLORS.WHITE);
+          addBlank();
         }
       }
     }
@@ -3738,7 +3579,7 @@ export class UIManager {
 
     // Footer
     r.drawString(px + 2, py + panelH - 1,
-      'Left/Right:Tab  Up/Down:Scroll  1-6:Tab  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
+      'Left/Right:Tab  Up/Down:Scroll  1-5:Tab  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
   }
 
   // ─── CONSOLE LOG VIEWER ───
