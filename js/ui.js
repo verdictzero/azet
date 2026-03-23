@@ -1110,12 +1110,26 @@ export class UIManager {
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
+    // Group identical items by name for stacked display
+    const grouped = [];
+    const seen = new Map();
+    for (const item of player.inventory) {
+      if (seen.has(item.name)) {
+        grouped[seen.get(item.name)].count++;
+      } else {
+        seen.set(item.name, grouped.length);
+        grouped.push({ item, count: 1 });
+      }
+    }
+
     // Title box
     r.drawBox(px, py, panelW, 3, COLORS.FF_BORDER, bg);
     r.drawString(px + 2, py + 1, 'Items', COLORS.BRIGHT_WHITE, bg);
 
     // Item count
-    const countStr = `${player.inventory.length} items`;
+    const countStr = grouped.length !== player.inventory.length
+      ? `${grouped.length} types (${player.inventory.length} items)`
+      : `${player.inventory.length} items`;
     r.drawString(px + panelW - countStr.length - 2, py + 1, countStr, COLORS.BRIGHT_BLACK, bg);
 
     // Item list box
@@ -1123,22 +1137,22 @@ export class UIManager {
     const listH = panelH - 9;
     r.drawBox(px, listY, panelW, listH, COLORS.FF_BORDER, bg);
 
-    const items = player.inventory;
     const maxVisible = listH - 2;
 
-    for (let i = 0; i < Math.min(items.length, maxVisible); i++) {
-      const item = items[i];
+    for (let i = 0; i < Math.min(grouped.length, maxVisible); i++) {
+      const { item, count } = grouped[i];
       const sel = i === this.selectedIndex;
       const equipped = (player.equipment && Object.values(player.equipment).some(e => e && e.id === item.id));
       const eqTag = equipped ? ' E' : '  ';
       const cursor = sel ? ICONS.cursor : ' ';
+      const countPrefix = count > 1 ? `${count}x ` : '';
 
       r.drawString(px + 2, listY + 1 + i,
-        cursor + ' ' + item.char + ' ' + item.name.substring(0, panelW - 14) + eqTag,
+        cursor + ' ' + item.char + ' ' + countPrefix + item.name.substring(0, panelW - 14 - countPrefix.length) + eqTag,
         sel ? COLORS.BRIGHT_WHITE : (item.color || COLORS.WHITE), bg, panelW - 4);
     }
 
-    if (items.length === 0) {
+    if (grouped.length === 0) {
       r.drawString(px + 4, listY + 2, 'No items.', COLORS.BRIGHT_BLACK, bg);
     }
 
@@ -1147,9 +1161,10 @@ export class UIManager {
     const detH = 6;
     r.drawBox(px, detY, panelW, detH, COLORS.FF_BORDER, bg);
 
-    if (items.length > 0 && this.selectedIndex < items.length) {
-      const item = items[this.selectedIndex];
-      r.drawString(px + 2, detY + 1, item.name, COLORS.BRIGHT_WHITE, bg, panelW - 4);
+    if (grouped.length > 0 && this.selectedIndex < grouped.length) {
+      const { item, count } = grouped[this.selectedIndex];
+      const nameStr = count > 1 ? `${item.name} (x${count})` : item.name;
+      r.drawString(px + 2, detY + 1, nameStr, COLORS.BRIGHT_WHITE, bg, panelW - 4);
       if (item.description) {
         r.drawString(px + 2, detY + 2, item.description, COLORS.WHITE, bg, panelW - 4);
       }
@@ -1161,7 +1176,140 @@ export class UIManager {
     }
 
     r.drawString(px + 2, detY + detH - 1,
-      'E:Equip  D:Drop  U:Use  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+      'D:Drop  U:Use  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+  }
+
+  // ─── EQUIPMENT MENU (slot-based) ───
+
+  drawEquipmentMenu(player, menuState) {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.FF_BLUE_DARK;
+    const panelW = Math.min(cols - 4, 60);
+    const panelH = Math.min(rows - 4, 30);
+    const px = Math.floor((cols - panelW) / 2);
+    const py = Math.floor((rows - panelH) / 2);
+
+    const SLOT_KEYS = ['head', 'chest', 'hands', 'legs', 'feet', 'mainHand', 'offHand', 'ring', 'amulet'];
+    const SLOT_LABELS = ['Head', 'Body', 'Arms', 'Legs', 'Feet', 'R.Hand', 'L.Hand', 'Ring', 'Amulet'];
+    const SLOT_ITEMS = {
+      head: ['helmet'], chest: ['chestplate'], hands: ['gloves'],
+      legs: ['leggings'], feet: ['boots'],
+      mainHand: ['sword', 'axe', 'mace', 'dagger', 'staff', 'bow'],
+      offHand: ['shield'], ring: ['ring'], amulet: ['amulet'],
+    };
+
+    if (!menuState) return;
+
+    if (menuState.level === 'slots') {
+      // Title
+      r.drawBox(px, py, panelW, 3, COLORS.FF_BORDER, bg);
+      r.drawString(px + 2, py + 1, 'Equipment', COLORS.BRIGHT_WHITE, bg);
+
+      // Slot list
+      const listY = py + 3;
+      const listH = SLOT_KEYS.length + 2;
+      r.drawBox(px, listY, panelW, listH, COLORS.FF_BORDER, bg);
+
+      for (let i = 0; i < SLOT_KEYS.length; i++) {
+        const slot = SLOT_KEYS[i];
+        const label = SLOT_LABELS[i];
+        const equipped = player.equipment[slot];
+        const sel = i === menuState.slotIndex;
+        const cursor = sel ? ICONS.cursor : ' ';
+        const itemStr = equipped ? equipped.name : '\u2014empty\u2014';
+        const itemColor = equipped ? (equipped.color || COLORS.WHITE) : COLORS.BRIGHT_BLACK;
+
+        r.drawString(px + 2, listY + 1 + i,
+          cursor + ' ' + label.padEnd(8) + ' ',
+          sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
+        r.drawString(px + 13, listY + 1 + i,
+          itemStr.substring(0, panelW - 16),
+          sel ? COLORS.BRIGHT_WHITE : itemColor, bg, panelW - 15);
+      }
+
+      // Detail box
+      const detY = listY + listH;
+      const detH = panelH - 3 - listH;
+      if (detH > 2) {
+        r.drawBox(px, detY, panelW, detH, COLORS.FF_BORDER, bg);
+        const slot = SLOT_KEYS[menuState.slotIndex];
+        const equipped = player.equipment[slot];
+        if (equipped) {
+          r.drawString(px + 2, detY + 1, equipped.name, COLORS.BRIGHT_WHITE, bg, panelW - 4);
+          if (equipped.description) {
+            r.drawString(px + 2, detY + 2, equipped.description, COLORS.WHITE, bg, panelW - 4);
+          }
+          if (equipped.stats) {
+            const statStr = Object.entries(equipped.stats)
+              .map(([k, v]) => `${k}:${v > 0 ? '+' : ''}${v}`).join('  ');
+            r.drawString(px + 2, detY + 3, statStr, COLORS.BRIGHT_CYAN, bg, panelW - 4);
+          }
+        }
+        r.drawString(px + 2, detY + detH - 1,
+          'Enter:Browse  U:Unequip  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+      }
+    } else if (menuState.level === 'items') {
+      const slot = SLOT_KEYS[menuState.slotIndex];
+      const slotLabel = SLOT_LABELS[menuState.slotIndex];
+      const compatible = player.inventory.filter(i =>
+        SLOT_ITEMS[slot].includes(i.subtype) || SLOT_ITEMS[slot].includes(i.type)
+      );
+
+      // Title
+      r.drawBox(px, py, panelW, 3, COLORS.FF_BORDER, bg);
+      r.drawString(px + 2, py + 1, `Equip: ${slotLabel}`, COLORS.BRIGHT_WHITE, bg);
+
+      // Item list
+      const listY = py + 3;
+      const listH = panelH - 9;
+      r.drawBox(px, listY, panelW, listH, COLORS.FF_BORDER, bg);
+
+      const maxVisible = listH - 2;
+      // First entry is [Back]
+      const totalItems = compatible.length + 1;
+
+      for (let i = 0; i < Math.min(totalItems, maxVisible); i++) {
+        const sel = i === menuState.itemIndex;
+        const cursor = sel ? ICONS.cursor : ' ';
+
+        if (i === 0) {
+          r.drawString(px + 2, listY + 1 + i,
+            cursor + ' \u25C0 Back', sel ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK, bg, panelW - 4);
+        } else {
+          const item = compatible[i - 1];
+          r.drawString(px + 2, listY + 1 + i,
+            cursor + ' ' + item.char + ' ' + item.name.substring(0, panelW - 14),
+            sel ? COLORS.BRIGHT_WHITE : (item.color || COLORS.WHITE), bg, panelW - 4);
+        }
+      }
+
+      if (compatible.length === 0) {
+        r.drawString(px + 4, listY + 3, 'No compatible items.', COLORS.BRIGHT_BLACK, bg);
+      }
+
+      // Detail box
+      const detY = listY + listH;
+      const detH = 6;
+      r.drawBox(px, detY, panelW, detH, COLORS.FF_BORDER, bg);
+
+      if (menuState.itemIndex > 0 && menuState.itemIndex - 1 < compatible.length) {
+        const item = compatible[menuState.itemIndex - 1];
+        r.drawString(px + 2, detY + 1, item.name, COLORS.BRIGHT_WHITE, bg, panelW - 4);
+        if (item.description) {
+          r.drawString(px + 2, detY + 2, item.description, COLORS.WHITE, bg, panelW - 4);
+        }
+        if (item.stats) {
+          const statStr = Object.entries(item.stats)
+            .map(([k, v]) => `${k}:${v > 0 ? '+' : ''}${v}`).join('  ');
+          r.drawString(px + 2, detY + 3, statStr, COLORS.BRIGHT_CYAN, bg, panelW - 4);
+        }
+      }
+
+      r.drawString(px + 2, detY + detH - 1,
+        'Enter:Equip  Esc:Back', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+    }
   }
 
   // ─── CHARACTER SHEET (FF Status screen) ───
@@ -2099,8 +2247,18 @@ export class UIManager {
         const px = player.position.x - camX;
         const py = player.position.y - camY;
         if (px >= 0 && px < worldW && py >= 0 && py < worldH) {
+          const psx = viewLeft + px * density + entityOff;
+          const psy = viewTop + py * density + entityOff;
           const playerColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
-          r.drawChar(viewLeft + px * density + entityOff, viewTop + py * density + entityOff, '@', playerColor);
+          r.drawChar(psx, psy, '@', playerColor);
+
+          // Player targeting reticle (4 corners, pulsing)
+          const t = Date.now() % 1000;
+          const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
+          r.drawChar(psx - 1, psy - 1, '\u250C', reticleColor);
+          r.drawChar(psx + 1, psy - 1, '\u2510', reticleColor);
+          r.drawChar(psx - 1, psy + 1, '\u2514', reticleColor);
+          r.drawChar(psx + 1, psy + 1, '\u2518', reticleColor);
         }
       }
     }

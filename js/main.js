@@ -151,6 +151,7 @@ class Game {
     this._restItemSelectReturnState = null;
     this.GAMEPAD_MENU_ITEMS = [
       { label: 'Items',     icon: '\u2666', state: 'INVENTORY'     },
+      { label: 'Equipment', icon: '\u2620', action: 'equipment'    },
       { label: 'Rest',      icon: '\u25B2', action: 'rest'         },
       { label: 'Character', icon: '\u263A', state: 'CHARACTER'     },
       { label: 'Quests',    icon: '!',      state: 'QUEST_LOG'     },
@@ -1567,6 +1568,7 @@ class Game {
       case 'DIALOGUE': return this.handleDialogueInput(key);
       case 'SHOP': return this.handleShopInput(key);
       case 'INVENTORY': return this.handleInventoryInput(key);
+      case 'EQUIPMENT': return this.handleEquipmentInput(key);
       case 'CHARACTER': return this.handleGenericClose(key);
       case 'QUEST_LOG': return this.handleQuestLogInput(key);
       case 'MAP': return this.handleMapInput(key);
@@ -1736,6 +1738,7 @@ class Game {
   handleOverworldInput(key) {
     // Open panels
     if (key === 'i' || key === 'I') { this.setState('INVENTORY'); return; }
+    if (key === 'g' || key === 'G') { this.openEquipmentMenu(); return; }
     if (key === 'c' || key === 'C') { this.setState('CHARACTER'); return; }
     if (key === 'q' || key === 'Q') { this.setState('QUEST_LOG'); return; }
     if (key === 'm' || key === 'M') { this.setState('MAP'); return; }
@@ -1808,6 +1811,7 @@ class Game {
 
   handleLocationInput(key) {
     if (key === 'i' || key === 'I') { this.setState('INVENTORY'); return; }
+    if (key === 'g' || key === 'G') { this.openEquipmentMenu(); return; }
     if (key === 'c' || key === 'C') { this.setState('CHARACTER'); return; }
     if (key === 'q' || key === 'Q') { this.setState('QUEST_LOG'); return; }
     if (key === 'm' || key === 'M') { this.setState('MAP'); return; }
@@ -1889,6 +1893,7 @@ class Game {
 
   handleDungeonInput(key) {
     if (key === 'i' || key === 'I') { this.setState('INVENTORY'); return; }
+    if (key === 'g' || key === 'G') { this.openEquipmentMenu(); return; }
     if (key === 'c' || key === 'C') { this.setState('CHARACTER'); return; }
     if (key === 'q' || key === 'Q') { this.setState('QUEST_LOG'); return; }
     if (key === 'j' || key === 'J') { this._openQuestCompass(); return; }
@@ -2639,36 +2644,130 @@ class Game {
       return;
     }
 
-    const items = this.player.inventory;
-    const result = this.ui.handleMenuInput(key, Math.max(items.length, 1));
+    // Build grouped items (same logic as drawInventory)
+    const grouped = [];
+    const seen = new Map();
+    for (const item of this.player.inventory) {
+      if (seen.has(item.name)) {
+        grouped[seen.get(item.name)].count++;
+      } else {
+        seen.set(item.name, grouped.length);
+        grouped.push({ item, count: 1 });
+      }
+    }
 
-    if (result === 'select' || key === 'e' || key === 'E') {
-      if (items.length > 0 && this.ui.selectedIndex < items.length) {
-        const item = items[this.ui.selectedIndex];
-        if (item.type === 'potion' || item.type === 'food') {
+    const result = this.ui.handleMenuInput(key, Math.max(grouped.length, 1));
+
+    if (result === 'select' || key === 'u' || key === 'U') {
+      if (grouped.length > 0 && this.ui.selectedIndex < grouped.length) {
+        const { item } = grouped[this.ui.selectedIndex];
+        if (item.type === 'potion' || item.type === 'food' || item.type === 'rest') {
           this.useItem(item);
-        } else if (item.type === 'rest') {
-          this.useItem(item);
-        } else if (item.type === 'weapon' || item.type === 'armor') {
-          this.player.equip(item);
-          this.ui.addMessage(`Equipped ${item.name}.`, COLORS.BRIGHT_GREEN);
         }
       }
     }
 
     if (key === 'd' || key === 'D') {
-      if (items.length > 0 && this.ui.selectedIndex < items.length) {
-        const item = items[this.ui.selectedIndex];
+      if (grouped.length > 0 && this.ui.selectedIndex < grouped.length) {
+        const { item } = grouped[this.ui.selectedIndex];
         this.player.removeItem(item.id);
         this.ui.addMessage(`Dropped ${item.name}.`, COLORS.WHITE);
-        if (this.ui.selectedIndex >= this.player.inventory.length) {
-          this.ui.selectedIndex = Math.max(0, this.player.inventory.length - 1);
+        // Rebuild grouped to check new length
+        const newGrouped = [];
+        const newSeen = new Map();
+        for (const it of this.player.inventory) {
+          if (newSeen.has(it.name)) {
+            newGrouped[newSeen.get(it.name)].count++;
+          } else {
+            newSeen.set(it.name, newGrouped.length);
+            newGrouped.push({ item: it, count: 1 });
+          }
+        }
+        if (this.ui.selectedIndex >= newGrouped.length) {
+          this.ui.selectedIndex = Math.max(0, newGrouped.length - 1);
         }
       }
     }
 
     if (result === 'back') {
       this.setState(this.prevState || 'OVERWORLD');
+    }
+  }
+
+  // ─── EQUIPMENT MENU ───
+
+  openEquipmentMenu() {
+    this.equipmentMenuState = { level: 'slots', slotIndex: 0, itemIndex: 0 };
+    this.setState('EQUIPMENT');
+  }
+
+  handleEquipmentInput(key) {
+    if (key === '?') { this.setState('HELP'); return; }
+
+    const SLOT_KEYS = ['head', 'chest', 'hands', 'legs', 'feet', 'mainHand', 'offHand', 'ring', 'amulet'];
+    const SLOT_ITEMS = {
+      head: ['helmet'], chest: ['chestplate'], hands: ['gloves'],
+      legs: ['leggings'], feet: ['boots'],
+      mainHand: ['sword', 'axe', 'mace', 'dagger', 'staff', 'bow'],
+      offHand: ['shield'], ring: ['ring'], amulet: ['amulet'],
+    };
+
+    const st = this.equipmentMenuState;
+
+    if (st.level === 'slots') {
+      if (key === 'Escape') {
+        this.setState(this.prevState || 'OVERWORLD');
+        return;
+      }
+      if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+        st.slotIndex = (st.slotIndex - 1 + SLOT_KEYS.length) % SLOT_KEYS.length;
+      } else if (key === 'ArrowDown' || key === 's' || key === 'S') {
+        st.slotIndex = (st.slotIndex + 1) % SLOT_KEYS.length;
+      } else if (key === 'Enter' || key === ' ') {
+        // Open item sub-menu for this slot
+        st.level = 'items';
+        st.itemIndex = 0;
+      } else if (key === 'u' || key === 'U') {
+        // Unequip current slot
+        const slot = SLOT_KEYS[st.slotIndex];
+        if (this.player.equipment[slot]) {
+          const item = this.player.equipment[slot];
+          if (this.player.unequip(slot)) {
+            this.ui.addMessage(`Unequipped ${item.name}.`, COLORS.WHITE);
+          } else {
+            this.ui.addMessage('Inventory full!', COLORS.BRIGHT_RED);
+          }
+        }
+      }
+    } else if (st.level === 'items') {
+      const slot = SLOT_KEYS[st.slotIndex];
+      const compatible = this.player.inventory.filter(i =>
+        SLOT_ITEMS[slot].includes(i.subtype) || SLOT_ITEMS[slot].includes(i.type)
+      );
+
+      if (key === 'Escape') {
+        st.level = 'slots';
+        return;
+      }
+      // itemIndex 0 = [Back], 1+ = compatible items
+      const totalItems = compatible.length + 1; // +1 for Back option
+      if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+        st.itemIndex = (st.itemIndex - 1 + totalItems) % totalItems;
+      } else if (key === 'ArrowDown' || key === 's' || key === 'S') {
+        st.itemIndex = (st.itemIndex + 1) % totalItems;
+      } else if (key === 'Enter' || key === ' ') {
+        if (st.itemIndex === 0) {
+          // Back
+          st.level = 'slots';
+        } else {
+          const item = compatible[st.itemIndex - 1];
+          if (item) {
+            this.player.equip(item);
+            this.ui.addMessage(`Equipped ${item.name}.`, COLORS.BRIGHT_GREEN);
+            st.level = 'slots';
+          }
+        }
+      }
     }
   }
 
@@ -3487,6 +3586,8 @@ class Game {
       if (item.action === 'save') {
         this.saveGame(1, { exportFile: true });
         this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
+      } else if (item.action === 'equipment') {
+        this.openEquipmentMenu();
       } else if (item.action === 'rest') {
         this.openRestItemSelect(this._gamepadMenuReturnState || 'OVERWORLD');
       } else if (item.state) {
@@ -4695,6 +4796,10 @@ class Game {
         this.ui.drawInventory(this.player);
         break;
 
+      case 'EQUIPMENT':
+        this.ui.drawEquipmentMenu(this.player, this.equipmentMenuState);
+        break;
+
       case 'CHARACTER':
         this.ui.drawCharacterSheet(this.player, this.factionSystem);
         break;
@@ -5312,12 +5417,20 @@ class Game {
     }
 
     // Draw player
-    const px = this.player.position.x - camX;
-    const py = this.player.position.y - camY;
-    if (px >= 0 && px < worldW && py >= 0 && py < worldH) {
-      const screenX = viewLeft + px * density + entityOff;
-      const screenY = viewTop + py * density + entityOff;
+    const ppx = this.player.position.x - camX;
+    const ppy = this.player.position.y - camY;
+    if (ppx >= 0 && ppx < worldW && ppy >= 0 && ppy < worldH) {
+      const screenX = viewLeft + ppx * density + entityOff;
+      const screenY = viewTop + ppy * density + entityOff;
       r.drawChar(screenX, screenY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+
+      // Player targeting reticle (4 corners, pulsing)
+      const t = Date.now() % 1000;
+      const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
+      r.drawChar(screenX - 1, screenY - 1, '\u250C', reticleColor);
+      r.drawChar(screenX + 1, screenY - 1, '\u2510', reticleColor);
+      r.drawChar(screenX - 1, screenY + 1, '\u2514', reticleColor);
+      r.drawChar(screenX + 1, screenY + 1, '\u2518', reticleColor);
     }
 
     // Quest navigation line overlay
@@ -5770,6 +5883,16 @@ class Game {
     const playerScreenX = viewLeft + Math.floor(worldW / 2) * density + entityOff;
     const playerScreenY = viewTop + Math.floor(worldH / 2) * density + entityOff;
     r.drawChar(playerScreenX, playerScreenY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+
+    // Player targeting reticle (4 corners, pulsing)
+    {
+      const t = Date.now() % 1000;
+      const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
+      r.drawChar(playerScreenX - 1, playerScreenY - 1, '\u250C', reticleColor);
+      r.drawChar(playerScreenX + 1, playerScreenY - 1, '\u2510', reticleColor);
+      r.drawChar(playerScreenX - 1, playerScreenY + 1, '\u2514', reticleColor);
+      r.drawChar(playerScreenX + 1, playerScreenY + 1, '\u2518', reticleColor);
+    }
 
     // Render particles in dungeon
     this.particles.update();
