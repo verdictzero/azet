@@ -2554,7 +2554,6 @@ export class UIManager {
       { key: '5', label: 'Quest Nav', value: settings.showQuestNav !== false ? 'ON' : 'OFF', color: settings.showQuestNav !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
       { key: 'V', label: 'Music Volume', value: `${Math.round((settings.musicVolume ?? 0.5) * 100)}%`, color: COLORS.BRIGHT_YELLOW },
       { key: 'M', label: 'Music', value: settings.musicMuted ? 'MUTED' : 'ON', color: settings.musicMuted ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN },
-      { key: 'G', label: 'Gamepad Layout', value: (settings.gamepadMode || 'compact').toUpperCase(), color: COLORS.BRIGHT_YELLOW },
     ];
 
     let curY = py + 2;
