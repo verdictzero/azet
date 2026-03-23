@@ -4961,8 +4961,7 @@ class Game {
         const isFogged = isNight && dist > viewRange;
 
         if (density === 1) {
-          // Overworld: no wind animation on grass — don't pass world coords
-          const ch = r.getAnimatedChar(tile.char, tile.type);
+          const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
           const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type);
           const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
           r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, bg);
@@ -4973,7 +4972,7 @@ class Game {
               const screenX = viewLeft + wx_off * density + dx;
               const screenY = viewTop + wy_off * density + dy;
               if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type);
+                const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx + dx / density, wy + dy / density);
                 const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
                 const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
                 r.drawChar(screenX, screenY, ch, fg, bg);
