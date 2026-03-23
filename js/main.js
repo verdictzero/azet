@@ -3423,7 +3423,7 @@ class Game {
     // Reduced base rate + cooldown to prevent frustrating back-to-back encounters
     if (!this._encounterCooldown) this._encounterCooldown = 0;
     if (this._encounterCooldown > 0) this._encounterCooldown--;
-    const baseEncounterRate = 0.015 * this.activeEffects.encounterRateMultiplier;
+    const baseEncounterRate = 0.03 * this.activeEffects.encounterRateMultiplier;
     const isNight = !this.timeSystem.isDaytime();
     const lightInfo = this.player.hasLightSource();
     let nightBonus = 1.0;
@@ -3433,7 +3433,7 @@ class Game {
     // Special events (e.g. BREACH_SWARM with encounterRateMultiplier >= 2) bypass cooldown
     const bypassCooldown = this.activeEffects.encounterRateMultiplier >= 2;
     if (!this.debug.noEncounters && (bypassCooldown || this._encounterCooldown <= 0) && this.rng.chance(baseEncounterRate * nightBonus)) {
-      this._encounterCooldown = 18; // suppress encounters for ~18 steps after one
+      this._encounterCooldown = 8; // suppress encounters for ~8 steps after one
       const tileBiome = tile.biome || 'forest';
       const enemy = this.creatureGen.generate(this.rng, tileBiome, 1, this.player.stats.level);
       enemy.position = { x: nx, y: ny };
