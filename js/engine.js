@@ -1584,6 +1584,10 @@ export class InputManager {
     }
     this._touchDiv = touchDiv;
 
+    // Restore gamepad layout mode
+    this._gamepadMode = localStorage.getItem('gamepadMode') || 'compact';
+    this._applyGamepadMode();
+
     // Bind all static gamepad buttons
     this._bindGamepadButtons();
   }
@@ -1676,6 +1680,31 @@ export class InputManager {
         btn.addEventListener('mouseup', release);
       }
     }
+  }
+
+  /**
+   * Apply the current gamepad layout mode (compact or wide).
+   */
+  _applyGamepadMode() {
+    if (!this._touchDiv) return;
+    const wrap = this._touchDiv.querySelector('.gamepad-wrap');
+    if (!wrap) return;
+    if (this._gamepadMode === 'wide') {
+      wrap.classList.remove('compact');
+      this._touchDiv.classList.add('wide-mode');
+    } else {
+      wrap.classList.add('compact');
+      this._touchDiv.classList.remove('wide-mode');
+    }
+  }
+
+  /**
+   * Toggle between compact (one-handed) and wide (two-handed) gamepad layout.
+   */
+  setGamepadLayout(mode) {
+    this._gamepadMode = mode;
+    localStorage.setItem('gamepadMode', mode);
+    this._applyGamepadMode();
   }
 
   /**
