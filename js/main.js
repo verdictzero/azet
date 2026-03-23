@@ -304,6 +304,7 @@ class Game {
 
     // Active dialogue/shop
     this.activeNPC = null;
+    this.dialogueReturnState = null;
 
     // Resize handler
     window.addEventListener('resize', () => this.handleResize());
@@ -2060,7 +2061,7 @@ class Game {
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this.activeNPC = null;
-      this.setState(this.prevState || 'LOCATION');
+      this.setState(this.dialogueReturnState || 'LOCATION');
       return;
     }
 
@@ -2084,7 +2085,7 @@ class Game {
     }
     if (result === 'back') {
       this.activeNPC = null;
-      this.setState(this.prevState || 'LOCATION');
+      this.setState(this.dialogueReturnState || 'LOCATION');
     }
   }
 
@@ -2127,7 +2128,7 @@ class Game {
         this.ui.addMessage(`You can't afford a bunk. (${cost} gold)`, COLORS.BRIGHT_RED);
       }
       this.activeNPC = null;
-      this.setState(this.prevState || 'LOCATION');
+      this.setState(this.dialogueReturnState || 'LOCATION');
       return;
     }
 
@@ -2141,7 +2142,7 @@ class Game {
       this.questSystem.acceptQuest(quest.id);
       this.ui.addMessage(`Bounty accepted: ${quest.title}`, COLORS.BRIGHT_YELLOW);
       this.activeNPC = null;
-      this.setState(this.prevState || 'LOCATION');
+      this.setState(this.dialogueReturnState || 'LOCATION');
       return;
     }
 
@@ -2495,7 +2496,7 @@ class Game {
         }
       }
       this.activeNPC = null;
-      this.setState(this.prevState || 'LOCATION');
+      this.setState(this.dialogueReturnState || 'LOCATION');
       return;
     }
 
@@ -2559,7 +2560,7 @@ class Game {
 
     if (option.action === 'close' || option.action === 'exit') {
       this.activeNPC = null;
-      this.setState(this.prevState || 'LOCATION');
+      this.setState(this.dialogueReturnState || 'LOCATION');
       return;
     }
   }
@@ -4060,6 +4061,10 @@ class Game {
 
   startDialogue(npc) {
     this.activeNPC = npc;
+    // Save return state only on fresh dialogue entry (not when returning from shop)
+    if (this.state !== 'DIALOGUE' && this.state !== 'SHOP') {
+      this.dialogueReturnState = this.state;
+    }
     const greeting = this.dialogueSys.generateGreeting(npc, npc.playerReputation || 0);
     const options = this.dialogueSys.generateOptions(npc, npc.playerReputation || 0, this.gameContext);
 
