@@ -815,26 +815,20 @@ export class Renderer {
         const flowers = ['\u273F', '\u2740', '\u273B'];
         return flowers[(flowers.indexOf(baseChar) + cycle) % 3];
       }
-      // Grass/low vegetation: noise-based wind waves
+      // Grass/low vegetation: 45° wind wave using Perlin noise
       case ',':
       case '`':
       case '.': {
         if (worldX !== undefined && worldY !== undefined) {
           const ts = t / 1000;
-          // Wind direction ~17° from east with slight south component
-          const windAngle = 0.3;
-          const cosW = Math.cos(windAngle), sinW = Math.sin(windAngle);
-          const along = worldX * cosW + worldY * sinW;
-          const perp = -worldX * sinW + worldY * cosW;
-          // Primary traveling wave
+          // Wind direction at 45° diagonal
+          const COS45 = 0.7071, SIN45 = 0.7071;
+          const along = worldX * COS45 + worldY * SIN45;
+          const perp = -worldX * SIN45 + worldY * COS45;
+          // Traveling wave along the 45° diagonal
           const n = this._grassNoise.noise2D(along * 0.15 - ts * 0.5, perp * 0.08);
-          // Secondary chaos noise
-          const n2 = this._grassNoise2.noise2D(worldX * 0.25 + ts * 0.2, worldY * 0.25 - ts * 0.12);
-          const combined = n * 0.7 + n2 * 0.3;
-          if (combined > 0.35) return '/';
-          if (combined > 0.1) return '`';
-          if (combined < -0.35) return '\\';
-          if (combined < -0.1) return '.';
+          if (n > 0.2) return '`';
+          if (n < -0.2) return '.';
           return ',';
         }
         // Fallback: original uniform animation
@@ -873,8 +867,8 @@ export class Renderer {
   getAnimatedColorWithPos(baseColor, tileType, worldX, worldY) {
     if (tileType === 'GRASSLAND' && worldX !== undefined && worldY !== undefined) {
       const ts = this._frameTimeSec || Date.now() / 1000;
-      const windAngle = 0.3;
-      const cosW = Math.cos(windAngle), sinW = Math.sin(windAngle);
+      // Match 45° wind angle from character animation
+      const cosW = 0.7071, sinW = 0.7071;
       const along = worldX * cosW + worldY * sinW;
       const perp = -worldX * sinW + worldY * cosW;
       const n = this._grassNoise.noise2D(along * 0.15 - ts * 0.5, perp * 0.08);
