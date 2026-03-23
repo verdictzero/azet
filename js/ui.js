@@ -2475,6 +2475,63 @@ export class UIManager {
       '1-8:Tab  \u25C4\u25BA:Tab  \u25B2\u25BC:Scroll  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
+  // ─── FF-STYLE GAMEPAD MENU (Start button overlay) ───
+
+  drawGamepadMenu(renderer, player, menuItems, cursor) {
+    const r = renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+    const bg = COLORS.FF_BLUE_DARK;
+
+    // Menu panel — right side of screen
+    const panelW = Math.min(28, cols - 4);
+    const itemCount = menuItems.length;
+    const panelH = itemCount * 2 + 7; // 2 lines per item + header + footer
+    const px = cols - panelW - 2;
+    const py = Math.max(2, Math.floor((rows - panelH) / 2));
+
+    r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Menu ');
+
+    // Player info header
+    if (player) {
+      const nameStr = player.name || 'Hero';
+      const lvlStr = `Lv ${player.stats?.level || 1}`;
+      r.drawString(px + 2, py + 2, nameStr, COLORS.BRIGHT_WHITE, bg);
+      r.drawString(px + panelW - lvlStr.length - 2, py + 2, lvlStr, COLORS.BRIGHT_YELLOW, bg);
+
+      // HP / MP bar
+      const hp = player.stats?.hp || 0;
+      const maxHp = player.stats?.maxHp || 1;
+      const mp = player.stats?.mana || 0;
+      const maxMp = player.stats?.maxMana || 1;
+      r.drawString(px + 2, py + 3, `HP ${hp}/${maxHp}`, hp > maxHp * 0.3 ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED, bg);
+      r.drawString(px + panelW / 2 + 1, py + 3, `MP ${mp}/${maxMp}`, COLORS.BRIGHT_CYAN, bg);
+
+      // Separator
+      r.drawString(px + 1, py + 4, '\u2500'.repeat(panelW - 2), COLORS.FF_BORDER, bg);
+    }
+
+    // Menu items
+    const startY = py + 5;
+    for (let i = 0; i < itemCount; i++) {
+      const item = menuItems[i];
+      const y = startY + i * 2;
+      const selected = i === cursor;
+      const fg = selected ? COLORS.BRIGHT_WHITE : COLORS.WHITE;
+      const icon = item.icon || ' ';
+
+      // Cursor indicator
+      if (selected) {
+        r.drawString(px + 2, y, '\u25BA', COLORS.BRIGHT_YELLOW, bg);
+      }
+      r.drawString(px + 4, y, icon, COLORS.BRIGHT_CYAN, bg);
+      r.drawString(px + 6, y, item.label, fg, bg);
+    }
+
+    // Footer hint
+    r.drawString(px + 2, py + panelH - 2, '\u25B2\u25BC:Select  A:Open  B:Close', COLORS.BRIGHT_BLACK, bg);
+  }
+
   // ─── SETTINGS (FF-style Config) ───
 
   drawSettings(settings) {
@@ -2483,7 +2540,7 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
     const panelW = Math.min(cols - 4, 50);
-    const panelH = settings.crtEffects ? 33 : 24;
+    const panelH = settings.crtEffects ? 35 : 26;
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
 
@@ -2497,6 +2554,7 @@ export class UIManager {
       { key: '5', label: 'Quest Nav', value: settings.showQuestNav !== false ? 'ON' : 'OFF', color: settings.showQuestNav !== false ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED },
       { key: 'V', label: 'Music Volume', value: `${Math.round((settings.musicVolume ?? 0.5) * 100)}%`, color: COLORS.BRIGHT_YELLOW },
       { key: 'M', label: 'Music', value: settings.musicMuted ? 'MUTED' : 'ON', color: settings.musicMuted ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN },
+      { key: 'G', label: 'Gamepad Layout', value: (settings.gamepadMode || 'compact').toUpperCase(), color: COLORS.BRIGHT_YELLOW },
     ];
 
     let curY = py + 2;
