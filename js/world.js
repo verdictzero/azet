@@ -3744,305 +3744,413 @@ export class DungeonGenerator {
 export class BridgeDungeonGenerator {
 
   generate(rng, bridgeLocation) {
-    const span = bridgeLocation.bridgeSpan || 8;
+    const span = bridgeLocation.bridgeSpan || 5;
     const state = bridgeLocation.bridgeState; // 0=enemies+shops, 1=enemies, 2=empty, 3=broken
 
-    // Bridge is a linear east-west structure, wider than tall
-    const width = Math.max(40, span * 5);
-    const height = 20;
+    // Outdoor landscape: wider than tall, bridge runs vertically (top to bottom)
+    const width = 60;
+    const height = 44;
+    const bridgeX = Math.floor(width / 2); // Bridge center column
+    const bridgeW = 3; // Bridge deck width (center ± 1)
 
-    const tiles = makeTileGrid(width, height, () =>
-      tile('WALL', '#', '#555555', '#111111', false)
+    const tiles = makeTileGrid(width, height, (x, y) =>
+      this._terrainAt(rng, x, y, width, height, bridgeX, bridgeW, span)
     );
 
-    const rooms = [];
-    const corridors = [];
+    // ── Lay the vertical bridge structure ──
+    this._buildBridge(tiles, rng, width, height, bridgeX, bridgeW, state);
 
-    // ── Main bridge corridor (central passage) ──
-    const corridorY = Math.floor(height / 2) - 1;
-    const corridorH = 3;
+    // ── Scatter natural decorations on grass ──
+    this._decorateGrass(tiles, rng, width, height, bridgeX, bridgeW);
 
-    // Carve main corridor
-    for (let y = corridorY; y < corridorY + corridorH; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        tiles[y][x] = this._metalFloor(rng, x, y);
-      }
-    }
-
-    // ── West entrance room (town gate) ──
-    const westRoom = { x: 1, y: corridorY - 3, w: 8, h: corridorH + 6, type: 'entrance_west' };
-    this._carveRoom(tiles, westRoom, rng);
-    rooms.push(westRoom);
-
-    // West entrance stairs
-    tiles[corridorY + 1][1] = tile('STAIRS_UP', '<', '#ffffff', '#333322', true, { bridgeSide: 'west' });
-
-    // Gate decoration
-    for (let y = westRoom.y; y < westRoom.y + westRoom.h; y++) {
-      tiles[y][0] = tile('BRIDGE_GATE', '\u2551', '#AA7744', '#221100', false, { structure: true });
-    }
-    tiles[corridorY][0] = tile('BRIDGE_GATE', '\u2554', '#AA7744', '#221100', false, { structure: true });
-    tiles[corridorY + corridorH - 1][0] = tile('BRIDGE_GATE', '\u255A', '#AA7744', '#221100', false, { structure: true });
-
-    // ── East entrance room (town gate) ──
-    const eastRoom = { x: width - 9, y: corridorY - 3, w: 8, h: corridorH + 6, type: 'entrance_east' };
-    this._carveRoom(tiles, eastRoom, rng);
-    rooms.push(eastRoom);
-
-    // East entrance stairs
-    tiles[corridorY + 1][width - 2] = tile('STAIRS_UP', '<', '#ffffff', '#333322', true, { bridgeSide: 'east' });
-
-    // Gate decoration
-    for (let y = eastRoom.y; y < eastRoom.y + eastRoom.h; y++) {
-      tiles[y][width - 1] = tile('BRIDGE_GATE', '\u2551', '#AA7744', '#221100', false, { structure: true });
-    }
-    tiles[corridorY][width - 1] = tile('BRIDGE_GATE', '\u2557', '#AA7744', '#221100', false, { structure: true });
-    tiles[corridorY + corridorH - 1][width - 1] = tile('BRIDGE_GATE', '\u255D', '#AA7744', '#221100', false, { structure: true });
-
-    // ── Interior rooms branching off the corridor ──
-    const midSection = Math.floor(width / 2);
-    const roomCount = 3 + rng.nextInt(0, 3);
-    const roomSpacing = Math.floor((width - 20) / (roomCount + 1));
-
-    for (let i = 0; i < roomCount; i++) {
-      const rx = 10 + i * roomSpacing + rng.nextInt(-1, 1);
-      const above = rng.next() > 0.5;
-      const rw = rng.nextInt(5, 8);
-      const rh = rng.nextInt(4, 6);
-      const ry = above ? (corridorY - rh) : (corridorY + corridorH);
-
-      if (ry < 1 || ry + rh >= height - 1 || rx < 1 || rx + rw >= width - 1) continue;
-
-      const room = { x: rx, y: ry, w: rw, h: rh, type: 'side_room' };
-      this._carveRoom(tiles, room, rng);
-      rooms.push(room);
-
-      // Connect to corridor
-      const doorX = rx + Math.floor(rw / 2);
-      const doorY = above ? (corridorY - 1) : (corridorY + corridorH - 1);
-      if (doorY >= 0 && doorY < height) {
-        // Carve connection
-        const connStart = above ? ry + rh - 1 : corridorY + corridorH;
-        const connEnd = above ? corridorY : ry;
-        const minY = Math.min(connStart, connEnd);
-        const maxY = Math.max(connStart, connEnd);
-        for (let cy = minY; cy <= maxY; cy++) {
-          if (cy >= 0 && cy < height) {
-            tiles[cy][doorX] = this._metalFloor(rng, doorX, cy);
-          }
-        }
-        tiles[doorY][doorX] = tile('DOOR', '+', '#AA8855', '#222211', true);
-      }
-    }
+    // ── Place bridge-side decorations (signposts, barrels, machinery) ──
+    this._decorateBridgeEnds(tiles, rng, width, height, bridgeX, bridgeW, state);
 
     // ── Apply broken state ──
     if (state === 3) {
-      this._applyBrokenState(tiles, rng, width, height, corridorY, corridorH);
+      this._applyBrokenState(tiles, rng, width, height, bridgeX, bridgeW);
     }
 
-    // ── Decorate with ancient metal tech aesthetic ──
-    this._decorateBridge(tiles, rng, width, height, rooms, state);
-
     // ── Place entity spots ──
-    const entitySpots = this._placeEntities(rng, tiles, rooms, state, width, height);
+    const entitySpots = this._placeEntities(rng, tiles, state, width, height, bridgeX, bridgeW);
 
     return {
-      tiles, width, height, rooms, corridors, entitySpots,
-      depth: 1,
-      bridgeState: state,
+      tiles, width, height,
+      buildings: [],
+      npcSlots: [],
+      coreOffset: { x: 0, y: 0 },
       isBridge: true,
+      bridgeState: state,
+      entitySpots,
+      bridgeX,
     };
   }
 
-  _metalFloor(rng, x, y) {
-    // Decayed ancient metal floor with variation
-    const roll = rng.next();
-    if (roll < 0.15) return tile('BRIDGE_FLOOR', '\u2591', '#6B6B6B', '#1A1A18', true, { structure: true }); // ░ light rust
-    if (roll < 0.25) return tile('BRIDGE_FLOOR', '\u2592', '#5A5A5A', '#1A1A18', true, { structure: true }); // ▒ medium decay
-    if (roll < 0.35) return tile('BRIDGE_FLOOR', '\u00B7', '#7A7A7A', '#1A1A18', true, { structure: true }); // · rivet/bolt
-    return tile('BRIDGE_FLOOR', '.', '#888877', '#1A1A18', true, { structure: true });
-  }
+  // ── Terrain generation: grass → shore → water gradient → shore → grass ──
+  _terrainAt(rng, x, y, width, height, bridgeX, bridgeW, span) {
+    // Compute vertical band: water is in the middle, grass at top/bottom
+    // Water zone spans roughly the middle ~40% of height
+    const waterCenter = Math.floor(height / 2);
+    const waterHalfSpan = Math.max(6, Math.floor(span * 1.8)); // total water ~12+ rows
+    const waterTop = waterCenter - waterHalfSpan;
+    const waterBot = waterCenter + waterHalfSpan;
 
-  _carveRoom(tiles, room, rng) {
-    for (let y = room.y; y < room.y + room.h; y++) {
-      for (let x = room.x; x < room.x + room.w; x++) {
-        if (y >= 0 && y < tiles.length && x >= 0 && x < tiles[0].length) {
-          tiles[y][x] = this._metalFloor(rng, x, y);
-        }
-      }
+    // Shore bands (2 rows each side)
+    const outerShoreTop = waterTop - 2;
+    const innerShoreTop = waterTop - 1;
+    const innerShoreBot = waterBot + 1;
+    const outerShoreBot = waterBot + 2;
+
+    // Determine terrain band from Y position
+    if (y <= outerShoreTop - 1 || y >= outerShoreBot + 1) {
+      // Grass zone
+      return this._grassTile(rng, x, y);
     }
+    if (y === outerShoreTop || y === outerShoreBot) {
+      // Outer shore — sandy transition to grass
+      const prox = 0.5 + rng.next() * 0.3;
+      const fg = _lerpColor('#C2B280', '#88AA55', prox);
+      const bg = _lerpColor('#3D3418', '#1A2210', prox);
+      return tile('OUTER_SHORE', '.', fg, bg, true, { biome: 'shore', waterDepth: -2, solid: false });
+    }
+    if (y === innerShoreTop || y === innerShoreBot) {
+      // Inner shore — wet sand
+      const prox = 0.3 + rng.next() * 0.4;
+      const fg = _lerpColor('#8B7D5B', '#C2B280', prox);
+      const bg = _lerpColor('#2A2210', '#3D3418', prox);
+      return tile('INNER_SHORE', '\u00B7', fg, bg, true, { biome: 'shore', waterDepth: -1, solid: false });
+    }
+
+    // Water zone — depth gradient from edges to center
+    const distFromEdge = Math.min(y - waterTop, waterBot - y);
+    const maxDist = waterHalfSpan;
+    const depthFrac = distFromEdge / maxDist; // 0 at edges, 1 at center
+
+    if (depthFrac < 0.15) {
+      // Walkable shallows (edge)
+      return tile('SHALLOWS', '~', '#4488ff', '#001144', true, { biome: 'lake', waterDepth: 0, solid: false });
+    }
+    if (depthFrac < 0.30) {
+      return tile('SHALLOWS', '~', '#4488ff', '#001144', false, { biome: 'lake', waterDepth: 1, solid: true });
+    }
+    if (depthFrac < 0.45) {
+      return tile('MEDIUM_WATER', '~', '#2266CC', '#000066', false, { biome: 'lake', waterDepth: 2, solid: true });
+    }
+    if (depthFrac < 0.60) {
+      return tile('OCEAN', '\u223D', '#0044AA', '#000055', false, { biome: 'ocean', waterDepth: 3, solid: true });
+    }
+    if (depthFrac < 0.80) {
+      return tile('DEEP_WATER', '\u223D', '#002277', '#000033', false, { biome: 'ocean', waterDepth: 4, solid: true });
+    }
+    return tile('VERY_DEEP_WATER', '\u2248', '#001155', '#000022', false, { biome: 'ocean', waterDepth: 5, solid: true });
   }
 
-  _applyBrokenState(tiles, rng, width, height, corridorY, corridorH) {
-    // Create a gap in the middle section that prevents crossing
-    const gapCenter = Math.floor(width / 2);
-    const gapWidth = 3 + rng.nextInt(0, 3);
-    const gapStart = gapCenter - Math.floor(gapWidth / 2);
-    const gapEnd = gapStart + gapWidth;
+  _grassTile(rng, x, y) {
+    const r = rng.next();
+    if (r < 0.08) return tile('TREE', '\u2663', '#228822', '#112211', false, { solid: true });
+    if (r < 0.12) return tile('TREE', '\u2660', '#116611', '#0a1a0a', false, { solid: true });
+    if (r < 0.18) {
+      // Tall grass variation
+      return tile('GRASSLAND', ';', '#55bb55', '#112211', true, { biome: 'grassland', solid: false });
+    }
+    if (r < 0.22) {
+      // Flowers
+      const flowerFg = rng.random(['#ee66aa', '#ffaa33', '#aaaaff', '#ffff44']);
+      return tile('GRASSLAND', '*', flowerFg, '#112211', true, { biome: 'grassland', solid: false });
+    }
+    // Standard grass with slight color variation
+    const prox = rng.next() * 0.3;
+    const fg = _lerpColor('#44aa44', '#55cc55', prox);
+    return tile('GRASSLAND', ',', fg, '#112211', true, { biome: 'grassland', solid: false });
+  }
+
+  // ── Build the vertical bridge structure ──
+  _buildBridge(tiles, rng, width, height, bridgeX, bridgeW, state) {
+    const halfW = Math.floor(bridgeW / 2);
+    const leftRail = bridgeX - halfW - 1;
+    const rightRail = bridgeX + halfW + 1;
 
     for (let y = 0; y < height; y++) {
-      for (let x = gapStart; x <= gapEnd; x++) {
-        if (x >= 0 && x < width && y >= 0 && y < height) {
-          if (tiles[y][x].walkable || tiles[y][x].type === 'BRIDGE_FLOOR') {
-            // Broken gap — void/abyss below the bridge
-            tiles[y][x] = tile('BRIDGE_VOID', ' ', '#110011', '#000000', false,
-              { structure: true, broken: true });
-          }
+      const baseTile = tiles[y][bridgeX];
+      const isWater = baseTile.waterDepth != null && baseTile.waterDepth >= 0;
+      const isShore = baseTile.type === 'INNER_SHORE' || baseTile.type === 'OUTER_SHORE';
+
+      // Bridge deck (3 tiles wide)
+      for (let dx = -halfW; dx <= halfW; dx++) {
+        const bx = bridgeX + dx;
+        if (bx < 0 || bx >= width) continue;
+
+        if (isWater || isShore) {
+          // Over water/shore: metallic bridge deck
+          tiles[y][bx] = this._metalFloor(rng, bx, y);
+        } else {
+          // On grass: stone road surface leading to/from bridge
+          tiles[y][bx] = this._stoneRoad(rng, bx, y);
+        }
+      }
+
+      // Railings (only over water and shore)
+      if (isWater || isShore) {
+        if (leftRail >= 0 && leftRail < width) {
+          tiles[y][leftRail] = tile('BRIDGE_RAILING', '\u2502', '#887766', '#1A1A18', false,
+            { structure: true, solid: true }); // │ left railing
+        }
+        if (rightRail >= 0 && rightRail < width) {
+          tiles[y][rightRail] = tile('BRIDGE_RAILING', '\u2502', '#887766', '#1A1A18', false,
+            { structure: true, solid: true }); // │ right railing
         }
       }
     }
 
-    // Add crumbling edge tiles around the gap
-    for (let y = corridorY - 1; y <= corridorY + corridorH; y++) {
-      if (gapStart - 1 >= 0 && y >= 0 && y < height) {
-        if (tiles[y][gapStart - 1].walkable) {
-          tiles[y][gapStart - 1] = tile('BRIDGE_CRUMBLE', '%', '#665544', '#1A1A18', true,
-            { structure: true, crumbling: true });
+    // ── Gate archways at north and south ends ──
+    // Find where water/shore starts from top and bottom
+    let northGateY = 0;
+    let southGateY = height - 1;
+    for (let y = 0; y < height; y++) {
+      const t = tiles[y][bridgeX];
+      if (t.type === 'OUTER_SHORE' || t.type === 'INNER_SHORE' ||
+          (t.waterDepth != null && t.waterDepth >= 0 && t.type !== 'BRIDGE_FLOOR')) {
+        northGateY = y - 1;
+        break;
+      }
+    }
+    for (let y = height - 1; y >= 0; y--) {
+      const t = tiles[y][bridgeX];
+      if (t.type === 'OUTER_SHORE' || t.type === 'INNER_SHORE' ||
+          (t.waterDepth != null && t.waterDepth >= 0 && t.type !== 'BRIDGE_FLOOR')) {
+        southGateY = y + 1;
+        break;
+      }
+    }
+
+    // North gate archway
+    if (northGateY >= 0 && northGateY < height) {
+      if (leftRail >= 0) tiles[northGateY][leftRail] = tile('BRIDGE_GATE', '\u2554', '#AA7744', '#221100', false, { structure: true, solid: true }); // ╔
+      if (rightRail < width) tiles[northGateY][rightRail] = tile('BRIDGE_GATE', '\u2557', '#AA7744', '#221100', false, { structure: true, solid: true }); // ╗
+      // Horizontal bar across top
+      for (let dx = -halfW; dx <= halfW; dx++) {
+        const bx = bridgeX + dx;
+        if (bx >= 0 && bx < width) {
+          tiles[northGateY][bx] = tile('BRIDGE_GATE', '\u2550', '#AA7744', '#112211', true, { structure: true, solid: false }); // ═ walkable arch
         }
       }
-      if (gapEnd + 1 < width && y >= 0 && y < height) {
-        if (tiles[y][gapEnd + 1].walkable) {
-          tiles[y][gapEnd + 1] = tile('BRIDGE_CRUMBLE', '%', '#665544', '#1A1A18', true,
-            { structure: true, crumbling: true });
+    }
+
+    // South gate archway
+    if (southGateY >= 0 && southGateY < height) {
+      if (leftRail >= 0) tiles[southGateY][leftRail] = tile('BRIDGE_GATE', '\u255A', '#AA7744', '#221100', false, { structure: true, solid: true }); // ╚
+      if (rightRail < width) tiles[southGateY][rightRail] = tile('BRIDGE_GATE', '\u255D', '#AA7744', '#221100', false, { structure: true, solid: true }); // ╝
+      for (let dx = -halfW; dx <= halfW; dx++) {
+        const bx = bridgeX + dx;
+        if (bx >= 0 && bx < width) {
+          tiles[southGateY][bx] = tile('BRIDGE_GATE', '\u2550', '#AA7744', '#112211', true, { structure: true, solid: false }); // ═ walkable arch
+        }
+      }
+    }
+
+    // ── Bridge support pillars in water (every 4 rows) ──
+    for (let y = 0; y < height; y++) {
+      if (y % 4 !== 0) continue;
+      for (const rx of [leftRail, rightRail]) {
+        if (rx < 0 || rx >= width) continue;
+        const base = tiles[y][rx];
+        if (base.waterDepth != null && base.waterDepth >= 1) {
+          tiles[y][rx] = tile('BRIDGE_PILLAR', '\u2588', '#776655', '#001144', false,
+            { structure: true, solid: true }); // █ pillar in water
         }
       }
     }
   }
 
-  _decorateBridge(tiles, rng, width, height, rooms, state) {
-    // Ancient metal tech decorations
-    for (const room of rooms) {
-      if (room.type === 'entrance_west' || room.type === 'entrance_east') {
-        // Town entrance feel: posts, signs, lantern hooks
-        const cx = room.x + Math.floor(room.w / 2);
-        const cy = room.y + 1;
-        if (cy >= 0 && cy < height && cx >= 0 && cx < width && tiles[cy][cx].walkable) {
-          tiles[cy][cx] = tile('BRIDGE_SIGNPOST', '\u2020', '#CC9944', '#1A1A18', false,
-            { structure: true }); // † signpost
-        }
-        // Pipe/cable along walls
-        for (let x = room.x; x < room.x + room.w; x++) {
-          if (room.y - 1 >= 0 && x >= 0 && x < width) {
-            const wt = tiles[room.y - 1][x];
-            if (wt.type === 'WALL') {
-              tiles[room.y - 1][x] = tile('BRIDGE_PIPE', '\u2550', '#776655', '#111111', false,
-                { structure: true }); // ═ horizontal pipe
-            }
-          }
-          if (room.y + room.h < height && x >= 0 && x < width) {
-            const wt = tiles[room.y + room.h][x];
-            if (wt.type === 'WALL') {
-              tiles[room.y + room.h][x] = tile('BRIDGE_PIPE', '\u2550', '#776655', '#111111', false,
-                { structure: true }); // ═ horizontal pipe
-            }
-          }
-        }
-      } else if (room.type === 'side_room') {
-        // Random decor: barrels, crates, shelves, rusted machinery
-        const numDecor = rng.nextInt(1, 4);
-        for (let d = 0; d < numDecor; d++) {
-          const dx = room.x + rng.nextInt(1, room.w - 2);
-          const dy = room.y + rng.nextInt(1, room.h - 2);
-          if (dy >= 0 && dy < height && dx >= 0 && dx < width && tiles[dy][dx].walkable) {
-            const decorType = rng.nextInt(0, 4);
-            switch (decorType) {
-              case 0: // Barrel
-                tiles[dy][dx] = tile('BARREL', 'o', '#996633', '#1A1A18', false, { structure: true });
-                break;
-              case 1: // Crate
-                tiles[dy][dx] = tile('CRATE', '\u25A1', '#887744', '#1A1A18', false, { structure: true }); // □
-                break;
-              case 2: // Rusted machine
-                tiles[dy][dx] = tile('RUSTED_MACHINE', '\u2699', '#885533', '#1A1A18', false, { structure: true }); // ⚙
-                break;
-              case 3: // Collapsed beam
-                tiles[dy][dx] = tile('COLLAPSED_BEAM', '/', '#776655', '#1A1A18', false, { structure: true });
-                break;
-              default: // Metal debris
-                tiles[dy][dx] = tile('METAL_DEBRIS', '%', '#777766', '#1A1A18', false, { structure: true });
-                break;
-            }
-          }
+  _metalFloor(rng, x, y) {
+    const roll = rng.next();
+    if (roll < 0.15) return tile('BRIDGE_FLOOR', '\u2591', '#6B6B6B', '#1A1A18', true, { structure: true, solid: false }); // ░
+    if (roll < 0.25) return tile('BRIDGE_FLOOR', '\u2592', '#5A5A5A', '#1A1A18', true, { structure: true, solid: false }); // ▒
+    if (roll < 0.35) return tile('BRIDGE_FLOOR', '\u00B7', '#7A7A7A', '#1A1A18', true, { structure: true, solid: false }); // ·
+    return tile('BRIDGE_FLOOR', '.', '#888877', '#1A1A18', true, { structure: true, solid: false });
+  }
+
+  _stoneRoad(rng, x, y) {
+    const roll = rng.next();
+    if (roll < 0.2) return tile('ROAD', '=', '#bbaa66', '#332211', true, { solid: false });
+    if (roll < 0.4) return tile('ROAD', '\u00B7', '#aa9955', '#332211', true, { solid: false }); // · cobblestone
+    return tile('ROAD', '=', '#ccaa44', '#332211', true, { solid: false });
+  }
+
+  // ── Broken bridge: gap in the middle over deepest water ──
+  _applyBrokenState(tiles, rng, width, height, bridgeX, bridgeW) {
+    const halfW = Math.floor(bridgeW / 2);
+    const gapCenter = Math.floor(height / 2);
+    const gapHalf = 2 + rng.nextInt(0, 2); // gap of 4-6 rows
+    const gapTop = gapCenter - gapHalf;
+    const gapBot = gapCenter + gapHalf;
+
+    for (let y = gapTop; y <= gapBot; y++) {
+      if (y < 0 || y >= height) continue;
+      for (let dx = -halfW - 1; dx <= halfW + 1; dx++) {
+        const bx = bridgeX + dx;
+        if (bx < 0 || bx >= width) continue;
+        const t = tiles[y][bx];
+        if (t.type === 'BRIDGE_FLOOR' || t.type === 'BRIDGE_RAILING' || t.type === 'BRIDGE_PILLAR') {
+          tiles[y][bx] = tile('BRIDGE_VOID', ' ', '#110011', '#000000', false,
+            { structure: true, broken: true, solid: true });
         }
       }
     }
 
-    // Rust stains on walls (random wall tiles get rusty coloring)
+    // Crumbling edges
+    for (const edgeY of [gapTop - 1, gapBot + 1]) {
+      if (edgeY < 0 || edgeY >= height) continue;
+      for (let dx = -halfW; dx <= halfW; dx++) {
+        const bx = bridgeX + dx;
+        if (bx < 0 || bx >= width) continue;
+        if (tiles[edgeY][bx].type === 'BRIDGE_FLOOR') {
+          tiles[edgeY][bx] = tile('BRIDGE_CRUMBLE', '%', '#665544', '#1A1A18', true,
+            { structure: true, crumbling: true, solid: false });
+        }
+      }
+    }
+  }
+
+  // ── Natural decorations on grass areas ──
+  _decorateGrass(tiles, rng, width, height, bridgeX, bridgeW) {
+    const halfW = Math.floor(bridgeW / 2);
+
+    // Add rocks, bushes near shoreline
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        if (tiles[y][x].type === 'WALL' && rng.next() < 0.25) {
-          const rust = rng.next();
-          const fg = _lerpColor('#555555', '#884422', rust * 0.6);
-          const bg = _lerpColor('#111111', '#221100', rust * 0.4);
-          tiles[y][x] = tile('WALL', '#', fg, bg, false, { structure: true, rusty: true });
+        // Skip bridge area
+        if (Math.abs(x - bridgeX) <= halfW + 2) continue;
+        const t = tiles[y][x];
+        if (t.type !== 'GRASSLAND' || t.solid) continue;
+
+        // Near-shore decorations
+        const isNearShore = (y > 0 && (tiles[y - 1][x].type === 'OUTER_SHORE' || tiles[y - 1][x].type === 'INNER_SHORE')) ||
+                            (y < height - 1 && (tiles[y + 1][x].type === 'OUTER_SHORE' || tiles[y + 1][x].type === 'INNER_SHORE'));
+        if (isNearShore && rng.next() < 0.12) {
+          const r = rng.next();
+          if (r < 0.5) {
+            tiles[y][x] = tile('ROCK', 'o', '#999999', '#112211', false, { solid: true }); // scattered rocks
+          } else {
+            tiles[y][x] = tile('BUSH', '\u00A7', '#33aa33', '#112211', false, { solid: true }); // § bush
+          }
         }
       }
     }
   }
 
-  _placeEntities(rng, tiles, rooms, state, width, height) {
+  // ── Decorations near bridge entrances ──
+  _decorateBridgeEnds(tiles, rng, width, height, bridgeX, bridgeW, state) {
+    const halfW = Math.floor(bridgeW / 2);
+
+    // Signposts at bridge entrances (north and south grass)
+    for (const baseY of [3, height - 4]) {
+      const sx = bridgeX + halfW + 2;
+      if (sx < width && baseY >= 0 && baseY < height && tiles[baseY][sx].type === 'GRASSLAND') {
+        tiles[baseY][sx] = tile('BRIDGE_SIGNPOST', '\u2020', '#CC9944', '#112211', false,
+          { structure: true, solid: true }); // † signpost
+      }
+    }
+
+    // Barrels and crates near bridge (state 0 has merchant stalls)
+    if (state === 0) {
+      // Small market area near north entrance
+      for (let i = 0; i < 3; i++) {
+        const mx = bridgeX + halfW + 3 + i;
+        const my = 4 + rng.nextInt(0, 2);
+        if (mx < width && my < height && tiles[my][mx].type === 'GRASSLAND' && !tiles[my][mx].solid) {
+          const r = rng.next();
+          if (r < 0.5) tiles[my][mx] = tile('BARREL', 'o', '#996633', '#112211', false, { structure: true, solid: true });
+          else tiles[my][mx] = tile('CRATE', '\u25A1', '#887744', '#112211', false, { structure: true, solid: true }); // □
+        }
+      }
+    }
+
+    // Ancient machinery / tech decorations along bridge sides
+    for (let y = 0; y < height; y += 6 + rng.nextInt(0, 3)) {
+      for (const side of [-1, 1]) {
+        const dx = bridgeX + side * (halfW + 3);
+        if (dx < 0 || dx >= width || y < 0 || y >= height) continue;
+        if (tiles[y][dx].type === 'GRASSLAND' && !tiles[y][dx].solid && rng.next() < 0.4) {
+          const r = rng.next();
+          if (r < 0.3) {
+            tiles[y][dx] = tile('RUSTED_MACHINE', '\u2699', '#885533', '#112211', false, { structure: true, solid: true }); // ⚙
+          } else if (r < 0.6) {
+            tiles[y][dx] = tile('COLLAPSED_BEAM', '/', '#776655', '#112211', false, { structure: true, solid: true });
+          } else {
+            tiles[y][dx] = tile('METAL_DEBRIS', '%', '#777766', '#112211', false, { structure: true, solid: true });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Entity placement ──
+  _placeEntities(rng, tiles, state, width, height, bridgeX, bridgeW) {
     const spots = [];
+    const halfW = Math.floor(bridgeW / 2);
 
     if (state === 3) {
-      // Broken bridge — minimal entities, just atmosphere
+      // Broken bridge — minimal entities
       return spots;
     }
 
-    // Enemy spots (in side rooms and corridor)
+    // Enemy spots along the bridge and near shore (states 0, 1)
     if (state === 0 || state === 1) {
-      const sideRooms = rooms.filter(r => r.type === 'side_room');
-      for (const room of sideRooms) {
-        const enemyCount = rng.nextInt(1, 3);
-        for (let i = 0; i < enemyCount; i++) {
-          for (let attempt = 0; attempt < 20; attempt++) {
-            const ex = room.x + rng.nextInt(1, room.w - 2);
-            const ey = room.y + rng.nextInt(1, room.h - 2);
-            if (ey >= 0 && ey < height && ex >= 0 && ex < width && tiles[ey][ex].walkable) {
-              spots.push({ type: 'enemy', x: ex, y: ey });
-              break;
-            }
+      // Enemies on the bridge deck
+      const bridgeEnemies = 2 + rng.nextInt(0, 3);
+      for (let i = 0; i < bridgeEnemies; i++) {
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const ex = bridgeX + rng.nextInt(-halfW, halfW);
+          const ey = rng.nextInt(8, height - 8);
+          if (ey >= 0 && ey < height && ex >= 0 && ex < width &&
+              tiles[ey][ex].type === 'BRIDGE_FLOOR' && !tiles[ey][ex].solid) {
+            spots.push({ type: 'enemy', x: ex, y: ey });
+            break;
           }
         }
       }
-      // A couple enemies in the main corridor
-      const corridorEnemies = rng.nextInt(1, 3);
-      for (let i = 0; i < corridorEnemies; i++) {
-        const ex = rng.nextInt(10, width - 10);
-        const ey = Math.floor(height / 2);
-        if (tiles[ey][ex].walkable) {
-          spots.push({ type: 'enemy', x: ex, y: ey });
+      // Enemies on grass near bridge
+      const grassEnemies = rng.nextInt(1, 3);
+      for (let i = 0; i < grassEnemies; i++) {
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const ex = rng.nextInt(5, width - 5);
+          const ey = rng.next() < 0.5 ? rng.nextInt(1, 6) : rng.nextInt(height - 7, height - 2);
+          if (ey >= 0 && ey < height && ex >= 0 && ex < width &&
+              tiles[ey][ex].type === 'GRASSLAND' && !tiles[ey][ex].solid) {
+            spots.push({ type: 'enemy', x: ex, y: ey });
+            break;
+          }
         }
       }
     }
 
-    // Shop spots (only in state 0 — enemies + shops)
+    // Shop NPCs near bridge entrances (state 0 only)
     if (state === 0) {
-      const sideRooms = rooms.filter(r => r.type === 'side_room');
-      if (sideRooms.length > 0) {
-        // Pick 1-2 rooms for shops
-        const shopCount = Math.min(sideRooms.length, rng.nextInt(1, 2));
-        for (let i = 0; i < shopCount; i++) {
-          const room = sideRooms[i];
-          const sx = room.x + Math.floor(room.w / 2);
-          const sy = room.y + Math.floor(room.h / 2);
-          if (sy >= 0 && sy < height && sx >= 0 && sx < width && tiles[sy][sx].walkable) {
-            spots.push({ type: 'shop_npc', x: sx, y: sy });
-            // Place counter
-            if (sy - 1 >= 0 && tiles[sy - 1][sx].walkable) {
-              tiles[sy - 1][sx] = tile('COUNTER', '\u2550', '#887755', '#1A1A18', false, { structure: true });
-            }
-          }
+      // Merchant on north grass near bridge
+      const shopX = bridgeX + halfW + 2;
+      const shopY = 5;
+      if (shopX < width && shopY < height && tiles[shopY][shopX].type === 'GRASSLAND' && !tiles[shopY][shopX].solid) {
+        spots.push({ type: 'shop_npc', x: shopX, y: shopY });
+      }
+      // Second merchant on south grass if lucky
+      if (rng.next() < 0.5) {
+        const shopX2 = bridgeX - halfW - 2;
+        const shopY2 = height - 6;
+        if (shopX2 >= 0 && shopY2 >= 0 && tiles[shopY2][shopX2].type === 'GRASSLAND' && !tiles[shopY2][shopX2].solid) {
+          spots.push({ type: 'shop_npc', x: shopX2, y: shopY2 });
         }
       }
     }
 
-    // Item spots
+    // Item spots — on bridge or grass
     const itemCount = state === 2 ? rng.nextInt(2, 5) : rng.nextInt(1, 3);
     for (let i = 0; i < itemCount; i++) {
       for (let attempt = 0; attempt < 30; attempt++) {
-        const ix = rng.nextInt(5, width - 5);
-        const iy = rng.nextInt(1, height - 2);
-        if (tiles[iy][ix].walkable) {
+        const ix = rng.nextInt(3, width - 3);
+        const iy = rng.nextInt(2, height - 2);
+        if (iy >= 0 && iy < height && ix >= 0 && ix < width &&
+            !tiles[iy][ix].solid && tiles[iy][ix].walkable) {
           spots.push({ type: 'item', x: ix, y: iy });
           break;
         }
