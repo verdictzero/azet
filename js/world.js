@@ -97,16 +97,33 @@ export class OverworldGenerator {
   }
 
   _terrainFromNoise(h, m, a = 0, d = 0.5, t = 0.5, cellEdge = 1.0, subEdge = 1.0) {
-    // Simplified terrain: grass, trees, mountains, water (rivers/lakes)
+    // Terrain from height: water gradient → sand shores → grass → forest → mountains
 
-    // ── WATER (h < 0.3) — forms rivers and lakes ──
-    if (h < 0.18) return tile('OCEAN', '\u223D', '#0044AA', '#000055', false, { biome: 'ocean' });
-    if (h < 0.27) return tile('SHALLOWS', '~', '#4488ff', '#000066', false, { biome: 'lake' });
-    if (h < 0.3) return tile('SHALLOWS', '~', '#4488ff', '#000066', true, { biome: 'lake' });
+    // ── WATER (h < 0.28) — natural depth gradient ──
+    if (h < 0.10) return tile('VERY_DEEP_WATER', '\u2248', '#001155', '#000022', false, { biome: 'ocean', waterDepth: 5 });
+    if (h < 0.14) return tile('DEEP_WATER', '\u223D', '#002277', '#000033', false, { biome: 'ocean', waterDepth: 4 });
+    if (h < 0.18) return tile('OCEAN', '\u223D', '#0044AA', '#000055', false, { biome: 'ocean', waterDepth: 3 });
+    if (h < 0.22) return tile('MEDIUM_WATER', '~', '#2266CC', '#000066', false, { biome: 'lake', waterDepth: 2 });
+    if (h < 0.26) return tile('SHALLOWS', '~', '#4488ff', '#001144', false, { biome: 'lake', waterDepth: 1 });
+    if (h < 0.28) return tile('SHALLOWS', '~', '#4488ff', '#001144', true, { biome: 'lake', waterDepth: 0 });
 
-    // ── GRASSLAND (h 0.3 - 0.55) ──
+    // ── SHORELINE (h 0.28 - 0.32) — sandy/muddy transition ──
+    if (h < 0.30) {
+      const prox = (h - 0.28) / 0.02; // 0 = wet inner shore, 1 = dry outer shore
+      const fg = _lerpColor('#8B7D5B', '#C2B280', prox);  // wet dark sand → dry golden sand
+      const bg = _lerpColor('#2A2210', '#3D3418', prox);   // dark mud → warm sandy dark
+      return tile('INNER_SHORE', '\u00B7', fg, bg, true, { biome: 'shore', waterDepth: -1 });
+    }
+    if (h < 0.32) {
+      const prox = (h - 0.30) / 0.02; // 0 = sandy shore, 1 = grassy transition
+      const fg = _lerpColor('#C2B280', '#88AA55', prox);  // sand → mossy transition
+      const bg = _lerpColor('#3D3418', '#1A2210', prox);  // sandy dark → greenish dark
+      return tile('OUTER_SHORE', '.', fg, bg, true, { biome: 'shore', waterDepth: -2 });
+    }
+
+    // ── GRASSLAND (h 0.32 - 0.55) ──
     if (h < 0.55) {
-      let prox = (h - 0.3) / 0.25;                                // 0 = far from forest, 1 = near forest
+      let prox = (h - 0.32) / 0.23;                               // 0 = far from forest, 1 = near forest
       prox = Math.max(0, Math.min(1, prox + (d - 0.5) * 0.15));   // detail noise adds organic jitter
       const fg = _lerpColor('#33dd44', '#99aa33', prox);            // lush vivid green → muted yellow-green near forest
       const bg = _lerpColor('#0a2210', '#1a1a08', prox);            // cool dark green → warm olive dark near forest
@@ -168,7 +185,7 @@ export class OverworldGenerator {
 
           // Must be on walkable, non-water, non-mountain terrain
           if (!t.walkable) continue;
-          if (t.type === 'SHALLOWS' || t.type === 'OCEAN' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE') continue;
+          if (t.type === 'SHALLOWS' || t.type === 'OCEAN' || t.type === 'MEDIUM_WATER' || t.type === 'DEEP_WATER' || t.type === 'VERY_DEEP_WATER' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE') continue;
 
           // Minimum distance from existing locations
           let tooClose = false;
@@ -251,9 +268,10 @@ export class OverworldGenerator {
         roads.push({ from: from.id, to: to.id, path });
         for (const p of path) {
           const t = tiles[p.y][p.x];
-          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'DEEP_FOREST') {
+          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'DEEP_FOREST' ||
+              t.type === 'INNER_SHORE' || t.type === 'OUTER_SHORE') {
             tiles[p.y][p.x] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
-          } else if (t.type === 'SHALLOWS') {
+          } else if (t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER') {
             tiles[p.y][p.x] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
           }
         }
@@ -264,10 +282,11 @@ export class OverworldGenerator {
   }
 
   _findOverworldPath(rng, tiles, sx, sy, ex, ey, width, height) {
+    const impassable = new Set(['OCEAN', 'DEEP_WATER', 'VERY_DEEP_WATER', 'MOUNTAIN']);
     const isWalkable = (x, y) => {
       if (x < 0 || y < 0 || x >= width || y >= height) return false;
       const t = tiles[y][x];
-      if (t.type === 'OCEAN' || t.type === 'MOUNTAIN') return false;
+      if (impassable.has(t.type)) return false;
       return true;
     };
 
@@ -366,6 +385,8 @@ export class ChunkManager {
     this.detailNoise = new PerlinNoise(initRng);
     this.temperatureNoise = new PerlinNoise(initRng);
     this.tearNoise = new PerlinNoise(initRng);
+    this.riverNoise = new PerlinNoise(initRng);      // for meandering rivers
+    this.riverNoise2 = new PerlinNoise(initRng);      // secondary river warp
     this._terrainGen = new OverworldGenerator(); // reuse _terrainFromNoise
 
     this.chunks = new Map();       // "cx,cy" -> { tiles: [][], locations: [] }
@@ -437,12 +458,35 @@ export class ChunkManager {
   }
 
   _generateTile(wx, wy) {
-    const h = (this.heightNoise.fbm(wx * TERRAIN_SCALE, wy * TERRAIN_SCALE, 6) + 1) / 2;
+    let h = (this.heightNoise.fbm(wx * TERRAIN_SCALE, wy * TERRAIN_SCALE, 6) + 1) / 2;
     const m = (this.moistureNoise.fbm(wx * TERRAIN_SCALE + 100, wy * TERRAIN_SCALE + 100, 5) + 1) / 2;
     const a = (this.anomalyNoise.fbm(wx * TERRAIN_SCALE * 0.5, wy * TERRAIN_SCALE * 0.5, 4) + 1) / 2;
     const d = (this.detailNoise.fbm(wx * TERRAIN_SCALE * 2, wy * TERRAIN_SCALE * 2, 3) + 1) / 2;
     // Very low-frequency temperature noise for massive contiguous hot/cold regions
     const t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.1 + 200, wy * TERRAIN_SCALE * 0.1 + 200, 3) + 1) / 2;
+
+    // ── Meandering rivers ──
+    // Use domain-warped noise to create narrow winding channels
+    // Primary river paths at low frequency, warped for meandering
+    const RIVER_SCALE = TERRAIN_SCALE * 0.6;
+    const warpX = this.riverNoise2.fbm(wx * RIVER_SCALE * 0.3 + 500, wy * RIVER_SCALE * 0.3 + 500, 3) * 15;
+    const warpY = this.riverNoise2.fbm(wx * RIVER_SCALE * 0.3 + 700, wy * RIVER_SCALE * 0.3 + 700, 3) * 15;
+    const rv = this.riverNoise.fbm((wx + warpX) * RIVER_SCALE, (wy + warpY) * RIVER_SCALE, 4);
+    // Rivers form where noise is near zero (creates narrow bands)
+    const riverProximity = Math.abs(rv);
+    const RIVER_WIDTH = 0.04;  // narrow river channels
+    if (riverProximity < RIVER_WIDTH && h > 0.20 && h < 0.65) {
+      // Carve river: lower height to create water channel with depth gradient
+      const riverDepth = 1.0 - (riverProximity / RIVER_WIDTH); // 1.0 at center, 0 at edge
+      const carve = riverDepth * 0.22;  // max carve depth
+      h = Math.max(0.08, h - carve);
+    }
+    // Wider gentle lowering near rivers for natural valley
+    else if (riverProximity < RIVER_WIDTH * 3 && h > 0.28 && h < 0.55) {
+      const valleyDepth = 1.0 - (riverProximity / (RIVER_WIDTH * 3));
+      h -= valleyDepth * 0.04; // gentle valley
+    }
+
     return this._terrainGen._terrainFromNoise(h, m, a, d, t);
   }
 
@@ -1122,6 +1166,10 @@ export class ChunkManager {
 
     const structures = this._placeStructures(cx, cy, tiles);
     const locations = this._placeChunkLocations(cx, cy, tiles);
+
+    // Detect horizontal river segments and place bridge locations
+    this._placeBridgeLocations(cx, cy, tiles, locations);
+
     const chunk = { tiles, locations, structures, cx, cy };
     this.chunks.set(key, chunk);
     return chunk;
@@ -1330,7 +1378,7 @@ export class ChunkManager {
     const MIN_CLUSTER = 25; // minimum 5x5 equivalent cluster size
     const visited = new Uint8Array(S * S);
     // Water biomes are exempt — ponds and lakes are fine
-    const WATER_TYPES = new Set(['OCEAN', 'SHALLOWS']);
+    const WATER_TYPES = new Set(['OCEAN', 'SHALLOWS', 'MEDIUM_WATER', 'DEEP_WATER', 'VERY_DEEP_WATER']);
     // Walkable replacement for non-walkable terrain by biome
     const REPLACEMENTS = {
       forest: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
@@ -1392,6 +1440,144 @@ export class ChunkManager {
     return prefix + suffix;             // e.g. "Ashbrook"
   }
 
+  // ── Bridge detection: find horizontal water segments 7-9 cells wide ──
+  _isWaterTile(t) {
+    return t && (t.type === 'OCEAN' || t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER' ||
+                 t.type === 'DEEP_WATER' || t.type === 'VERY_DEEP_WATER');
+  }
+
+  _isLandTile(t) {
+    return t && t.walkable && !this._isWaterTile(t) && t.type !== 'BRIDGE_ENTRANCE';
+  }
+
+  _placeBridgeLocations(cx, cy, tiles, locations) {
+    const rng = new SeededRNG(this.seed + cx * 31337 + cy * 7919 + 88888);
+    const ox = cx * CHUNK_SIZE;
+    const oy = cy * CHUNK_SIZE;
+    const WATER_TYPES = new Set(['OCEAN', 'SHALLOWS', 'MEDIUM_WATER', 'DEEP_WATER', 'VERY_DEEP_WATER']);
+
+    // Scan each row for horizontal water segments of 7-9 cells
+    for (let ly = 2; ly < CHUNK_SIZE - 2; ly++) {
+      let waterStart = -1;
+      for (let lx = 1; lx < CHUNK_SIZE - 1; lx++) {
+        const t = tiles[ly][lx];
+        if (WATER_TYPES.has(t.type)) {
+          if (waterStart === -1) waterStart = lx;
+        } else {
+          if (waterStart !== -1) {
+            const span = lx - waterStart;
+            if (span >= 7 && span <= 9) {
+              // Check land on both sides
+              const leftTile = waterStart > 0 ? tiles[ly][waterStart - 1] : null;
+              const rightTile = lx < CHUNK_SIZE ? tiles[ly][lx] : null;
+              const leftOk = leftTile && leftTile.walkable && !WATER_TYPES.has(leftTile.type);
+              const rightOk = rightTile && rightTile.walkable && !WATER_TYPES.has(rightTile.type);
+
+              // Also check that the row above and below are mostly water (confirms horizontal river)
+              if (leftOk && rightOk) {
+                let aboveWater = 0, belowWater = 0;
+                for (let sx = waterStart; sx < lx; sx++) {
+                  if (ly > 0 && WATER_TYPES.has(tiles[ly - 1][sx].type)) aboveWater++;
+                  if (ly < CHUNK_SIZE - 1 && WATER_TYPES.has(tiles[ly + 1][sx].type)) belowWater++;
+                }
+                const halfSpan = span / 2;
+                // At least half the cells above/below should be water (real river, not thin line)
+                if (aboveWater >= halfSpan && belowWater >= halfSpan) {
+                  // 55% chance to spawn a bridge
+                  if (rng.next() < 0.55) {
+                    this._createBridgeLocation(cx, cy, tiles, locations, ox, oy, rng,
+                      waterStart, lx - 1, ly, span);
+                  }
+                }
+              }
+            }
+            waterStart = -1;
+          }
+        }
+      }
+    }
+  }
+
+  _createBridgeLocation(cx, cy, tiles, locations, ox, oy, rng, startX, endX, ly, span) {
+    const midX = Math.floor((startX + endX) / 2);
+    const wx = ox + midX;
+    const wy = oy + ly;
+
+    // Check not too close to other locations
+    for (const loc of locations) {
+      if (distance(wx, wy, loc.x, loc.y) < 10) return;
+    }
+    // Check neighboring chunks
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        const nk = this._chunkKey(cx + dx, cy + dy);
+        const neighbor = this.chunks.get(nk);
+        if (!neighbor) continue;
+        for (const nloc of neighbor.locations) {
+          if (distance(wx, wy, nloc.x, nloc.y) < 10) return;
+        }
+      }
+    }
+
+    // Determine bridge state (discovered later by player)
+    // 0 = has enemies+shops, 1 = has enemies only, 2 = empty/safe, 3 = broken/impassable
+    const stateRoll = rng.next();
+    let bridgeState;
+    if (stateRoll < 0.35) bridgeState = 0;       // enemies + shops
+    else if (stateRoll < 0.65) bridgeState = 1;   // enemies only
+    else if (stateRoll < 0.80) bridgeState = 2;   // empty
+    else bridgeState = 3;                          // broken
+
+    const id = (cx + 50000) * 100000 + (cy + 50000) * 10 + 9; // use 9 to avoid collision with regular location ids
+    const bridgeName = this._generateName(rng, 'camp').replace(/ Camp| Den| Crossing| Lodge| Waypost/, '') + ' Bridge';
+
+    const loc = {
+      id,
+      name: bridgeName,
+      type: 'bridge_dungeon',
+      x: wx, y: wy,
+      population: 0,
+      difficulty: 2 + rng.nextInt(0, 3),
+      bridgeState,        // 0=enemies+shops, 1=enemies, 2=empty, 3=broken
+      bridgeSpan: span,
+      bridgeStartX: ox + startX,
+      bridgeEndX: ox + endX,
+      bridgeY: wy,
+      discovered: false,  // becomes true after player enters
+      markedBroken: false, // becomes true if player discovers it's broken
+    };
+    locations.push(loc);
+    this.locationMap.set(`${wx},${wy}`, loc);
+
+    // Place bridge entrance tiles on both sides and bridge span on the world map
+    // West entrance (land side)
+    const westX = startX - 1;
+    if (westX >= 0 && westX < CHUNK_SIZE) {
+      tiles[ly][westX] = tile('BRIDGE_ENTRANCE', '\u2302', '#AA8866', '#332211', true,
+        { biome: 'bridge', locationId: id, bridgeSide: 'west' });
+      this.locationMap.set(`${ox + westX},${wy}`, loc);
+    }
+    // East entrance (land side)
+    const eastX = endX + 1;
+    if (eastX >= 0 && eastX < CHUNK_SIZE) {
+      tiles[ly][eastX] = tile('BRIDGE_ENTRANCE', '\u2302', '#AA8866', '#332211', true,
+        { biome: 'bridge', locationId: id, bridgeSide: 'east' });
+      this.locationMap.set(`${ox + eastX},${wy}`, loc);
+    }
+
+    // Draw bridge structure across the water on world map
+    for (let bx = startX; bx <= endX; bx++) {
+      if (bx >= 0 && bx < CHUNK_SIZE) {
+        tiles[ly][bx] = tile('BRIDGE', '=', '#887766', '#222211', false,
+          { biome: 'bridge', locationId: id });
+      }
+    }
+    // Center marker
+    tiles[ly][midX] = tile('LOCATION', '\u2302', '#CCAA88', '#332211', true,
+      { biome: 'bridge', locationId: id });
+  }
+
   _placeChunkLocations(cx, cy, tiles) {
     const rng = this._chunkRng(cx, cy);
     const ox = cx * CHUNK_SIZE;
@@ -1420,7 +1606,7 @@ export class ChunkManager {
         const t = tiles[ly][lx];
 
         if (!t.walkable) continue;
-        if (t.type === 'SHALLOWS' || t.type === 'OCEAN' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE') continue;
+        if (t.type === 'SHALLOWS' || t.type === 'OCEAN' || t.type === 'MEDIUM_WATER' || t.type === 'DEEP_WATER' || t.type === 'VERY_DEEP_WATER' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE' || t.type === 'INNER_SHORE') continue;
 
         const wx = ox + lx;
         const wy = oy + ly;
@@ -1568,9 +1754,10 @@ export class ChunkManager {
           const lx = ((p.x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
           const ly = ((p.y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
           const t = chunk.tiles[ly][lx];
-          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'DEEP_FOREST') {
+          if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'DEEP_FOREST' ||
+              t.type === 'INNER_SHORE' || t.type === 'OUTER_SHORE') {
             chunk.tiles[ly][lx] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
-          } else if (t.type === 'SHALLOWS') {
+          } else if (t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER') {
             chunk.tiles[ly][lx] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
           }
         }
@@ -1580,9 +1767,10 @@ export class ChunkManager {
 
   _findPath(sx, sy, ex, ey) {
     const self = this;
+    const DEEP_WATER = new Set(['OCEAN', 'DEEP_WATER', 'VERY_DEEP_WATER', 'MOUNTAIN']);
     const isWalkable = (x, y) => {
       const t = self.getTile(x, y);
-      if (t.type === 'OCEAN' || t.type === 'MOUNTAIN') return false;
+      if (DEEP_WATER.has(t.type)) return false;
       return true;
     };
 
@@ -3547,6 +3735,322 @@ export class DungeonGenerator {
         }
       }
     }
+  }
+}
+
+// ============================================================================
+// BridgeDungeonGenerator — Ancient abandoned metal tech bridge sub-levels
+// ============================================================================
+
+export class BridgeDungeonGenerator {
+
+  generate(rng, bridgeLocation) {
+    const span = bridgeLocation.bridgeSpan || 8;
+    const state = bridgeLocation.bridgeState; // 0=enemies+shops, 1=enemies, 2=empty, 3=broken
+
+    // Bridge is a linear east-west structure, wider than tall
+    const width = Math.max(40, span * 5);
+    const height = 20;
+
+    const tiles = makeTileGrid(width, height, () =>
+      tile('WALL', '#', '#555555', '#111111', false)
+    );
+
+    const rooms = [];
+    const corridors = [];
+
+    // ── Main bridge corridor (central passage) ──
+    const corridorY = Math.floor(height / 2) - 1;
+    const corridorH = 3;
+
+    // Carve main corridor
+    for (let y = corridorY; y < corridorY + corridorH; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        tiles[y][x] = this._metalFloor(rng, x, y);
+      }
+    }
+
+    // ── West entrance room (town gate) ──
+    const westRoom = { x: 1, y: corridorY - 3, w: 8, h: corridorH + 6, type: 'entrance_west' };
+    this._carveRoom(tiles, westRoom, rng);
+    rooms.push(westRoom);
+
+    // West entrance stairs
+    tiles[corridorY + 1][1] = tile('STAIRS_UP', '<', '#ffffff', '#333322', true, { bridgeSide: 'west' });
+
+    // Gate decoration
+    for (let y = westRoom.y; y < westRoom.y + westRoom.h; y++) {
+      tiles[y][0] = tile('BRIDGE_GATE', '\u2551', '#AA7744', '#221100', false, { structure: true });
+    }
+    tiles[corridorY][0] = tile('BRIDGE_GATE', '\u2554', '#AA7744', '#221100', false, { structure: true });
+    tiles[corridorY + corridorH - 1][0] = tile('BRIDGE_GATE', '\u255A', '#AA7744', '#221100', false, { structure: true });
+
+    // ── East entrance room (town gate) ──
+    const eastRoom = { x: width - 9, y: corridorY - 3, w: 8, h: corridorH + 6, type: 'entrance_east' };
+    this._carveRoom(tiles, eastRoom, rng);
+    rooms.push(eastRoom);
+
+    // East entrance stairs
+    tiles[corridorY + 1][width - 2] = tile('STAIRS_UP', '<', '#ffffff', '#333322', true, { bridgeSide: 'east' });
+
+    // Gate decoration
+    for (let y = eastRoom.y; y < eastRoom.y + eastRoom.h; y++) {
+      tiles[y][width - 1] = tile('BRIDGE_GATE', '\u2551', '#AA7744', '#221100', false, { structure: true });
+    }
+    tiles[corridorY][width - 1] = tile('BRIDGE_GATE', '\u2557', '#AA7744', '#221100', false, { structure: true });
+    tiles[corridorY + corridorH - 1][width - 1] = tile('BRIDGE_GATE', '\u255D', '#AA7744', '#221100', false, { structure: true });
+
+    // ── Interior rooms branching off the corridor ──
+    const midSection = Math.floor(width / 2);
+    const roomCount = 3 + rng.nextInt(0, 3);
+    const roomSpacing = Math.floor((width - 20) / (roomCount + 1));
+
+    for (let i = 0; i < roomCount; i++) {
+      const rx = 10 + i * roomSpacing + rng.nextInt(-1, 1);
+      const above = rng.next() > 0.5;
+      const rw = rng.nextInt(5, 8);
+      const rh = rng.nextInt(4, 6);
+      const ry = above ? (corridorY - rh) : (corridorY + corridorH);
+
+      if (ry < 1 || ry + rh >= height - 1 || rx < 1 || rx + rw >= width - 1) continue;
+
+      const room = { x: rx, y: ry, w: rw, h: rh, type: 'side_room' };
+      this._carveRoom(tiles, room, rng);
+      rooms.push(room);
+
+      // Connect to corridor
+      const doorX = rx + Math.floor(rw / 2);
+      const doorY = above ? (corridorY - 1) : (corridorY + corridorH - 1);
+      if (doorY >= 0 && doorY < height) {
+        // Carve connection
+        const connStart = above ? ry + rh - 1 : corridorY + corridorH;
+        const connEnd = above ? corridorY : ry;
+        const minY = Math.min(connStart, connEnd);
+        const maxY = Math.max(connStart, connEnd);
+        for (let cy = minY; cy <= maxY; cy++) {
+          if (cy >= 0 && cy < height) {
+            tiles[cy][doorX] = this._metalFloor(rng, doorX, cy);
+          }
+        }
+        tiles[doorY][doorX] = tile('DOOR', '+', '#AA8855', '#222211', true);
+      }
+    }
+
+    // ── Apply broken state ──
+    if (state === 3) {
+      this._applyBrokenState(tiles, rng, width, height, corridorY, corridorH);
+    }
+
+    // ── Decorate with ancient metal tech aesthetic ──
+    this._decorateBridge(tiles, rng, width, height, rooms, state);
+
+    // ── Place entity spots ──
+    const entitySpots = this._placeEntities(rng, tiles, rooms, state, width, height);
+
+    return {
+      tiles, width, height, rooms, corridors, entitySpots,
+      depth: 1,
+      bridgeState: state,
+      isBridge: true,
+    };
+  }
+
+  _metalFloor(rng, x, y) {
+    // Decayed ancient metal floor with variation
+    const roll = rng.next();
+    if (roll < 0.15) return tile('BRIDGE_FLOOR', '\u2591', '#6B6B6B', '#1A1A18', true, { structure: true }); // ░ light rust
+    if (roll < 0.25) return tile('BRIDGE_FLOOR', '\u2592', '#5A5A5A', '#1A1A18', true, { structure: true }); // ▒ medium decay
+    if (roll < 0.35) return tile('BRIDGE_FLOOR', '\u00B7', '#7A7A7A', '#1A1A18', true, { structure: true }); // · rivet/bolt
+    return tile('BRIDGE_FLOOR', '.', '#888877', '#1A1A18', true, { structure: true });
+  }
+
+  _carveRoom(tiles, room, rng) {
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        if (y >= 0 && y < tiles.length && x >= 0 && x < tiles[0].length) {
+          tiles[y][x] = this._metalFloor(rng, x, y);
+        }
+      }
+    }
+  }
+
+  _applyBrokenState(tiles, rng, width, height, corridorY, corridorH) {
+    // Create a gap in the middle section that prevents crossing
+    const gapCenter = Math.floor(width / 2);
+    const gapWidth = 3 + rng.nextInt(0, 3);
+    const gapStart = gapCenter - Math.floor(gapWidth / 2);
+    const gapEnd = gapStart + gapWidth;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = gapStart; x <= gapEnd; x++) {
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+          if (tiles[y][x].walkable || tiles[y][x].type === 'BRIDGE_FLOOR') {
+            // Broken gap — void/abyss below the bridge
+            tiles[y][x] = tile('BRIDGE_VOID', ' ', '#110011', '#000000', false,
+              { structure: true, broken: true });
+          }
+        }
+      }
+    }
+
+    // Add crumbling edge tiles around the gap
+    for (let y = corridorY - 1; y <= corridorY + corridorH; y++) {
+      if (gapStart - 1 >= 0 && y >= 0 && y < height) {
+        if (tiles[y][gapStart - 1].walkable) {
+          tiles[y][gapStart - 1] = tile('BRIDGE_CRUMBLE', '%', '#665544', '#1A1A18', true,
+            { structure: true, crumbling: true });
+        }
+      }
+      if (gapEnd + 1 < width && y >= 0 && y < height) {
+        if (tiles[y][gapEnd + 1].walkable) {
+          tiles[y][gapEnd + 1] = tile('BRIDGE_CRUMBLE', '%', '#665544', '#1A1A18', true,
+            { structure: true, crumbling: true });
+        }
+      }
+    }
+  }
+
+  _decorateBridge(tiles, rng, width, height, rooms, state) {
+    // Ancient metal tech decorations
+    for (const room of rooms) {
+      if (room.type === 'entrance_west' || room.type === 'entrance_east') {
+        // Town entrance feel: posts, signs, lantern hooks
+        const cx = room.x + Math.floor(room.w / 2);
+        const cy = room.y + 1;
+        if (cy >= 0 && cy < height && cx >= 0 && cx < width && tiles[cy][cx].walkable) {
+          tiles[cy][cx] = tile('BRIDGE_SIGNPOST', '\u2020', '#CC9944', '#1A1A18', false,
+            { structure: true }); // † signpost
+        }
+        // Pipe/cable along walls
+        for (let x = room.x; x < room.x + room.w; x++) {
+          if (room.y - 1 >= 0 && x >= 0 && x < width) {
+            const wt = tiles[room.y - 1][x];
+            if (wt.type === 'WALL') {
+              tiles[room.y - 1][x] = tile('BRIDGE_PIPE', '\u2550', '#776655', '#111111', false,
+                { structure: true }); // ═ horizontal pipe
+            }
+          }
+          if (room.y + room.h < height && x >= 0 && x < width) {
+            const wt = tiles[room.y + room.h][x];
+            if (wt.type === 'WALL') {
+              tiles[room.y + room.h][x] = tile('BRIDGE_PIPE', '\u2550', '#776655', '#111111', false,
+                { structure: true }); // ═ horizontal pipe
+            }
+          }
+        }
+      } else if (room.type === 'side_room') {
+        // Random decor: barrels, crates, shelves, rusted machinery
+        const numDecor = rng.nextInt(1, 4);
+        for (let d = 0; d < numDecor; d++) {
+          const dx = room.x + rng.nextInt(1, room.w - 2);
+          const dy = room.y + rng.nextInt(1, room.h - 2);
+          if (dy >= 0 && dy < height && dx >= 0 && dx < width && tiles[dy][dx].walkable) {
+            const decorType = rng.nextInt(0, 4);
+            switch (decorType) {
+              case 0: // Barrel
+                tiles[dy][dx] = tile('BARREL', 'o', '#996633', '#1A1A18', false, { structure: true });
+                break;
+              case 1: // Crate
+                tiles[dy][dx] = tile('CRATE', '\u25A1', '#887744', '#1A1A18', false, { structure: true }); // □
+                break;
+              case 2: // Rusted machine
+                tiles[dy][dx] = tile('RUSTED_MACHINE', '\u2699', '#885533', '#1A1A18', false, { structure: true }); // ⚙
+                break;
+              case 3: // Collapsed beam
+                tiles[dy][dx] = tile('COLLAPSED_BEAM', '/', '#776655', '#1A1A18', false, { structure: true });
+                break;
+              default: // Metal debris
+                tiles[dy][dx] = tile('METAL_DEBRIS', '%', '#777766', '#1A1A18', false, { structure: true });
+                break;
+            }
+          }
+        }
+      }
+    }
+
+    // Rust stains on walls (random wall tiles get rusty coloring)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y][x].type === 'WALL' && rng.next() < 0.25) {
+          const rust = rng.next();
+          const fg = _lerpColor('#555555', '#884422', rust * 0.6);
+          const bg = _lerpColor('#111111', '#221100', rust * 0.4);
+          tiles[y][x] = tile('WALL', '#', fg, bg, false, { structure: true, rusty: true });
+        }
+      }
+    }
+  }
+
+  _placeEntities(rng, tiles, rooms, state, width, height) {
+    const spots = [];
+
+    if (state === 3) {
+      // Broken bridge — minimal entities, just atmosphere
+      return spots;
+    }
+
+    // Enemy spots (in side rooms and corridor)
+    if (state === 0 || state === 1) {
+      const sideRooms = rooms.filter(r => r.type === 'side_room');
+      for (const room of sideRooms) {
+        const enemyCount = rng.nextInt(1, 3);
+        for (let i = 0; i < enemyCount; i++) {
+          for (let attempt = 0; attempt < 20; attempt++) {
+            const ex = room.x + rng.nextInt(1, room.w - 2);
+            const ey = room.y + rng.nextInt(1, room.h - 2);
+            if (ey >= 0 && ey < height && ex >= 0 && ex < width && tiles[ey][ex].walkable) {
+              spots.push({ type: 'enemy', x: ex, y: ey });
+              break;
+            }
+          }
+        }
+      }
+      // A couple enemies in the main corridor
+      const corridorEnemies = rng.nextInt(1, 3);
+      for (let i = 0; i < corridorEnemies; i++) {
+        const ex = rng.nextInt(10, width - 10);
+        const ey = Math.floor(height / 2);
+        if (tiles[ey][ex].walkable) {
+          spots.push({ type: 'enemy', x: ex, y: ey });
+        }
+      }
+    }
+
+    // Shop spots (only in state 0 — enemies + shops)
+    if (state === 0) {
+      const sideRooms = rooms.filter(r => r.type === 'side_room');
+      if (sideRooms.length > 0) {
+        // Pick 1-2 rooms for shops
+        const shopCount = Math.min(sideRooms.length, rng.nextInt(1, 2));
+        for (let i = 0; i < shopCount; i++) {
+          const room = sideRooms[i];
+          const sx = room.x + Math.floor(room.w / 2);
+          const sy = room.y + Math.floor(room.h / 2);
+          if (sy >= 0 && sy < height && sx >= 0 && sx < width && tiles[sy][sx].walkable) {
+            spots.push({ type: 'shop_npc', x: sx, y: sy });
+            // Place counter
+            if (sy - 1 >= 0 && tiles[sy - 1][sx].walkable) {
+              tiles[sy - 1][sx] = tile('COUNTER', '\u2550', '#887755', '#1A1A18', false, { structure: true });
+            }
+          }
+        }
+      }
+    }
+
+    // Item spots
+    const itemCount = state === 2 ? rng.nextInt(2, 5) : rng.nextInt(1, 3);
+    for (let i = 0; i < itemCount; i++) {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const ix = rng.nextInt(5, width - 5);
+        const iy = rng.nextInt(1, height - 2);
+        if (tiles[iy][ix].walkable) {
+          spots.push({ type: 'item', x: ix, y: iy });
+          break;
+        }
+      }
+    }
+
+    return spots;
   }
 }
 
