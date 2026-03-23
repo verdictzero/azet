@@ -123,7 +123,11 @@ class Game {
     this.canvas = document.getElementById('game-canvas');
     this.renderer = new Renderer(this.canvas);
     this.input = new InputManager();
-    this.camera = new Camera(this.renderer.cols - 2, this.renderer.rows - LAYOUT.HUD_TOTAL);
+    const initDensity = this.renderer.densityLevel;
+    this.camera = new Camera(
+      Math.floor((this.renderer.cols - 2) / initDensity),
+      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / initDensity)
+    );
     this.locationCamera = null;
     this.ui = new UIManager(this.renderer);
     this.music = new MusicManager();
@@ -1028,10 +1032,15 @@ class Game {
     this.player.position.x = coreOff.x + Math.floor(coreW / 2);
     this.player.position.y = (this.currentSettlement.tiles || []).length - coreOff.y - 2;
 
-    // Create location camera
+    // Save current zoom and set max zoom for town view
+    this._preLocationZoom = this.renderer.densityLevel;
+    this.renderer.setZoom(3);
+
+    // Create location camera (sized for max zoom density)
+    const density = this.renderer.densityLevel;
     this.locationCamera = new Camera(
-      this.renderer.cols - 2,
-      this.renderer.rows - LAYOUT.HUD_TOTAL
+      Math.floor((this.renderer.cols - 2) / density),
+      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density)
     );
     this.locationCamera.follow(this.player);
     this.locationCamera.x = this.locationCamera.targetX;
@@ -1744,6 +1753,11 @@ class Game {
         this.npcs = [];
         this.gameContext.currentLocationName = 'World';
         this.gameContext.currentLocation = null;
+        // Restore zoom level from before entering the town
+        if (this._preLocationZoom) {
+          this.renderer.setZoom(this._preLocationZoom);
+          this._preLocationZoom = null;
+        }
         this.camera.follow(this.player);
         this.camera.x = this.camera.targetX;
         this.camera.y = this.camera.targetY;
@@ -1808,6 +1822,11 @@ class Game {
         }
         this.gameContext.currentLocationName = 'World';
         this.gameContext.currentLocation = null;
+        // Restore zoom level from before entering the town
+        if (this._preLocationZoom) {
+          this.renderer.setZoom(this._preLocationZoom);
+          this._preLocationZoom = null;
+        }
         this.camera.follow(this.player);
         this.camera.x = this.camera.targetX;
         this.camera.y = this.camera.targetY;
@@ -1946,6 +1965,11 @@ class Game {
             if (this.gameContext.currentLocation) {
               this.player.position.x = this.gameContext.currentLocation.x;
               this.player.position.y = this.gameContext.currentLocation.y;
+            }
+            // Restore zoom level from before entering the town
+            if (this._preLocationZoom) {
+              this.renderer.setZoom(this._preLocationZoom);
+              this._preLocationZoom = null;
             }
             this.setState('OVERWORLD');
             this.ui.addMessage('You exit to the surface.', COLORS.WHITE);
