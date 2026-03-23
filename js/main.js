@@ -1735,7 +1735,7 @@ class Game {
     if (key === 'n' || key === 'N') { this._toggleQuestNav(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
-    if (key === 'p' || key === 'P') { this.saveGame(); return; }
+    if (key === 'p' || key === 'P') { this.saveGame(1, { exportFile: true }); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
     // Zoom controls
@@ -1810,7 +1810,7 @@ class Game {
     if (key === 'n' || key === 'N') { this._toggleQuestNav(); return; }
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
-    if (key === 'p' || key === 'P') { this.saveGame(); return; }
+    if (key === 'p' || key === 'P') { this.saveGame(1, { exportFile: true }); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
     // Zoom controls
@@ -3477,8 +3477,7 @@ class Game {
     } else if (key === 'Enter' || key === ' ') {
       const item = items[this.gamepadMenuCursor];
       if (item.action === 'save') {
-        this.saveGame();
-        this.addMessage('Game saved.', '#55FF55');
+        this.saveGame(1, { exportFile: true });
         this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
       } else if (item.state) {
         this.setState(item.state);
@@ -4232,7 +4231,7 @@ class Game {
 
   // ─── SAVE/LOAD ───
 
-  saveGame(slot = 1) {
+  saveGame(slot = 1, { exportFile = false } = {}) {
     try {
       const saveData = {
         version: 4,
@@ -4309,10 +4308,30 @@ class Game {
         }));
       }
 
-      localStorage.setItem(`asciiquest_save_${slot}`, JSON.stringify(saveData));
+      const saveJson = JSON.stringify(saveData);
+      localStorage.setItem(`asciiquest_save_${slot}`, saveJson);
       // Also keep backwards-compatible key
-      localStorage.setItem('asciiquest_save', JSON.stringify(saveData));
-      this.ui.addMessage('Game saved.', COLORS.BRIGHT_GREEN);
+      localStorage.setItem('asciiquest_save', saveJson);
+
+      if (exportFile) {
+        try {
+          const text = exportSaveToText(saveJson);
+          const blob = new Blob([text], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `asciiquest_save_${this.player ? this.player.name : 'unknown'}.txt`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          this.ui.addMessage('Game saved + backup file downloaded.', COLORS.BRIGHT_GREEN);
+        } catch (exportErr) {
+          this.ui.addMessage('File backup failed, but game saved locally.', COLORS.BRIGHT_YELLOW);
+        }
+      } else {
+        this.ui.addMessage('Game saved.', COLORS.BRIGHT_GREEN);
+      }
       return true;
     } catch (e) {
       this.ui.addMessage('Save failed!', COLORS.BRIGHT_RED);
