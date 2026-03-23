@@ -1496,17 +1496,106 @@ export class InputManager {
     }
   }
 
-  // ── Touch / d-pad ──────────────────────────
+  // ── Virtual Gamepad ──────────────────────────
+
+  // Abstract gamepad button → key action mapping per game state.
+  // State-specific entries override _default. Only list overrides.
+  static GAMEPAD_ACTIONS = {
+    _default: {
+      UP: 'ArrowUp', DOWN: 'ArrowDown', LEFT: 'ArrowLeft', RIGHT: 'ArrowRight',
+      UL: '7', UR: '9', DL: '1', DR: '3',
+      A: 'Enter',           // Confirm / Act
+      B: 'Escape',          // Cancel / Back
+      X: 't',               // Context: talk
+      Y: 'e',               // Context: enter
+      START: 'gamepad:menu', // FF-style menu
+      SELECT: 'wait',       // Wait / skip turn
+      L1: 'ArrowLeft', R1: 'ArrowRight',
+      L2: '-', R2: '+',
+    },
+    COMBAT: {
+      A: 'Enter', B: 'Escape',
+      X: 'a',     // Attack
+      Y: 'f',     // Flee
+      L1: '1', R1: '2',
+      L2: '3', R2: 'i',
+      START: null, // no menu in combat
+    },
+    BATTLE_RESULTS: { A: 'Enter' },
+    DIALOGUE: {
+      A: 'Enter', B: 'Escape',
+      X: 'a', Y: 'b',
+      L1: 'c', R1: 'd',
+    },
+    SHOP: {
+      A: 'Enter', B: 'Escape',
+      X: 'b', Y: 's',
+    },
+    INVENTORY: {
+      A: 'Enter', B: 'Escape',
+      X: 'e',     // Equip
+      Y: 'd',     // Drop
+    },
+    CHARACTER: { A: 'Enter', B: 'Escape' },
+    QUEST_LOG: {
+      A: 'Enter', B: 'Escape',
+      X: 'n',     // Nav toggle
+    },
+    MAP: {
+      A: 'Enter', B: 'Escape',
+      L2: '-', R2: '+',
+    },
+    HELP: { B: 'Escape' },
+    SETTINGS: {
+      A: 'Enter', B: 'Escape',
+    },
+    GAME_OVER: { A: 'Enter' },
+    MENU: { A: 'Enter', B: 'Escape' },
+    CHAR_CREATE: { A: 'Enter', B: 'Escape' },
+    DEBUG_MENU: { A: 'Enter', B: 'Escape' },
+    DUNGEON: {
+      X: 'g',     // Pick up
+      Y: '>',     // Stairs
+    },
+    LOCATION: {
+      X: 't',     // Talk
+      Y: 'e',     // Enter
+    },
+    FACTION: { B: 'Escape' },
+    QUEST_COMPASS: { B: 'Escape' },
+    ALMANAC: { B: 'Escape' },
+    CONSOLE_LOG: { B: 'Escape' },
+    GAMEPAD_MENU: {
+      A: 'Enter',
+      B: 'Escape',
+      START: 'Escape', // close menu
+    },
+  };
+
+  /**
+   * Resolve a virtual gamepad button to the key action for the current state.
+   */
+  resolveGamepadButton(button) {
+    const state = this._gameStateProvider ? this._gameStateProvider() : '_default';
+    const stateMap = InputManager.GAMEPAD_ACTIONS[state];
+    // Check state-specific, then default
+    if (stateMap && button in stateMap) return stateMap[button];
+    return InputManager.GAMEPAD_ACTIONS._default[button] || null;
+  }
 
   _initTouchControls() {
-    // Show touch controls on mobile
     const touchDiv = document.getElementById('touch-controls');
     if (touchDiv && this.isMobile) {
       touchDiv.classList.remove('hidden');
     }
-
     this._touchDiv = touchDiv;
-    // All buttons are created dynamically by updateTouchLayout()
+
+    // Restore gamepad layout mode
+    this._gamepadMode = localStorage.getItem('gamepadMode') || 'compact';
+    this._applyGamepadMode();
+
+    // Bind all static gamepad buttons
+    this._bindGamepadButtons();
   }
 
   set enableTouch(val) {
@@ -1521,339 +1610,116 @@ export class InputManager {
   }
   get enableTouch() { return this._enableTouch; }
 
-  // ── Context-adaptive touch layout ──────────
-
-  /**
-   * Touch button layout configurations per game state.
-   */
-  // Grid-based touch layouts: each page is an array of rows, each row has 3 cells
-  // Cell types: 'dpad', 'dpad-center', 'action', 'action-primary', 'debug', 'debug-cmd', 'empty'
-  // null = empty spacer cell
-  // pageNames: optional array of labels shown on the tab button
-  static _E = null; // shorthand for empty cell
-  static TOUCH_LAYOUTS = {
-    // ── Preamble (click anywhere to start) ──
-    PREAMBLE: { pages: [[[null, null, null]]] },
-    // ── Title / Main Menu ──
-    MENU: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'HELP', key: '?', type: 'action' }, { label: 'SET', key: 'o', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-    ]]},
-    // ── Character Creation ──
-    CHAR_CREATE: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'HELP', key: '?', type: 'action' }, null, { label: 'BACK', key: 'Escape', type: 'action' }],
-    ]]},
-    // ── Loading ──
-    LOADING: { pages: [[[null, null, null]]] },
-    // ── Gameplay (Overworld / Location / Dungeon) — 8 thematic pages ──
-    GAMEPLAY: {
-      pageNames: ['Explore', 'Actions', 'Combat', 'Dungeon', 'Town', 'Items', 'Dbg World', 'Dbg Player'],
-      pages: [
-      // Page 1: Explore (Overworld)
-      [
-        [{ label: 'ACT', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'ENTR', key: 'e', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'TALK', key: 't', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'REST', key: 'r', type: 'action' }],
-        [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'CHR', key: 'c', type: 'action' }, { label: 'INV', key: 'i', type: 'action' }],
-        [{ label: 'QST', key: 'q', type: 'action' }, { label: 'SAVE', key: 'p', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      // Page 2: Actions (Secondary)
-      [
-        [{ label: 'NAV', key: 'n', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'CMP', key: 'j', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'FCTN', key: 'f', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'ALM', key: 'l', type: 'action' }],
-        [{ label: 'SET', key: 'o', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'LOG', key: 'F2', type: 'action' }],
-        [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      // Page 3: Combat
-      [
-        [{ label: 'ATK', key: 'a', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'FLEE', key: 'f', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'AB1', key: '1', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'AB2', key: '2', type: 'action' }],
-        [{ label: 'AB3', key: '3', type: 'action' }, { label: 'WAIT', key: 'wait', type: 'dpad-center' }, { label: 'INV', key: 'i', type: 'action' }],
-        [{ label: 'CHR', key: 'c', type: 'action' }, { label: 'MAP', key: 'm', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      // Page 4: Dungeon
-      [
-        [{ label: 'GET', key: 'g', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'STR', key: '>', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'ACT', key: 'Enter', type: 'action-primary' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'TALK', key: 't', type: 'action' }],
-        [{ label: 'AB1', key: '1', type: 'action' }, { label: 'AB2', key: '2', type: 'action' }, { label: 'AB3', key: '3', type: 'action' }],
-        [{ label: 'MAP', key: 'm', type: 'action' }, { label: 'INV', key: 'i', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      // Page 5: Town
-      [
-        [{ label: 'TALK', key: 't', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'ACT', key: 'Enter', type: 'action-primary' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'REST', key: 'r', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'ENTR', key: 'e', type: 'action' }],
-        [{ label: 'SHOP', key: 's', type: 'action' }, { label: 'INV', key: 'i', type: 'action' }, { label: 'CHR', key: 'c', type: 'action' }],
-        [{ label: 'SAVE', key: 'p', type: 'action' }, { label: 'MAP', key: 'm', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      // Page 6: Items & Inventory
-      [
-        [{ label: 'USE', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'EQP', key: 'e', type: 'action' }],
-        [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25CF', key: 'wait', type: 'dpad-center' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-        [{ label: 'DROP', key: 'd', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'SELL', key: 's', type: 'action' }],
-        [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }, { label: 'CHR', key: 'c', type: 'action' }],
-        [{ label: 'QST', key: 'q', type: 'action' }, { label: 'DBG', key: '`', type: 'debug' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      // Page 7: Debug — World / Visual
-      [
-        [{ label: 'H+', key: 'debug:hourInc', type: 'debug-cmd' }, { label: 'H-', key: 'debug:hourDec', type: 'debug-cmd' }, { label: 'ADV', key: 'debug:advanceDay', type: 'debug-cmd' }],
-        [{ label: 'W>', key: 'debug:weatherNext', type: 'debug-cmd' }, { label: 'W<', key: 'debug:weatherPrev', type: 'debug-cmd' }, { label: 'CRT', key: 'debug:crtEffects', type: 'debug-cmd' }],
-        [{ label: 'SHD', key: 'debug:disableShadows', type: 'debug-cmd' }, { label: 'LIT', key: 'debug:disableLighting', type: 'debug-cmd' }, { label: 'CLD', key: 'debug:disableClouds', type: 'debug-cmd' }],
-        [{ label: 'RMAP', key: 'debug:revealMap', type: 'debug-cmd' }, { label: 'DBG', key: '`', type: 'debug' }, { label: 'LOG', key: 'F2', type: 'action' }],
-        [null, null, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      // Page 8: Debug — Player / Cheats
-      [
-        [{ label: 'GOD', key: 'debug:invincible', type: 'debug-cmd' }, { label: 'ENC', key: 'debug:noEncounters', type: 'debug-cmd' }, { label: 'NCP', key: 'debug:noClip', type: 'debug-cmd' }],
-        [{ label: '\u221EATK', key: 'debug:infiniteAttack', type: 'debug-cmd' }, { label: '\u221EMP', key: 'debug:infiniteMana', type: 'debug-cmd' }, { label: 'HEAL', key: 'debug:fullHeal', type: 'debug-cmd' }],
-        [{ label: '+XP', key: 'debug:giveXP', type: 'debug-cmd' }, { label: '+GP', key: 'debug:giveGold', type: 'debug-cmd' }, { label: 'LVL', key: 'debug:levelUp', type: 'debug-cmd' }],
-        [{ label: 'TELE', key: 'debug:teleport', type: 'debug-cmd' }, { label: 'DBG', key: '`', type: 'debug' }, { label: 'LOG', key: 'F2', type: 'action' }],
-        [null, null, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-    ]},
-    // ── Combat ──
-    COMBAT: {
-      pageNames: ['Fight', 'Debug'],
-      pages: [
-      // Page 1: Combat Actions
-      [
-        [{ label: 'ATK', key: 'a', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'FLEE', key: 'f', type: 'action' }],
-        [{ label: 'HELP', key: '?', type: 'action' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, null],
-        [{ label: 'AB1', key: '1', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'AB2', key: '2', type: 'action' }],
-        [{ label: 'AB3', key: '3', type: 'action' }, { label: 'INV', key: 'i', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-      // Page 2: Combat Debug
-      [
-        [{ label: 'GOD', key: 'debug:invincible', type: 'debug-cmd' }, { label: '\u221EATK', key: 'debug:infiniteAttack', type: 'debug-cmd' }, { label: '\u221EMP', key: 'debug:infiniteMana', type: 'debug-cmd' }],
-        [{ label: 'ENC', key: 'debug:noEncounters', type: 'debug-cmd' }, { label: 'HEAL', key: 'debug:fullHeal', type: 'debug-cmd' }, { label: '+XP', key: 'debug:giveXP', type: 'debug-cmd' }],
-        [{ label: '+GP', key: 'debug:giveGold', type: 'debug-cmd' }, { label: 'LVL', key: 'debug:levelUp', type: 'debug-cmd' }, { label: 'LOG', key: 'F2', type: 'action' }],
-        [{ label: 'DBG', key: '`', type: 'debug' }, null, { label: 'ESC', key: 'Escape', type: 'action' }],
-      ],
-    ]},
-    // ── Dialogue ──
-    DIALOGUE: { pages: [[
-      [{ label: 'A', key: 'a', type: 'action' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'B', key: 'b', type: 'action' }],
-      [{ label: 'C', key: 'c', type: 'action' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: 'D', key: 'd', type: 'action' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'HELP', key: '?', type: 'action' }, null, { label: 'ESC', key: 'Escape', type: 'action' }],
-    ]]},
-    // ── Shop ──
-    SHOP: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'HELP', key: '?', type: 'action' }, { label: 'SELL', key: 's', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-    ]]},
-    // ── Inventory ──
-    INVENTORY: { pages: [[
-      [{ label: 'USE', key: 'Enter', type: 'action-primary' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: 'EQP', key: 'e', type: 'action' }],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [{ label: 'DROP', key: 'd', type: 'action' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: 'SELL', key: 's', type: 'action' }],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, null],
-    ]]},
-    // ── Character Sheet ──
-    CHARACTER: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [null, null, null],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, null],
-    ]]},
-    // ── Quest Log ──
-    QUEST_LOG: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'TRK', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'NAV', key: 'n', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-    ]]},
-    // ── Map ──
-    MAP: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'ZM+', key: '+', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'ZM-', key: '-', type: 'action' }],
-      [null, { label: 'ESC', key: 'Escape', type: 'action' }, null],
-    ]]},
-    // ── Help ──
-    HELP: { pages: [[
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [{ label: '1', key: '1', type: 'tab' }, { label: '2', key: '2', type: 'tab' }, { label: '3', key: '3', type: 'tab' }],
-      [{ label: '4', key: '4', type: 'tab' }, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, { label: '5', key: '5', type: 'tab' }],
-      [{ label: '6', key: '6', type: 'tab' }, { label: '7', key: '7', type: 'tab' }, { label: '8', key: '8', type: 'tab' }],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
-    ]]},
-    // ── Settings ──
-    SETTINGS: { pages: [[
-      [{ label: '1', key: '1', type: 'action' }, { label: '2', key: '2', type: 'action' }, { label: '3', key: '3', type: 'action' }],
-      [{ label: '4', key: '4', type: 'action' }, { label: '5', key: '5', type: 'action' }, { label: '6', key: '6', type: 'action' }],
-      [{ label: '7', key: '7', type: 'action' }, { label: '8', key: '8', type: 'action' }, { label: 'EXP', key: '9', type: 'action' }],
-      [{ label: 'IMP', key: '0', type: 'action' }, { label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }],
-    ]]},
-    // ── Game Over ──
-    GAME_OVER: { pages: [[
-      [null, null, null],
-      [null, { label: 'MENU', key: 'Enter', type: 'action-primary' }, null],
-    ]]},
-    // ── Battle Results ──
-    BATTLE_RESULTS: { pages: [[
-      [null, null, null],
-      [null, { label: 'OK', key: 'Enter', type: 'action-primary' }, null],
-      [null, null, null],
-    ]]},
-    // ── Debug Menu ──
-    DEBUG_MENU: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: 'SEL', key: 'Enter', type: 'action-primary' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'LOG', key: 'l', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-    ]]},
-    // ── Console Log ──
-    CONSOLE_LOG: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [null, { label: 'HELP', key: '?', type: 'action' }, null],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'HOME', key: 'Home', type: 'action' }, { label: 'END', key: 'End', type: 'action' }, { label: 'ESC', key: 'Escape', type: 'action' }],
-    ]]},
-    // ── Faction ──
-    FACTION: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, null],
-    ]]},
-    // ── Quest Compass ──
-    QUEST_COMPASS: { pages: [[
-      [null, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, null],
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, null, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, { label: 'HELP', key: '?', type: 'action' }, null],
-    ]]},
-    // ── Almanac ──
-    ALMANAC: { pages: [[
-      [{ label: '\u25C4', key: 'ArrowLeft', type: 'dpad' }, { label: '\u25B2', key: 'ArrowUp', type: 'dpad' }, { label: '\u25BA', key: 'ArrowRight', type: 'dpad' }],
-      [null, null, null],
-      [null, { label: '\u25BC', key: 'ArrowDown', type: 'dpad' }, null],
-      [{ label: 'BACK', key: 'Escape', type: 'action' }, null, null],
-    ]]},
-  };
-
   get touchMode() { return this._touchMode; }
 
   /**
-   * Update touch control layout based on current game state.
-   * Renders a 3-wide grid with d-pad + action buttons.
+   * Bind touch/mouse events to all static gamepad buttons.
+   * The DOM is never rebuilt — the same buttons persist across all states.
    */
-  updateTouchLayout(state) {
+  _bindGamepadButtons() {
     if (!this._touchDiv) return;
-    // Reset tab to page 1 when entering a different state
-    if (state !== this._lastTouchState) {
-      this._actionTab = 0;
-    }
-    this._lastTouchState = state;
-    const layout = InputManager.TOUCH_LAYOUTS[state] || InputManager.TOUCH_LAYOUTS.GAMEPLAY;
-    const pages = layout.pages;
+    const buttons = this._touchDiv.querySelectorAll('[data-btn]');
 
-    // Clamp tab index
-    if (this._actionTab >= pages.length) this._actionTab = 0;
+    // D-pad buttons that support held-key repeat
+    const dpadBtns = new Set(['UP', 'DOWN', 'LEFT', 'RIGHT', 'UL', 'UR', 'DL', 'DR']);
 
-    const gridContainer = this._touchDiv.querySelector('.touch-grid');
-    if (!gridContainer) return;
+    for (const btn of buttons) {
+      const btnId = btn.dataset.btn;
 
-    gridContainer.innerHTML = '';
-    const currentPage = pages[this._actionTab] || [[]];
-    const dirToKey = { ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight' };
-
-    // Render each row of the grid
-    for (const row of currentPage) {
-      for (const cell of row) {
-        if (!cell) {
-          // Empty spacer
-          const spacer = document.createElement('div');
-          spacer.className = 'grid-btn empty';
-          gridContainer.appendChild(spacer);
-          continue;
-        }
-
-        const btn = document.createElement('button');
-        btn.className = 'grid-btn ' + (cell.type || 'action');
-        btn.textContent = cell.label;
-
-        // Apply active indicator for debug toggle buttons
-        if (cell.key && cell.key.startsWith('debug:') && this._debugStateProvider) {
-          const debugState = this._debugStateProvider();
-          const action = cell.key.slice(6);
-          if (debugState[action]) {
-            btn.classList.add('active');
-          }
-        }
-
-        const isDpad = cell.type === 'dpad' || cell.type === 'dpad-center';
-        const key = cell.key;
-
-        if (isDpad && key !== 'wait') {
-          // D-pad: support key repeat for held directions
-          const activate = (e) => {
-            e.preventDefault();
-            btn.classList.add('pressed');
-            if (navigator.vibrate) navigator.vibrate(12);
-            this._keysDown.add(key);
-            this.lastAction = key;
-            this._startRepeat(key);
-          };
-          const deactivate = (e) => {
-            e.preventDefault();
-            btn.classList.remove('pressed');
+      if (dpadBtns.has(btnId)) {
+        // D-pad: fire resolved key and support repeat
+        const activate = (e) => {
+          e.preventDefault();
+          btn.classList.add('pressed');
+          if (navigator.vibrate) navigator.vibrate(12);
+          const key = this.resolveGamepadButton(btnId);
+          if (!key) return;
+          this._keysDown.add(key);
+          this.lastAction = key;
+          // Store which resolved key this button activated (for deactivation)
+          btn._activeKey = key;
+          this._startRepeat(key);
+        };
+        const deactivate = (e) => {
+          e.preventDefault();
+          btn.classList.remove('pressed');
+          const key = btn._activeKey;
+          if (key) {
             this._keysDown.delete(key);
             if (this._repeatKey === key) this._stopRepeat();
-          };
-          btn.addEventListener('touchstart', activate, { passive: false });
-          btn.addEventListener('touchend', deactivate, { passive: false });
-          btn.addEventListener('touchcancel', deactivate, { passive: false });
-          btn.addEventListener('mousedown', activate);
-          btn.addEventListener('mouseup', deactivate);
-        } else {
-          // Action button or wait: single fire
-          const fire = (e) => {
-            e.preventDefault();
-            btn.classList.add('pressed');
-            if (navigator.vibrate) navigator.vibrate(12);
-            this.lastAction = key;
-          };
-          const release = () => btn.classList.remove('pressed');
-          btn.addEventListener('touchstart', fire, { passive: false });
-          btn.addEventListener('touchend', release, { passive: false });
-          btn.addEventListener('touchcancel', release, { passive: false });
-          btn.addEventListener('mousedown', fire);
-          btn.addEventListener('mouseup', release);
-        }
-
-        gridContainer.appendChild(btn);
+            btn._activeKey = null;
+          }
+        };
+        btn.addEventListener('touchstart', activate, { passive: false });
+        btn.addEventListener('touchend', deactivate, { passive: false });
+        btn.addEventListener('touchcancel', deactivate, { passive: false });
+        btn.addEventListener('mousedown', activate);
+        btn.addEventListener('mouseup', deactivate);
+      } else if (btnId === 'WAIT') {
+        // Wait/center — single fire, sends 'wait'
+        const fire = (e) => {
+          e.preventDefault();
+          btn.classList.add('pressed');
+          if (navigator.vibrate) navigator.vibrate(12);
+          this.lastAction = 'wait';
+        };
+        const release = () => btn.classList.remove('pressed');
+        btn.addEventListener('touchstart', fire, { passive: false });
+        btn.addEventListener('touchend', release, { passive: false });
+        btn.addEventListener('touchcancel', release, { passive: false });
+        btn.addEventListener('mousedown', fire);
+        btn.addEventListener('mouseup', release);
+      } else {
+        // Face / shoulder / meta: single fire, resolved per state
+        const fire = (e) => {
+          e.preventDefault();
+          btn.classList.add('pressed');
+          if (navigator.vibrate) navigator.vibrate(12);
+          const key = this.resolveGamepadButton(btnId);
+          if (key) this.lastAction = key;
+        };
+        const release = () => btn.classList.remove('pressed');
+        btn.addEventListener('touchstart', fire, { passive: false });
+        btn.addEventListener('touchend', release, { passive: false });
+        btn.addEventListener('touchcancel', release, { passive: false });
+        btn.addEventListener('mousedown', fire);
+        btn.addEventListener('mouseup', release);
       }
     }
+  }
 
-    // Add tab-switch button if multiple pages
-    if (pages.length > 1) {
-      const tabBtn = document.createElement('button');
-      tabBtn.className = 'grid-btn tab';
-      const pageName = layout.pageNames?.[this._actionTab] || '';
-      tabBtn.textContent = `${this._actionTab + 1}/${pages.length}${pageName ? ' ' + pageName : ''}`;
-      const switchTab = (e) => {
-        e.preventDefault();
-        if (navigator.vibrate) navigator.vibrate(12);
-        this._actionTab = (this._actionTab + 1) % pages.length;
-        this.updateTouchLayout(state);
-      };
-      tabBtn.addEventListener('touchstart', switchTab, { passive: false });
-      tabBtn.addEventListener('mousedown', switchTab);
-      gridContainer.appendChild(tabBtn);
+  /**
+   * Apply the current gamepad layout mode (compact or wide).
+   */
+  _applyGamepadMode() {
+    if (!this._touchDiv) return;
+    const wrap = this._touchDiv.querySelector('.gamepad-wrap');
+    if (!wrap) return;
+    if (this._gamepadMode === 'wide') {
+      wrap.classList.remove('compact');
+      this._touchDiv.classList.add('wide-mode');
+    } else {
+      wrap.classList.add('compact');
+      this._touchDiv.classList.remove('wide-mode');
     }
+  }
+
+  /**
+   * Toggle between compact (one-handed) and wide (two-handed) gamepad layout.
+   */
+  setGamepadLayout(mode) {
+    this._gamepadMode = mode;
+    localStorage.setItem('gamepadMode', mode);
+    this._applyGamepadMode();
+  }
+
+  /**
+   * Update touch control layout. With the virtual gamepad the DOM never
+   * changes — this is kept as a no-op so existing callers don't break.
+   */
+  updateTouchLayout(_state) {
+    // No-op: the gamepad layout is static.
+    // Gamepad button actions are resolved dynamically via GAMEPAD_ACTIONS.
   }
 
   // ── Text input mode (mobile keyboard) ─────

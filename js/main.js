@@ -140,7 +140,22 @@ class Game {
     this._startVersionPolling();
 
     // Game state
-    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC
+    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU
+
+    // ── FF-style Gamepad Menu ──
+    this.gamepadMenuCursor = 0;
+    this.GAMEPAD_MENU_ITEMS = [
+      { label: 'Items',     icon: '\u2666', state: 'INVENTORY'     },
+      { label: 'Character', icon: '\u263A', state: 'CHARACTER'     },
+      { label: 'Quests',    icon: '!',      state: 'QUEST_LOG'     },
+      { label: 'Map',       icon: '\u2593', state: 'MAP'           },
+      { label: 'Almanac',   icon: '\u2663', state: 'ALMANAC'       },
+      { label: 'Factions',  icon: '\u2691', state: 'FACTION'       },
+      { label: 'Compass',   icon: '\u25CA', state: 'QUEST_COMPASS' },
+      { label: 'Save',      icon: '\u25AA', action: 'save'         },
+      { label: 'Settings',  icon: '\u2660', state: 'SETTINGS'      },
+      { label: 'Help',      icon: '?',      state: 'HELP'          },
+    ];
 
     // Settings (persisted to localStorage)
     this.settings = {
@@ -468,7 +483,7 @@ class Game {
     const overlayStates = [
       'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'HELP',
       'SETTINGS', 'DIALOGUE', 'SHOP', 'FACTION', 'ALMANAC',
-      'CONSOLE_LOG', 'DEBUG_MENU', 'QUEST_COMPASS'
+      'CONSOLE_LOG', 'DEBUG_MENU', 'QUEST_COMPASS', 'GAMEPAD_MENU'
     ];
     if (overlayStates.includes(newState)) return;
 
@@ -1521,6 +1536,19 @@ class Game {
       }
       return;
     }
+    // ── Gamepad Start Menu ──
+    if (key === 'gamepad:menu') {
+      const menuStates = ['OVERWORLD', 'LOCATION', 'DUNGEON'];
+      if (menuStates.includes(this.state)) {
+        this._gamepadMenuReturnState = this.state;
+        this.gamepadMenuCursor = 0;
+        this.setState('GAMEPAD_MENU');
+      } else if (this.state === 'GAMEPAD_MENU') {
+        this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
+      }
+      return;
+    }
+
     switch (this.state) {
       case 'PREAMBLE': return this.handlePreambleInput(key);
       case 'MENU': return this.handleMenuInput(key);
@@ -1546,6 +1574,7 @@ class Game {
       case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
       case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
       case 'ALMANAC': return this.handleAlmanacInput(key);
+      case 'GAMEPAD_MENU': return this.handleGamepadMenuInput(key);
       case 'WORLD_GEN_PAUSE':
         this.setState('LOADING');
         this._worldGenRunStep(this._worldGenResumeStep);
@@ -3053,6 +3082,13 @@ class Game {
       this.settings.showQuestNav = !this.settings.showQuestNav;
       this._saveSettings();
     }
+    // Gamepad layout toggle
+    if (key === 'g' || key === 'G') {
+      const mode = this.input._gamepadMode === 'compact' ? 'wide' : 'compact';
+      this.input.setGamepadLayout(mode);
+      this.settings.gamepadMode = mode;
+      this._saveSettings();
+    }
     // Music controls
     if (key === 'v' || key === 'V') {
       const steps = [0, 0.25, 0.5, 0.75, 1.0];
@@ -3349,6 +3385,33 @@ class Game {
     } else if (key >= '1' && key <= '7') {
       this.ui.almanacTab = parseInt(key) - 1;
       this.ui.almanacScroll = 0;
+    }
+  }
+
+  // ── FF-Style Gamepad Start Menu ──────────────────
+
+  handleGamepadMenuInput(key) {
+    const items = this.GAMEPAD_MENU_ITEMS;
+    const count = items.length;
+
+    if (key === 'Escape' || key === 'gamepad:menu') {
+      // Close menu, return to gameplay
+      this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
+      return;
+    }
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      this.gamepadMenuCursor = (this.gamepadMenuCursor - 1 + count) % count;
+    } else if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      this.gamepadMenuCursor = (this.gamepadMenuCursor + 1) % count;
+    } else if (key === 'Enter' || key === ' ') {
+      const item = items[this.gamepadMenuCursor];
+      if (item.action === 'save') {
+        this.saveGame();
+        this.addMessage('Game saved.', '#55FF55');
+        this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
+      } else if (item.state) {
+        this.setState(item.state);
+      }
     }
   }
 
@@ -4042,7 +4105,10 @@ class Game {
       this.renderer.crtOptions = this.settings;
       this._applyCrtQuality();
     }
-    if (this.input) this.input.enableTouch = this.settings.touchControls;
+    if (this.input) {
+      this.input.enableTouch = this.settings.touchControls;
+      if (this.settings.gamepadMode) this.input.setGamepadLayout(this.settings.gamepadMode);
+    }
     if (this.music) {
       this.music.setVolume(this.settings.musicVolume);
       this.music.setMuted(this.settings.musicMuted);
@@ -4483,6 +4549,24 @@ class Game {
       case 'ALMANAC':
         this.ui.drawAlmanac(this.worldHistoryGen, this.ui.messageLog);
         break;
+
+      case 'GAMEPAD_MENU': {
+        // Render the underlying gameplay state first
+        const returnSt = this._gamepadMenuReturnState || 'OVERWORLD';
+        if (returnSt === 'OVERWORLD') {
+          this.renderOverworld();
+        } else if (returnSt === 'LOCATION') {
+          if (this.locationCamera) { this.locationCamera.follow(this.player); this.locationCamera.update(); }
+          this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.timeSystem.getSunDirection(), this.timeSystem.hour, this.currentSettlement && this.currentSettlement.isBridge ? this.enemies : null, this.currentSettlement && this.currentSettlement.isBridge ? this.items : null);
+        } else if (returnSt === 'DUNGEON') {
+          this.renderDungeon();
+        }
+        // Draw HUD over the gameplay render
+        this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
+        // Overlay the FF-style menu
+        this.ui.drawGamepadMenu(this.renderer, this.player, this.GAMEPAD_MENU_ITEMS, this.gamepadMenuCursor);
+        break;
+      }
     }
 
     // Debug button bar overlay (when toggled with F2)
@@ -4495,7 +4579,7 @@ class Game {
     // Force full redraw when post-processing, transitions, or flash
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
-    const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON'].includes(this.state);
+    const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'GAMEPAD_MENU'].includes(this.state);
     const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
@@ -6203,7 +6287,7 @@ class Game {
     this.lastFrame = timestamp;
 
     // Advance real-time clock during gameplay states
-    const gameplayStates = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'DIALOGUE', 'SHOP', 'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'COMBAT', 'QUEST_COMPASS'];
+    const gameplayStates = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'DIALOGUE', 'SHOP', 'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'COMBAT', 'QUEST_COMPASS', 'GAMEPAD_MENU'];
     const isGameplay = gameplayStates.includes(this.state);
     if (this.timeSystem) {
       this.timeSystem.setRealTimePaused(!isGameplay);
