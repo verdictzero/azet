@@ -463,7 +463,21 @@ export class QuestSystem {
   }
 
   generateQuest(rng, giverNPC, playerLevel, worldContext) {
-    const type = rng.random(this._questTypes);
+    // Role-appropriate quest types based on NPC category
+    const npcCategory = giverNPC?.category || 'authority';
+    let availableTypes;
+    switch (npcCategory) {
+      case 'authority':
+        availableTypes = ['KILL', 'BOUNTY', 'ESCORT', 'INVESTIGATE'];
+        break;
+      case 'knowledge':
+        availableTypes = ['INVESTIGATE', 'FETCH', 'DELIVER'];
+        break;
+      default:
+        availableTypes = this._questTypes;
+        break;
+    }
+    const type = rng.random(availableTypes);
 
     // Determine difficulty
     const diffRoll = rng.next();
@@ -570,11 +584,30 @@ export class QuestSystem {
       }
     }
 
+    // Knowledge NPCs offer lore as quest reward — and hint at it
+    let loreReward = null;
+    let questHint = null;
+    if (npcCategory === 'knowledge') {
+      const loreHints = [
+        'Complete this, and I may share something about the Old Truth with you.',
+        'Help me with this, and I\'ll tell you what I\'ve found in the archives.',
+        'Do this for me, and I\'ll show you a record few have seen.',
+        'Return successfully, and I\'ll share knowledge that most have forgotten.',
+      ];
+      questHint = rng.random(loreHints);
+      loreReward = {
+        category: type === 'INVESTIGATE' ? 'forbidden' : 'history',
+        hint: questHint,
+      };
+    }
+
     const quest = {
       id: `quest_${this._nextId++}`,
       type,
       title,
-      description,
+      description: npcCategory === 'knowledge' && questHint
+        ? `${description}\n\n"${questHint}"`
+        : description,
       giver: npcId,
       objectives,
       rewards: {
@@ -582,6 +615,7 @@ export class QuestSystem {
         xp: baseXP,
         items: rewardItems,
         reputation,
+        loreReward,
       },
       difficulty,
       status: 'available',

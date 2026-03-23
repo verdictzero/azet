@@ -329,6 +329,182 @@ const NPC_FACTIONS = [
   'The Colony Guard', 'Free Traders', 'The Colony Council', 'None',
 ];
 
+// ============================================================================
+// NPC Category System — determines dialogue behavior
+// ============================================================================
+
+const NPC_CATEGORIES = {
+  ambient:   ['farmer', 'miner', 'hunter', 'beggar', 'child', 'noble', 'villager'],
+  service:   ['merchant', 'blacksmith', 'barkeep', 'innkeeper'],
+  knowledge: ['scholar', 'priest'],
+  authority: ['guard', 'knight', 'guildmaster'],
+};
+
+function getNpcCategory(role) {
+  for (const [cat, roles] of Object.entries(NPC_CATEGORIES)) {
+    if (roles.includes(role)) return cat;
+  }
+  return 'ambient';
+}
+
+// ============================================================================
+// Ambient Dialogue — small talk for non-consequential NPCs
+// ============================================================================
+
+const AMBIENT_DIALOGUE = {
+  farmer: [
+    'The grow-pods are producing well this cycle.',
+    'Whatever passes for rain down here, at least the soil stays damp.',
+    'Just trying to get through the season.',
+    'These hydroponic rigs need constant attention. One valve sticks and you lose a whole crop.',
+    'I heard the soil in the eastern terraces is going sour. Bad sign.',
+    'We pull good yields when the lamps stay steady. When they flicker... not so much.',
+    'My grandfather farmed this same plot. His grandfather before him. It\'s all we know.',
+    'The beetles got into the grain stores again. Third time this cycle.',
+    'You look like you\'ve been out in the corridors. Dangerous out there.',
+    'There\'s honest work in tending the land. Safer than most things around here.',
+  ],
+  miner: [
+    'The deep tunnels are getting unstable. I don\'t like it.',
+    'Found some strange alloy down in shaft seven. Never seen anything like it.',
+    'Watch yourself near the lower levels. The air gets thin.',
+    'We broke through into an old sealed section last week. Foreman won\'t let anyone in.',
+    'Ore quality\'s been dropping. We\'re scraping the walls at this point.',
+    'Lost a good man in a cave-in two cycles back. The tunnels don\'t forgive mistakes.',
+    'Sometimes you hear things in the deep shafts. Echoes, they say. I\'m not so sure.',
+    'The hull metal down there is different. Older. Stamped with markings no one can read.',
+    'Pays well enough, mining. If you don\'t mind the dark.',
+    'My back\'s killing me. Another ten cycles and I\'ll be done.',
+  ],
+  hunter: [
+    'The wildlife\'s been acting strange this cycle. Agitated.',
+    'Tracked a razorback through three sectors yesterday. Barely got out.',
+    'If you\'re heading into the wilds, watch the tree line. Things hide there.',
+    'Best hunting is at dawn, when the lamps are cycling up.',
+    'I sell what I catch. Meat, pelts, bone. Everything has a use.',
+    'There are things out in the deep corridors that shouldn\'t exist. I\'ve seen them.',
+    'Fresh tracks near the settlement wall. Something big.',
+    'I know every path within five sectors. Beyond that, you\'re on your own.',
+    'Used to hunt with my father. He knew trails I\'ll never find again.',
+    'The scouts say there\'s new territory opening up past the old barriers.',
+  ],
+  child: [
+    'Are you an adventurer? You look like an adventurer!',
+    'My mum says I shouldn\'t talk to strangers. But you seem okay.',
+    'I found a weird shiny thing in the alley. Wanna see? ...Actually, I lost it.',
+    'I\'m gonna be a guard when I grow up! Or maybe a scout.',
+    'The other kids say there\'s ghosts in the old tunnels. I don\'t believe them. ...Much.',
+    'Do you have any sweets? I\'ll trade you a cool rock.',
+    'I saw something moving on the rooftops last night. Nobody believes me though.',
+    'What\'s it like out there? Beyond the walls? Is it scary?',
+    'Tag! ...Oh wait, you\'re not playing. Sorry.',
+    'My teacher says the world used to be different. Like, really different. But she won\'t say how.',
+  ],
+  noble: [
+    'The council convenes soon. Politics, as always.',
+    'I trust you\'re not here to cause trouble. We have enough of that.',
+    'This sector runs on order. I intend to keep it that way.',
+    'The common folk don\'t understand the burden of administration.',
+    'If you have business here, conduct it and move along.',
+    'Resources are tight. Every decision I make, someone suffers.',
+    'The old families built this settlement. We\'ll be the ones to maintain it.',
+    'I\'ve seen sectors fall to chaos. It starts with complacency.',
+    'Trade is the lifeblood of any community. Without it, we starve.',
+    'Don\'t mistake civility for weakness. I didn\'t get here by being soft.',
+  ],
+  beggar: [
+    'Spare a shard, friend? Just one...',
+    'I wasn\'t always like this, you know. I had a trade once.',
+    'The shelters are full. Been sleeping in the alleys.',
+    'I see things, out here on the margins. Things people in their warm homes don\'t notice.',
+    'The rats and I, we have an understanding. They don\'t bite me, I don\'t eat them. ...Usually.',
+    'You hear whispers in the drain grates at night. Voices from below.',
+    'Nobody looks at you when you\'re down here. You become invisible.',
+    'I used to work the deep tunnels before the accident. Now look at me.',
+    'There\'s a kindness in this settlement, buried deep. You just have to find it.',
+    'The wind through the corridors tells stories, if you know how to listen.',
+  ],
+  villager: [
+    'Just another day in the settlement.',
+    'Things have been quiet lately. That usually means trouble\'s coming.',
+    'I keep my head down and do my work. Safest way to live.',
+    'The market had fresh supplies this morning. First time in a while.',
+    'My neighbor says they saw lights in the old quarter. Probably nothing.',
+    'We manage. It\'s not much, but it\'s home.',
+    'I don\'t travel much beyond the walls. No need to.',
+    'Times are hard, but we\'ve had worse. We always pull through.',
+    'You\'re new here, aren\'t you? Be careful who you trust.',
+    'The settlement\'s been growing. New faces every cycle.',
+  ],
+};
+
+// ============================================================================
+// Technology Name Degradation — folk names replace forgotten tech terms
+// ============================================================================
+
+const TECH_DEGRADATION = {
+  'reactor':              'the burning heart',
+  'Reactor':              'the Burning Heart',
+  'hull':                 'the great wall',
+  'Hull':                 'the Great Wall',
+  'fusion drive':         'the deep fire',
+  'Fusion drive':         'the Deep Fire',
+  'airlock':              'the void gate',
+  'Airlock':              'the Void Gate',
+  'oxygen recycler':      'the breath-giver',
+  'Oxygen recycler':      'the Breath-Giver',
+  'navigation core':      'the old compass',
+  'Navigation core':      'the Old Compass',
+  'cryo-vault':           'the sleepers\' tomb',
+  'Cryo-vault':           'the Sleepers\' Tomb',
+  'cryo-vaults':          'the sleepers\' tombs',
+  'Cryo-Vaults':          'the Sleepers\' Tombs',
+  'data core':            'memory stone',
+  'Data core':            'Memory Stone',
+  'data cores':           'memory stones',
+  'communications relay': 'the whispering tower',
+  'defense grid':         'the iron veil',
+  'Defense grid':         'the Iron Veil',
+  'habitat drum':         'the great wheel',
+  'Habitat drum':         'the Great Wheel',
+  'Directorate Protocol': 'the Old Mind',
+  'observation deck':     'the sky chamber',
+  'Observation deck':     'the Sky Chamber',
+  'Observation Ring':     'the Sky Ring',
+  'maintenance drone':    'iron sprite',
+  'maintenance drones':   'iron sprites',
+  'bulkhead':             'the deep door',
+  'bulkheads':            'the deep doors',
+  'ventilation system':   'the wind tunnels',
+  'propulsion':           'the deep hum',
+  'cryogenically':        'in the eternal sleep',
+  'colony ship':          'the great vessel',
+  'generation ship':      'the great vessel',
+  'O\'Neill Cylinder':    'the Great Wheel',
+  'colonists':            'the first sleepers',
+};
+
+/**
+ * Replace technical terms with folk names based on lore access level.
+ * loreLevel: 'common' (full degradation), 'scholar' (mix), 'forbidden' (original terms)
+ */
+export function degradeTechTerms(text, loreLevel = 'common') {
+  if (loreLevel === 'forbidden') return text; // High-rep forbidden lore uses real names
+  let result = text;
+  for (const [tech, folk] of Object.entries(TECH_DEGRADATION)) {
+    if (loreLevel === 'scholar') {
+      // Scholars use a bridging form: "what the ancients called X — we say Y"
+      const regex = new RegExp(tech.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      if (regex.test(result)) {
+        result = result.replace(regex, `${folk} — what the old texts call "${tech}"`);
+      }
+    } else {
+      result = result.split(tech).join(folk);
+    }
+  }
+  return result;
+}
+
 export class NPCGenerator {
   constructor() {
     this.nameGen = new NameGenerator();
@@ -478,6 +654,8 @@ export class NPCGenerator {
       culturalBackground,
       historicalKnowledge,
       personalBeliefs,
+      // NPC category for dialogue behavior
+      category: getNpcCategory(role),
     };
   }
 }
@@ -606,81 +784,31 @@ export class DialogueSystem {
   }
 
   generateOptions(npc, playerRep = 0, gameContext = null) {
+    const category = npc.category || getNpcCategory(npc.role);
+    switch (category) {
+      case 'ambient':   return this._ambientOptions(npc, playerRep);
+      case 'service':   return this._serviceOptions(npc, playerRep);
+      case 'knowledge': return this._knowledgeOptions(npc, playerRep, gameContext);
+      case 'authority': return this._authorityOptions(npc, playerRep, gameContext);
+      default:          return this._ambientOptions(npc, playerRep);
+    }
+  }
+
+  // ── Ambient NPCs: townspeople, small talk only ──
+  _ambientOptions(npc, playerRep) {
     const options = [];
 
+    // Small talk — their primary interaction
+    const lines = AMBIENT_DIALOGUE[npc.role] || AMBIENT_DIALOGUE.villager;
+    const lineIdx = Math.abs((npc.id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % lines.length;
     options.push({
-      text: 'Tell me about this place.',
-      action: 'lore',
+      text: lines[lineIdx],
+      action: 'smallTalk',
       consequence: null,
+      _isSmallTalk: true,
     });
 
-    if (playerRep >= -10) {
-      options.push({
-        text: 'Any work available?',
-        action: 'quest',
-        consequence: null,
-      });
-    }
-
-    if ((npc.role === 'merchant' || npc.role === 'blacksmith') && playerRep >= -20) {
-      options.push({
-        text: 'Let me see your wares.',
-        action: 'shop',
-        consequence: null,
-      });
-    }
-
-    if (playerRep >= 0) {
-      options.push({
-        text: 'Heard any rumors?',
-        action: 'rumor',
-        consequence: null,
-      });
-    }
-
-    if (npc.role === 'priest' && playerRep >= -10) {
-      options.push({
-        text: 'I need healing.',
-        action: 'heal',
-        consequence: null,
-      });
-    }
-
-    if (npc.role === 'scholar' && playerRep >= 0) {
-      options.push({
-        text: 'What can you teach me?',
-        action: 'teach',
-        consequence: null,
-      });
-    }
-
-    if (npc.role === 'barkeep') {
-      options.push({
-        text: 'I need a bunk for the night.',
-        action: 'rest',
-        consequence: null,
-      });
-    }
-
-    if (npc.role === 'guard' && playerRep >= 10) {
-      options.push({
-        text: 'Any trouble in the sector?',
-        action: 'bounty',
-        consequence: null,
-      });
-    }
-
-    // Secret revelation at high rep
-    if (playerRep > 50 && npc.secrets && npc.secrets.length > 0) {
-      options.push({
-        text: 'You can trust me... tell me something secret.',
-        action: 'secret',
-        consequence: null,
-        hint: 'High reputation required',
-      });
-    }
-
-    // Ask about their backstory
+    // Backstory at moderate rep
     if (playerRep >= 10) {
       options.push({
         text: 'Tell me about yourself.',
@@ -689,28 +817,120 @@ export class DialogueSystem {
       });
     }
 
-    // Quest turn-in (checked dynamically in main.js)
-    // Faction gossip at moderate rep
-    if (playerRep >= 0 && npc.faction && npc.faction !== 'None') {
+    // At high rep, hint toward knowledge NPCs
+    if (playerRep >= 20) {
       options.push({
-        text: `What about the ${npc.faction}?`,
-        action: 'factionGossip',
+        text: 'Heard anything interesting lately?',
+        action: 'ambientHint',
         consequence: null,
       });
     }
 
-    // World history dialogue options (powered by deep history)
+    options.push({ text: 'Goodbye.', action: 'exit', consequence: null });
+    return options;
+  }
+
+  // ── Service NPCs: shops, inns, trade ──
+  _serviceOptions(npc, playerRep) {
+    const options = [];
+
+    // Shop access (merchant/blacksmith)
+    if ((npc.role === 'merchant' || npc.role === 'blacksmith') && playerRep >= -20) {
+      options.push({
+        text: 'Let me see your wares.',
+        action: 'shop',
+        consequence: null,
+      });
+    }
+
+    // Inn services (barkeep/innkeeper)
+    if (npc.role === 'barkeep' || npc.role === 'innkeeper') {
+      options.push({
+        text: 'I need a room for the night.',
+        action: 'rest',
+        consequence: null,
+      });
+    }
+
+    // Gossip — service NPCs hear things
+    if (playerRep >= 0) {
+      options.push({
+        text: 'What\'s the gossip around here?',
+        action: 'rumor',
+        consequence: null,
+      });
+    }
+
+    // Trade tip at high rep
+    if (playerRep >= 30) {
+      options.push({
+        text: 'Any tips for a seasoned trader?',
+        action: 'tradeTip',
+        consequence: null,
+      });
+    }
+
+    // Secret at very high rep
+    if (playerRep > 50 && npc.secrets && npc.secrets.length > 0) {
+      options.push({
+        text: 'Between us... anything I should know?',
+        action: 'secret',
+        consequence: null,
+      });
+    }
+
+    options.push({ text: 'Goodbye.', action: 'exit', consequence: null });
+    return options;
+  }
+
+  // ── Knowledge NPCs: scholars, priests — the lore dispensers ──
+  _knowledgeOptions(npc, playerRep, gameContext) {
+    const options = [];
+
+    // Healing (priest only)
+    if (npc.role === 'priest' && playerRep >= -10) {
+      options.push({
+        text: 'I need healing.',
+        action: 'heal',
+        consequence: null,
+      });
+    }
+
+    // Teaching (scholar)
+    if (npc.role === 'scholar' && playerRep >= 0) {
+      options.push({
+        text: 'What can you teach me?',
+        action: 'teach',
+        consequence: null,
+      });
+    }
+
+    // Location lore
+    options.push({
+      text: 'Tell me about this place.',
+      action: 'lore',
+      consequence: null,
+    });
+
+    // Quests — knowledge NPCs give investigation/artifact quests
+    if (playerRep >= -10) {
+      options.push({
+        text: 'Is there anything that needs investigating?',
+        action: 'quest',
+        consequence: null,
+      });
+    }
+
+    // World history options (only knowledge NPCs get these)
     if (this._worldHistory && playerRep >= -10) {
       const histCtx = this._worldHistory.getDialogueContext(npc, playerRep);
 
-      // History topic
       options.push({
         text: 'Tell me about the history of this world.',
         action: 'worldHistory',
         consequence: null,
       });
 
-      // Artifact lore (if there are lost artifacts)
       if (histCtx.additionalTopics) {
         for (const topic of histCtx.additionalTopics.slice(0, 2)) {
           options.push({
@@ -722,7 +942,6 @@ export class DialogueSystem {
         }
       }
 
-      // Religion topic
       if (playerRep >= 0) {
         options.push({
           text: 'What do people believe in around here?',
@@ -731,7 +950,6 @@ export class DialogueSystem {
         });
       }
 
-      // Great figures
       if (playerRep >= 10 && npc.role === 'scholar') {
         options.push({
           text: 'Who were the great figures of history?',
@@ -740,7 +958,6 @@ export class DialogueSystem {
         });
       }
 
-      // Wars and catastrophes
       if (playerRep >= 5) {
         options.push({
           text: 'What wars or disasters shaped this place?',
@@ -749,7 +966,6 @@ export class DialogueSystem {
         });
       }
 
-      // Cultural traditions
       if (playerRep >= 0) {
         options.push({
           text: 'What traditions do your people keep?',
@@ -758,8 +974,8 @@ export class DialogueSystem {
         });
       }
 
-      // Forbidden history — colony origin lore at high reputation
-      if (playerRep >= 30 && (npc.role === 'scholar' || npc.role === 'priest')) {
+      // Forbidden history — the deep truth
+      if (playerRep >= 30) {
         options.push({
           text: 'What do you know about the Old Truth?',
           action: 'forbiddenLore',
@@ -768,12 +984,94 @@ export class DialogueSystem {
       }
     }
 
+    // Backstory
+    if (playerRep >= 10) {
+      options.push({
+        text: 'Tell me about yourself.',
+        action: 'backstory',
+        consequence: null,
+      });
+    }
+
+    // Secret at high rep
+    if (playerRep > 50 && npc.secrets && npc.secrets.length > 0) {
+      options.push({
+        text: 'You can trust me... tell me something secret.',
+        action: 'secret',
+        consequence: null,
+      });
+    }
+
+    // Faction gossip
+    if (playerRep >= 0 && npc.faction && npc.faction !== 'None') {
+      options.push({
+        text: `What about the ${npc.faction}?`,
+        action: 'factionGossip',
+        consequence: null,
+      });
+    }
+
+    options.push({ text: 'Goodbye.', action: 'exit', consequence: null });
+    return options;
+  }
+
+  // ── Authority NPCs: guards, knights, guildmasters — quest givers ──
+  _authorityOptions(npc, playerRep, gameContext) {
+    const options = [];
+
+    // Bounties (guard)
+    if (npc.role === 'guard' && playerRep >= 10) {
+      options.push({
+        text: 'Any trouble in the sector?',
+        action: 'bounty',
+        consequence: null,
+      });
+    }
+
+    // General quests
+    if (playerRep >= -10) {
+      options.push({
+        text: 'Any work available?',
+        action: 'quest',
+        consequence: null,
+      });
+    }
+
+    // Location info (basic, not deep lore)
     options.push({
-      text: 'Goodbye.',
-      action: 'exit',
+      text: 'Tell me about this place.',
+      action: 'lore',
       consequence: null,
     });
 
+    // Faction gossip — authority NPCs know faction politics
+    if (playerRep >= 0 && npc.faction && npc.faction !== 'None') {
+      options.push({
+        text: `What about the ${npc.faction}?`,
+        action: 'factionGossip',
+        consequence: null,
+      });
+    }
+
+    // Rumors from their patrols/network
+    if (playerRep >= 0) {
+      options.push({
+        text: 'Heard any reports?',
+        action: 'rumor',
+        consequence: null,
+      });
+    }
+
+    // Secret at high rep
+    if (playerRep > 50 && npc.secrets && npc.secrets.length > 0) {
+      options.push({
+        text: 'Off the record... anything I should know?',
+        action: 'secret',
+        consequence: null,
+      });
+    }
+
+    options.push({ text: 'Goodbye.', action: 'exit', consequence: null });
     return options;
   }
 
@@ -885,7 +1183,7 @@ const WORLD_HISTORY_TEMPLATES = [
   'The Directorate Protocol once governed everything — an intelligence that managed the colony across centuries. What remains of it sleeps in the deep systems.',
   'The Cascade destroyed seventy percent of all data cores in a single day. Everything we knew before that moment is fragments and hearsay.',
   'A group called the Awakened once tried to reveal a forbidden truth about the colony. They were silenced, and three sectors were lost.',
-  'The oldest structural beams bear a word stamped in pre-collapse script: AETHON. Archivists argue endlessly about what it means.',
+  'The oldest structural beams bear a word stamped in pre-collapse script: AETHEON. Archivists argue endlessly about what it means.',
   'In the Observation Ring, ancient projectors sometimes flicker to life, displaying an image of a blue-green world beneath a yellow star.',
 ];
 
@@ -983,7 +1281,7 @@ const LORE_SMITHS = [
 const LORE_HEROES = [
   'Administrator Aldric the Bold', 'the Champion of the Colony', 'Selene the Wanderer',
   'Commander Roderick Ashford', 'the last Warden', 'the legendary Bolt Ironcore',
-  'Captain Maren Strand, First Captain of the AETHON', 'the First Warden of the AETHON',
+  'Captain Maren Strand, First Captain of the AETHEON', 'the First Warden of the AETHEON',
   'Archivist Yun, Keeper of the Old Truth', 'Admiral Kofi Asante, founder of the Warden Corps',
 ];
 
@@ -1019,7 +1317,7 @@ const COLONY_ORIGIN_TEMPLATES = [
   'The oldest data cores speak of a place called "Earth" — a world under an open sky, whatever that means.',
   'The Founders didn\'t build the colony. They merely inherited it. The true builders are lost to time.',
   'Have you ever wondered why the hull curves upward in the distance? The old schematics show a cylinder — a vessel. But that\'s heresy to say aloud.',
-  'There\'s a word etched into the deepest bulkheads: AETHON. No one knows what it means anymore.',
+  'There\'s a word etched into the deepest bulkheads: AETHEON. No one knows what it means anymore.',
   'The Directorate Protocol — some say it was an AI that governed the colony before the factions arose. Others say it still watches from the deep systems.',
   'My grandmother told me her grandmother spoke of "stars" — not the patterns on the archive walls, but lights in an infinite darkness outside the hull.',
   'The colony wasn\'t always called "the colony." It had a name once. A designation. Like a vessel has a designation.',
@@ -1028,7 +1326,7 @@ const COLONY_ORIGIN_TEMPLATES = [
   'The reactors aren\'t just power sources. They\'re engines. The whole colony is a vessel, and it\'s still moving. Listen to the hull — you can feel it.',
   'There\'s a memorial near Level Zero. Faded names, thousands of them. People who built the colony but never got to board. They knew they were building their own grave.',
   'The sealed bridge — some say it\'s where the colony is actually controlled from. Not by any faction. By the ship itself.',
-  'Five hundred thousand souls boarded the AETHON when it launched. That was over two thousand cycles ago. Everything since has been the voyage.',
+  'Five hundred thousand souls boarded the AETHEON when it launched. That was over two thousand cycles ago. Everything since has been the voyage.',
   'The old archives mention something called "rain" — water falling from the sky, not recycled through pipes. Imagine a world where water just... falls on you.',
   'Chief Architect Okonkwo designed the habitat drum. A rotating cylinder 30 kilometers long. We don\'t live in a world. We live inside a machine she built.',
 ];
@@ -1042,10 +1340,10 @@ const FORBIDDEN_KNOWLEDGE_TEMPLATES = [
   'The Cascade wasn\'t just a reactor failure. It was an EMP that erased seventy percent of every data core on the ship. That\'s why we don\'t remember who we are.',
   'The Schism — before Year Zero, a group called the Awakened tried to tell everyone the truth. The Directorate vented three sectors to stop them. Forty thousand people, dead for knowing too much.',
   'I found the original mission charter: "To preserve the human species beyond the death of its homeworld, and to establish a new civilization on Kepler-442b, designated New Dawn."',
-  'Earth didn\'t just decline. It died. Global temperature up nine degrees, oceans acidified, atmosphere toxic. Eight hundred million people left when the AETHON launched. They\'re all dead now.',
+  'Earth didn\'t just decline. It died. Global temperature up nine degrees, oceans acidified, atmosphere toxic. Eight hundred million people left when the AETHEON launched. They\'re all dead now.',
   'The last transmission from Earth: "Carry us with you. Remember us." That was over two thousand cycles ago. We forgot. We forgot everything.',
   'Navigation data from the old spire shows we\'re decelerating. We\'ve been slowing down for centuries. Whatever destination the builders chose — we might be close.',
-  'The word "AETHON" — it\'s an acronym. Advanced Exoplanetary Terrestrial Habitation and Operations Nexus. It\'s not a colony. It\'s a generation ship.',
+  'The word "AETHEON" — it\'s an acronym. Arcology Engine Transgenerational Habitat for Extra-solar Operations and Navigation. It\'s not a colony. It\'s a generation ship.',
 ];
 
 export class LoreGenerator {
@@ -1368,6 +1666,36 @@ export class Player {
     this.quests = { active: [], completed: [] };
     this.knownLocations = new Set();
     this.gold = 50;
+
+    // Lore discovery tracking — only discovered lore appears in the Almanac
+    this.discoveredLore = {
+      locations: [],     // { id, text, source, discoveredAt }
+      history: [],       // { id, text, source, discoveredAt }
+      figures: [],       // { id, text, source, discoveredAt }
+      artifacts: [],     // { id, text, source, discoveredAt }
+      civilizations: [], // { id, text, source, discoveredAt }
+      forbidden: [],     // { id, text, source, discoveredAt }
+      rumors: [],        // { id, text, source, discoveredAt }
+      traditions: [],    // { id, text, source, discoveredAt }
+      religions: [],     // { id, text, source, discoveredAt }
+    };
+  }
+
+  /**
+   * Record a piece of discovered lore in the player's journal.
+   * Deduplicates by text content hash.
+   */
+  recordLore(category, text, sourceName = 'Unknown') {
+    if (!this.discoveredLore[category]) return;
+    // Simple hash for dedup
+    const id = text.slice(0, 80).replace(/\s+/g, '_').toLowerCase();
+    if (this.discoveredLore[category].some(e => e.id === id)) return;
+    this.discoveredLore[category].push({
+      id,
+      text,
+      source: sourceName,
+      discoveredAt: Date.now(),
+    });
   }
 
   addXP(amount) {

@@ -1,7 +1,7 @@
 import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator } from './world.js';
-import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator } from './entities.js';
+import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
@@ -10,7 +10,7 @@ import { expandTile } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 
 // ─── Save Export/Import Cipher ───
-const SAVE_CIPHER_KEY = 'AETHON-ASCIIQUEST-2024';
+const SAVE_CIPHER_KEY = 'AETHEON-ASCIIQUEST-2024';
 const SAVE_HEADER = '--- ASCIIQUEST SAVE FILE ---';
 const SAVE_FOOTER = '--- END ASCIIQUEST SAVE ---';
 
@@ -149,7 +149,7 @@ class Game {
       { label: 'Character', icon: '\u263A', state: 'CHARACTER'     },
       { label: 'Quests',    icon: '!',      state: 'QUEST_LOG'     },
       { label: 'Map',       icon: '\u2593', state: 'MAP'           },
-      { label: 'Almanac',   icon: '\u2663', state: 'ALMANAC'       },
+      { label: 'Journal',   icon: '\u2663', state: 'ALMANAC'       },
       { label: 'Factions',  icon: '\u2691', state: 'FACTION'       },
       { label: 'Compass',   icon: '\u25CA', state: 'QUEST_COMPASS' },
       { label: 'Save',      icon: '\u25AA', action: 'save'         },
@@ -2170,8 +2170,10 @@ class Game {
     }
 
     if (option.action === 'rumor') {
-      const rumor = this.dialogueSys.generateRumor(this.rng, this.gameContext);
+      const rawRumor = this.dialogueSys.generateRumor(this.rng, this.gameContext);
+      const rumor = degradeTechTerms(rawRumor, 'common');
       this.ui.dialogueState.text = rumor;
+      this.player.recordLore('rumors', rumor, this.activeNPC?.name?.full || 'Unknown');
       this.ui.dialogueState.options = [
         { text: 'Interesting. Anything else?', action: 'rumor' },
         { text: 'Thanks. Goodbye.', action: 'close' }
@@ -2181,9 +2183,12 @@ class Game {
     }
 
     if (option.action === 'lore') {
-      const lore = this.loreGen.generateLocationHistory(this.rng,
+      const rawLore = this.loreGen.generateLocationHistory(this.rng,
         this.gameContext.currentLocationName, this.gameContext.currentLocation?.type || 'village');
+      const loreLevel = (this.activeNPC?.category === 'knowledge') ? 'scholar' : 'common';
+      const lore = degradeTechTerms(rawLore, loreLevel);
       this.ui.dialogueState.text = lore;
+      this.player.recordLore('locations', lore, this.activeNPC?.name?.full || 'Unknown');
       this.ui.dialogueState.options = [
         { text: 'Tell me a rumor.', action: 'rumor' },
         { text: 'Goodbye.', action: 'close' }
@@ -2280,8 +2285,9 @@ class Game {
     // ── World History dialogue actions ──
     if (option.action === 'worldHistory') {
       if (this.worldHistoryGen) {
-        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng);
+        const snippet = degradeTechTerms(this.worldHistoryGen.generateLoreSnippet(this.rng), 'scholar');
         this.ui.dialogueState.text = `"${snippet}"`;
+        this.player.recordLore('history', snippet, this.activeNPC?.name?.full || 'Unknown');
         this.ui.dialogueState.options = [
           { text: 'Tell me about the wars.', action: 'warLore' },
           { text: 'Tell me about lost artifacts.', action: 'artifact_lore' },
@@ -2298,8 +2304,9 @@ class Game {
 
     if (option.action === 'warLore') {
       if (this.worldHistoryGen) {
-        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'war');
+        const snippet = degradeTechTerms(this.worldHistoryGen.generateLoreSnippet(this.rng, 'war'), 'scholar');
         this.ui.dialogueState.text = `"${snippet}"`;
+        this.player.recordLore('history', snippet, this.activeNPC?.name?.full || 'Unknown');
       } else {
         this.ui.dialogueState.text = '"The wars of the past are best left buried."';
       }
@@ -2313,8 +2320,9 @@ class Game {
 
     if (option.action === 'artifact_lore') {
       if (this.worldHistoryGen) {
-        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'artifact');
+        const snippet = degradeTechTerms(this.worldHistoryGen.generateLoreSnippet(this.rng, 'artifact'), 'scholar');
         this.ui.dialogueState.text = `"${snippet}"`;
+        this.player.recordLore('artifacts', snippet, this.activeNPC?.name?.full || 'Unknown');
       } else {
         this.ui.dialogueState.text = '"The old relics are all lost to time."';
       }
@@ -2328,8 +2336,9 @@ class Game {
 
     if (option.action === 'figureLore') {
       if (this.worldHistoryGen) {
-        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'figure');
+        const snippet = degradeTechTerms(this.worldHistoryGen.generateLoreSnippet(this.rng, 'figure'), 'scholar');
         this.ui.dialogueState.text = `"${snippet}"`;
+        this.player.recordLore('figures', snippet, this.activeNPC?.name?.full || 'Unknown');
       } else {
         this.ui.dialogueState.text = '"No great heroes have risen in recent memory."';
       }
@@ -2343,8 +2352,9 @@ class Game {
 
     if (option.action === 'religionLore') {
       if (this.worldHistoryGen) {
-        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'religion');
+        const snippet = degradeTechTerms(this.worldHistoryGen.generateLoreSnippet(this.rng, 'religion'), 'scholar');
         this.ui.dialogueState.text = `"${snippet}"`;
+        this.player.recordLore('religions', snippet, this.activeNPC?.name?.full || 'Unknown');
       } else {
         this.ui.dialogueState.text = '"Faith has faded in these parts."';
       }
@@ -2358,8 +2368,9 @@ class Game {
 
     if (option.action === 'traditionLore') {
       if (this.worldHistoryGen) {
-        const snippet = this.worldHistoryGen.generateLoreSnippet(this.rng, 'tradition');
+        const snippet = degradeTechTerms(this.worldHistoryGen.generateLoreSnippet(this.rng, 'tradition'), 'scholar');
         this.ui.dialogueState.text = `"${snippet}"`;
+        this.player.recordLore('traditions', snippet, this.activeNPC?.name?.full || 'Unknown');
       } else {
         this.ui.dialogueState.text = '"Old customs have been forgotten."';
       }
@@ -2382,6 +2393,7 @@ class Game {
         text = 'Some truths are too dangerous to speak aloud.';
       }
       this.ui.dialogueState.text = `*lowers voice* "${text}"`;
+      this.player.recordLore('forbidden', text, this.activeNPC?.name?.full || 'Unknown');
       this.ui.dialogueState.options = [
         { text: 'Tell me more about the Old Truth.', action: 'forbiddenLore' },
         { text: 'What about the colony\'s origins?', action: 'colonyOriginLore' },
@@ -2401,7 +2413,9 @@ class Game {
       } else {
         text = 'The origins of the colony are lost to time.';
       }
+      // Colony origin lore uses real terms — this IS the revelation
       this.ui.dialogueState.text = `"${text}"`;
+      this.player.recordLore('forbidden', text, this.activeNPC?.name?.full || 'Unknown');
       this.ui.dialogueState.options = [
         { text: 'Tell me more about the Old Truth.', action: 'forbiddenLore' },
         { text: 'What about the colony\'s origins?', action: 'colonyOriginLore' },
@@ -2461,12 +2475,85 @@ class Game {
               this.factionSystem.modifyPlayerStanding(factionId, 5);
             }
           }
+          // Lore reward from knowledge NPCs
+          if (rewards.loreReward && this.worldHistoryGen) {
+            const lr = rewards.loreReward;
+            let loreText;
+            if (lr.category === 'forbidden' && this.worldHistoryGen.preHistory) {
+              const fk = this.rng.random(this.worldHistoryGen.preHistory.forbiddenKnowledge);
+              loreText = fk.fragment;
+            } else {
+              loreText = this.worldHistoryGen.generateLoreSnippet(this.rng);
+            }
+            if (loreText) {
+              this.player.recordLore(lr.category || 'history', loreText, this.activeNPC?.name?.full || 'Quest Reward');
+              this.ui.addMessage('New lore discovered! Check your Journal.', COLORS.BRIGHT_MAGENTA);
+            }
+          }
           this.ui.addMessage('Quest completed!', COLORS.BRIGHT_GREEN);
           this.particles.emit(this.player.position.x, this.player.position.y, '*', COLORS.BRIGHT_GREEN, 8, 4, 15);
         }
       }
       this.activeNPC = null;
       this.setState(this.prevState || 'LOCATION');
+      return;
+    }
+
+    // ── Ambient NPC: small talk ──
+    if (option.action === 'smallTalk') {
+      const lines = [
+        'Mm. Anyway...',
+        '*nods*',
+        'That\'s how it is around here.',
+        'Take care of yourself out there.',
+        'Well, you know how it goes.',
+      ];
+      const response = lines[Math.floor(Math.random() * lines.length)];
+      this.ui.dialogueState.text = `"${option.text}"\n\n${this.activeNPC?.name?.first || 'They'}: "${response}"`;
+      this.ui.dialogueState.options = [
+        { text: 'Goodbye.', action: 'close' },
+      ];
+      this.ui.resetSelection();
+      return;
+    }
+
+    // ── Ambient NPC: hint toward knowledge NPCs ──
+    if (option.action === 'ambientHint') {
+      const hints = [
+        'I heard the scholar in the temple knows things most folk don\'t.',
+        'If you want real answers, talk to the archivist. They spend all day in the old records.',
+        'The priest mutters strange things sometimes. About the "old truth" or something. I don\'t ask.',
+        'Word is the lorekeeper has been digging through sealed archives lately.',
+        'There\'s a researcher who claims to know things about the deep levels. Spooky stuff.',
+        'The guards know what\'s happening in the sector better than anyone. Ask them if you need work.',
+      ];
+      const hint = hints[Math.floor(Math.random() * hints.length)];
+      this.ui.dialogueState.text = `"${hint}"`;
+      this.ui.dialogueState.options = [
+        { text: 'Thanks for the tip.', action: 'close' },
+      ];
+      this.dialogueSys.modifyReputation(this.activeNPC, 1, 'friendly chat');
+      this.ui.resetSelection();
+      return;
+    }
+
+    // ── Service NPC: trade tip ──
+    if (option.action === 'tradeTip') {
+      const tips = [
+        'Salvaged alloy from the deep tunnels? Worth triple in the eastern settlements. Folks there can\'t mine it themselves.',
+        'Don\'t buy potions from traveling merchants. The temple makes better ones for half the price.',
+        'If you find old tech, bring it to a blacksmith before you sell it. Some of it can be reforged into something useful.',
+        'The best gear comes from the ruins. Dangerous to get, but worth every shard.',
+        'Buy food in farming settlements, sell it in mining towns. Basic, but it works.',
+        'Armor from the old forges is worth a fortune if you can find it intact.',
+      ];
+      const tip = tips[Math.floor(Math.random() * tips.length)];
+      this.ui.dialogueState.text = `*leans in* "${tip}"`;
+      this.ui.dialogueState.options = [
+        { text: 'Good to know. Thanks.', action: 'close' },
+      ];
+      this.dialogueSys.modifyReputation(this.activeNPC, 2, 'trade talk');
+      this.ui.resetSelection();
       return;
     }
 
@@ -3346,7 +3433,7 @@ class Game {
 
   handleAlmanacInput(key) {
     if (key === '?') { this.setState('HELP'); return; }
-    const tabCount = 7;
+    const tabCount = 5;
     const tab = this.ui.almanacTab || 0;
     if (key === 'Escape') {
       this.ui.almanacTab = 0;
@@ -3366,7 +3453,7 @@ class Game {
       this.ui.almanacScroll = (this.ui.almanacScroll || 0) + 20;
     } else if (key === 'PageUp') {
       this.ui.almanacScroll = Math.max(0, (this.ui.almanacScroll || 0) - 20);
-    } else if (key >= '1' && key <= '7') {
+    } else if (key >= '1' && key <= '5') {
       this.ui.almanacTab = parseInt(key) - 1;
       this.ui.almanacScroll = 0;
     }
@@ -4161,7 +4248,8 @@ class Game {
           equipment: this.player.equipment,
           gold: this.player.gold,
           abilities: this.player.abilities,
-          knownLocations: [...this.player.knownLocations]
+          knownLocations: [...this.player.knownLocations],
+          discoveredLore: this.player.discoveredLore,
         },
         time: {
           hour: this.timeSystem.hour,
@@ -4355,6 +4443,7 @@ class Game {
       this.player.gold = save.player.gold;
       this.player.knownLocations = new Set(save.player.knownLocations || []);
       if (save.player.abilities) this.player.abilities = save.player.abilities;
+      if (save.player.discoveredLore) this.player.discoveredLore = save.player.discoveredLore;
 
       // Restore time
       this.timeSystem.hour = save.time.hour;
@@ -4560,7 +4649,7 @@ class Game {
         break;
 
       case 'ALMANAC':
-        this.ui.drawAlmanac(this.worldHistoryGen, this.ui.messageLog);
+        this.ui.drawAlmanac(this.worldHistoryGen, this.ui.messageLog, this.player);
         break;
 
       case 'GAMEPAD_MENU': {

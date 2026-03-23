@@ -81,7 +81,7 @@ const ARTIFACT_NAMES_SUFFIX = [
   'of the Machine Spirit', 'of the Colony\'s Heart', 'of the Sundered Pact',
   'of Ash and Iron', 'of the Silent Watch', 'of the Forgotten Archive',
   'of the Bleeding Hull', 'of the First Breach', 'of the Reclaimed Dawn',
-  'of the AETHON', 'of the Terran Compact', 'of the Old Earth',
+  'of the AETHEON', 'of the Terran Compact', 'of the Old Earth',
   'of the Directorate', 'of the First Captain', 'of the Long Voyage',
 ];
 
@@ -198,13 +198,13 @@ const CULTURAL_TRADITIONS = [
 ];
 
 // ============================================================================
-// Colony Origin — The canonical pre-history of the AETHON generation ship
+// Colony Origin — The canonical pre-history of the AETHEON generation ship
 // ============================================================================
 
 const COLONY_ORIGIN = {
   vessel: {
-    name: 'AETHON',
-    fullName: 'Advanced Exoplanetary Terrestrial Habitation & Operations Nexus',
+    name: 'AETHEON',
+    fullName: 'Arcology Engine Transgenerational Habitat for Extra-solar Operations and Navigation',
     class: 'Generation Ship — O\'Neill Cylinder Configuration',
     dimensions: '30km long, 8km diameter',
     launchYear: -4700,
@@ -219,11 +219,11 @@ const COLONY_ORIGIN = {
     name: 'The Terran Compact',
     description: 'A desperate coalition of Earth\'s remaining nation-states and megacorporations, formed in the final century of habitability.',
     keyFigures: [
-      { name: 'Director Elena Vasquez', role: 'Architect of Project AETHON, the woman who convinced the warring nations to cooperate.', title: 'Director-General of the Terran Compact' },
-      { name: 'Chief Architect Adaeze Okonkwo', role: 'Designed the AETHON\'s rotating habitat drum and self-sustaining biome layers.', title: 'Chief Architect of the AETHON' },
-      { name: 'Captain Maren Strand', role: 'First captain of the AETHON. Led the launch and the first two hundred cycles of the voyage.', title: 'First Captain of the AETHON' },
+      { name: 'Director Elena Vasquez', role: 'Architect of Project AETHEON, the woman who convinced the warring nations to cooperate.', title: 'Director-General of the Terran Compact' },
+      { name: 'Chief Architect Adaeze Okonkwo', role: 'Designed the AETHEON\'s rotating habitat drum and self-sustaining biome layers.', title: 'Chief Architect of the AETHEON' },
+      { name: 'Captain Maren Strand', role: 'First captain of the AETHEON. Led the launch and the first two hundred cycles of the voyage.', title: 'First Captain of the AETHEON' },
       { name: 'Dr. Yuki Tanaka', role: 'Created the Directorate Protocol AI to manage ship systems and governance across generations.', title: 'Lead AI Architect' },
-      { name: 'Admiral Kofi Asante', role: 'Commander of the AETHON\'s military contingent. Established the Warden Corps for internal security.', title: 'First Warden-Commander' },
+      { name: 'Admiral Kofi Asante', role: 'Commander of the AETHEON\'s military contingent. Established the Warden Corps for internal security.', title: 'First Warden-Commander' },
     ],
   },
 
@@ -242,30 +242,30 @@ const COLONY_ORIGIN = {
       keyEvents: [
         { year: -5000, description: 'The Withering begins. Global crop failures, oceanic dead zones, and atmospheric toxicity make Earth uninhabitable within generations.' },
         { year: -4950, description: 'The Resource Wars reach their peak. Three billion die in a decade of conflict over dwindling water and arable land.' },
-        { year: -4880, description: 'The Terran Compact is ratified by the 31 surviving nations and 7 megacorporations. Project AETHON is announced.' },
-        { year: -4800, description: 'Construction of the AETHON begins in Earth orbit, using materials mined from the Moon and near-Earth asteroids.' },
+        { year: -4880, description: 'The Terran Compact is ratified by the 31 surviving nations and 7 megacorporations. Project AETHEON is announced.' },
+        { year: -4800, description: 'Construction of the AETHEON begins in Earth orbit, using materials mined from the Moon and near-Earth asteroids.' },
       ],
     },
     {
       name: 'The Construction',
       yearRange: [-4800, -4700],
-      description: 'The AETHON is built in orbit over a century — a 30km cylinder designed to carry half a million souls across the stars. Millions more on Earth labor and die to make it possible, knowing they will never board.',
+      description: 'The AETHEON is built in orbit over a century — a 30km cylinder designed to carry half a million souls across the stars. Millions more on Earth labor and die to make it possible, knowing they will never board.',
       keyEvents: [
         { year: -4780, description: 'The habitat drum is completed. Early biome tests begin — forests, rivers, and farmland inside a spinning metal world.' },
         { year: -4750, description: 'The Directorate Protocol is brought online — an AI governance system designed to manage the ship across the millennia-long voyage.' },
-        { year: -4720, description: 'The lottery. 500,000 colonists are selected from 4 billion applicants. Riots erupt worldwide. The AETHON\'s defense grid is activated.' },
-        { year: -4700, description: 'Launch Day. The AETHON departs Earth orbit. The last transmission from Earth reads: "Carry us with you. Remember us."' },
+        { year: -4720, description: 'The lottery. 500,000 colonists are selected from 4 billion applicants. Riots erupt worldwide. The AETHEON\'s defense grid is activated.' },
+        { year: -4700, description: 'Launch Day. The AETHEON departs Earth orbit. The last transmission from Earth reads: "Carry us with you. Remember us."' },
       ],
     },
     {
       name: 'The Early Voyage',
       yearRange: [-4700, -3500],
-      description: 'The first millennium aboard the AETHON. Life is structured, hopeful, and governed by the Directorate Protocol. People know they are on a ship. Children learn about Earth in the archives. The destination is a shared dream. But across twelve hundred years, even dreams erode.',
+      description: 'The first millennium aboard the AETHEON. Life is structured, hopeful, and governed by the Directorate Protocol. People know they are on a ship. Children learn about Earth in the archives. The destination is a shared dream. But across twelve hundred years, even dreams erode.',
       keyEvents: [
         { year: -4600, description: 'Captain Strand dies at age 94. The second generation of ship-born children has never seen Earth. The archives become their only connection.' },
         { year: -4400, description: 'The first hull breach incident. A micro-meteorite pierces Sector 14. 200 die before the breach is sealed. The void becomes real.' },
-        { year: -4200, description: 'The Archive Accords are signed — a constitutional guarantee that all historical records remain accessible to every citizen of the AETHON.' },
-        { year: -4000, description: 'The Millennial Festival. The AETHON has been traveling for 700 years. A ship-wide celebration turns to quiet dread — the destination is still impossibly far.' },
+        { year: -4200, description: 'The Archive Accords are signed — a constitutional guarantee that all historical records remain accessible to every citizen of the AETHEON.' },
+        { year: -4000, description: 'The Millennial Festival. The AETHEON has been traveling for 700 years. A ship-wide celebration turns to quiet dread — the destination is still impossibly far.' },
         { year: -3800, description: 'Generational drift accelerates. Ship-born colonists struggle to relate to Earth records. "Home" starts to mean the ship, not the origin.' },
         { year: -3600, description: 'The first language schism. Corridor dialects diverge so far from Standard that the Directorate mandates linguistic unity programs. They partially fail.' },
       ],
@@ -286,7 +286,7 @@ const COLONY_ORIGIN = {
     {
       name: 'The Long Drift',
       yearRange: [-2800, -2000],
-      description: 'Eight centuries of isolation and fragmentation. With the Schism suppressed and Earth forgotten, the AETHON\'s population splinters into micro-societies. Each deck develops its own culture, dialect, and mythology. The ship is no longer one community — it is a hundred tiny worlds, connected by corridors no one travels.',
+      description: 'Eight centuries of isolation and fragmentation. With the Schism suppressed and Earth forgotten, the AETHEON\'s population splinters into micro-societies. Each deck develops its own culture, dialect, and mythology. The ship is no longer one community — it is a hundred tiny worlds, connected by corridors no one travels.',
       keyEvents: [
         { year: -2700, description: 'The Corridor Wars. Isolated deck-communities begin fighting over hydroponic resources. Dozens of petty conflicts erupt simultaneously across the ship.' },
         { year: -2500, description: 'The Great Sealing. Entire sections of the ship are permanently sealed off by feuding communities. Maps become unreliable. The ship\'s true size becomes unknown.' },
@@ -348,7 +348,7 @@ const COLONY_ORIGIN = {
   },
 
   forbiddenKnowledge: [
-    { id: 'fk_vessel_name', fragment: 'The colony has a name. Not "the colony" — a real name. AETHON. It\'s stamped into the deepest structural beams, beneath layers of rust and growth.', rarity: 'rare' },
+    { id: 'fk_vessel_name', fragment: 'The colony has a name. Not "the colony" — a real name. AETHEON. It\'s stamped into the deepest structural beams, beneath layers of rust and growth.', rarity: 'rare' },
     { id: 'fk_earth', fragment: 'There was a world before this one. A world with no hull, no ceiling — just an endless blue sky and a star so close it warmed your skin. They called it Earth.', rarity: 'rare' },
     { id: 'fk_destination', fragment: 'We\'re going somewhere. The colony is a vessel — a ship — and it has a destination. A world called New Dawn, orbiting a distant star. We\'ve been traveling for over two thousand cycles.', rarity: 'legendary' },
     { id: 'fk_directorate', fragment: 'The Directorate Protocol wasn\'t a government. It was an artificial intelligence — a machine mind built to govern the ship. It decided that forgetting was safer than remembering.', rarity: 'rare' },
@@ -374,13 +374,13 @@ const COLONY_ORIGIN = {
   ],
 
   founderDataCores: [
-    { name: 'Vasquez\'s Final Log', description: 'A data core containing the personal logs of Director Elena Vasquez, architect of Project AETHON. Her final entry reads: "If you are reading this, we succeeded. You are alive. That is enough."' },
-    { name: 'The Launch Day Recording', description: 'A corrupted audiovisual recording of Launch Day — the moment the AETHON departed Earth orbit. Through the static, a voice says: "Carry us with you."' },
+    { name: 'Vasquez\'s Final Log', description: 'A data core containing the personal logs of Director Elena Vasquez, architect of Project AETHEON. Her final entry reads: "If you are reading this, we succeeded. You are alive. That is enough."' },
+    { name: 'The Launch Day Recording', description: 'A corrupted audiovisual recording of Launch Day — the moment the AETHEON departed Earth orbit. Through the static, a voice says: "Carry us with you."' },
     { name: 'Strand\'s Star Chart', description: 'Captain Maren Strand\'s personal navigation chart, showing the route from Earth to New Dawn. Most of the data is corrupted, but the destination marker still glows.' },
     { name: 'The Schism Testimony', description: 'A data core from the Awakened uprising, containing testimony from Archivist Yun: "They\'re erasing us. Everything we were, everything we came from. The Directorate calls it mercy. I call it murder."' },
-    { name: 'Okonkwo\'s Blueprints', description: 'Architectural schematics of the AETHON drawn by Chief Architect Okonkwo. They show the full vessel — 30 kilometers of rotating habitat, fusion drives, and a bridge at the fore. The colony is just one section.' },
+    { name: 'Okonkwo\'s Blueprints', description: 'Architectural schematics of the AETHEON drawn by Chief Architect Okonkwo. They show the full vessel — 30 kilometers of rotating habitat, fusion drives, and a bridge at the fore. The colony is just one section.' },
     { name: 'The Directorate\'s Mandate', description: 'The original programming directive for the Directorate Protocol AI: "Ensure the survival and psychological stability of the crew across all generations. Authorized to restrict information deemed destabilizing."' },
-    { name: 'Earth\'s Final Broadcast', description: 'A fragmentary recording from Earth\'s last operational communications relay: "Global temperature +9.2C... atmosphere non-breathable in 40% of zones... population est. 800 million... AETHON is humanity\'s final option."' },
+    { name: 'Earth\'s Final Broadcast', description: 'A fragmentary recording from Earth\'s last operational communications relay: "Global temperature +9.2C... atmosphere non-breathable in 40% of zones... population est. 800 million... AETHEON is humanity\'s final option."' },
     { name: 'The Cryo-Manifest', description: 'A partial list of the 10,000 individuals placed in cryogenic preservation for the journey — scientists, artists, leaders. The manifest notes: "To be revived upon arrival at New Dawn."' },
   ],
 };
@@ -450,7 +450,7 @@ export class WorldHistoryGenerator {
     const yearsPerEra = config.yearsPerEra || this.rng.nextInt(80, 200);
     const totalYears = numEras * yearsPerEra;
 
-    // Phase 0: Generate pre-history (the AETHON origin story)
+    // Phase 0: Generate pre-history (the AETHEON origin story)
     this._generatePreHistory();
 
     // Phase 1: Generate the cosmology and primordial elements
@@ -490,13 +490,13 @@ export class WorldHistoryGenerator {
   }
 
   // ──────────────────────────────────────────
-  // Phase 0: Pre-History — The AETHON Origin
+  // Phase 0: Pre-History — The AETHEON Origin
   // ──────────────────────────────────────────
 
   _generatePreHistory() {
     this.preHistory = { ...COLONY_ORIGIN };
 
-    this._emitEvent(-1200, 'pre_history', '── The Pre-History of the AETHON ──', 'origin');
+    this._emitEvent(-1200, 'pre_history', '── The Pre-History of the AETHEON ──', 'origin');
 
     // Add pre-history era events to the timeline
     for (const era of COLONY_ORIGIN.preHistoryEras) {
@@ -2357,7 +2357,7 @@ export class WorldHistoryGenerator {
         if (!this.preHistory) return 'The origins of the colony are lost to time.';
         const snippets = [
           `The colony — if the oldest records can be believed — was built by something called "${this.preHistory.builders.name}." They constructed it in orbit around a dying world.`,
-          `The AETHON. That word is stamped into the deepest structural beams of the hull. ${this.preHistory.vessel.fullName}. A name for a vessel, not a home.`,
+          `The AETHEON. That word is stamped into the deepest structural beams of the hull. ${this.preHistory.vessel.fullName}. A name for a vessel, not a home.`,
           `Chief Architect ${this.preHistory.builders.keyFigures[1].name.split(' ').slice(-1)[0]} designed the habitat drum — a rotating cylinder 30 kilometers long. We live inside a machine.`,
           `The colony was built to carry ${this.preHistory.vessel.crew.toLocaleString()} souls across the void. A desperate gamble by a dying civilization.`,
           `Construction took fifty years. Millions on the old world labored and died to build it, knowing they would never board. Their sacrifice is forgotten.`,
@@ -2472,7 +2472,7 @@ export class WorldHistoryGenerator {
     if (this.preHistory) {
       rumorTypes.push('A scavenger found a data core in the deep sub-levels. It showed images of a blue world with no hull — just sky. They say the Archive Keepers confiscated it.');
       rumorTypes.push('There\'s a sealed section past the Quarantine Sectors — Level Zero. They say it\'s the bridge of the colony. The real bridge, where the whole thing is controlled from.');
-      rumorTypes.push('The word "AETHON" is stamped into the deepest structural beams. An old archivist told me it\'s the colony\'s true name. But you didn\'t hear that from me.');
+      rumorTypes.push('The word "AETHEON" is stamped into the deepest structural beams. An old archivist told me it\'s the colony\'s true name. But you didn\'t hear that from me.');
       rumorTypes.push('The Directorate Protocol — the old machine-mind that used to run everything — they say it\'s not really dead. Just sleeping. Still in the deep systems, still watching.');
       rumorTypes.push('Someone in the Cryo-Vaults found people. Not dead — frozen. Sleeping since before Year Zero. Original colonists from... wherever we came from.');
       rumorTypes.push('The hull vibrations? Those aren\'t just structural settling. An engineer told me they\'re engines. We\'re still moving. The whole colony is going somewhere.');

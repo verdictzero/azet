@@ -2886,11 +2886,16 @@ export class BuildingInterior {
     // Water trough
     this._place(tiles, 1, 3, 'WATER_TROUGH', '\u2248', '#4488FF'); // ≈
 
-    // Anvil in center - better character
+    // Counter separating workshop from customer area
+    const counterY = Math.min(3, Math.floor(h / 2) - 1);
+    for (let x = 2; x < Math.min(w - 2, 7); x++) {
+      this._place(tiles, x, counterY, 'COUNTER', '\u2550', '#aa6622'); // ═
+    }
+
+    // Anvil behind counter
     const ax = Math.floor(w / 2);
-    const ay = Math.floor(h / 2);
-    this._place(tiles, ax, ay, 'ANVIL', '\u22A4', '#aaaaaa'); // ⊤
-    npcPositions.push({ x: ax + 1, y: ay, role: 'blacksmith' });
+    this._place(tiles, ax, 1, 'ANVIL', '\u22A4', '#aaaaaa'); // ⊤
+    npcPositions.push({ x: ax + 1, y: counterY - 1, role: 'blacksmith' });
 
     // Horseshoe on wall
     this._place(tiles, w - 2, 1, 'HORSESHOE', '\u2229', '#AA8844'); // ∩
@@ -2901,7 +2906,7 @@ export class BuildingInterior {
     }
 
     // Weapon rack on side wall
-    for (let y = 3; y < Math.min(h - 2, 6); y++) {
+    for (let y = counterY + 1; y < Math.min(h - 2, counterY + 4); y++) {
       this._place(tiles, w - 2, y, 'WEAPON_RACK', '\u2571', '#aaaaaa'); // ╱ (or /)
       itemPositions.push({ x: w - 2, y, type: 'weapon' });
     }
