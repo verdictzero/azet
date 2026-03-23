@@ -1809,7 +1809,8 @@ const GLOW_PROFILES = {
   LOOT:             { hueMin: 40,  hueMax: 60,  speed: 1.5, pattern: 'pulse' },
   SETTLEMENT:       { hueMin: 180, hueMax: 220, speed: 0.8, pattern: 'wave' },
   DUNGEON_ENTRANCE: { hueMin: 0,   hueMax: 30,  speed: 1.2, pattern: 'flicker' },
-  NPC:              { hueMin: 90,  hueMax: 130, speed: 1.0, pattern: 'pulse' },
+  NPC:              { hueMin: 0,   hueMax: 360, speed: 3.5, pattern: 'rainbow' },
+  NPC_RETICLE:      { hueMin: 0,   hueMax: 360, speed: 4.5, pattern: 'rainbow' },
   INTERACTIVE:      { hueMin: 270, hueMax: 310, speed: 1.0, pattern: 'pulse' },
   PLAYER:           { hueMin: 0,   hueMax: 360, speed: 2.0, pattern: 'rainbow' },
 };

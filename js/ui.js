@@ -2023,14 +2023,47 @@ export class UIManager {
         godRayCells, lampGlowOps,
       };
 
-      // Draw NPCs
+      // Draw NPCs with targeting reticle and intense color cycling
       if (npcs) {
+        const now = Date.now();
+        // Reticle animation frames: corners + directional indicators
+        const reticleFrames = [
+          ['┏','▲','┓','◂','▸','┗','▼','┛'],  // heavy corners + arrows
+          ['◤','△','◥','◁','▷','◣','▽','◢'],  // triangle corners + outline arrows
+          ['╔','♦','╗','♦','♦','╚','♦','╝'],  // double corners + diamonds
+        ];
+        // Offsets for 8 surrounding cells: TL, T, TR, L, R, BL, B, BR
+        const surroundOffsets = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+        const frame = Math.floor(now / 400) % 3;
+        const chars = reticleFrames[frame];
+
         for (const npc of npcs) {
           const wx_off = npc.position.x - camX;
           const wy_off = npc.position.y - camY;
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-            const npcColor = this.glow ? this.glow.getGlowColor('NPC', npc.color || COLORS.BRIGHT_CYAN) : (npc.color || COLORS.BRIGHT_CYAN);
-            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, npc.char, npcColor);
+            const cx = viewLeft + wx_off * density + entityOff;
+            const cy = viewTop + wy_off * density + entityOff;
+
+            // Intense cycling background color (fast hue rotation)
+            const bgHue = ((now / 150) * 120) % 360;
+            const npcBg = hslToHex(bgHue / 360, 0.80, 0.25);
+
+            // Reticle colors — complementary hue, darker background
+            const reticleColor = this.glow ? this.glow.getGlowColor('NPC_RETICLE', '#FFFFFF') : '#FF00FF';
+            const reticleBg = hslToHex(((bgHue + 180) % 360) / 360, 0.70, 0.15);
+
+            // Draw surrounding reticle first (so NPC char draws on top)
+            for (let i = 0; i < 8; i++) {
+              const rx = cx + surroundOffsets[i][0];
+              const ry = cy + surroundOffsets[i][1];
+              if (rx >= viewLeft && rx < viewLeft + viewW && ry >= viewTop && ry < viewTop + viewH) {
+                r.drawChar(rx, ry, chars[i], reticleColor, reticleBg);
+              }
+            }
+
+            // Draw NPC character with intense rainbow fg + cycling bg
+            const npcFg = this.glow ? this.glow.getGlowColor('NPC', npc.color || COLORS.BRIGHT_CYAN) : (npc.color || COLORS.BRIGHT_CYAN);
+            r.drawChar(cx, cy, npc.char, npcFg, npcBg);
           }
         }
       }
