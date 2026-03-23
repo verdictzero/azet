@@ -140,10 +140,15 @@ class Game {
     this._startVersionPolling();
 
     // Game state
-    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU
+    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU, REST_ITEM_SELECT
 
     // ── FF-style Gamepad Menu ──
     this.gamepadMenuCursor = 0;
+
+    // ── Rest Item Selection ──
+    this.restItemSelectCursor = 0;
+    this.restItemSelectList = [];
+    this._restItemSelectReturnState = null;
     this.GAMEPAD_MENU_ITEMS = [
       { label: 'Items',     icon: '\u2666', state: 'INVENTORY'     },
       { label: 'Rest',      icon: '\u25B2', action: 'rest'         },
@@ -485,7 +490,8 @@ class Game {
     const overlayStates = [
       'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'HELP',
       'SETTINGS', 'DIALOGUE', 'SHOP', 'FACTION', 'ALMANAC',
-      'CONSOLE_LOG', 'DEBUG_MENU', 'QUEST_COMPASS', 'GAMEPAD_MENU'
+      'CONSOLE_LOG', 'DEBUG_MENU', 'QUEST_COMPASS', 'GAMEPAD_MENU',
+      'REST_ITEM_SELECT'
     ];
     if (overlayStates.includes(newState)) return;
 
@@ -1577,6 +1583,7 @@ class Game {
       case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
       case 'ALMANAC': return this.handleAlmanacInput(key);
       case 'GAMEPAD_MENU': return this.handleGamepadMenuInput(key);
+      case 'REST_ITEM_SELECT': return this.handleRestItemSelectInput(key);
       case 'WORLD_GEN_PAUSE':
         this.setState('LOADING');
         this._worldGenRunStep(this._worldGenResumeStep);
@@ -1795,10 +1802,7 @@ class Game {
 
     // Rest
     if (key === 'r' || key === 'R') {
-      this.timeSystem.advance(8);
-      this.player.stats.hp = Math.min(this.player.stats.hp + Math.floor(this.player.stats.maxHp * 0.3), this.player.stats.maxHp);
-      this.player.stats.mana = Math.min(this.player.stats.mana + Math.floor(this.player.stats.maxMana * 0.5), this.player.stats.maxMana);
-      this.ui.addMessage('You rest for 8 hours. HP and Mana partially restored.', COLORS.BRIGHT_GREEN);
+      this.openRestItemSelect('OVERWORLD');
     }
   }
 
@@ -3484,8 +3488,7 @@ class Game {
         this.saveGame(1, { exportFile: true });
         this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
       } else if (item.action === 'rest') {
-        this.useRestItem();
-        this.setState(this._gamepadMenuReturnState || 'OVERWORLD');
+        this.openRestItemSelect(this._gamepadMenuReturnState || 'OVERWORLD');
       } else if (item.state) {
         this.setState(item.state);
       }
@@ -4183,44 +4186,53 @@ class Game {
     }
   }
 
-  // ─── REST (from Start Menu) ───
+  // ─── REST ITEM SELECTION ───
 
-  useRestItem() {
-    // Find a rest item in inventory (prefer Cottage > Tent > Sleeping Bag)
+  openRestItemSelect(returnState) {
     const restItems = this.player.inventory.filter(i => i.type === 'rest');
     if (restItems.length === 0) {
       this.ui.addMessage('You have no rest items! (Tent, Sleeping Bag, or Cottage required)', COLORS.BRIGHT_RED);
       return;
     }
+    this.restItemSelectList = restItems;
+    this.restItemSelectCursor = 0;
+    this._restItemSelectReturnState = returnState;
+    this.setState('REST_ITEM_SELECT');
+  }
 
-    // Prefer cottage first, then tent, then sleeping bag
-    const priority = ['cottage', 'tent', 'sleeping_bag'];
-    let chosen = null;
-    for (const sub of priority) {
-      chosen = restItems.find(i => i.subtype === sub);
-      if (chosen) break;
+  handleRestItemSelectInput(key) {
+    const items = this.restItemSelectList;
+    if (key === 'Escape') {
+      this.setState(this._restItemSelectReturnState || 'OVERWORLD');
+      return;
     }
-    if (!chosen) chosen = restItems[0];
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      this.restItemSelectCursor = (this.restItemSelectCursor - 1 + items.length) % items.length;
+    } else if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      this.restItemSelectCursor = (this.restItemSelectCursor + 1) % items.length;
+    } else if (key === 'Enter' || key === ' ') {
+      const chosen = items[this.restItemSelectCursor];
+      this.useRestItemChosen(chosen);
+      this.setState(this._restItemSelectReturnState || 'OVERWORLD');
+    }
+  }
 
+  useRestItemChosen(chosen) {
     // Apply rest effects based on subtype
     if (chosen.subtype === 'cottage') {
-      // Cottage: restore all stats and remove status ailments (does not resurrect dead)
       this.player.heal(this.player.stats.maxHp);
       this.player.stats.mana = this.player.stats.maxMana;
       this.statusEffects = this.statusEffects.filter(e => e.beneficial);
       this.ui.addMessage(`Used ${chosen.name}. Fully restored! Status ailments cleared.`, COLORS.BRIGHT_GREEN);
     } else if (chosen.subtype === 'tent') {
-      // Tent: restore 20 HP
       const restore = chosen.effect?.heal || 20;
       this.player.heal(restore);
       this.ui.addMessage(`Used ${chosen.name}. Restored ${restore} HP.`, COLORS.BRIGHT_GREEN);
     } else if (chosen.subtype === 'sleeping_bag') {
-      // Sleeping Bag: restore 10 HP
       const restore = chosen.effect?.heal || 10;
       this.player.heal(restore);
       this.ui.addMessage(`Used ${chosen.name}. Restored ${restore} HP.`, COLORS.BRIGHT_GREEN);
     } else {
-      // Generic rest item
       const restore = chosen.effect?.heal || 10;
       this.player.heal(restore);
       this.ui.addMessage(`Used ${chosen.name}. Restored ${restore} HP.`, COLORS.BRIGHT_GREEN);
@@ -4764,6 +4776,22 @@ class Game {
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
         // Overlay the FF-style menu
         this.ui.drawGamepadMenu(this.renderer, this.player, this.GAMEPAD_MENU_ITEMS, this.gamepadMenuCursor);
+        break;
+      }
+
+      case 'REST_ITEM_SELECT': {
+        // Render the underlying gameplay state first
+        const returnSt = this._restItemSelectReturnState || 'OVERWORLD';
+        if (returnSt === 'OVERWORLD') {
+          this.renderOverworld();
+        } else if (returnSt === 'LOCATION') {
+          if (this.locationCamera) { this.locationCamera.follow(this.player); this.locationCamera.update(); }
+          this.ui.drawLocationOverview(this.currentSettlement, this.npcs, this.player, this.locationCamera, this.timeSystem.getSunDirection(), this.timeSystem.hour, this.currentSettlement && this.currentSettlement.isBridge ? this.enemies : null, this.currentSettlement && this.currentSettlement.isBridge ? this.items : null);
+        } else if (returnSt === 'DUNGEON') {
+          this.renderDungeon();
+        }
+        this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
+        this.ui.drawRestItemSelect(this.renderer, this.restItemSelectList, this.restItemSelectCursor);
         break;
       }
     }
