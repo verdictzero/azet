@@ -676,7 +676,15 @@ export class Renderer {
     const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
 
     switch (tileType) {
-      // ── Water types ──
+      // ── Water types (depth gradient) ──
+      case 'VERY_DEEP_WATER': {
+        const vdeep = ['#001155', '#001044', '#001266'];
+        return vdeep[Math.floor(t * 0.4) % vdeep.length];
+      }
+      case 'DEEP_WATER': {
+        const dw = ['#002277', '#001E66', '#002888'];
+        return dw[Math.floor(t * 0.6) % dw.length];
+      }
       case 'ABYSS': {
         const abyssColors = ['#000033', '#000022', '#000044'];
         return abyssColors[Math.floor(t * 0.5) % abyssColors.length];
@@ -690,9 +698,13 @@ export class Renderer {
         const oceans = ['#0044AA', '#0055BB', '#003399'];
         return oceans[Math.floor(t) % oceans.length];
       }
+      case 'MEDIUM_WATER': {
+        const meds = ['#2266CC', '#2A70DD', '#1E5EBB'];
+        return meds[Math.floor(t) % meds.length];
+      }
       case 'SHALLOWS':
       case 'WATER': {
-        const blues = ['#0055AA', '#0066BB', '#0044AA'];
+        const blues = ['#4488FF', '#4D90FF', '#3B80EE'];
         return blues[Math.floor(t) % blues.length];
       }
       case 'TIDAL_POOL': {
@@ -859,6 +871,16 @@ export class Renderer {
         const cycle = Math.floor(t / 400) % 3;
         const water = ['~', '\u2248', '~']; // ~ ≈ ~
         return water[cycle];
+      }
+      case '\u223D': { // ∽ deep water wave
+        const cycle = Math.floor(t / 600) % 3;
+        const deep = ['\u223D', '\u2248', '\u223D']; // ∽ ≈ ∽
+        return deep[cycle];
+      }
+      case '\u2248': { // ≈ very deep water
+        const cycle = Math.floor(t / 700) % 3;
+        const vdeep = ['\u2248', '\u223D', '\u2248']; // ≈ ∽ ≈
+        return vdeep[cycle];
       }
       default:
         return baseChar;

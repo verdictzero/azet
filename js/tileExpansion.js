@@ -360,14 +360,21 @@ const TYPE_PATTERNS = {
   BUSH:           { 2: SPARSE_TREE_2x2, 3: SPARSE_TREE_3x3 },
   HYDRO_JUNGLE:   { 2: DEEP_FOREST_2x2, 3: DEEP_FOREST_3x3 },
 
-  // Water
+  // Water (depth gradient)
+  VERY_DEEP_WATER:{ 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },
+  DEEP_WATER:     { 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },
   OCEAN:          { 2: WATER_2x2, 3: WATER_3x3 },
+  MEDIUM_WATER:   { 2: WATER_2x2, 3: WATER_3x3 },
   SHALLOWS:       { 2: WATER_2x2, 3: WATER_3x3 },
   TIDAL_POOL:     { 2: WATER_2x2, 3: WATER_3x3 },
   SHOAL:          { 2: WATER_2x2, 3: WATER_3x3 },
   DEEP_OCEAN:     { 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },
   ABYSS:          { 2: DEEP_WATER_2x2, 3: DEEP_WATER_3x3 },
   PUDDLE:         { 2: WATER_2x2, 3: WATER_3x3 },
+
+  // Shoreline
+  INNER_SHORE:    { 2: GRASS_2x2, 3: GRASS_3x3 },
+  OUTER_SHORE:    { 2: GRASS_2x2, 3: GRASS_3x3 },
 
   // Wetlands
   MIRE:           { 2: WATER_2x2, 3: WATER_3x3 },
@@ -422,6 +429,11 @@ const TYPE_PATTERNS = {
 
   // Bridges
   BRIDGE:         { 2: BRIDGE_2x2, 3: BRIDGE_3x3 },
+  BRIDGE_ENTRANCE:{ 2: DOOR_2x2, 3: DOOR_3x3 },
+  BRIDGE_FLOOR:   { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  BRIDGE_GATE:    { 2: WALL_2x2, 3: WALL_3x3 },
+  BRIDGE_PIPE:    { 2: MECH_2x2, 3: MECH_3x3 },
+  BROKEN_BRIDGE:  { 2: VOID_2x2, 3: VOID_3x3 },
 
   // Fences
   FENCE:          { 2: FENCE_2x2, 3: FENCE_3x3 },
