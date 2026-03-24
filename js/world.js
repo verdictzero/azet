@@ -2497,6 +2497,37 @@ export class SettlementGenerator {
     // Add roads leading from settlement edges outward
     this._generateOutskirtRoads(rng, tiles, pad, coreW, coreH, width, height);
 
+    // ── Habitat perimeter wall (hull bulkhead) around core boundary ──
+    // Double-line box-drawing for a heavy industrial/hull look
+    const wallFg = '#8899AA';
+    const wallBg = '#111122';
+    const doorFg = '#667788';
+    // Top and bottom walls
+    for (let x = pad; x < pad + coreW; x++) {
+      if (x === pad) {
+        tiles[pad][x] = tile('WALL', '\u2554', wallFg, wallBg, false, { solid: true }); // ╔
+        tiles[pad + coreH - 1][x] = tile('WALL', '\u255A', wallFg, wallBg, false, { solid: true }); // ╚
+      } else if (x === pad + coreW - 1) {
+        tiles[pad][x] = tile('WALL', '\u2557', wallFg, wallBg, false, { solid: true }); // ╗
+        tiles[pad + coreH - 1][x] = tile('WALL', '\u255D', wallFg, wallBg, false, { solid: true }); // ╝
+      } else {
+        tiles[pad][x] = tile('WALL', '\u2550', wallFg, wallBg, false, { solid: true }); // ═
+        tiles[pad + coreH - 1][x] = tile('WALL', '\u2550', wallFg, wallBg, false, { solid: true }); // ═
+      }
+    }
+    // Left and right walls (skip corners already placed)
+    for (let y = pad + 1; y < pad + coreH - 1; y++) {
+      tiles[y][pad] = tile('WALL', '\u2551', wallFg, wallBg, false, { solid: true }); // ║
+      tiles[y][pad + coreW - 1] = tile('WALL', '\u2551', wallFg, wallBg, false, { solid: true }); // ║
+    }
+    // Place locked doors at road exit points (center of each edge)
+    const midX = pad + Math.floor(coreW / 2);
+    const midY = pad + Math.floor(coreH / 2);
+    tiles[pad][midX] = tile('DOOR', '\u25A0', doorFg, wallBg, false, { solid: true, locked: true }); // ■
+    tiles[pad + coreH - 1][midX] = tile('DOOR', '\u25A0', doorFg, wallBg, false, { solid: true, locked: true }); // ■
+    tiles[midY][pad] = tile('DOOR', '\u25A0', doorFg, wallBg, false, { solid: true, locked: true }); // ■
+    tiles[midY][pad + coreW - 1] = tile('DOOR', '\u25A0', doorFg, wallBg, false, { solid: true, locked: true }); // ■
+
     return { tiles, width, height, buildings, npcSlots, coreOffset: { x: pad, y: pad } };
   }
 
