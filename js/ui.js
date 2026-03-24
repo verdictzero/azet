@@ -2,6 +2,35 @@ import { COLORS, LAYOUT, wordWrap } from './engine.js';
 import { CRYSTAL_WIDTH, CRYSTAL_HEIGHT, CRYSTAL_FRAMES } from './crystal-frames.js';
 import { expandTile } from './tileExpansion.js';
 
+// ─── Circuitry Background (for exterior / beyond-wall rendering) ───
+function _circuitHash(x, y) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967296;
+}
+function _hasTrace(x, y) { return _circuitHash(x, y) < 0.35; }
+const _CIRCUIT_CONN = [
+  '·','─','─','─','│','┌','┐','┬','│','└','┘','┴','│','├','┤','○',
+];
+const _circuitRes = { char: ' ', fg: '#000000', bg: '#000000' };
+function getCircuitryCell(wx, wy) {
+  if (!_hasTrace(wx, wy)) {
+    _circuitRes.char = ' '; _circuitRes.fg = '#000000'; _circuitRes.bg = '#000000';
+    return _circuitRes;
+  }
+  const conn = (_hasTrace(wx, wy - 1) ? 8 : 0) | (_hasTrace(wx, wy + 1) ? 4 : 0)
+             | (_hasTrace(wx - 1, wy) ? 2 : 0) | (_hasTrace(wx + 1, wy) ? 1 : 0);
+  _circuitRes.char = _CIRCUIT_CONN[conn];
+  const t = Date.now() / 1000;
+  const wave = Math.sin((wx * 0.3 + wy * 0.2) - t * 1.5) * 0.5 + 0.5;
+  const pulse2 = Math.sin((wx * 0.1 - wy * 0.15) + t * 0.7) * 0.5 + 0.5;
+  const energy = wave * 0.7 + pulse2 * 0.3;
+  _circuitRes.fg = `rgb(${Math.floor(6 + energy * 10)},${Math.floor(6 + energy * 50)},${Math.floor(18 + energy * 62)})`;
+  _circuitRes.bg = '#000000';
+  return _circuitRes;
+}
+
 // ─── Color conversion helpers for hue-shifting effects ───
 function hexToHsl(hex) {
   const val = parseInt(hex.slice(1), 16);
@@ -1941,11 +1970,19 @@ export class UIManager {
         const sdyN = sunDir.dy / sdMag;
         const maxRayLen = 6;
 
+        // Core boundary for skipping exterior shadows
+        const sCoreOff = settlement.coreOffset || { x: 0, y: 0 };
+        const sCoreX1 = sCoreOff.x, sCoreY1 = sCoreOff.y;
+        const sCoreX2 = settlement.tiles[0] ? settlement.tiles[0].length - sCoreOff.x : 0;
+        const sCoreY2 = settlement.tiles.length - sCoreOff.y;
+
         for (let wy_off = 0; wy_off < worldH; wy_off++) {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
             const wx = camX + wx_off;
             const wy = camY + wy_off;
             if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
+            // Skip exterior tiles — they render as circuit pattern, no shadows needed
+            if (wx < sCoreX1 || wx >= sCoreX2 || wy < sCoreY1 || wy >= sCoreY2) continue;
             const t = settlement.tiles[wy][wx];
             if (!t) continue;
             const height = SETTLEMENT_HEIGHTS[t.type] || CHAR_HEIGHTS[t.char] || (!t.walkable && t.char !== '.' ? 1 : 0);
@@ -1980,30 +2017,58 @@ export class UIManager {
       // Edge highlights disabled — using soft gradient shadows instead
       const sunlitCells = new Map();
 
+      // Core boundary — tiles outside this area render as circuit pattern (exterior hull)
+      const coreOff = settlement.coreOffset || { x: 0, y: 0 };
+      const coreX1 = coreOff.x;
+      const coreY1 = coreOff.y;
+      const coreX2 = settlement.tiles[0] ? settlement.tiles[0].length - coreOff.x : 0;
+      const coreY2 = settlement.tiles.length - coreOff.y;
+
       // Render tiles with density expansion
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
         for (let wx_off = 0; wx_off < worldW; wx_off++) {
           const wx = camX + wx_off;
           const wy = camY + wy_off;
-          if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
-            const tile = settlement.tiles[wy][wx];
-            if (!tile) continue;
 
+          // Check if tile is outside the habitat core (exterior hull)
+          const isExterior = wx < coreX1 || wx >= coreX2 || wy < coreY1 || wy >= coreY2;
+
+          if (isExterior || wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= (settlement.tiles[0] || []).length) {
+            // Exterior / out-of-bounds — render circuit pattern
+            const circuit = getCircuitryCell(wx, wy);
             if (density === 1) {
-              const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-              const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
-              r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, tile.bg || COLORS.BLACK);
+              r.drawChar(viewLeft + wx_off, viewTop + wy_off, circuit.char, circuit.fg, circuit.bg);
             } else {
-              const expanded = expandTile(tile, density, wx, wy);
               for (let dy = 0; dy < density; dy++) {
                 for (let dx = 0; dx < density; dx++) {
                   const screenX = viewLeft + wx_off * density + dx;
                   const screenY = viewTop + wy_off * density + dy;
                   if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                    const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx, wy);
-                    const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(expanded.fgs[dy][dx], tile.type, wx, wy) : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
-                    r.drawChar(screenX, screenY, ch, fg, expanded.bgs[dy][dx]);
+                    r.drawChar(screenX, screenY, circuit.char, circuit.fg, circuit.bg);
                   }
+                }
+              }
+            }
+            continue;
+          }
+
+          const tile = settlement.tiles[wy][wx];
+          if (!tile) continue;
+
+          if (density === 1) {
+            const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+            const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
+            r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, tile.bg || COLORS.BLACK);
+          } else {
+            const expanded = expandTile(tile, density, wx, wy);
+            for (let dy = 0; dy < density; dy++) {
+              for (let dx = 0; dx < density; dx++) {
+                const screenX = viewLeft + wx_off * density + dx;
+                const screenY = viewTop + wy_off * density + dy;
+                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                  const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx, wy);
+                  const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(expanded.fgs[dy][dx], tile.type, wx, wy) : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                  r.drawChar(screenX, screenY, ch, fg, expanded.bgs[dy][dx]);
                 }
               }
             }
@@ -2021,7 +2086,7 @@ export class UIManager {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
             const wx = camX + wx_off;
             const wy = camY + wy_off;
-            if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
+            if (wy >= coreY1 && wy < coreY2 && wx >= coreX1 && wx < coreX2) {
               if (settlement.tiles[wy][wx] && settlement.tiles[wy][wx].type === 'TREE_CANOPY') {
                 for (let cdy = -2; cdy <= 2; cdy++) {
                   for (let cdx = -2; cdx <= 2; cdx++) {
@@ -2134,7 +2199,7 @@ export class UIManager {
           for (let wx_off = 0; wx_off < worldW; wx_off++) {
             const wx = camX + wx_off;
             const wy = camY + wy_off;
-            if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
+            if (wy < coreY1 || wy >= coreY2 || wx < coreX1 || wx >= coreX2) continue;
             const t = settlement.tiles[wy][wx];
             if (!t) continue;
             const prof = LIGHT_TILES[t.type] || (t.char === '\u263C' ? LIGHT_TILES['\u263C'] : null);
@@ -2178,7 +2243,7 @@ export class UIManager {
             for (let wx_off = 0; wx_off < worldW; wx_off++) {
               const wx = camX + wx_off;
               const wy = camY + wy_off;
-              if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
+              if (wy < coreY1 || wy >= coreY2 || wx < coreX1 || wx >= coreX2) continue;
               const t = settlement.tiles[wy][wx];
               if (!t) continue;
               if (t.type === 'DOOR' || t.type === 'WINDOW') {
