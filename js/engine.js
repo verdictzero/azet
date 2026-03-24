@@ -1409,6 +1409,12 @@ export class InputManager {
     // Debug state provider callback (set by Game to query toggle states)
     this._debugStateProvider = null;
 
+    // Touch UI opacity (cycles through levels)
+    this._touchOpacityLevel = 2; // 0=0.2, 1=0.4, 2=0.7, 3=1.0
+    this._touchOpacities = [0.2, 0.4, 0.7, 1.0];
+    // Touch grid collapsed (hide/show toggle)
+    this._touchCollapsed = false;
+
     // Text input mode (for mobile keyboard)
     this._textInputMode = false;
     this._textInput = document.getElementById('mobile-text-input');
@@ -1500,9 +1506,18 @@ export class InputManager {
   _startRepeat(key) {
     this._stopRepeat();
     this._repeatKey = key;
-    // Use slower repeat on overworld (50% speed)
+    // Check walk-really-really-fast debug toggle
+    const debugState = this._debugStateProvider ? this._debugStateProvider() : null;
+    const walkFast = debugState && debugState.walkReallyReallyFast;
+    // Use slower repeat on overworld (50% speed) — unless turbo mode
     const state = this._gameStateProvider ? this._gameStateProvider() : null;
-    const interval = state === 'OVERWORLD' ? this._repeatInterval * 2 : this._repeatInterval;
+    let interval;
+    if (walkFast) {
+      interval = 15; // extremely fast movement
+    } else {
+      interval = state === 'OVERWORLD' ? this._repeatInterval * 2 : this._repeatInterval;
+    }
+    const delay = walkFast ? 50 : this._repeatDelay;
     // After initial delay, start firing repeats at interval
     this._repeatTimer = setTimeout(() => {
       this._repeatIntervalTimer = setInterval(() => {
@@ -1512,7 +1527,7 @@ export class InputManager {
           this._stopRepeat();
         }
       }, interval);
-    }, this._repeatDelay);
+    }, delay);
   }
 
   _stopRepeat() {
@@ -1621,9 +1636,12 @@ export class InputManager {
       touchDiv.classList.remove('hidden');
     }
     this._touchDiv = touchDiv;
+    this._touchGrid = touchDiv ? touchDiv.querySelector('.touch-grid') : null;
 
     // Bind all static gamepad buttons
     this._bindGamepadButtons();
+    // Bind utility buttons (debug, opacity, hide/show)
+    this._bindUtilityButtons();
   }
 
   set enableTouch(val) {
@@ -1699,6 +1717,48 @@ export class InputManager {
         btn.addEventListener('mousedown', fire);
         btn.addEventListener('mouseup', release);
       }
+    }
+  }
+
+  /**
+   * Bind utility buttons (debug menu, opacity cycle, hide/show toggle).
+   */
+  _bindUtilityButtons() {
+    if (!this._touchDiv) return;
+    const utilBtns = this._touchDiv.querySelectorAll('[data-util]');
+
+    for (const btn of utilBtns) {
+      const action = btn.dataset.util;
+      const fire = (e) => {
+        e.preventDefault();
+        btn.classList.add('pressed');
+        if (navigator.vibrate) navigator.vibrate(12);
+
+        if (action === 'debug') {
+          // Open/close debug menu via backtick key
+          this.lastAction = '`';
+        } else if (action === 'opacity') {
+          // Cycle touch UI opacity
+          this._touchOpacityLevel = (this._touchOpacityLevel + 1) % this._touchOpacities.length;
+          const opacity = this._touchOpacities[this._touchOpacityLevel];
+          if (this._touchDiv) {
+            this._touchDiv.style.opacity = opacity;
+          }
+        } else if (action === 'hide') {
+          // Toggle touch grid visibility
+          this._touchCollapsed = !this._touchCollapsed;
+          if (this._touchGrid) {
+            this._touchGrid.classList.toggle('collapsed', this._touchCollapsed);
+          }
+          btn.textContent = this._touchCollapsed ? 'SHW' : 'EYE';
+        }
+      };
+      const release = () => btn.classList.remove('pressed');
+      btn.addEventListener('touchstart', fire, { passive: false });
+      btn.addEventListener('touchend', release, { passive: false });
+      btn.addEventListener('touchcancel', release, { passive: false });
+      btn.addEventListener('mousedown', fire);
+      btn.addEventListener('mouseup', release);
     }
   }
 
