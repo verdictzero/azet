@@ -244,6 +244,7 @@ class Game {
       noEncounters: false,
       infiniteAttack: false,
       infiniteMana: false,
+      walkReallyReallyFast: false,
     };
     this._debugPanel = null;      // legacy HTML panel (unused)
     this._debugVisible = false;    // legacy (unused)
@@ -266,6 +267,7 @@ class Game {
       disableClouds: this.debug.disableClouds,
       crtEffects: this.renderer?.effectsEnabled ?? false,
       revealMap: this.debug.revealMap,
+      walkReallyReallyFast: this.debug.walkReallyReallyFast,
     });
 
     // World history (deep procedural history engine)
@@ -426,6 +428,7 @@ class Game {
         if (this.player) this.player._debugInfiniteAttack = this.debug.infiniteAttack;
         break;
       case 'infiniteMana': this.debug.infiniteMana = !this.debug.infiniteMana; break;
+      case 'walkReallyReallyFast': this.debug.walkReallyReallyFast = !this.debug.walkReallyReallyFast; break;
       case 'fullHeal':
         if (this.player) {
           this.player.stats.hp = this.player.stats.maxHp;
