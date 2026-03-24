@@ -4024,10 +4024,9 @@ class Game {
 
     // Section wall interaction
     if (tile.sectionWall) {
-      const section = this.overworld.getSectionAtWorld(nx);
       const adjacent = this.sectionManager ? this.sectionManager.getAdjacentSections(this.player.currentSection) : {};
-      const direction = dx > 0 ? 'east' : 'west';
-      const neighborId = direction === 'east' ? adjacent.east : adjacent.west;
+      const direction = dx > 0 ? 'east' : dx < 0 ? 'west' : (dy !== 0 ? null : null);
+      const neighborId = direction === 'east' ? adjacent.east : direction === 'west' ? adjacent.west : null;
 
       if (neighborId) {
         const neighborBiome = this.sectionManager.getBiome(neighborId);
@@ -4040,7 +4039,7 @@ class Game {
                           neighborBiome === 'desert' ? 'arid' :
                           neighborBiome === 'lush' ? 'green and alive' : 'unknown';
 
-        this.ui.addMessage('A massive hull wall stretches from floor to sky.', COLORS.BRIGHT_WHITE);
+        this.ui.addMessage('A massive hull wall stretches from floor to sky. Find an airlock to pass through.', COLORS.BRIGHT_WHITE);
         this.ui.addMessage(`Beyond this wall lies ${neighborSection ? neighborSection.label : neighborId} — sensors indicate it is ${biomeDesc}.`, COLORS.BRIGHT_CYAN);
 
         if (!this.player.discoveredSections.has(neighborId)) {
@@ -4048,17 +4047,24 @@ class Game {
           this.ui.addMessage(`Section ${neighborId} discovered!`, COLORS.BRIGHT_YELLOW);
         }
 
-        // Check if inner hull corridor is accessible
-        const corridor = this.sectionManager.getCorridorBetween(this.player.currentSection, neighborId);
-        if (corridor && this.player.unlockedSections.has(neighborId)) {
-          this.ui.addMessage('The airlock to the engineering corridor is open. Keep walking to enter.', COLORS.BRIGHT_GREEN);
-        } else if (neighborBiome === 'vacuum' && !this.player.hasEVA) {
+        if (neighborBiome === 'vacuum' && !this.player.hasEVA) {
           this.ui.addMessage('WARNING: Vacuum beyond. EVA equipment required.', COLORS.BRIGHT_RED);
         }
       } else {
         this.ui.addMessage('A massive hull wall stretches endlessly. This is the outer hull of the ship.', COLORS.BRIGHT_WHITE);
       }
       return;
+    }
+
+    // Airlock passage interaction — message when stepping through
+    if (tile.airlock) {
+      // Airlock tiles are walkable, so movement is allowed below.
+      // Just show a flavor message on first entry.
+      const section = this.overworld.getSectionAtWorld(nx);
+      if (section && section.type !== this.player._lastAirlockSection) {
+        this.player._lastAirlockSection = section.type;
+        this.ui.addMessage('You step through the airlock. Pressurization equalizing...', COLORS.BRIGHT_YELLOW);
+      }
     }
 
     // Transit station interaction
@@ -5954,6 +5960,29 @@ class Game {
                 const screenY = viewTop + wy_off * density + dy;
                 if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
                   r.drawChar(screenX, screenY, circuit.char, circuit.fg, circuit.bg);
+                }
+              }
+            }
+          }
+          continue;
+        }
+
+        // Inner hull corridor — overlay circuit pattern on non-walkable machinery tiles
+        if (tile.biome === 'inner_hull' && !tile.walkable && !tile.airlockFrame) {
+          // Use circuit pattern as animated background, tile char as foreground
+          const circuit = getCircuitryCell(wx, wy);
+          const useTile = circuit.char === ' '; // no circuit trace here — use tile's own char
+          const ch = useTile ? tile.char : circuit.char;
+          const fg = useTile ? tile.fg : circuit.fg;
+          if (density === 1) {
+            r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, '#000000');
+          } else {
+            for (let dy = 0; dy < density; dy++) {
+              for (let dx = 0; dx < density; dx++) {
+                const screenX = viewLeft + wx_off * density + dx;
+                const screenY = viewTop + wy_off * density + dy;
+                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                  r.drawChar(screenX, screenY, ch, fg, '#000000');
                 }
               }
             }
