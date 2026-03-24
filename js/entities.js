@@ -1758,6 +1758,13 @@ export class Player {
     this.knownLocations = new Set();
     this.gold = 50;
 
+    // O'Neill cylinder section tracking
+    this.currentSection = 'H4';                      // Section the player is currently in
+    this.unlockedSections = new Set(['H4']);          // Sections the player can access
+    this.discoveredSections = new Set(['H4']);        // Sections the player knows about
+    this.activatedTransitStations = new Set();       // Transit stations the player has activated
+    this.hasEVA = false;                             // Can survive vacuum sections
+
     // Lore discovery tracking — only discovered lore appears in the Almanac
     this.discoveredLore = {
       locations: [],     // { id, text, source, discoveredAt }

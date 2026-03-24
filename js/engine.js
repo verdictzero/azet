@@ -131,12 +131,18 @@ export class Renderer {
     const isPortrait = h > w;
     const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
+    // Reserve space for touch controls on mobile so they don't overlap the game
+    const touchReserve = isMobile ? (isPortrait ? 180 : 120) : 0;
+    const availW = w;
+    const availH = h - touchReserve;
+
     // Fluid font size: lerp between 10px (320px wide) and 18px (2560px wide)
+    // On very small screens, shrink further to ensure the game fits
     if (!this._userFontSize) {
       const minW = 320, maxW = 2560, minFont = 10, maxFont = 18;
       const t = Math.max(0, Math.min(1, (w - minW) / (maxW - minW)));
       this.fontSize = Math.round(minFont + t * (maxFont - minFont));
-      if (isPortrait) this.fontSize = Math.max(10, this.fontSize - 1);
+      if (isPortrait) this.fontSize = Math.max(8, this.fontSize - 1);
     }
     // Store base font size (no longer modified by zoom — density zoom is character-based)
     this._baseFontSize = this.fontSize;
@@ -147,22 +153,47 @@ export class Renderer {
     this.cellWidth = Math.ceil(metrics.width);
     this.cellHeight = Math.ceil(this.fontSize * 1.35);
 
-    // Reserve space for touch controls on mobile so they don't overlap the game
-    const touchReserve = isMobile ? (isPortrait ? 180 : 120) : 0;
-    const availH = h - touchReserve;
-
     // Compute grid to fill available area
-    this.cols = Math.floor(w / this.cellWidth);
+    this.cols = Math.floor(availW / this.cellWidth);
     this.rows = Math.floor(availH / this.cellHeight);
 
     // Ultra-wide cap, portrait minimum
     if (this.cols > 160) this.cols = 160;
     if (this.cols < 30) this.cols = 30;
-    // Ensure enough rows for HUD
-    if (this.rows < LAYOUT.HUD_TOTAL + 5) this.rows = LAYOUT.HUD_TOTAL + 5;
+    // Ensure enough rows for HUD — but shrink font if that would exceed viewport
+    const minRows = LAYOUT.HUD_TOTAL + 5;
+    if (this.rows < minRows) {
+      // Reduce font size to fit minimum rows within available height
+      if (!this._userFontSize) {
+        const neededCellH = Math.floor(availH / minRows);
+        this.fontSize = Math.max(7, Math.floor(neededCellH / 1.35));
+        this._baseFontSize = this.fontSize;
+        this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+        const m = this.ctx.measureText('M');
+        this.cellWidth = Math.ceil(m.width);
+        this.cellHeight = Math.ceil(this.fontSize * 1.35);
+        this.cols = Math.floor(availW / this.cellWidth);
+        this.rows = Math.floor(availH / this.cellHeight);
+        if (this.cols > 160) this.cols = 160;
+        if (this.cols < 30) this.cols = 30;
+      }
+      if (this.rows < minRows) this.rows = minRows;
+    }
 
-    this.canvas.width = this.cols * this.cellWidth;
-    this.canvas.height = this.rows * this.cellHeight;
+    // Clamp canvas pixel dimensions to never exceed viewport
+    let canvasW = this.cols * this.cellWidth;
+    let canvasH = this.rows * this.cellHeight;
+    if (canvasW > w) {
+      this.cols = Math.floor(w / this.cellWidth);
+      canvasW = this.cols * this.cellWidth;
+    }
+    if (canvasH > h) {
+      this.rows = Math.floor(h / this.cellHeight);
+      canvasH = this.rows * this.cellHeight;
+    }
+
+    this.canvas.width = canvasW;
+    this.canvas.height = canvasH;
 
     // Re-set font after canvas resize (canvas resize clears state)
     this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
@@ -1409,6 +1440,12 @@ export class InputManager {
     // Debug state provider callback (set by Game to query toggle states)
     this._debugStateProvider = null;
 
+    // Touch UI opacity (cycles through levels)
+    this._touchOpacityLevel = 2; // 0=0.2, 1=0.4, 2=0.7, 3=1.0
+    this._touchOpacities = [0.2, 0.4, 0.7, 1.0];
+    // Touch grid collapsed (hide/show toggle)
+    this._touchCollapsed = false;
+
     // Text input mode (for mobile keyboard)
     this._textInputMode = false;
     this._textInput = document.getElementById('mobile-text-input');
@@ -1500,9 +1537,18 @@ export class InputManager {
   _startRepeat(key) {
     this._stopRepeat();
     this._repeatKey = key;
-    // Use slower repeat on overworld (50% speed)
+    // Check walk-really-really-fast debug toggle
+    const debugState = this._debugStateProvider ? this._debugStateProvider() : null;
+    const walkFast = debugState && debugState.walkReallyReallyFast;
+    // Use slower repeat on overworld (50% speed) — unless turbo mode
     const state = this._gameStateProvider ? this._gameStateProvider() : null;
-    const interval = state === 'OVERWORLD' ? this._repeatInterval * 2 : this._repeatInterval;
+    let interval;
+    if (walkFast) {
+      interval = 15; // extremely fast movement
+    } else {
+      interval = state === 'OVERWORLD' ? this._repeatInterval * 2 : this._repeatInterval;
+    }
+    const delay = walkFast ? 50 : this._repeatDelay;
     // After initial delay, start firing repeats at interval
     this._repeatTimer = setTimeout(() => {
       this._repeatIntervalTimer = setInterval(() => {
@@ -1512,7 +1558,7 @@ export class InputManager {
           this._stopRepeat();
         }
       }, interval);
-    }, this._repeatDelay);
+    }, delay);
   }
 
   _stopRepeat() {
@@ -1584,7 +1630,7 @@ export class InputManager {
     GAME_OVER: { A: 'Enter' },
     MENU: { A: 'Enter', B: 'Escape' },
     CHAR_CREATE: { A: 'Enter', B: 'Escape' },
-    DEBUG_MENU: { A: 'Enter', B: 'Escape' },
+    DEBUG_MENU: { A: 'Enter', B: 'Escape', L1: 'ArrowLeft', R1: 'ArrowRight' },
     DUNGEON: {
       X: 'g',     // Pick up
       Y: '>',     // Stairs
@@ -1621,9 +1667,12 @@ export class InputManager {
       touchDiv.classList.remove('hidden');
     }
     this._touchDiv = touchDiv;
+    this._touchGrid = touchDiv ? touchDiv.querySelector('.touch-grid') : null;
 
     // Bind all static gamepad buttons
     this._bindGamepadButtons();
+    // Bind utility buttons (debug, opacity, hide/show)
+    this._bindUtilityButtons();
   }
 
   set enableTouch(val) {
@@ -1699,6 +1748,48 @@ export class InputManager {
         btn.addEventListener('mousedown', fire);
         btn.addEventListener('mouseup', release);
       }
+    }
+  }
+
+  /**
+   * Bind utility buttons (debug menu, opacity cycle, hide/show toggle).
+   */
+  _bindUtilityButtons() {
+    if (!this._touchDiv) return;
+    const utilBtns = this._touchDiv.querySelectorAll('[data-util]');
+
+    for (const btn of utilBtns) {
+      const action = btn.dataset.util;
+      const fire = (e) => {
+        e.preventDefault();
+        btn.classList.add('pressed');
+        if (navigator.vibrate) navigator.vibrate(12);
+
+        if (action === 'debug') {
+          // Open/close debug menu via backtick key
+          this.lastAction = '`';
+        } else if (action === 'opacity') {
+          // Cycle touch UI opacity
+          this._touchOpacityLevel = (this._touchOpacityLevel + 1) % this._touchOpacities.length;
+          const opacity = this._touchOpacities[this._touchOpacityLevel];
+          if (this._touchDiv) {
+            this._touchDiv.style.opacity = opacity;
+          }
+        } else if (action === 'hide') {
+          // Toggle touch grid visibility
+          this._touchCollapsed = !this._touchCollapsed;
+          if (this._touchGrid) {
+            this._touchGrid.classList.toggle('collapsed', this._touchCollapsed);
+          }
+          btn.textContent = this._touchCollapsed ? 'SHW' : 'HID';
+        }
+      };
+      const release = () => btn.classList.remove('pressed');
+      btn.addEventListener('touchstart', fire, { passive: false });
+      btn.addEventListener('touchend', release, { passive: false });
+      btn.addEventListener('touchcancel', release, { passive: false });
+      btn.addEventListener('mousedown', fire);
+      btn.addEventListener('mouseup', release);
     }
   }
 

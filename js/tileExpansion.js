@@ -454,6 +454,80 @@ const TYPE_PATTERNS = {
   TEAR_LIGHT_METAL: { 2: TEAR_LIGHT_METAL_2x2, 3: TEAR_LIGHT_METAL_3x3 },
   TEAR_DARK_METAL:  { 2: TEAR_DARK_METAL_2x2, 3: TEAR_DARK_METAL_3x3 },
   TEAR_GRID:        { 2: TEAR_GRID_2x2, 3: TEAR_GRID_3x3 },
+
+  // ── O'Neill cylinder section tiles ──
+
+  // Section walls (massive hull plating between sections)
+  SECTION_WALL:        { 2: WALL_2x2, 3: WALL_3x3 },
+  SECTION_WALL_DETAIL: { 2: WALL_2x2, 3: WALL_3x3 },
+  SECTION_WALL_RIVET:  { 2: WALL_2x2, 3: WALL_3x3 },
+
+  // Inner hull engineering corridors
+  HULL_CORRIDOR_WALL:  { 2: WALL_2x2, 3: WALL_3x3 },
+  HULL_CATWALK:        { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  HULL_FLOOR:          { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  HULL_GRATING:        { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  HULL_PIPE:           { 2: MECH_2x2, 3: MECH_3x3 },
+  HULL_VALVE:          { 2: MECH_2x2, 3: MECH_3x3 },
+  HULL_MACHINERY:      { 2: MECH_2x2, 3: MECH_3x3 },
+  HULL_CONDUIT:        { 2: MECH_2x2, 3: MECH_3x3 },
+  TRANSIT_PLATFORM:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+
+  // Facility tiles (C2 / ENG)
+  FACILITY_WALL:       { 2: WALL_2x2, 3: WALL_3x3 },
+  FACILITY_PANEL:      { 2: WALL_2x2, 3: WALL_3x3 },
+  FACILITY_FLOOR:      { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  FACILITY_CORRIDOR:   { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  FACILITY_JUNCTION:   { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  FACILITY_EQUIPMENT:  { 2: MECH_2x2, 3: MECH_3x3 },
+
+  // Desert biome
+  SAND:                { 2: GRASS_2x2, 3: GRASS_3x3 },
+  DUNE:                { 2: GRASS_2x2, 3: GRASS_3x3 },
+  SCRUB:               { 2: GRASS_2x2, 3: GRASS_3x3 },
+  DESERT_ROCK:         { 2: ROCK_2x2, 3: ROCK_3x3 },
+  MESA:                { 2: MOUNTAIN_2x2, 3: MOUNTAIN_3x3 },
+
+  // Frozen biome
+  SNOW_GROUND:         { 2: SNOW_2x2, 3: SNOW_3x3 },
+  FROZEN_TREE:         { 2: TREE_2x2, 3: TREE_3x3 },
+  DEAD_TREE:           { 2: SPARSE_TREE_2x2, 3: SPARSE_TREE_3x3 },
+  ICE_ROCK:            { 2: ROCK_2x2, 3: ROCK_3x3 },
+  ICE_FORMATION:       { 2: MOUNTAIN_2x2, 3: MOUNTAIN_3x3 },
+  HULL_BREACH_ICE:     { 2: WALL_2x2, 3: WALL_3x3 },
+  FROZEN_RIVER:        { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+
+  // Damaged biome
+  DAMAGE_FIRE:         { 2: LAVA_2x2, 3: LAVA_3x3 },
+  DAMAGE_GRID:         { 2: TEAR_GRID_2x2, 3: TEAR_GRID_3x3 },
+  CRACKED_FLOOR:       { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  DAMAGED_GRASS:       { 2: GRASS_2x2, 3: GRASS_3x3 },
+  CHARRED_TREE:        { 2: SPARSE_TREE_2x2, 3: SPARSE_TREE_3x3 },
+
+  // Vacuum biome
+  VACUUM_VOID:         { 2: VOID_2x2, 3: VOID_3x3 },
+  VACUUM_WRECKAGE:     { 2: ROCK_2x2, 3: ROCK_3x3 },
+  VACUUM_DEBRIS:       { 2: VOID_2x2, 3: VOID_3x3 },
+  SEALED_ROOM_WALL:    { 2: WALL_2x2, 3: WALL_3x3 },
+  SEALED_ROOM_FLOOR:   { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  ALIEN_GROWTH:        { 2: CRYSTAL_2x2, 3: CRYSTAL_3x3 },
+  VOID_SPACE:          { 2: VOID_2x2, 3: VOID_3x3 },
+
+  // Toxic swamp biome
+  TOXIC_POOL:          { 2: WATER_2x2, 3: WATER_3x3 },
+  TOXIC_MUD:           { 2: GRASS_2x2, 3: GRASS_3x3 },
+  MUTANT_VINE:         { 2: TREE_2x2, 3: TREE_3x3 },
+  TOXIC_THICKET:       { 2: DEEP_FOREST_2x2, 3: DEEP_FOREST_3x3 },
+  TOXIC_GAS:           { 2: VOID_2x2, 3: VOID_3x3 },
+  BIOLAB_RUIN:         { 2: WALL_2x2, 3: WALL_3x3 },
+  CONTAINMENT_WALL:    { 2: WALL_2x2, 3: WALL_3x3 },
+
+  // Overgrown biome
+  VINE_FLOOR:          { 2: GRASS_2x2, 3: GRASS_3x3 },
+  DENSE_JUNGLE:        { 2: DEEP_FOREST_2x2, 3: DEEP_FOREST_3x3 },
+  GIANT_TREE:          { 2: DEEP_FOREST_2x2, 3: DEEP_FOREST_3x3 },
+  OVERGROWN_WALL:      { 2: WALL_2x2, 3: WALL_3x3 },
+  OVERGROWN_RUIN:      { 2: FLOOR_2x2, 3: FLOOR_3x3 },
 };
 
 // Simple hash for spatial variation
