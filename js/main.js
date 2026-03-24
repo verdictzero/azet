@@ -5942,6 +5942,25 @@ class Game {
         const wy = camY + wy_off;
         const tile = this.overworld.getTile(wx, wy);
 
+        // Beyond habitat — draw circuitry background instead of void
+        if (tile.type === 'VOID_SPACE') {
+          const circuit = getCircuitryCell(wx, wy);
+          if (density === 1) {
+            r.drawChar(viewLeft + wx_off, viewTop + wy_off, circuit.char, circuit.fg, circuit.bg);
+          } else {
+            for (let dy = 0; dy < density; dy++) {
+              for (let dx = 0; dx < density; dx++) {
+                const screenX = viewLeft + wx_off * density + dx;
+                const screenY = viewTop + wy_off * density + dy;
+                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                  r.drawChar(screenX, screenY, circuit.char, circuit.fg, circuit.bg);
+                }
+              }
+            }
+          }
+          continue;
+        }
+
         // Fog of war — only at night; daytime has full visibility
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
         const isFogged = isNight && dist > viewRange;
