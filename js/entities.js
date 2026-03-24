@@ -887,6 +887,17 @@ export class DialogueSystem {
   _knowledgeOptions(npc, playerRep, gameContext) {
     const options = [];
 
+    // Archive Keepers chain quest access (knowledge NPCs are the Archive Keepers quest givers)
+    const factionRank = gameContext?.factionRank;
+    if (factionRank && factionRank.rank >= 2 && npc.faction === 'ARCHIVE_KEEPERS') {
+      options.push({
+        text: `I seek deeper knowledge, Keeper. [${factionRank.name}]`,
+        action: 'chainQuest',
+        consequence: null,
+        _factionId: 'ARCHIVE_KEEPERS',
+      });
+    }
+
     // Healing (priest only)
     if (npc.role === 'priest' && playerRep >= -10) {
       options.push({
@@ -1019,6 +1030,18 @@ export class DialogueSystem {
   _authorityOptions(npc, playerRep, gameContext) {
     const options = [];
 
+    // Faction rank display and chain quests (Bethesda-style faction questlines)
+    const factionRank = gameContext?.factionRank;
+    if (factionRank && factionRank.rank >= 1 && npc.faction && npc.faction !== 'None') {
+      // Show rank-specific greeting option
+      options.push({
+        text: `I'm ready for a real assignment. [${factionRank.name}]`,
+        action: 'chainQuest',
+        consequence: null,
+        _factionId: npc.faction,
+      });
+    }
+
     // Bounties (guard)
     if (npc.role === 'guard' && playerRep >= 10) {
       options.push({
@@ -1028,7 +1051,7 @@ export class DialogueSystem {
       });
     }
 
-    // General quests
+    // General quests (radiant)
     if (playerRep >= -10) {
       options.push({
         text: 'Any work available?',
@@ -1050,6 +1073,16 @@ export class DialogueSystem {
         text: `What about the ${npc.faction}?`,
         action: 'factionGossip',
         consequence: null,
+      });
+    }
+
+    // Faction rank inquiry
+    if (npc.faction && npc.faction !== 'None') {
+      options.push({
+        text: 'What is my standing with your faction?',
+        action: 'factionRank',
+        consequence: null,
+        _factionId: npc.faction,
       });
     }
 
@@ -1128,6 +1161,47 @@ export class DialogueSystem {
     template = template.replace('{PROFESSION}', profession);
 
     return template;
+  }
+
+  /**
+   * Generate a rumor that may also produce a quest lead.
+   * Returns { text, lead } where lead is null or a quest lead object.
+   */
+  generateRumorWithLead(rng, worldContext = null) {
+    const text = this.generateRumor(rng, worldContext);
+    let lead = null;
+
+    // 30% chance a rumor becomes a quest lead
+    if (rng.chance(0.3) && worldContext) {
+      const nearbyLocs = worldContext.nearbyLocations || [];
+      const exploredLocations = worldContext.exploredLocations || new Set();
+
+      // Prefer unexplored locations for leads
+      const unexplored = nearbyLocs.filter(l => !exploredLocations.has(`${l.x},${l.y}`));
+      const targetLoc = unexplored.length > 0 ? rng.random(unexplored) : (nearbyLocs.length > 0 ? rng.random(nearbyLocs) : null);
+
+      if (targetLoc) {
+        const leadTemplates = [
+          `They say ${targetLoc.name} holds something valuable...`,
+          `I heard strange sounds coming from ${targetLoc.name}. Someone should check it out.`,
+          `A scavenger found something unusual near ${targetLoc.name} before disappearing.`,
+          `The old maps show a route to ${targetLoc.name} that nobody uses anymore.`,
+          `Someone claims to have seen lights in ${targetLoc.name}. Probably nothing... probably.`,
+        ];
+
+        lead = {
+          id: `lead_${Date.now()}_${rng.nextInt(0, 9999)}`,
+          text: rng.random(leadTemplates),
+          targetLocation: targetLoc.name,
+          targetCoords: { x: targetLoc.x, y: targetLoc.y },
+          locationType: targetLoc.type,
+          followed: false,
+          source: 'rumor',
+        };
+      }
+    }
+
+    return { text, lead };
   }
 
   modifyReputation(npc, amount, reason = '') {
@@ -1964,6 +2038,423 @@ const ARTIFACT_BASES = [
   { name: 'Gauntlets of the Giant',           stats: { str: 8, attack: 4 },       description: 'Massive gauntlets imbued with giant strength.' },
   { name: 'Amulet of the Makers',             stats: { defense: 6, wis: 6 },      description: 'An amulet that pulses with ancient magic, warding off dark forces.' },
   { name: 'Ring of the Sealed Tomb',          stats: { hp: 30, con: 5 },           description: 'A ring recovered from a sealed crypt, pulsing with restorative power.' },
+];
+
+// ============================================================================
+// Unique Quest Reward Items — Special named items from quest chains
+// ============================================================================
+
+export const UNIQUE_QUEST_ITEMS = {
+  founders_torch: {
+    name: "Founder's Torch",
+    type: 'light',
+    subtype: 'torch',
+    rarity: 'legendary',
+    char: '!',
+    color: '#FFFF55',
+    stats: { attack: 5, int: 3, wis: 3 },
+    value: 500,
+    description: 'A light source carried by the original AETHEON crew. It never dims.',
+    isUnique: true,
+  },
+  directors_keycard: {
+    name: "Director's Keycard",
+    type: 'artifact',
+    subtype: 'key',
+    rarity: 'legendary',
+    char: '¥',
+    color: '#FF55FF',
+    stats: { int: 5, wis: 5 },
+    value: 750,
+    description: 'A keycard from the original Directorate. Opens doors sealed for millennia.',
+    isUnique: true,
+  },
+  salvage_kings_hammer: {
+    name: "Salvage King's Hammer",
+    type: 'weapon',
+    subtype: 'mace',
+    rarity: 'legendary',
+    char: ')',
+    color: '#FFAA00',
+    stats: { attack: 14, str: 6, con: 3 },
+    value: 600,
+    description: 'The legendary hammer of the first Salvage Guildmaster. It can break through anything.',
+    isUnique: true,
+  },
+  voidwalker_cloak: {
+    name: "Voidwalker's Cloak",
+    type: 'armor',
+    subtype: 'chestplate',
+    rarity: 'legendary',
+    char: '[',
+    color: '#555555',
+    stats: { defense: 10, dex: 5, coldResist: 20 },
+    value: 700,
+    description: 'A cloak woven from hull insulation. Renders the wearer nearly invisible in darkness.',
+    isUnique: true,
+  },
+  archivists_codex: {
+    name: "Archivist's Codex",
+    type: 'artifact',
+    subtype: 'scroll',
+    rarity: 'legendary',
+    char: '?',
+    color: '#FFFFFF',
+    stats: { int: 8, wis: 6, mana: 30 },
+    value: 800,
+    description: 'A data tablet containing fragments of Earth\'s history. Knowledge is power.',
+    isUnique: true,
+  },
+  syndicate_blade: {
+    name: "The Whisper",
+    type: 'weapon',
+    subtype: 'dagger',
+    rarity: 'legendary',
+    char: ')',
+    color: '#AA00AA',
+    stats: { attack: 10, dex: 7, cha: 3 },
+    value: 650,
+    description: 'The Syndicate\'s most prized blade. Kills silently and without trace.',
+    isUnique: true,
+  },
+  hull_wardens_shield: {
+    name: "Hull Warden's Bulwark",
+    type: 'armor',
+    subtype: 'shield',
+    rarity: 'legendary',
+    char: '0',
+    color: '#5555FF',
+    stats: { defense: 14, con: 5, hp: 25 },
+    value: 700,
+    description: 'A shield forged from AETHEON hull plating. Nearly indestructible.',
+    isUnique: true,
+  },
+  reactor_heart: {
+    name: "Reactor Heart",
+    type: 'artifact',
+    subtype: 'amulet',
+    rarity: 'legendary',
+    char: '"',
+    color: '#FF5555',
+    stats: { str: 4, int: 4, attack: 6, hp: 20, mana: 20 },
+    value: 1000,
+    description: 'A miniaturized fusion core from Reactor 7. It pulses with impossible heat.',
+    isUnique: true,
+  },
+};
+
+// ============================================================================
+// Quest Chain Definitions — Multi-stage quest arcs per faction
+// ============================================================================
+
+export const QUEST_CHAIN_DEFINITIONS = [
+  // ── Colony Guard Questline ──
+  {
+    id: 'chain_guard_01',
+    name: 'The Wall Must Hold',
+    faction: 'COLONY_GUARD',
+    requiredRank: 1,
+    minLevel: 2,
+    stages: [
+      {
+        stageIndex: 0,
+        questType: 'KILL',
+        titleTemplate: 'Perimeter Breach',
+        descTemplate: 'Hostile creatures have breached the outer bulkheads. {NPC} needs someone to eliminate the {MONSTER} before they reach the inner decks.',
+        rewardMultiplier: 1.0,
+      },
+      {
+        stageIndex: 1,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'Source of the Breach',
+        descTemplate: 'The breach was no accident. {NPC} wants you to investigate how the creatures got through the sealed sections.',
+        rewardMultiplier: 1.3,
+      },
+      {
+        stageIndex: 2,
+        questType: 'FETCH',
+        titleTemplate: 'Seal the Wall',
+        descTemplate: '{NPC} needs materials to reinforce the breach. Gather {N} {ITEM} from the maintenance bays.',
+        rewardMultiplier: 1.5,
+      },
+      {
+        stageIndex: 3,
+        questType: 'KILL',
+        titleTemplate: 'The Thing Behind the Wall',
+        descTemplate: 'Something massive lurks in the sealed section. {NPC} says it must be destroyed before the wall can hold.',
+        rewardMultiplier: 2.0,
+      },
+    ],
+    finalReward: {
+      uniqueItem: UNIQUE_QUEST_ITEMS.hull_wardens_shield,
+      factionRep: 25,
+      loreReward: { category: 'forbidden', hint: 'The breach reveals what lies beyond the colony walls.' },
+    },
+    factionConsequences: { 'COLONY_GUARD': 15, 'COLONY_COUNCIL': 5, 'RUST_RAIDERS': -10 },
+  },
+
+  // ── Salvage Guild Questline ──
+  {
+    id: 'chain_salvage_01',
+    name: 'The Lost Expedition',
+    faction: 'SALVAGE_GUILD',
+    requiredRank: 1,
+    minLevel: 3,
+    stages: [
+      {
+        stageIndex: 0,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'The Missing Team',
+        descTemplate: 'A salvage team went into the deep levels and never returned. {NPC} wants you to find out what happened.',
+        rewardMultiplier: 1.0,
+      },
+      {
+        stageIndex: 1,
+        questType: 'FETCH',
+        titleTemplate: 'Recovery Operation',
+        descTemplate: 'You found signs of the lost team. {NPC} needs you to recover their equipment — {N} {ITEM} — before scavengers take it.',
+        rewardMultiplier: 1.3,
+      },
+      {
+        stageIndex: 2,
+        questType: 'ESCORT',
+        titleTemplate: 'The Survivor',
+        descTemplate: 'One member of the lost team is still alive. Escort them back to {NPC} through hostile territory.',
+        rewardMultiplier: 1.5,
+      },
+      {
+        stageIndex: 3,
+        questType: 'CLEAR',
+        titleTemplate: 'Reclaim the Deep',
+        descTemplate: 'The deep levels hold salvage worth a fortune. Clear the area so the Guild can move in.',
+        rewardMultiplier: 2.0,
+      },
+    ],
+    finalReward: {
+      uniqueItem: UNIQUE_QUEST_ITEMS.salvage_kings_hammer,
+      factionRep: 25,
+      loreReward: { category: 'history', hint: 'The deep levels hold secrets from before the Long Drift.' },
+    },
+    factionConsequences: { 'SALVAGE_GUILD': 15, 'COLONY_GUARD': 5, 'SYNDICATE': -5 },
+  },
+
+  // ── Archive Keepers Questline ──
+  {
+    id: 'chain_archive_01',
+    name: 'The Forbidden Archive',
+    faction: 'ARCHIVE_KEEPERS',
+    requiredRank: 2,
+    minLevel: 4,
+    stages: [
+      {
+        stageIndex: 0,
+        questType: 'FETCH',
+        titleTemplate: 'Lost Data Cores',
+        descTemplate: '{NPC} has discovered references to pre-Cascade data cores. Find {N} {ITEM} from the sealed archive vaults.',
+        rewardMultiplier: 1.0,
+      },
+      {
+        stageIndex: 1,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'The Encrypted Records',
+        descTemplate: 'The data cores contain encrypted records from before the Cascade. {NPC} needs you to find clues to decrypt them.',
+        rewardMultiplier: 1.5,
+      },
+      {
+        stageIndex: 2,
+        questType: 'DELIVER',
+        titleTemplate: 'A Dangerous Truth',
+        descTemplate: 'The decrypted data reveals something the Colony Council may not want known. Deliver the findings to {NPC} in {LOCATION}.',
+        rewardMultiplier: 1.5,
+      },
+      {
+        stageIndex: 3,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'The Name of the Ship',
+        descTemplate: 'The records speak of AETHEON — the true name of the colony vessel. {NPC} needs you to find the original launch records.',
+        rewardMultiplier: 2.5,
+      },
+    ],
+    finalReward: {
+      uniqueItem: UNIQUE_QUEST_ITEMS.archivists_codex,
+      factionRep: 30,
+      loreReward: { category: 'forbidden', hint: 'You now know AETHEON\'s true name and purpose.' },
+    },
+    factionConsequences: { 'ARCHIVE_KEEPERS': 20, 'COLONY_COUNCIL': -10, 'SYNDICATE': -5 },
+  },
+
+  // ── Syndicate Questline ──
+  {
+    id: 'chain_syndicate_01',
+    name: 'Shadow Operations',
+    faction: 'SYNDICATE',
+    requiredRank: 1,
+    minLevel: 3,
+    stages: [
+      {
+        stageIndex: 0,
+        questType: 'DELIVER',
+        titleTemplate: 'The Drop',
+        descTemplate: 'A simple job. Deliver {ITEM} to a contact in {LOCATION}. No questions asked, says {NPC}.',
+        rewardMultiplier: 1.0,
+      },
+      {
+        stageIndex: 1,
+        questType: 'BOUNTY',
+        titleTemplate: 'Loose Ends',
+        descTemplate: 'Someone talked. {NPC} wants {CRIMINAL} silenced before the Guard gets involved.',
+        rewardMultiplier: 1.5,
+      },
+      {
+        stageIndex: 2,
+        questType: 'FETCH',
+        titleTemplate: 'The Heist',
+        descTemplate: '{NPC} has identified a Colony Council vault. Acquire {N} {ITEM} from inside — discretely.',
+        rewardMultiplier: 2.0,
+      },
+      {
+        stageIndex: 3,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'The Syndicate\'s Secret',
+        descTemplate: '{NPC} reveals the Syndicate has been searching for something specific. Investigate {SUBJECT} to find it.',
+        rewardMultiplier: 2.5,
+      },
+    ],
+    finalReward: {
+      uniqueItem: UNIQUE_QUEST_ITEMS.syndicate_blade,
+      factionRep: 25,
+      loreReward: { category: 'forbidden', hint: 'The Syndicate knows something about the Bridge that no one else does.' },
+    },
+    factionConsequences: { 'SYNDICATE': 15, 'COLONY_GUARD': -15, 'COLONY_COUNCIL': -10 },
+  },
+
+  // ── Colony Council Questline ──
+  {
+    id: 'chain_council_01',
+    name: 'The Governance Crisis',
+    faction: 'COLONY_COUNCIL',
+    requiredRank: 2,
+    minLevel: 5,
+    stages: [
+      {
+        stageIndex: 0,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'Political Tensions',
+        descTemplate: 'Factions within the Council are at each other\'s throats. {NPC} needs someone outside politics to investigate {SUBJECT}.',
+        rewardMultiplier: 1.0,
+      },
+      {
+        stageIndex: 1,
+        questType: 'ESCORT',
+        titleTemplate: 'The Envoy',
+        descTemplate: 'A diplomatic envoy must reach {LOCATION} safely. The journey is dangerous and enemies are watching.',
+        rewardMultiplier: 1.5,
+      },
+      {
+        stageIndex: 2,
+        questType: 'BOUNTY',
+        titleTemplate: 'The Saboteur',
+        descTemplate: 'Someone is sabotaging the Council from within. {NPC} has identified {CRIMINAL} as the traitor. Bring them in.',
+        rewardMultiplier: 2.0,
+      },
+    ],
+    finalReward: {
+      uniqueItem: UNIQUE_QUEST_ITEMS.directors_keycard,
+      factionRep: 20,
+      loreReward: { category: 'forbidden', hint: 'The Council hides knowledge of the Directorate Protocol.' },
+    },
+    factionConsequences: { 'COLONY_COUNCIL': 15, 'COLONY_GUARD': 10, 'SYNDICATE': -15 },
+  },
+
+  // ── Main Questline (no faction requirement) ──
+  {
+    id: 'chain_main_01',
+    name: 'The Truth of AETHEON',
+    faction: null,
+    requiredRank: 0,
+    minLevel: 1,
+    stages: [
+      {
+        stageIndex: 0,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'Strange Signals',
+        descTemplate: 'You\'ve been hearing strange transmissions on abandoned frequencies. Investigate {SUBJECT} to find the source.',
+        rewardMultiplier: 1.0,
+      },
+      {
+        stageIndex: 1,
+        questType: 'FETCH',
+        titleTemplate: 'The Old Technology',
+        descTemplate: 'The signal leads to pre-Cascade technology. Recover {N} {ITEM} to piece together the message.',
+        rewardMultiplier: 1.3,
+      },
+      {
+        stageIndex: 2,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'The Founder\'s Message',
+        descTemplate: 'The technology contains a message from the original crew. Investigate {SUBJECT} to decode it.',
+        rewardMultiplier: 1.5,
+      },
+      {
+        stageIndex: 3,
+        questType: 'DELIVER',
+        titleTemplate: 'A Light in the Dark',
+        descTemplate: 'The decoded message reveals the location of a Founder artifact. Retrieve it and bring it to {NPC}.',
+        rewardMultiplier: 2.0,
+      },
+      {
+        stageIndex: 4,
+        questType: 'CLEAR',
+        titleTemplate: 'The Path to the Bridge',
+        descTemplate: 'The artifact points to the Bridge — the sealed command center of AETHEON. Clear the path through hostile territory.',
+        rewardMultiplier: 3.0,
+      },
+    ],
+    finalReward: {
+      uniqueItem: UNIQUE_QUEST_ITEMS.reactor_heart,
+      factionRep: 10,
+      loreReward: { category: 'forbidden', hint: 'You have found the path to the Bridge. The truth of AETHEON awaits.' },
+    },
+    factionConsequences: null,
+  },
+
+  // ── Standalone: Founder's Torch (exploration-focused) ──
+  {
+    id: 'chain_explorer_01',
+    name: 'Light of the Founders',
+    faction: null,
+    requiredRank: 0,
+    minLevel: 2,
+    stages: [
+      {
+        stageIndex: 0,
+        questType: 'SURVEY',
+        titleTemplate: 'The Old Maps',
+        descTemplate: 'An old cartographic record shows locations that don\'t appear on modern maps. Survey unknown sectors to find them.',
+        rewardMultiplier: 1.0,
+      },
+      {
+        stageIndex: 1,
+        questType: 'INVESTIGATE',
+        titleTemplate: 'The Shrine',
+        descTemplate: 'One of the locations you surveyed contains an ancient shrine. Investigate {SUBJECT} within.',
+        rewardMultiplier: 1.5,
+      },
+      {
+        stageIndex: 2,
+        questType: 'CLEAR',
+        titleTemplate: 'Guardian of the Light',
+        descTemplate: 'The shrine is protected by automated defenses from the original crew. Clear them to claim the artifact.',
+        rewardMultiplier: 2.0,
+      },
+    ],
+    finalReward: {
+      uniqueItem: UNIQUE_QUEST_ITEMS.founders_torch,
+      factionRep: 10,
+      loreReward: { category: 'artifacts', hint: 'The Founder\'s Torch burns with light from Earth.' },
+    },
+    factionConsequences: null,
+  },
 ];
 
 export class ItemGenerator {

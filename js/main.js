@@ -1,7 +1,7 @@
 import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator } from './world.js';
-import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms } from './entities.js';
+import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms, QUEST_CHAIN_DEFINITIONS } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
@@ -218,6 +218,11 @@ class Game {
     this.ui.glow = this.glow;
     this.lighting = new LightingSystem();
     this.cloudSystem = new CloudSystem(this.seed);
+
+    // Register quest chain definitions
+    for (const chainDef of QUEST_CHAIN_DEFINITIONS) {
+      this.questSystem.registerChain(chainDef);
+    }
 
     // Performance: god ray frame throttle cache
     this._godRayFrame = 0;
@@ -1146,6 +1151,7 @@ class Game {
     this.gameContext.currentLocationName = (location.name || 'Tower') + ` (Floor ${this.currentFloor + 1})`;
     this.setState('DUNGEON');
     this.ui.addMessage(`You enter the spire...`, COLORS.BRIGHT_MAGENTA);
+    this._tryLocationQuest(location);
   }
 
   enterRuin(location) {
@@ -1203,6 +1209,7 @@ class Game {
     this.gameContext.currentLocationName = location.name || 'Ruins';
     this.setState('DUNGEON');
     this.ui.addMessage(`You explore the ancient ruins...`, COLORS.BRIGHT_YELLOW);
+    this._tryLocationQuest(location);
   }
 
   enterDungeon(location) {
@@ -1251,6 +1258,7 @@ class Game {
     this.gameContext.currentLocationName = (location.name || 'Dungeon') + ` (Floor ${this.currentFloor + 1})`;
     this.setState('DUNGEON');
     this.ui.addMessage('You descend into the dark depths...', COLORS.BRIGHT_RED);
+    this._tryLocationQuest(location);
   }
 
   enterMechanicalRuin(location) {
@@ -1297,6 +1305,7 @@ class Game {
     this.gameContext.currentLocationName = (location.name || 'Mechanical Ruin') + ` (Floor ${this.currentFloor + 1})`;
     this.setState('DUNGEON');
     this.ui.addMessage('You enter the dormant machinery... gears creak in the darkness.', COLORS.BRIGHT_YELLOW);
+    this._tryLocationQuest(location);
   }
 
   enterBridgeDungeon(location) {
@@ -2142,6 +2151,66 @@ class Game {
       return;
     }
 
+    // ── Chain Quest handler (Bethesda faction questline) ──
+    if (option.action === 'chainQuest') {
+      const factionId = option._factionId || (this.activeNPC?.faction?.replace(/\s+/g, '_').toUpperCase());
+      if (factionId) {
+        const rank = this.factionSystem.getPlayerRank(factionId);
+        const available = this.questSystem.getAvailableChainQuests(factionId, rank.rank, this.player.stats.level);
+        // Also check non-faction chains (main quest)
+        const mainChains = this.questSystem.getAvailableChainQuests(null, 0, this.player.stats.level);
+        const allAvailable = [...available, ...mainChains];
+
+        if (allAvailable.length > 0) {
+          const pick = allAvailable[0]; // offer the first available chain quest
+          const locData = this.currentSettlement?.locationData;
+          const questCtx = { ...this.gameContext,
+            settlementCoords: locData ? { x: locData.x, y: locData.y } : null,
+            nearbyLocations: this.overworld?.getLoadedLocations() || [] };
+          const quest = this.questSystem.generateChainQuest(this.rng, pick.chainId,
+            this.activeNPC, this.player.stats.level, questCtx);
+          if (quest) {
+            this.questSystem.acceptQuest(quest.id);
+            this.ui.addMessage(`Chain quest accepted: ${quest.title}`, COLORS.BRIGHT_YELLOW);
+            this.ui.dialogueState.text = quest.description;
+            this.ui.dialogueState.options = [
+              { text: 'I\'ll see it done.', action: 'close' },
+              { text: 'Tell me more about this place.', action: 'lore' },
+            ];
+            this.ui.resetSelection();
+            return;
+          }
+        }
+        // No chain quests available
+        this.ui.dialogueState.text = rank.rank < 2
+          ? `"You need to prove yourself more before I trust you with that kind of work. You're just a ${rank.name} to us."`
+          : '"There\'s nothing for you right now. Check back later."';
+        this.ui.dialogueState.options = [
+          { text: 'Any other work?', action: 'quest' },
+          { text: 'Goodbye.', action: 'close' },
+        ];
+        this.ui.resetSelection();
+        return;
+      }
+    }
+
+    // ── Faction Rank inquiry ──
+    if (option.action === 'factionRank') {
+      const factionId = option._factionId || (this.activeNPC?.faction?.replace(/\s+/g, '_').toUpperCase());
+      if (factionId) {
+        const rank = this.factionSystem.getPlayerRank(factionId);
+        const faction = this.factionSystem._factions.get(factionId);
+        const factionName = faction ? faction.name : factionId;
+        this.ui.dialogueState.text = `Your standing with ${factionName}: ${rank.name} (Rank ${rank.rank}, Standing: ${rank.standing})`;
+        this.ui.dialogueState.options = [
+          { text: 'How do I advance?', action: 'close' },
+          { text: 'Goodbye.', action: 'close' },
+        ];
+        this.ui.resetSelection();
+        return;
+      }
+    }
+
     if (option.action === 'bounty') {
       const locData = this.currentSettlement?.locationData;
       const questCtx = { ...this.gameContext,
@@ -2181,9 +2250,25 @@ class Game {
     }
 
     if (option.action === 'rumor') {
-      const rawRumor = this.dialogueSys.generateRumor(this.rng, this.gameContext);
+      const rumorCtx = {
+        ...this.gameContext,
+        nearbyLocations: this.overworld?.getLoadedLocations() || [],
+        exploredLocations: this.player?.knownLocations || new Set(),
+      };
+      const { text: rawRumor, lead } = this.dialogueSys.generateRumorWithLead(this.rng, rumorCtx);
       const rumor = degradeTechTerms(rawRumor, 'common');
-      this.ui.dialogueState.text = rumor;
+      let displayText = rumor;
+
+      // If a quest lead was generated, register it
+      if (lead) {
+        const added = this.questSystem.addQuestLead(lead);
+        if (added) {
+          displayText += `\n\n"${lead.text}"`;
+          this.ui.addMessage(`New lead discovered: ${lead.targetLocation}`, COLORS.BRIGHT_CYAN);
+        }
+      }
+
+      this.ui.dialogueState.text = displayText;
       this.player.recordLore('rumors', rumor, this.activeNPC?.name?.full || 'Unknown');
       this.ui.dialogueState.options = [
         { text: 'Interesting. Anything else?', action: 'rumor' },
@@ -2501,6 +2586,51 @@ class Game {
               this.ui.addMessage('New lore discovered! Check your Journal.', COLORS.BRIGHT_MAGENTA);
             }
           }
+
+          // ── Chain quest advancement ──
+          if (rewards.chainAdvance) {
+            if (rewards.chainAdvance.completed) {
+              this.ui.addMessage(`Quest chain complete: ${rewards.chainAdvance.chainName}!`, COLORS.BRIGHT_YELLOW);
+              this.renderer.flash('#FFD700', 0.8);
+            } else {
+              this.ui.addMessage(`${rewards.chainAdvance.chainName} continues... (Stage ${rewards.chainAdvance.nextStage + 1})`, COLORS.BRIGHT_CYAN);
+            }
+          }
+
+          // ── Faction reputation consequences (Bethesda-style spillover) ──
+          if (rewards.factionConsequences) {
+            const changes = this.factionSystem.applyQuestFactionConsequences(rewards.factionConsequences);
+            for (const change of changes) {
+              if (change.rankChanged) {
+                this.ui.addMessage(`${change.factionName}: Rank changed to ${change.newRankName}!`, change.amount > 0 ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED);
+              } else if (Math.abs(change.amount) >= 5) {
+                const sign = change.amount > 0 ? '+' : '';
+                this.ui.addMessage(`${change.factionName}: ${sign}${change.amount} reputation`, change.amount > 0 ? COLORS.GREEN : COLORS.RED);
+              }
+            }
+          } else if (rewards.factionRep && this.activeNPC?.faction && this.activeNPC.faction !== 'None') {
+            // Standard faction rep with auto-calculated spillover
+            const factionId = this.activeNPC.faction.replace(/\s+/g, '_').toUpperCase();
+            const spillover = this.factionSystem.calculateFactionSpillover(factionId, rewards.factionRep);
+            const changes = this.factionSystem.applyQuestFactionConsequences(spillover);
+            for (const change of changes) {
+              if (change.rankChanged) {
+                this.ui.addMessage(`${change.factionName}: Rank changed to ${change.newRankName}!`, change.amount > 0 ? COLORS.BRIGHT_GREEN : COLORS.BRIGHT_RED);
+              }
+            }
+          }
+
+          // ── Reward items ──
+          if (rewards.items && rewards.items.length > 0) {
+            for (const item of rewards.items) {
+              this.player.inventory.push(item);
+              const rarityColor = item.rarity === 'legendary' ? COLORS.BRIGHT_YELLOW :
+                item.rarity === 'epic' ? COLORS.BRIGHT_MAGENTA :
+                item.rarity === 'rare' ? COLORS.BRIGHT_CYAN : COLORS.WHITE;
+              this.ui.addMessage(`Received: ${item.name}${item.isUnique ? ' (Unique)' : ''}`, rarityColor);
+            }
+          }
+
           this.ui.addMessage('Quest completed!', COLORS.BRIGHT_GREEN);
           this.particles.emit(this.player.position.x, this.player.position.y, '*', COLORS.BRIGHT_GREEN, 8, 4, 15);
         }
@@ -4169,6 +4299,23 @@ class Game {
     return null;
   }
 
+  // ── Location Quest Trigger — auto-generate quest on dungeon/ruin entry ──
+  _tryLocationQuest(location) {
+    if (!location) return;
+    const locInfo = {
+      key: `${location.x || 0},${location.y || 0}`,
+      name: location.name || 'Unknown Location',
+      x: location.x,
+      y: location.y,
+      type: location.type,
+      depth: this.currentFloor || 0,
+    };
+    const quest = this.questSystem.generateLocationQuest(this.rng, locInfo, this.player.stats.level);
+    if (quest) {
+      this.ui.addMessage(`New objective: ${quest.title}`, COLORS.BRIGHT_CYAN);
+    }
+  }
+
   startDialogue(npc) {
     this.activeNPC = npc;
     // Save return state only on fresh dialogue entry (not when returning from shop)
@@ -4176,7 +4323,15 @@ class Game {
       this.dialogueReturnState = this.state;
     }
     const greeting = this.dialogueSys.generateGreeting(npc, npc.playerReputation || 0);
-    const options = this.dialogueSys.generateOptions(npc, npc.playerReputation || 0, this.gameContext);
+    // Enrich game context with faction rank for dialogue generation
+    const npcFactionId = npc.faction && npc.faction !== 'None'
+      ? npc.faction.replace(/\s+/g, '_').toUpperCase()
+      : null;
+    const dialogueContext = {
+      ...this.gameContext,
+      factionRank: npcFactionId ? this.factionSystem.getPlayerRank(npcFactionId) : null,
+    };
+    const options = this.dialogueSys.generateOptions(npc, npc.playerReputation || 0, dialogueContext);
 
     // Schedule-aware greeting modifier
     const schedulePrefix = this.dialogueSys.getScheduleGreeting(npc, this.timeSystem.hour);
@@ -4446,10 +4601,7 @@ class Game {
           day: this.timeSystem.day,
           year: this.timeSystem.year
         },
-        quests: {
-          active: this.questSystem.getActiveQuests(),
-          completed: this.questSystem.getCompletedQuests()
-        },
+        quests: this.questSystem.serialize(),
         factions: {
           standings: Object.fromEntries(this.factionSystem._playerStanding),
         },
@@ -4664,6 +4816,28 @@ class Game {
       if (save.factions && save.factions.standings) {
         for (const [id, standing] of Object.entries(save.factions.standings)) {
           this.factionSystem._playerStanding.set(id, standing);
+        }
+      }
+
+      // Restore quest system (new serialized format)
+      if (save.quests) {
+        if (save.quests.activeQuests) {
+          // New format: full serialized quest system
+          this.questSystem.deserialize(save.quests);
+        } else if (save.quests.active) {
+          // Legacy format: just active/completed arrays
+          for (const q of save.quests.active) {
+            this.questSystem._activeQuests.set(q.id, q);
+          }
+          for (const q of (save.quests.completed || [])) {
+            this.questSystem._completedQuests.set(q.id, q);
+          }
+        }
+        // Re-register chain definitions (chains are code-defined, not saved)
+        for (const chainDef of QUEST_CHAIN_DEFINITIONS) {
+          if (!this.questSystem._questChains.has(chainDef.id)) {
+            this.questSystem._questChains.set(chainDef.id, chainDef);
+          }
         }
       }
 
