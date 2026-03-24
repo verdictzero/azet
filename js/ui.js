@@ -197,7 +197,9 @@ export class UIManager {
     }
 
     // Location name — truncate to avoid overlapping clock
-    const loc = gameState.currentLocationName || 'Uncharted Wilds';
+    // Include current section if available
+    const sectionTag = (gameState.currentSection) ? `[${gameState.currentSection}] ` : '';
+    const loc = sectionTag + (gameState.currentLocationName || 'Uncharted Wilds');
     const locMaxW = cols - 4 - rightReserved;
     r.drawString(2, topY, loc, COLORS.BRIGHT_WHITE, bg, Math.max(0, locMaxW));
 

@@ -1,6 +1,6 @@
 import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
-import { OverworldGenerator, ChunkManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator } from './world.js';
+import { OverworldGenerator, ChunkManager, SectionManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms, QUEST_CHAIN_DEFINITIONS } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
@@ -140,7 +140,7 @@ class Game {
     this._startVersionPolling();
 
     // Game state
-    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU, REST_ITEM_SELECT
+    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU, REST_ITEM_SELECT, TRANSIT_MAP
 
     // ── FF-style Gamepad Menu ──
     this.gamepadMenuCursor = 0;
@@ -305,7 +305,8 @@ class Game {
     // Game context for UI
     this.gameContext = {
       currentLocationName: 'World',
-      currentLocation: null
+      currentLocation: null,
+      currentSection: null,
     };
 
     // Combat state
@@ -496,7 +497,7 @@ class Game {
     const overlayStates = [
       'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'HELP',
       'SETTINGS', 'DIALOGUE', 'SHOP', 'FACTION', 'ALMANAC',
-      'CONSOLE_LOG', 'DEBUG_MENU', 'QUEST_COMPASS', 'GAMEPAD_MENU',
+      'CONSOLE_LOG', 'DEBUG_MENU', 'QUEST_COMPASS', 'GAMEPAD_MENU', 'TRANSIT_MAP',
       'REST_ITEM_SELECT'
     ];
     if (overlayStates.includes(newState)) return;
@@ -861,16 +862,28 @@ class Game {
         log('  Chunk size: 32x32 tiles, infinite procedural world', COLORS.WHITE);
         flush('Charting terrain...');
       },
-      // Step 5: Create ChunkManager and generate initial chunks (with historical map scars)
+      // Step 5: Create SectionManager and ChunkManager for the O'Neill cylinder
       () => {
-        this._loadingStep = { current: 3, total: 10, label: 'Mapping the regions...' };
-        this.overworld = new ChunkManager(this.seed);
+        this._loadingStep = { current: 3, total: 10, label: 'Mapping the cylinder sections...' };
+        this.sectionManager = new SectionManager(this.seed);
+        this.overworld = new ChunkManager(this.seed, this.sectionManager);
         // Wire historical map scars into terrain generation
         if (this.worldHistoryGen && this.worldHistoryGen.mapScars && this.worldHistoryGen.mapScars.length > 0) {
           this.overworld.setMapScars(this.worldHistoryGen.mapScars, this.worldHistoryGen.regions);
           log(`  ${this.worldHistoryGen.mapScars.length} historical scars will mark the landscape`, COLORS.BRIGHT_YELLOW);
         }
-        this.overworld.ensureChunksAround(16, 16);
+
+        // Log section biome assignments
+        log('O\'Neill Cylinder Section Layout:', COLORS.BRIGHT_CYAN);
+        const biomes = this.sectionManager.getHabitatBiomes();
+        for (const { id, biome } of biomes) {
+          const marker = id === 'H4' ? ' ← HOME' : '';
+          log(`  ${id}: ${biome}${marker}`, id === 'H4' ? COLORS.BRIGHT_GREEN : COLORS.WHITE);
+        }
+
+        // Spawn in H4 center
+        const h4Center = this.sectionManager.getSectionCenter('H4');
+        this.overworld.ensureChunksAround(h4Center.x, h4Center.y);
         const loadedLocs = this.overworld.getLoadedLocations();
         log(`  Initial chunks generated: ${this.overworld.chunks.size} regions`, COLORS.WHITE);
         log(`  Total tiles computed: ${this.overworld.chunks.size * 32 * 32}`, COLORS.BRIGHT_BLACK);
@@ -882,7 +895,7 @@ class Game {
         if (loadedLocs.length > 8) {
           log(`    ...and ${loadedLocs.length - 8} more locations`, COLORS.BRIGHT_BLACK);
         }
-        flush('Charting lands...');
+        flush('Charting cylinder sections...');
       },
       // Step 6: Populate locations
       () => {
@@ -963,9 +976,10 @@ class Game {
         log(`  STR: ${this.player.stats.str}  DEX: ${this.player.stats.dex}  INT: ${this.player.stats.int}`, COLORS.WHITE);
         flush('Creating character...');
       },
-      // Step 12: Place player and enter world
+      // Step 12: Place player in H4 and enter world
       () => {
-        this._loadingStep = { current: 10, total: 10, label: 'Entering the world...' };
+        this._loadingStep = { current: 10, total: 10, label: 'Entering the cylinder...' };
+        const h4Center = this.sectionManager.getSectionCenter('H4');
         const loadedLocs = this.overworld.getLoadedLocations();
         const startLoc = loadedLocs.find(l => l.type === 'village') || loadedLocs[0];
         if (startLoc) {
@@ -976,10 +990,17 @@ class Game {
           this.gameContext.currentLocationName = startLoc.name;
           this.gameContext.currentLocation = startLoc;
         } else {
-          this.player.position.x = 16;
-          this.player.position.y = 16;
+          // Fallback: center of H4
+          this.player.position.x = h4Center.x;
+          this.player.position.y = h4Center.y;
           this.player.knownLocations = new Set();
         }
+
+        // Initialize section tracking
+        this.player.currentSection = 'H4';
+        this.player.unlockedSections = new Set(['H4']);
+        this.player.discoveredSections = new Set(['H4']);
+        this.gameContext.currentSection = 'H4';
 
         this.overworld.ensureChunksAround(this.player.position.x, this.player.position.y);
         this.camera.follow(this.player);
@@ -1590,6 +1611,7 @@ class Game {
       case 'ENEMY_DEATH': return; // no input during death animation
       case 'BATTLE_RESULTS': return this.handleBattleResultsInput(key);
       case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
+      case 'TRANSIT_MAP': return this.handleTransitMapInput(key);
       case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
       case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
       case 'ALMANAC': return this.handleAlmanacInput(key);
@@ -1758,6 +1780,7 @@ class Game {
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'p' || key === 'P') { this.saveGame(1, { exportFile: true }); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
+    if (key === 't' || key === 'T') { this._openTransitMap(); return; }
 
     // Zoom controls
     if (key === '+' || key === '=') { this._zoomIn(); return; }
@@ -3313,6 +3336,241 @@ class Game {
     }
   }
 
+  // ─── RAPID TRANSIT SYSTEM ───
+
+  _openTransitMap() {
+    if (!this.sectionManager) {
+      this.ui.addMessage('Transit system not available.', COLORS.BRIGHT_BLACK);
+      return;
+    }
+    if (this.player.activatedTransitStations.size === 0) {
+      this.ui.addMessage('No transit stations activated. Find a station in the inner hull corridors.', COLORS.BRIGHT_BLACK);
+      return;
+    }
+    this._transitSelectedIdx = 0;
+    this._transitDestinations = this._getTransitDestinations();
+    if (this._transitDestinations.length === 0) {
+      this.ui.addMessage('No destinations available.', COLORS.BRIGHT_BLACK);
+      return;
+    }
+    this.setState('TRANSIT_MAP');
+  }
+
+  _getTransitDestinations() {
+    const destinations = [];
+    const sections = this.sectionManager.sections.filter(s => s.type !== 'inner_hull');
+    for (const section of sections) {
+      // Can only travel to sections connected by activated corridors
+      const isAccessible = this.player.unlockedSections.has(section.id) ||
+        this.player.activatedTransitStations.has(`HULL_${this.player.currentSection}_${section.id}`) ||
+        this.player.activatedTransitStations.has(`HULL_${section.id}_${this.player.currentSection}`);
+
+      if (section.id === this.player.currentSection) continue; // can't travel to self
+
+      const biome = this.sectionManager.getBiome(section.id);
+      const isVacuum = biome === 'vacuum';
+
+      destinations.push({
+        sectionId: section.id,
+        label: section.label,
+        type: section.type,
+        biome: biome,
+        accessible: isAccessible,
+        blocked: isVacuum && !this.player.hasEVA,
+        color: section.color || this._getBiomeColor(biome),
+      });
+    }
+    return destinations;
+  }
+
+  _getBiomeColor(biome) {
+    const colors = {
+      lush: '#33DD44', desert: '#CCAA55', boreal_frozen: '#88BBDD',
+      damaged: '#AA4422', vacuum: '#334455', swamp_toxic: '#44AA44',
+      overgrown: '#22AA22',
+    };
+    return colors[biome] || '#888888';
+  }
+
+  handleTransitMapInput(key) {
+    if (key === 'Escape' || key === 't' || key === 'T') {
+      this.setState(this.prevState || 'OVERWORLD');
+      return;
+    }
+    const dests = this._transitDestinations;
+    if (!dests || dests.length === 0) return;
+
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      this._transitSelectedIdx = (this._transitSelectedIdx - 1 + dests.length) % dests.length;
+    }
+    if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      this._transitSelectedIdx = (this._transitSelectedIdx + 1) % dests.length;
+    }
+    if (key === 'Enter' || key === 'e' || key === 'E') {
+      const dest = dests[this._transitSelectedIdx];
+      if (!dest.accessible) {
+        this.ui.addMessage('Station not activated. Find the corridor station first.', COLORS.BRIGHT_RED);
+        return;
+      }
+      if (dest.blocked) {
+        this.ui.addMessage('VACUUM WARNING: EVA equipment required for this section.', COLORS.BRIGHT_RED);
+        return;
+      }
+      // Teleport player to section center
+      const center = this.sectionManager.getSectionCenter(dest.sectionId);
+      if (center) {
+        this.player.position.x = center.x;
+        this.player.position.y = center.y;
+        this.player.currentSection = dest.sectionId;
+        if (!this.player.unlockedSections.has(dest.sectionId)) {
+          this.player.unlockedSections.add(dest.sectionId);
+        }
+        if (!this.player.discoveredSections.has(dest.sectionId)) {
+          this.player.discoveredSections.add(dest.sectionId);
+        }
+        this.overworld.ensureChunksAround(center.x, center.y);
+        this.camera.x = center.x - Math.floor(this.renderer.cols / 2);
+        this.camera.y = center.y - Math.floor(this.renderer.rows / 2);
+        this.camera.targetX = this.camera.x;
+        this.camera.targetY = this.camera.y;
+        this.setState('OVERWORLD');
+        this.ui.addMessage(`Transit complete. Arrived at ${dest.label}.`, COLORS.BRIGHT_CYAN);
+        const biome = this.sectionManager.getBiome(dest.sectionId);
+        if (biome === 'vacuum') this.ui.addMessage('WARNING: No atmosphere detected!', COLORS.BRIGHT_RED);
+      }
+    }
+  }
+
+  _renderTransitMap() {
+    const r = this.renderer;
+    const cols = r.cols;
+    const rows = r.rows;
+
+    // Draw background
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        r.drawChar(x, y, ' ', '#000000', '#0A0A14');
+      }
+    }
+
+    const title = '═══ RAPID TRANSIT SYSTEM ═══';
+    const titleX = Math.floor((cols - title.length) / 2);
+    r.drawString(titleX, 2, title, '#FF6600');
+
+    // Draw the ship diagram
+    const diagramY = 5;
+    const sectionLabels = ['C2', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'ENG'];
+    const sectionWidth = Math.min(7, Math.floor((cols - 4) / sectionLabels.length));
+    const startX = Math.floor((cols - sectionLabels.length * sectionWidth) / 2);
+
+    // Top bar (inner hull engineering)
+    const barLabel = 'INNER HULL ENGINEERING / RAPID TRANSIT';
+    const barX = Math.floor((cols - barLabel.length) / 2);
+    r.drawString(barX, diagramY, barLabel, '#FF6600');
+
+    // Section boxes
+    for (let i = 0; i < sectionLabels.length; i++) {
+      const label = sectionLabels[i];
+      const x = startX + i * sectionWidth;
+      const y = diagramY + 2;
+
+      const sectionDef = this.sectionManager ? this.sectionManager.getSection(label) : null;
+      const biome = this.sectionManager ? this.sectionManager.getBiome(label) : null;
+      const isCurrent = this.player && this.player.currentSection === label;
+      const isDiscovered = this.player && this.player.discoveredSections.has(label);
+
+      // Color based on biome/type
+      let bg = '#333333';
+      let fg = '#AAAAAA';
+      if (isCurrent) { bg = '#33AA33'; fg = '#FFFFFF'; }
+      else if (label === 'C2') { bg = '#5544AA'; fg = '#CCBBFF'; }
+      else if (label === 'ENG') { bg = '#991155'; fg = '#FFAACC'; }
+      else if (biome === 'lush') { bg = '#226622'; fg = '#88FF88'; }
+      else if (biome === 'desert') { bg = '#664400'; fg = '#DDAA55'; }
+      else if (biome === 'boreal_frozen') { bg = '#224466'; fg = '#88BBDD'; }
+      else if (biome === 'damaged') { bg = '#662200'; fg = '#FF6633'; }
+      else if (biome === 'vacuum') { bg = '#111122'; fg = '#445566'; }
+      else if (biome === 'swamp_toxic') { bg = '#114411'; fg = '#44FF44'; }
+      else if (biome === 'overgrown') { bg = '#115511'; fg = '#33CC33'; }
+
+      if (!isDiscovered) { bg = '#1A1A1A'; fg = '#444444'; }
+
+      // Draw box
+      for (let dy = 0; dy < 3; dy++) {
+        for (let dx = 0; dx < sectionWidth - 1; dx++) {
+          r.drawChar(x + dx, y + dy, ' ', fg, bg);
+        }
+      }
+
+      // Label
+      const labelX = x + Math.floor((sectionWidth - 1 - label.length) / 2);
+      r.drawString(labelX, y + 1, isDiscovered ? label : '??', fg);
+
+      // Current indicator
+      if (isCurrent) {
+        r.drawString(x + Math.floor((sectionWidth - 1) / 2), y - 1, '▼', '#FFFF00');
+      }
+    }
+
+    // Bottom bar
+    r.drawString(barX, diagramY + 6, barLabel, '#FF6600');
+
+    // Destination list
+    const dests = this._transitDestinations || [];
+    const listY = diagramY + 9;
+    r.drawString(3, listY, 'Select Destination:', '#FFFFFF');
+
+    for (let i = 0; i < dests.length; i++) {
+      const d = dests[i];
+      const y = listY + 2 + i;
+      const selected = i === (this._transitSelectedIdx || 0);
+      const prefix = selected ? '► ' : '  ';
+
+      let statusText = '';
+      let statusColor = '#888888';
+      if (!d.accessible) { statusText = ' [OFFLINE]'; statusColor = '#FF4444'; }
+      else if (d.blocked) { statusText = ' [VACUUM - EVA REQ]'; statusColor = '#FF4444'; }
+      else { statusText = ' [ONLINE]'; statusColor = '#44FF44'; }
+
+      const biomeText = d.biome ? ` (${d.biome})` : '';
+      const fg = selected ? '#FFFFFF' : '#AAAAAA';
+      const bg = selected ? '#333344' : '#0A0A14';
+
+      for (let x = 2; x < cols - 2; x++) r.drawChar(x, y, ' ', fg, bg);
+      r.drawString(3, y, `${prefix}${d.label}${biomeText}`, fg);
+      r.drawString(cols - 3 - statusText.length, y, statusText, statusColor);
+    }
+
+    // Controls
+    const ctrlY = rows - 3;
+    r.drawString(3, ctrlY, '↑↓ Navigate  Enter: Travel  Esc: Close', '#888888');
+
+    // Section info
+    if (dests.length > 0) {
+      const sel = dests[this._transitSelectedIdx || 0];
+      if (sel) {
+        const infoY = listY + 2 + dests.length + 2;
+        if (sel.biome === 'vacuum') {
+          r.drawString(3, infoY, 'This section has been vented to space. Alien activity detected.', '#FF4444');
+        } else if (sel.biome === 'boreal_frozen') {
+          r.drawString(3, infoY, 'Hull breach caused catastrophic freezing. Boreal conditions persist.', '#88BBDD');
+        } else if (sel.biome === 'damaged') {
+          r.drawString(3, infoY, 'Severe structural damage. Fires and exposed infrastructure.', '#FF6633');
+        } else if (sel.biome === 'swamp_toxic') {
+          r.drawString(3, infoY, 'Life support malfunction. Biolab contamination and toxic atmosphere.', '#44FF44');
+        } else if (sel.biome === 'lush') {
+          r.drawString(3, infoY, 'Healthy ecosystem. Settlements and civilization thrive here.', '#33DD44');
+        } else if (sel.biome === 'desert') {
+          r.drawString(3, infoY, 'Deliberate arid biome for biodiversity. Sparse but habitable.', '#CCAA55');
+        } else if (sel.biome === 'overgrown') {
+          r.drawString(3, infoY, 'Nature has reclaimed this section. Dense jungle covers everything.', '#22AA22');
+        } else if (sel.type === 'facility') {
+          r.drawString(3, infoY, `Ship ${sel.label}. Technical facility — corridors, systems, data terminals.`, '#AAAAAA');
+        }
+      }
+    }
+  }
+
   _getQuestTargetCoords(quest) {
     // Use stored coordinates if available (new quests)
     if (quest.targetCoords) return quest.targetCoords;
@@ -3759,14 +4017,121 @@ class Game {
     const ny = this.player.position.y + dy;
 
     const tile = this.overworld.getTile(nx, ny);
+
+    // Section wall interaction
+    if (tile.sectionWall) {
+      const section = this.overworld.getSectionAtWorld(nx);
+      const adjacent = this.sectionManager ? this.sectionManager.getAdjacentSections(this.player.currentSection) : {};
+      const direction = dx > 0 ? 'east' : 'west';
+      const neighborId = direction === 'east' ? adjacent.east : adjacent.west;
+
+      if (neighborId) {
+        const neighborBiome = this.sectionManager.getBiome(neighborId);
+        const neighborSection = this.sectionManager.getSection(neighborId);
+        const biomeDesc = neighborBiome === 'vacuum' ? 'vented to space' :
+                          neighborBiome === 'boreal_frozen' ? 'frozen solid' :
+                          neighborBiome === 'damaged' ? 'heavily damaged' :
+                          neighborBiome === 'swamp_toxic' ? 'contaminated' :
+                          neighborBiome === 'overgrown' ? 'overgrown' :
+                          neighborBiome === 'desert' ? 'arid' :
+                          neighborBiome === 'lush' ? 'green and alive' : 'unknown';
+
+        this.ui.addMessage('A massive hull wall stretches from floor to sky.', COLORS.BRIGHT_WHITE);
+        this.ui.addMessage(`Beyond this wall lies ${neighborSection ? neighborSection.label : neighborId} — sensors indicate it is ${biomeDesc}.`, COLORS.BRIGHT_CYAN);
+
+        if (!this.player.discoveredSections.has(neighborId)) {
+          this.player.discoveredSections.add(neighborId);
+          this.ui.addMessage(`Section ${neighborId} discovered!`, COLORS.BRIGHT_YELLOW);
+        }
+
+        // Check if inner hull corridor is accessible
+        const corridor = this.sectionManager.getCorridorBetween(this.player.currentSection, neighborId);
+        if (corridor && this.player.unlockedSections.has(neighborId)) {
+          this.ui.addMessage('The airlock to the engineering corridor is open. Keep walking to enter.', COLORS.BRIGHT_GREEN);
+        } else if (neighborBiome === 'vacuum' && !this.player.hasEVA) {
+          this.ui.addMessage('WARNING: Vacuum beyond. EVA equipment required.', COLORS.BRIGHT_RED);
+        }
+      } else {
+        this.ui.addMessage('A massive hull wall stretches endlessly. This is the outer hull of the ship.', COLORS.BRIGHT_WHITE);
+      }
+      return;
+    }
+
+    // Transit station interaction
+    if (tile.transitStation) {
+      const corridorId = tile.corridorId;
+      if (!this.player.activatedTransitStations.has(corridorId)) {
+        this.player.activatedTransitStations.add(corridorId);
+        this.ui.addMessage('You\'ve found a Rapid Transit station!', COLORS.BRIGHT_YELLOW);
+        this.ui.addMessage('Station activated. Press T to open the transit map.', COLORS.BRIGHT_GREEN);
+      }
+    }
+
     if (!tile.walkable) {
       this.ui.addMessage('You can\'t go that way.', COLORS.BRIGHT_BLACK);
       return;
     }
 
+    // Vacuum hazard check
+    if (tile.biome === 'vacuum' && !tile.atmosphere && !tile.sealed) {
+      if (!this.player.hasEVA) {
+        const dmg = 10;
+        this.player.stats.hp = Math.max(0, this.player.stats.hp - dmg);
+        this.ui.addMessage(`VACUUM EXPOSURE! You can't breathe! (-${dmg} HP)`, COLORS.BRIGHT_RED);
+        if (this.player.stats.hp <= 0) {
+          this.setState('GAME_OVER');
+          return;
+        }
+      }
+    }
+
+    // Toxic hazard check
+    if (tile.hazard === 'toxic' || tile.hazard === 'toxic_gas') {
+      const dmg = tile.hazard === 'toxic' ? 5 : 3;
+      this.player.stats.hp = Math.max(1, this.player.stats.hp - dmg);
+      this.ui.addMessage(`Toxic exposure! (-${dmg} HP)`, COLORS.BRIGHT_GREEN);
+    }
+
+    // Fire hazard check
+    if (tile.hazard === 'fire') {
+      const dmg = 4;
+      this.player.stats.hp = Math.max(1, this.player.stats.hp - dmg);
+      this.ui.addMessage(`The flames burn you! (-${dmg} HP)`, COLORS.BRIGHT_RED);
+    }
+
     this.player.position.x = nx;
     this.player.position.y = ny;
     this.turnCount++;
+
+    // Track current section
+    if (this.sectionManager) {
+      const currentSection = this.overworld.getSectionAtWorld(nx);
+      if (currentSection && currentSection.id !== this.player.currentSection) {
+        const prevSection = this.player.currentSection;
+        this.player.currentSection = currentSection.id;
+        this.gameContext.currentSection = currentSection.id;
+
+        if (currentSection.type === 'inner_hull') {
+          this.ui.addMessage('You enter the inner hull engineering corridor.', COLORS.BRIGHT_CYAN);
+          this.ui.addMessage('Pipes and machinery hum around you. The air smells of ozone.', COLORS.WHITE);
+        } else if (currentSection.type === 'facility') {
+          this.ui.addMessage(`Entering ${currentSection.label}.`, COLORS.BRIGHT_MAGENTA);
+        } else if (currentSection.type === 'habitat') {
+          const biome = this.sectionManager.getBiome(currentSection.id);
+          this.ui.addMessage(`Entering ${currentSection.label}.`, COLORS.BRIGHT_YELLOW);
+          if (biome === 'vacuum') this.ui.addMessage('WARNING: No atmosphere detected!', COLORS.BRIGHT_RED);
+          if (biome === 'boreal_frozen') this.ui.addMessage('The air is freezing cold.', COLORS.BRIGHT_CYAN);
+          if (biome === 'damaged') this.ui.addMessage('Structural damage everywhere. Watch your step.', COLORS.BRIGHT_RED);
+          if (biome === 'swamp_toxic') this.ui.addMessage('Toxic fumes fill the air.', COLORS.BRIGHT_GREEN);
+          if (!this.player.unlockedSections.has(currentSection.id)) {
+            this.player.unlockedSections.add(currentSection.id);
+          }
+          if (!this.player.discoveredSections.has(currentSection.id)) {
+            this.player.discoveredSections.add(currentSection.id);
+          }
+        }
+      }
+    }
 
     // Ensure surrounding chunks are loaded
     this.overworld.ensureChunksAround(nx, ny);
@@ -4622,7 +4987,16 @@ class Game {
         state: this.state,
         trackedQuestId: this._trackedQuestId,
         historyDepth: this.charGenState ? this.charGenState.historyDepth : 'medium',
-        messageLog: this.ui.messageLog.slice(-500)
+        messageLog: this.ui.messageLog.slice(-500),
+        // O'Neill cylinder section state
+        sectionData: this.sectionManager ? this.sectionManager.toSaveData() : null,
+        playerSections: {
+          currentSection: this.player.currentSection,
+          unlockedSections: [...this.player.unlockedSections],
+          discoveredSections: [...this.player.discoveredSections],
+          activatedTransitStations: [...this.player.activatedTransitStations],
+          hasEVA: this.player.hasEVA,
+        },
       };
 
       // Compress dungeon tiles with RLE if in dungeon
@@ -4789,8 +5163,12 @@ class Game {
       this.rng = new SeededRNG(this.seed);
       this.cloudSystem = new CloudSystem(this.seed);
 
-      // Regenerate world from seed using chunk manager
-      this.overworld = new ChunkManager(this.seed);
+      // Regenerate section manager and world from seed
+      this.sectionManager = new SectionManager(this.seed);
+      if (save.sectionData) {
+        this.sectionManager.loadSaveData(save.sectionData);
+      }
+      this.overworld = new ChunkManager(this.seed, this.sectionManager);
       if (save.exploredChunks) {
         this.overworld.exploredChunks = new Set(save.exploredChunks);
       }
@@ -4806,6 +5184,16 @@ class Game {
       this.player.knownLocations = new Set(save.player.knownLocations || []);
       if (save.player.abilities) this.player.abilities = save.player.abilities;
       if (save.player.discoveredLore) this.player.discoveredLore = save.player.discoveredLore;
+
+      // Restore section tracking
+      if (save.playerSections) {
+        this.player.currentSection = save.playerSections.currentSection || 'H4';
+        this.player.unlockedSections = new Set(save.playerSections.unlockedSections || ['H4']);
+        this.player.discoveredSections = new Set(save.playerSections.discoveredSections || ['H4']);
+        this.player.activatedTransitStations = new Set(save.playerSections.activatedTransitStations || []);
+        this.player.hasEVA = save.playerSections.hasEVA || false;
+        this.gameContext.currentSection = this.player.currentSection;
+      }
 
       // Restore time
       this.timeSystem.hour = save.time.hour;
@@ -5007,6 +5395,10 @@ class Game {
         this.ui.drawQuestCompass(quest, playerPos, targetPos, activeQuests, idx, Date.now());
         break;
       }
+
+      case 'TRANSIT_MAP':
+        this._renderTransitMap();
+        break;
 
       case 'COMBAT':
         this.renderCombat();
