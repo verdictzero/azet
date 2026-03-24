@@ -2476,16 +2476,6 @@ export class SettlementGenerator {
           break;
         }
         case 'plague_zone': {
-          // Add quarantine-themed tiles around edges
-          for (let y = coreOffset.y; y < coreOffset.y + coreH; y++) {
-            for (let x = coreOffset.x; x < coreOffset.x + coreW; x++) {
-              if (tiles[y] && tiles[y][x] && rng.chance(0.05 * scar.severity)) {
-                tiles[y][x] = tile('QUARANTINE', 'X', '#FF4444', '#220000', false, {
-                  historicalScar: scar.description,
-                });
-              }
-            }
-          }
           // Reduce NPCs
           const plagueCull = Math.floor(npcSlots.length * 0.3);
           for (let i = 0; i < plagueCull && npcSlots.length > 1; i++) {
