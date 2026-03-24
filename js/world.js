@@ -327,8 +327,30 @@ const FACILITY_WRAP_CHUNKS = 96;    // ~3072 tiles N-S for facilities
 const INNER_HULL_WIDTH_CHUNKS = 8;  // ~256 tiles E-W engineering corridors
 
 // Airlock parameters — walkable passages through section walls
-const AIRLOCK_SPACING = 64;         // tiles between airlock centers along Y axis
-const AIRLOCK_HALF_HEIGHT = 2;      // airlock is 5 tiles tall (2 frame + 3 walkable)
+const AIRLOCK_SPACING = 128;        // tiles between airlock centers along Y axis (every 4 chunks)
+const AIRLOCK_HALF_HEIGHT = 3;      // airlock is 7 tiles tall (2 frame + 5 walkable)
+
+// Wall thickness & gradient — solid hull plating with fading block gradient
+const WALL_THICKNESS = 7;           // tiles thick at each edge of the section
+
+// Deterministic hash for airlock spawn chance (50% per slot)
+function _wallHash(a, b) {
+  let h = Math.imul(a, 374761393) + Math.imul(b, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967296;
+}
+
+// Wall gradient: index 0 = outermost (hull exterior), index 6 = innermost (habitat side)
+const WALL_GRADIENT = [
+  { char: '█', fg: '#556677', bg: '#181830' },   // 0 — solid hull exterior
+  { char: '█', fg: '#556677', bg: '#161626' },   // 1 — solid
+  { char: '█', fg: '#4E5E6E', bg: '#141422' },   // 2 — solid
+  { char: '█', fg: '#4A5A6A', bg: '#12121E' },   // 3 — solid interior
+  { char: '▓', fg: '#445566', bg: '#10101A' },   // 4 — dark shade
+  { char: '▒', fg: '#3A4A5A', bg: '#0D0D16' },   // 5 — medium shade
+  { char: '░', fg: '#334455', bg: '#0A0A12' },   // 6 — light shade (habitat transition)
+];
 
 // Habitat biome types (H4 is always 'lush')
 const HABITAT_BIOMES = [
@@ -685,30 +707,69 @@ export class ChunkManager {
       return tile('VOID_SPACE', ' ', '#000000', '#000000', false, { biome: 'void' });
     }
 
-    // Section walls — massive hull plating at section boundaries, with airlock openings
+    // Section walls — 7-tile-thick hull plating with fading gradient, decorative airlocks
     if (section.type !== 'inner_hull') {
       const localTileX = wx - section.startChunkX * CHUNK_SIZE;
-      // Wall is 3 tiles thick at each edge of the section
-      if (localTileX < 3 || localTileX >= section.widthChunks * CHUNK_SIZE - 3) {
-        // Check if this Y position is an airlock opening
+      const sectionWidth = section.widthChunks * CHUNK_SIZE;
+
+      // Determine wall distance: 0 = outermost (hull edge), 6 = innermost (habitat side)
+      let wallDist = -1;
+      if (localTileX < WALL_THICKNESS) wallDist = localTileX;
+      else if (localTileX >= sectionWidth - WALL_THICKNESS) wallDist = sectionWidth - 1 - localTileX;
+
+      if (wallDist >= 0) {
+        // Check for airlock at this Y position — 50% deterministic chance per slot
+        const airlockSlot = Math.floor(((wy % (AIRLOCK_SPACING * 1024)) + AIRLOCK_SPACING * 1024) / AIRLOCK_SPACING);
+        const hasAirlock = _wallHash(section.startChunkX * 7 + (localTileX < WALL_THICKNESS ? 0 : 1), airlockSlot) < 0.5;
         const airlockPhase = ((wy % AIRLOCK_SPACING) + AIRLOCK_SPACING) % AIRLOCK_SPACING;
-        if (airlockPhase <= AIRLOCK_HALF_HEIGHT * 2) {
-          // Airlock frame (top and bottom edges)
+
+        if (hasAirlock && airlockPhase <= AIRLOCK_HALF_HEIGHT * 2) {
+          // Airlock opening cuts through all 7 wall layers
           if (airlockPhase === 0 || airlockPhase === AIRLOCK_HALF_HEIGHT * 2) {
-            return tile('AIRLOCK_FRAME', '▓', '#AA8800', '#0D0800', false, { biome: 'hull', airlockFrame: true });
+            // Frame row — decorative top/bottom border
+            const frameChars = ['╔', '═', '═', '═', '═', '═', '╗']; // outer→inner for west wall
+            const isWest = localTileX < WALL_THICKNESS;
+            const frameChar = isWest ? frameChars[wallDist] : frameChars[6 - wallDist];
+            // Swap corners for bottom frame
+            let ch = frameChar;
+            if (airlockPhase === AIRLOCK_HALF_HEIGHT * 2) {
+              if (ch === '╔') ch = '╚';
+              else if (ch === '╗') ch = '╝';
+            }
+            return tile('AIRLOCK_FRAME', ch, '#AA8800', '#0D0800', false,
+              { biome: 'hull', airlockFrame: true });
           }
-          // Walkable airlock passage
-          return tile('AIRLOCK_PASSAGE', '░', '#FFAA00', '#1A1100', true, { biome: 'hull', airlock: true });
+          // Passage rows — walkable with layer-appropriate decoration
+          if (wallDist <= 1) {
+            // Outer frame pillars — heavy structural border
+            const passPhase = airlockPhase % 2;
+            const ch = passPhase === 1 ? '║' : '║';
+            return tile('AIRLOCK_PASSAGE', ch, '#CC9900', '#0D0800', true,
+              { biome: 'hull', airlock: true });
+          }
+          if (wallDist === 2 || wallDist === 4) {
+            // Indicator light columns — alternating amber markers
+            const lightPhase = ((airlockPhase + wallDist) % 3);
+            const ch = lightPhase === 0 ? '▐' : '·';
+            const fg = lightPhase === 0 ? '#FFAA00' : '#886600';
+            return tile('AIRLOCK_PASSAGE', ch, fg, '#1A1100', true,
+              { biome: 'hull', airlock: true });
+          }
+          if (wallDist === 3) {
+            // Center passage — main walkway
+            return tile('AIRLOCK_PASSAGE', '·', '#FFCC44', '#1A1100', true,
+              { biome: 'hull', airlock: true });
+          }
+          // Inner layers (5-6) — transition zone with grating
+          const ch = wallDist === 5 ? '░' : '·';
+          return tile('AIRLOCK_PASSAGE', ch, '#CC8800', '#0F0800', true,
+            { biome: 'hull', airlock: true });
         }
-        // Normal wall
-        const wallDetail = (this.detailNoise.fbm(wx * 0.3, wy * 0.3, 2) + 1) / 2;
-        if (wallDetail > 0.7) {
-          return tile('SECTION_WALL_DETAIL', '▓', '#556677', '#1A1A22', false, { biome: 'hull', sectionWall: true });
-        }
-        if (wallDetail > 0.4) {
-          return tile('SECTION_WALL', '█', '#445566', '#111118', false, { biome: 'hull', sectionWall: true });
-        }
-        return tile('SECTION_WALL_RIVET', '░', '#667788', '#1A1A22', false, { biome: 'hull', sectionWall: true });
+
+        // Solid gradient wall — no noise variation, clean fading block characters
+        const grad = WALL_GRADIENT[wallDist];
+        return tile('SECTION_WALL', grad.char, grad.fg, grad.bg, false,
+          { biome: 'hull', sectionWall: true });
       }
     }
 
@@ -984,18 +1045,26 @@ export class ChunkManager {
     const structN = (this.heightNoise.fbm(wx * 0.1, wy * 0.1, 3) + 1) / 2;
     const circuitN = (this.anomalyNoise.fbm(wx * 0.15, wy * 0.15, 2) + 1) / 2;
 
-    // Airlock check — matching openings aligned with section wall airlocks
+    // Airlock check — matching openings aligned with section wall airlocks (same spacing & 50% chance)
+    const airlockSlot = Math.floor(((wy % (AIRLOCK_SPACING * 1024)) + AIRLOCK_SPACING * 1024) / AIRLOCK_SPACING);
     const airlockPhase = ((wy % AIRLOCK_SPACING) + AIRLOCK_SPACING) % AIRLOCK_SPACING;
-    const isAirlockY = airlockPhase > 0 && airlockPhase < AIRLOCK_HALF_HEIGHT * 2;
-    const isAirlockFrame = airlockPhase === 0 || airlockPhase === AIRLOCK_HALF_HEIGHT * 2;
+    // Use left/right section startChunkX to match the adjacent section wall's airlock hash
+    const isWestWall = localX < 2;
+    const adjacentHash = isWestWall
+      ? _wallHash(section.startChunkX * 7 - 7 + 1, airlockSlot)  // match right edge of section to the west
+      : _wallHash((section.startChunkX + section.widthChunks) * 7, airlockSlot);  // match left edge of section to the east
+    const hasAirlock = adjacentHash < 0.5;
+    const isAirlockY = hasAirlock && airlockPhase > 0 && airlockPhase < AIRLOCK_HALF_HEIGHT * 2;
+    const isAirlockFrame = hasAirlock && (airlockPhase === 0 || airlockPhase === AIRLOCK_HALF_HEIGHT * 2);
 
     // Outer walls of the corridor (first and last 2 tiles) — with airlock openings
     if (localX < 2 || localX >= totalWidth - 2) {
       if (isAirlockY) {
-        return tile('AIRLOCK_PASSAGE', '░', '#FFAA00', '#1A1100', true, { biome: 'inner_hull', airlock: true });
+        return tile('AIRLOCK_PASSAGE', '║', '#CC9900', '#0D0800', true, { biome: 'inner_hull', airlock: true });
       }
       if (isAirlockFrame) {
-        return tile('AIRLOCK_FRAME', '▓', '#AA8800', '#0D0800', false, { biome: 'inner_hull', airlockFrame: true });
+        const ch = isWestWall ? (airlockPhase === 0 ? '╔' : '╚') : (airlockPhase === 0 ? '╗' : '╝');
+        return tile('AIRLOCK_FRAME', ch, '#AA8800', '#0D0800', false, { biome: 'inner_hull', airlockFrame: true });
       }
       return tile('HULL_CORRIDOR_WALL', '█', '#334455', '#020205', false, { biome: 'inner_hull' });
     }
