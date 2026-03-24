@@ -229,8 +229,13 @@ export class QuestSystem {
     this._completedQuests = new Map();
     this._availableQuests = new Map();
     this._nextId = 1;
+    this._questChains = new Map();       // chainId -> chain definition
+    this._chainProgress = new Map();     // chainId -> { currentStage, completed }
+    this._locationQuests = new Map();    // locationKey -> questId (one per location)
+    this._radiantCooldowns = new Map();  // npcId:questType -> lastOfferedDay
+    this._questLeads = [];               // rumor-generated leads
 
-    this._questTypes = ['FETCH', 'KILL', 'ESCORT', 'INVESTIGATE', 'DELIVER', 'BOUNTY'];
+    this._questTypes = ['FETCH', 'KILL', 'ESCORT', 'INVESTIGATE', 'DELIVER', 'BOUNTY', 'CLEAR', 'SURVEY'];
 
     // ---- Title templates per type ----
     this._titleTemplates = {
@@ -337,6 +342,30 @@ export class QuestSystem {
         'End {CRIMINAL}\'s Reign',
         'Manhunt: {CRIMINAL}',
       ],
+      CLEAR: [
+        'Clear {LOCATION}',
+        'Purge {LOCATION} of All Threats',
+        'Reclaim {LOCATION}',
+        'Secure {LOCATION}',
+        'Sweep and Clear: {LOCATION}',
+        'Cleanse {LOCATION}',
+        'Liberate {LOCATION}',
+        'Take Back {LOCATION}',
+        'End the Occupation of {LOCATION}',
+        'No Survivors in {LOCATION}',
+      ],
+      SURVEY: [
+        'Survey the Unknown Sectors',
+        'Cartographer\'s Commission',
+        'Map the Frontier',
+        'Reconnaissance Sweep',
+        'Scout Uncharted Territory',
+        'Explore the Lost Decks',
+        'Chart New Ground',
+        'Frontier Survey for {NPC}',
+        'The Unmapped Sectors',
+        'Recon: Unknown Territory',
+      ],
     };
 
     // ---- Description templates per type ----
@@ -413,6 +442,24 @@ export class QuestSystem {
         'The crimes of {CRIMINAL} have gone unpunished. {NPC} seeks a bounty hunter worthy of the task.',
         '{NPC} mutters darkly about {CRIMINAL}. "Find them. Make them pay for what they did."',
       ],
+      CLEAR: [
+        '{LOCATION} has been overrun and must be reclaimed. Enter and eliminate every hostile presence.',
+        'No one dares enter {LOCATION} anymore. Clear it of all threats so salvage teams can move in.',
+        'The colony needs {LOCATION} secured. Go in, clear every floor, and report back.',
+        'Something dangerous has nested in {LOCATION}. Purge it completely.',
+        '{NPC} wants {LOCATION} cleared for expansion. Destroy anything hostile inside.',
+        'Raiders and worse have claimed {LOCATION}. Take it back for the colony.',
+        'Scouts report heavy activity in {LOCATION}. Sweep every corridor and eliminate all threats.',
+        'The supply route through {LOCATION} is blocked by hostiles. Clear a path.',
+      ],
+      SURVEY: [
+        '{NPC} needs a capable scout to survey uncharted sectors. Visit at least {N} unexplored locations and return with your findings.',
+        'The colony\'s maps are incomplete. Explore {N} unknown locations and report back to {NPC}.',
+        'Our cartographic records are centuries out of date. {NPC} is paying well for updated surveys of {N} locations.',
+        'The Salvage Guild needs intel on sectors beyond our borders. Survey {N} locations.',
+        '"We don\'t know what\'s out there," {NPC} admits. "Scout {N} locations and come back alive."',
+        'The Colony Council has authorized a frontier survey. Explore {N} uncharted locations.',
+      ],
     };
 
     // ---- Name pools for template substitution ----
@@ -466,6 +513,8 @@ export class QuestSystem {
     // Role-appropriate quest types based on NPC category
     const npcCategory = giverNPC?.category || 'authority';
     let availableTypes;
+    // Original 6 types for standard quest generation (CLEAR/SURVEY are for radiant/location only)
+    const standardTypes = ['FETCH', 'KILL', 'ESCORT', 'INVESTIGATE', 'DELIVER', 'BOUNTY'];
     switch (npcCategory) {
       case 'authority':
         availableTypes = ['KILL', 'BOUNTY', 'ESCORT', 'INVESTIGATE'];
@@ -474,7 +523,7 @@ export class QuestSystem {
         availableTypes = ['INVESTIGATE', 'FETCH', 'DELIVER'];
         break;
       default:
-        availableTypes = this._questTypes;
+        availableTypes = standardTypes;
         break;
     }
     const type = rng.random(availableTypes);
@@ -751,6 +800,27 @@ export class QuestSystem {
           },
         ];
 
+      case 'CLEAR': {
+        return [{
+          type: 'clear',
+          target: targetName,
+          current: 0,
+          required: 1,
+          description: `Clear all hostiles from ${targetName}`,
+        }];
+      }
+
+      case 'SURVEY': {
+        const surveyCount = ctx.n || rng.nextInt(2, 5);
+        return [{
+          type: 'survey',
+          target: 'unexplored_locations',
+          current: 0,
+          required: surveyCount,
+          description: `Survey ${surveyCount} unexplored locations`,
+        }];
+      }
+
       default:
         return [];
     }
@@ -785,18 +855,6 @@ export class QuestSystem {
     return quest.objectives.every(obj => obj.current >= obj.required);
   }
 
-  completeQuest(questId) {
-    const quest = this._activeQuests.get(questId);
-    if (!quest) return null;
-    if (!this.checkCompletion(questId)) return null;
-
-    quest.status = 'completed';
-    this._completedQuests.set(questId, quest);
-    this._activeQuests.delete(questId);
-
-    return { ...quest.rewards };
-  }
-
   getActiveQuests() {
     return Array.from(this._activeQuests.values());
   }
@@ -807,6 +865,405 @@ export class QuestSystem {
 
   getAvailableQuests() {
     return Array.from(this._availableQuests.values());
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Quest Chain System — Multi-stage quest arcs (Bethesda faction questlines)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  registerChain(chainDef) {
+    this._questChains.set(chainDef.id, chainDef);
+    if (!this._chainProgress.has(chainDef.id)) {
+      this._chainProgress.set(chainDef.id, { currentStage: 0, completed: false, started: false });
+    }
+  }
+
+  getChainProgress(chainId) {
+    return this._chainProgress.get(chainId) || { currentStage: 0, completed: false, started: false };
+  }
+
+  getAvailableChainQuests(factionId, factionRank, playerLevel) {
+    const results = [];
+    for (const [chainId, chain] of this._questChains) {
+      if (chain.faction && chain.faction !== factionId) continue;
+      if (chain.requiredRank && factionRank < chain.requiredRank) continue;
+      if (chain.minLevel && playerLevel < chain.minLevel) continue;
+
+      const progress = this.getChainProgress(chainId);
+      if (progress.completed) continue;
+
+      // Check if we already have an active quest from this chain
+      const hasActive = Array.from(this._activeQuests.values()).some(q => q.chainId === chainId);
+      if (hasActive) continue;
+
+      const stage = chain.stages[progress.currentStage];
+      if (!stage) continue;
+
+      results.push({ chainId, chain, stage, stageIndex: progress.currentStage });
+    }
+    return results;
+  }
+
+  generateChainQuest(rng, chainId, giverNPC, playerLevel, worldContext) {
+    const chain = this._questChains.get(chainId);
+    if (!chain) return null;
+
+    const progress = this.getChainProgress(chainId);
+    if (progress.completed) return null;
+
+    const stage = chain.stages[progress.currentStage];
+    if (!stage) return null;
+
+    // Generate the quest using the stage's type and templates
+    const type = stage.questType;
+    const rawName = giverNPC?.name;
+    const npcName = (rawName && typeof rawName === 'object' ? rawName.full : rawName) || rng.random(this._npcNames);
+    const npcId = giverNPC?.id || npcName;
+
+    const item = rng.random(this._itemNames);
+    const monster = rng.random(this._monsterNames);
+    const location = (worldContext?.locations && worldContext.locations.length > 0)
+      ? rng.random(worldContext.locations)
+      : rng.random(this._locationNames);
+    const subject = rng.random(this._subjectNames);
+    const criminal = rng.random(this._criminalNames);
+    const destNpc = rng.random(this._npcNames);
+    const n = rng.nextInt(3, 8 + Math.floor(playerLevel / 2));
+
+    const ctx = { npcName, item, monster, location, subject, criminal, destNpc, n };
+
+    // Use stage-specific title/desc or fall back to type templates
+    let title = stage.titleTemplate
+      ? this._substitute(stage.titleTemplate, ctx)
+      : this._substitute(rng.random(this._titleTemplates[type] || this._titleTemplates.KILL), ctx);
+    let description = stage.descTemplate
+      ? this._substitute(stage.descTemplate, ctx)
+      : this._substitute(rng.random(this._descTemplates[type] || this._descTemplates.KILL), ctx);
+
+    // Chain stage prefix
+    const stageLabel = `[${chain.name} - Part ${progress.currentStage + 1}/${chain.stages.length}]`;
+    title = `${stageLabel} ${title}`;
+
+    const objectives = stage.objectiveOverrides
+      ? stage.objectiveOverrides.map(o => ({ ...o, current: 0 }))
+      : this._buildObjectives(type, ctx, rng, worldContext);
+
+    const rewardMult = stage.rewardMultiplier || (1 + progress.currentStage * 0.5);
+    const baseGold = Math.floor((15 + playerLevel * 7) * rewardMult);
+    const baseXP = Math.floor((30 + playerLevel * 12) * rewardMult);
+    const reputation = Math.floor(8 * rewardMult);
+
+    const rewardItems = [];
+    // Final stage gets the chain's unique reward
+    const isFinalStage = progress.currentStage === chain.stages.length - 1;
+    if (isFinalStage && chain.finalReward?.uniqueItem) {
+      rewardItems.push({ ...chain.finalReward.uniqueItem, isUnique: true });
+    } else if (rng.chance(0.4)) {
+      const itemGen = new ItemGenerator();
+      const rewardItem = itemGen.generate(rng, {
+        level: playerLevel,
+        rarity: progress.currentStage >= 2 ? 'rare' : 'uncommon',
+      });
+      if (rewardItem) rewardItems.push(rewardItem);
+    }
+
+    let loreReward = null;
+    if (isFinalStage && chain.finalReward?.loreReward) {
+      loreReward = chain.finalReward.loreReward;
+    }
+
+    // Determine target location from world data
+    let targetCoords = null;
+    let targetSettlementName = location;
+    const nearbyLocs = worldContext?.nearbyLocations || [];
+    const currentCoords = worldContext?.settlementCoords;
+    if (nearbyLocs.length > 0 && currentCoords) {
+      const candidates = nearbyLocs.filter(l => Math.abs(l.x - currentCoords.x) > 5 || Math.abs(l.y - currentCoords.y) > 5);
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => {
+          const da = Math.abs(a.x - currentCoords.x) + Math.abs(a.y - currentCoords.y);
+          const db = Math.abs(b.x - currentCoords.x) + Math.abs(b.y - currentCoords.y);
+          return da - db;
+        });
+        const pick = rng.random(candidates.slice(0, Math.min(3, candidates.length)));
+        targetCoords = { x: pick.x, y: pick.y };
+        targetSettlementName = pick.name;
+      }
+    }
+
+    const quest = {
+      id: `quest_${this._nextId++}`,
+      type,
+      title,
+      description,
+      giver: npcId,
+      objectives,
+      rewards: {
+        gold: baseGold,
+        xp: baseXP,
+        items: rewardItems,
+        reputation,
+        loreReward,
+        factionRep: isFinalStage ? (chain.finalReward?.factionRep || 15) : reputation,
+      },
+      difficulty: progress.currentStage < 2 ? 'medium' : 'hard',
+      status: 'available',
+      timeLimit: null,
+      targetLocationName: targetSettlementName,
+      targetCoords,
+      consequences: {
+        success: isFinalStage
+          ? `You have completed the ${chain.name} quest chain! Your name will be remembered.`
+          : `${chain.name} continues... speak to ${npcName} when ready for the next task.`,
+        failure: `The ${chain.name} is delayed. Speak to ${npcName} to try again.`,
+      },
+      // Chain metadata
+      chainId,
+      chainStage: progress.currentStage,
+      chainName: chain.name,
+      isChainFinal: isFinalStage,
+      isRadiant: false,
+      factionConsequences: chain.factionConsequences || null,
+    };
+
+    progress.started = true;
+    this._availableQuests.set(quest.id, quest);
+    return quest;
+  }
+
+  advanceChain(chainId) {
+    const chain = this._questChains.get(chainId);
+    if (!chain) return null;
+
+    const progress = this._chainProgress.get(chainId);
+    if (!progress || progress.completed) return null;
+
+    progress.currentStage++;
+    if (progress.currentStage >= chain.stages.length) {
+      progress.completed = true;
+      return { completed: true, chainName: chain.name };
+    }
+    return { completed: false, nextStage: progress.currentStage, chainName: chain.name };
+  }
+
+  completeQuest(questId) {
+    const quest = this._activeQuests.get(questId);
+    if (!quest) return null;
+    if (!this.checkCompletion(questId)) return null;
+
+    quest.status = 'completed';
+    this._completedQuests.set(questId, quest);
+    this._activeQuests.delete(questId);
+
+    // Advance chain if this is a chain quest
+    let chainAdvance = null;
+    if (quest.chainId) {
+      chainAdvance = this.advanceChain(quest.chainId);
+    }
+
+    // Clear location quest mapping
+    if (quest.isLocationQuest && quest.locationKey) {
+      this._locationQuests.delete(quest.locationKey);
+    }
+
+    return { ...quest.rewards, chainAdvance, factionConsequences: quest.factionConsequences };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Radiant Quest Enhancement — Prefer unexplored locations
+  // ══════════════════════════════════════════════════════════════════════════
+
+  generateRadiantQuest(rng, giverNPC, playerLevel, worldContext) {
+    // Check cooldown — don't offer same quest type from same NPC too soon
+    const npcId = giverNPC?.id || 'unknown';
+    const currentDay = worldContext?.currentDay || 0;
+
+    // Filter quest types based on cooldown
+    const npcCategory = giverNPC?.category || 'authority';
+    let availableTypes;
+    switch (npcCategory) {
+      case 'authority':
+        availableTypes = ['KILL', 'BOUNTY', 'ESCORT', 'INVESTIGATE', 'CLEAR'];
+        break;
+      case 'knowledge':
+        availableTypes = ['INVESTIGATE', 'FETCH', 'DELIVER', 'SURVEY'];
+        break;
+      default:
+        availableTypes = ['FETCH', 'KILL', 'ESCORT', 'INVESTIGATE', 'DELIVER', 'BOUNTY', 'CLEAR', 'SURVEY'];
+        break;
+    }
+
+    // Remove types on cooldown for this NPC
+    availableTypes = availableTypes.filter(t => {
+      const key = `${npcId}:${t}`;
+      const lastDay = this._radiantCooldowns.get(key) || -999;
+      return (currentDay - lastDay) >= 3; // 3-day cooldown
+    });
+
+    if (availableTypes.length === 0) availableTypes = ['FETCH']; // fallback
+
+    // Weight unexplored locations 3x more heavily
+    const exploredLocations = worldContext?.exploredLocations || new Set();
+    const nearbyLocs = worldContext?.nearbyLocations || [];
+    const unexploredNearby = nearbyLocs.filter(l => !exploredLocations.has(`${l.x},${l.y}`));
+    const exploredNearby = nearbyLocs.filter(l => exploredLocations.has(`${l.x},${l.y}`));
+
+    // Build weighted location pool: unexplored locations appear 3x
+    const weightedLocations = [
+      ...unexploredNearby, ...unexploredNearby, ...unexploredNearby,
+      ...exploredNearby,
+    ];
+
+    const enhancedContext = {
+      ...worldContext,
+      nearbyLocations: weightedLocations.length > 0 ? weightedLocations : nearbyLocs,
+    };
+
+    // Generate quest with enhanced context
+    const quest = this.generateQuest(rng, giverNPC, playerLevel, enhancedContext);
+    if (quest) {
+      quest.isRadiant = true;
+      quest.source = 'npc';
+
+      // Set cooldown
+      const type = quest.type;
+      this._radiantCooldowns.set(`${npcId}:${type}`, currentDay);
+    }
+    return quest;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Location-Triggered Quests — Auto-generate on dungeon entry
+  // ══════════════════════════════════════════════════════════════════════════
+
+  generateLocationQuest(rng, location, playerLevel) {
+    const locKey = location.key || `${location.x},${location.y}`;
+
+    // Only one quest per location at a time
+    if (this._locationQuests.has(locKey)) {
+      const existingId = this._locationQuests.get(locKey);
+      if (this._activeQuests.has(existingId)) return null;
+      // Old quest was completed or abandoned, allow new one
+    }
+
+    // Don't generate if player already has an active quest targeting this location
+    for (const quest of this._activeQuests.values()) {
+      if (quest.targetLocationName === location.name) return null;
+    }
+
+    const type = rng.chance(0.7) ? 'CLEAR' : 'INVESTIGATE';
+    const npcName = 'Colony Records';
+    const ctx = {
+      npcName,
+      item: rng.random(this._itemNames),
+      monster: rng.random(this._monsterNames),
+      location: location.name || 'this location',
+      subject: rng.random(this._subjectNames),
+      criminal: rng.random(this._criminalNames),
+      destNpc: rng.random(this._npcNames),
+      n: rng.nextInt(2, 4),
+    };
+
+    const titleTemplates = this._titleTemplates[type];
+    let title = this._substitute(rng.random(titleTemplates), ctx);
+    const descTemplates = this._descTemplates[type];
+    let description = this._substitute(rng.random(descTemplates), ctx);
+
+    const objectives = this._buildObjectives(type, ctx, rng, {});
+
+    const diffMultiplier = 1 + (location.depth || 0) * 0.3;
+    const baseGold = Math.floor((10 + playerLevel * 5) * diffMultiplier);
+    const baseXP = Math.floor((20 + playerLevel * 10) * diffMultiplier);
+
+    const rewardItems = [];
+    if (rng.chance(0.35)) {
+      const itemGen = new ItemGenerator();
+      const rewardItem = itemGen.generate(rng, {
+        level: playerLevel + (location.depth || 0),
+        rarity: (location.depth || 0) >= 3 ? 'rare' : 'uncommon',
+      });
+      if (rewardItem) rewardItems.push(rewardItem);
+    }
+
+    const quest = {
+      id: `quest_${this._nextId++}`,
+      type,
+      title,
+      description,
+      giver: 'location',
+      objectives,
+      rewards: { gold: baseGold, xp: baseXP, items: rewardItems, reputation: 3, loreReward: null },
+      difficulty: (location.depth || 0) >= 3 ? 'hard' : 'medium',
+      status: 'active', // auto-accepted like Skyrim's misc quests
+      timeLimit: null,
+      targetLocationName: location.name,
+      targetCoords: location.x != null ? { x: location.x, y: location.y } : null,
+      consequences: {
+        success: `${location.name} has been secured.`,
+        failure: 'The location remains dangerous.',
+      },
+      chainId: null,
+      chainStage: 0,
+      isRadiant: false,
+      isLocationQuest: true,
+      locationKey: locKey,
+      source: 'location',
+    };
+
+    this._activeQuests.set(quest.id, quest);
+    this._locationQuests.set(locKey, quest.id);
+    return quest;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Quest Leads — Rumors and discoveries that spawn quests
+  // ══════════════════════════════════════════════════════════════════════════
+
+  addQuestLead(lead) {
+    // Prevent duplicate leads
+    if (this._questLeads.some(l => l.id === lead.id)) return false;
+    this._questLeads.push(lead);
+    return true;
+  }
+
+  getQuestLeads() {
+    return this._questLeads.filter(l => !l.followed);
+  }
+
+  followLead(leadId) {
+    const lead = this._questLeads.find(l => l.id === leadId);
+    if (!lead) return null;
+    lead.followed = true;
+    return lead;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Serialization helpers for save/load
+  // ══════════════════════════════════════════════════════════════════════════
+
+  serialize() {
+    return {
+      activeQuests: Array.from(this._activeQuests.entries()),
+      completedQuests: Array.from(this._completedQuests.entries()),
+      availableQuests: Array.from(this._availableQuests.entries()),
+      nextId: this._nextId,
+      chainProgress: Array.from(this._chainProgress.entries()),
+      locationQuests: Array.from(this._locationQuests.entries()),
+      radiantCooldowns: Array.from(this._radiantCooldowns.entries()),
+      questLeads: this._questLeads,
+    };
+  }
+
+  deserialize(data) {
+    if (!data) return;
+    if (data.activeQuests) this._activeQuests = new Map(data.activeQuests);
+    if (data.completedQuests) this._completedQuests = new Map(data.completedQuests);
+    if (data.availableQuests) this._availableQuests = new Map(data.availableQuests);
+    if (data.nextId) this._nextId = data.nextId;
+    if (data.chainProgress) this._chainProgress = new Map(data.chainProgress);
+    if (data.locationQuests) this._locationQuests = new Map(data.locationQuests);
+    if (data.radiantCooldowns) this._radiantCooldowns = new Map(data.radiantCooldowns);
+    if (data.questLeads) this._questLeads = data.questLeads;
   }
 }
 
@@ -951,6 +1408,26 @@ export class FactionSystem {
     this._factions = new Map();
     this._relations = new Map();
     this._playerStanding = new Map();
+
+    // ── Faction Rank System ──
+    this._rankThresholds = [
+      { rank: 0, name: 'Outsider',    minStanding: -100 },
+      { rank: 1, name: 'Associate',   minStanding: 0 },
+      { rank: 2, name: 'Member',      minStanding: 20 },
+      { rank: 3, name: 'Veteran',     minStanding: 40 },
+      { rank: 4, name: 'Officer',     minStanding: 60 },
+      { rank: 5, name: 'Champion',    minStanding: 80 },
+    ];
+
+    this._factionRankNames = {
+      'COLONY_GUARD':    ['Civilian', 'Auxiliary', 'Recruit', 'Sergeant', 'Lieutenant', 'Commander'],
+      'SALVAGE_GUILD':   ['Scrapper', 'Salvager', 'Diver', 'Wreck Boss', 'Guildmaster', 'Legend'],
+      'ARCHIVE_KEEPERS': ['Layperson', 'Initiate', 'Scribe', 'Archivist', 'Loremaster', 'Keeper'],
+      'SYNDICATE':       ['Nobody', 'Runner', 'Operator', 'Fixer', 'Underboss', 'Shadow King'],
+      'COLONY_COUNCIL':  ['Citizen', 'Petitioner', 'Delegate', 'Councilor', 'Senator', 'Chancellor'],
+      'RUST_RAIDERS':    ['Prey', 'Tolerated', 'Blood-Bonded', 'Raid Leader', 'Warlord', 'Ironlord'],
+      'FREE_TRADERS':    ['Stranger', 'Customer', 'Partner', 'Broker', 'Magnate', 'Trade Baron'],
+    };
 
     // Initialize default factions
     this._initFaction('COLONY_GUARD', { name: 'The Colony Guard', color: '#5555FF' });
@@ -1194,6 +1671,89 @@ export class FactionSystem {
   // Get all faction names including historical ones
   getAllFactionNames() {
     return Array.from(this._factions.values()).map(f => f.name);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Faction Rank System — Bethesda-style guild rank progression
+  // ══════════════════════════════════════════════════════════════════════════
+
+  getPlayerRank(factionId) {
+    const standing = this.getPlayerStanding(factionId);
+    let bestRank = this._rankThresholds[0];
+    for (const threshold of this._rankThresholds) {
+      if (standing >= threshold.minStanding) {
+        bestRank = threshold;
+      }
+    }
+    const factionNames = this._factionRankNames[factionId];
+    const rankName = factionNames ? (factionNames[bestRank.rank] || bestRank.name) : bestRank.name;
+    return { rank: bestRank.rank, name: rankName, standing };
+  }
+
+  getRankName(factionId, rank) {
+    const factionNames = this._factionRankNames[factionId];
+    if (factionNames && factionNames[rank]) return factionNames[rank];
+    const threshold = this._rankThresholds.find(t => t.rank === rank);
+    return threshold ? threshold.name : 'Unknown';
+  }
+
+  meetsRankRequirement(factionId, requiredRank) {
+    const { rank } = this.getPlayerRank(factionId);
+    return rank >= requiredRank;
+  }
+
+  // Apply faction consequences from a completed quest (ripple effect)
+  applyQuestFactionConsequences(consequences) {
+    if (!consequences) return [];
+    const changes = [];
+    for (const [factionId, amount] of Object.entries(consequences)) {
+      if (!this._factions.has(factionId)) continue;
+      const oldRank = this.getPlayerRank(factionId);
+      this.modifyPlayerStanding(factionId, amount);
+      const newRank = this.getPlayerRank(factionId);
+
+      changes.push({
+        factionId,
+        factionName: this._factions.get(factionId).name,
+        amount,
+        oldRank: oldRank.rank,
+        newRank: newRank.rank,
+        rankChanged: oldRank.rank !== newRank.rank,
+        newRankName: newRank.name,
+      });
+    }
+    return changes;
+  }
+
+  // Auto-calculate spillover from completing a faction quest
+  calculateFactionSpillover(primaryFactionId, repGain) {
+    const consequences = { [primaryFactionId]: repGain };
+
+    for (const [factionId] of this._factions) {
+      if (factionId === primaryFactionId) continue;
+      if (factionId === 'FERAL_SWARM' || factionId === 'THE_VOID') continue; // skip monster factions
+
+      const relation = this.getRelation(primaryFactionId, factionId);
+      if (relation > 30) {
+        // Allied factions gain a small amount
+        consequences[factionId] = Math.floor(repGain * 0.2);
+      } else if (relation < -30) {
+        // Hostile factions lose reputation
+        consequences[factionId] = -Math.floor(repGain * 0.3);
+      }
+    }
+
+    return consequences;
+  }
+
+  // Get all joinable factions (non-monster, non-historical)
+  getJoinableFactions() {
+    const joinable = ['COLONY_GUARD', 'SALVAGE_GUILD', 'ARCHIVE_KEEPERS', 'SYNDICATE', 'COLONY_COUNCIL', 'RUST_RAIDERS'];
+    return joinable.filter(id => this._factions.has(id)).map(id => ({
+      id,
+      ...this._factions.get(id),
+      playerRank: this.getPlayerRank(id),
+    }));
   }
 }
 

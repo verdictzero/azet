@@ -1467,13 +1467,18 @@ export class UIManager {
       const labelColor = standing > 50 ? COLORS.BRIGHT_GREEN : standing > 20 ? COLORS.GREEN :
         standing > -20 ? COLORS.WHITE : standing > -50 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_RED;
 
+      // Show faction rank name if available
+      const rank = factionSystem.getPlayerRank ? factionSystem.getPlayerRank(id) : null;
+      const rankLabel = rank ? ` [${rank.name}]` : '';
+
       const nameMaxW = Math.min(16, panelW - 4);
       r.drawString(px + 2, y, faction.name.substring(0, nameMaxW).padEnd(nameMaxW), COLORS.BRIGHT_WHITE, bg);
       const barX = px + nameMaxW + 3;
       r.drawString(barX, y, bar, labelColor, bg, panelW - nameMaxW - 5);
       const labelX = barX + barW + 1;
       if (labelX < px + panelW - 2) {
-        r.drawString(labelX, y, standingLabel, labelColor, bg, px + panelW - 2 - labelX);
+        const fullLabel = standingLabel + rankLabel;
+        r.drawString(labelX, y, fullLabel, labelColor, bg, px + panelW - 2 - labelX);
       }
       y += 2;
     }
@@ -1512,20 +1517,58 @@ export class UIManager {
     if (active.length === 0) {
       lines.push({ type: 'text', text: '  No active quests.', color: COLORS.BRIGHT_BLACK });
     }
-    for (let i = 0; i < active.length; i++) {
-      const q = active[i];
-      const sel = i === this.selectedIndex;
+
+    // Group chain quests together, then standalone
+    const chainQuests = active.filter(q => q.chainId);
+    const standaloneQuests = active.filter(q => !q.chainId);
+    const sortedActive = [...chainQuests, ...standaloneQuests];
+
+    let lastChainId = null;
+    for (let i = 0; i < sortedActive.length; i++) {
+      const q = sortedActive[i];
+      const origIdx = active.indexOf(q);
+      const sel = origIdx === this.selectedIndex;
       const tracked = q.id === trackedQuestId;
       const cursor = sel ? ICONS.cursor : ' ';
       const trackIcon = tracked ? ' \u25CE' : '';
-      const titleColor = tracked ? COLORS.BRIGHT_CYAN : (sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE);
-      lines.push({ type: 'quest', text: cursor + ' ' + q.title + trackIcon, color: titleColor, questIdx: i });
+
+      // Show chain header for grouped chain quests
+      if (q.chainId && q.chainId !== lastChainId) {
+        const chainLabel = q.chainName || 'Quest Chain';
+        lines.push({ type: 'text', text: `  -- ${chainLabel} --`, color: COLORS.BRIGHT_YELLOW });
+        lastChainId = q.chainId;
+      } else if (!q.chainId && lastChainId !== null) {
+        lastChainId = null;
+      }
+
+      // Quest type badge
+      const badge = q.isLocationQuest ? '[LOC]' : q.isRadiant ? '[RAD]' : q.chainId ? `[${q.chainStage + 1}/${q.chainStage + 1}]` : '';
+      const titleColor = tracked ? COLORS.BRIGHT_CYAN : q.chainId ? COLORS.BRIGHT_YELLOW : (sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE);
+      const titleText = badge ? `${cursor} ${badge} ${q.title}${trackIcon}` : `${cursor} ${q.title}${trackIcon}`;
+      lines.push({ type: 'quest', text: titleText, color: titleColor, questIdx: origIdx });
+
       for (const obj of q.objectives) {
         const progress = `${obj.current}/${obj.required}`;
         const objMaxW = panelW - 8;
         const descMax = objMaxW - progress.length - 2;
         const desc = obj.description.length > descMax ? obj.description.substring(0, descMax) : obj.description;
         lines.push({ type: 'objective', text: '    ' + desc + '  ' + progress, color: COLORS.BRIGHT_BLACK });
+      }
+    }
+
+    // Quest leads section
+    const leads = questSystem.getQuestLeads ? questSystem.getQuestLeads() : [];
+    if (leads.length > 0) {
+      lines.push({ type: 'blank' });
+      lines.push({ type: 'header', text: 'Leads' });
+      lines.push({ type: 'separator' });
+      for (const lead of leads) {
+        const maxW = panelW - 6;
+        const text = lead.text.length > maxW ? lead.text.substring(0, maxW - 3) + '...' : lead.text;
+        lines.push({ type: 'text', text: '  * ' + text, color: COLORS.BRIGHT_BLACK });
+        if (lead.targetLocation) {
+          lines.push({ type: 'text', text: '    -> ' + lead.targetLocation, color: COLORS.BRIGHT_CYAN });
+        }
       }
     }
 
