@@ -139,6 +139,9 @@ export class UIManager {
     this.debugScroll = 0;
     this.debugCursor = 0;
 
+    // Settings cursor (for controller navigation)
+    this.settingsCursor = 0;
+
     // Console log viewer state
     this.consoleLogScroll = 0;
 
@@ -2839,7 +2842,7 @@ export class UIManager {
 
   // ─── SETTINGS (FF-style Config) ───
 
-  drawSettings(settings) {
+  drawSettings(settings, cursor) {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
@@ -2848,6 +2851,7 @@ export class UIManager {
     const panelH = settings.crtEffects ? 35 : 26;
     const px = Math.floor((cols - panelW) / 2);
     const py = Math.floor((rows - panelH) / 2);
+    const cur = cursor || 0;
 
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Config ');
 
@@ -2861,13 +2865,17 @@ export class UIManager {
       { key: 'M', label: 'Music', value: settings.musicMuted ? 'MUTED' : 'ON', color: settings.musicMuted ? COLORS.BRIGHT_RED : COLORS.BRIGHT_GREEN },
     ];
 
+    let itemIdx = 0;
     let curY = py + 2;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      r.drawString(px + 3, curY, `[${item.key}]`, COLORS.BRIGHT_WHITE, bg);
-      r.drawString(px + 7, curY, item.label, COLORS.WHITE, bg);
+      const selected = cur === itemIdx;
+      if (selected) r.drawString(px + 1, curY, '\u25B6', COLORS.BRIGHT_WHITE, bg);
+      r.drawString(px + 3, curY, `[${item.key}]`, selected ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_WHITE, bg);
+      r.drawString(px + 7, curY, item.label, selected ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
       r.drawString(px + panelW - item.value.length - 3, curY, item.value, item.color, bg);
       curY += 2;
+      itemIdx++;
     }
 
     // Export/Import separator
@@ -2878,9 +2886,12 @@ export class UIManager {
       { key: '0', label: 'Import Save', value: '', color: COLORS.BRIGHT_CYAN },
     ];
     for (const item of exportItems) {
-      r.drawString(px + 3, curY, `[${item.key}]`, COLORS.BRIGHT_WHITE, bg);
-      r.drawString(px + 7, curY, item.label, COLORS.WHITE, bg);
+      const selected = cur === itemIdx;
+      if (selected) r.drawString(px + 1, curY, '\u25B6', COLORS.BRIGHT_WHITE, bg);
+      r.drawString(px + 3, curY, `[${item.key}]`, selected ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_WHITE, bg);
+      r.drawString(px + 7, curY, item.label, selected ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
       curY += 2;
+      itemIdx++;
     }
 
     if (settings.crtEffects) {
@@ -2897,14 +2908,17 @@ export class UIManager {
       ];
 
       for (const item of subItems) {
-        r.drawString(px + 5, curY, `[${item.key}]`, COLORS.WHITE, bg);
-        r.drawString(px + 9, curY, item.label, COLORS.BRIGHT_BLACK, bg);
+        const selected = cur === itemIdx;
+        if (selected) r.drawString(px + 3, curY, '\u25B6', COLORS.BRIGHT_WHITE, bg);
+        r.drawString(px + 5, curY, `[${item.key}]`, selected ? COLORS.BRIGHT_YELLOW : COLORS.WHITE, bg);
+        r.drawString(px + 9, curY, item.label, selected ? COLORS.BRIGHT_WHITE : COLORS.BRIGHT_BLACK, bg);
         r.drawString(px + panelW - item.value.length - 3, curY, item.value, item.color, bg);
         curY += 1;
+        itemIdx++;
       }
     }
 
-    r.drawString(px + 2, py + panelH - 2, 'Press key to toggle  Esc:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
+    r.drawString(px + 2, py + panelH - 2, '\u25B2\u25BC:Select  A:Toggle  B:Close', COLORS.BRIGHT_BLACK, bg, panelW - 4);
   }
 
   // ─── CONFIRM DIALOG (FF-style) ───

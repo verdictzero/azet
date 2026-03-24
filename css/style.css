@@ -28,6 +28,9 @@ html, body {
   image-rendering: crisp-edges;
   margin: 0 auto;
   border-radius: 6px;
+  max-width: 100vw;
+  max-height: 100vh;
+  max-height: 100dvh;
 }
 
 /* ── Virtual Gamepad ── */
@@ -203,6 +206,27 @@ html, body {
   background: rgba(200, 100, 255, 0.25);
   border-color: rgba(200, 120, 255, 0.55);
   color: rgba(220, 170, 255, 0.95);
+}
+
+/* ── Portrait: anchor controls at bottom, reduce sizes ── */
+@media (orientation: portrait) {
+  #touch-controls {
+    bottom: calc(env(safe-area-inset-bottom, 4px) + 4px);
+  }
+
+  .touch-grid {
+    grid-template-columns: repeat(3, clamp(40px, 11vw, 52px));
+    gap: 3px;
+  }
+
+  .gpad-btn {
+    min-height: clamp(36px, 8.5vw, 44px);
+  }
+
+  .gpad-btn.face {
+    width: clamp(40px, 11vw, 52px);
+    height: clamp(40px, 11vw, 52px);
+  }
 }
 
 /* ── Landscape: tighten for short screens ── */

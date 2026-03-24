@@ -161,6 +161,7 @@ class Game {
       { label: 'Compass',   icon: '\u25CA', state: 'QUEST_COMPASS' },
       { label: 'Save',      icon: '\u25AA', action: 'save'         },
       { label: 'Settings',  icon: '\u2660', state: 'SETTINGS'      },
+      { label: 'Debug',     icon: '\u2261', action: 'debug'        },
       { label: 'Help',      icon: '?',      state: 'HELP'          },
     ];
 
@@ -486,6 +487,8 @@ class Game {
       this.camera.viewportCols = Math.floor((this.renderer.cols - 2) / density);
       this.camera.viewportRows = Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density);
     }
+    // Reset settings cursor when entering settings
+    if (newState === 'SETTINGS') this.ui.settingsCursor = 0;
     // Update touch controls layout for new state
     this.input.updateTouchLayout(newState);
     this._updateMusic(newState);
@@ -3366,6 +3369,73 @@ class Game {
     }
   }
 
+  _getSettingsItems() {
+    const items = [
+      { id: 'crtEffects', label: 'CRT Effects', key: '1' },
+      { id: 'fontSize', label: 'Font Size', key: '2' },
+      { id: 'touchControls', label: 'Touch Controls', key: '3' },
+      { id: 'autoSave', label: 'Auto-Save', key: '4' },
+      { id: 'questNav', label: 'Quest Nav', key: '5' },
+      { id: 'musicVolume', label: 'Music Volume', key: 'V' },
+      { id: 'musicMuted', label: 'Music', key: 'M' },
+      { id: 'exportSave', label: 'Export Save', key: '9' },
+      { id: 'importSave', label: 'Import Save', key: '0' },
+    ];
+    if (this.settings.crtEffects) {
+      items.push(
+        { id: 'crtGlow', label: 'Phosphor Glow', key: '6' },
+        { id: 'crtScanlines', label: 'Scanlines', key: '7' },
+        { id: 'crtAberration', label: 'Chroma Aberr.', key: '8' },
+        { id: 'crtResolution', label: 'CRT Resolution', key: '`' },
+      );
+    }
+    return items;
+  }
+
+  _activateSettingsItem(id) {
+    switch (id) {
+      case 'crtEffects': this.settings.crtEffects = !this.settings.crtEffects; break;
+      case 'fontSize':
+        this.settings.fontSize = this.settings.fontSize >= 20 ? 12 : this.settings.fontSize + 2;
+        this.renderer.setFontSize(this.settings.fontSize);
+        this.handleResize();
+        break;
+      case 'touchControls': this.settings.touchControls = !this.settings.touchControls; break;
+      case 'autoSave': {
+        const intervals = [50, 100, 200, 500];
+        const idx = intervals.indexOf(this.settings.autoSaveInterval);
+        this.settings.autoSaveInterval = intervals[(idx + 1) % intervals.length];
+        break;
+      }
+      case 'questNav': this.settings.showQuestNav = !this.settings.showQuestNav; break;
+      case 'musicVolume': {
+        const steps = [0, 0.25, 0.5, 0.75, 1.0];
+        const curIdx = steps.indexOf(this.settings.musicVolume);
+        this.settings.musicVolume = steps[(curIdx + 1) % steps.length];
+        this.music.setVolume(this.settings.musicVolume);
+        break;
+      }
+      case 'musicMuted':
+        this.settings.musicMuted = !this.settings.musicMuted;
+        this.music.setMuted(this.settings.musicMuted);
+        break;
+      case 'exportSave': this.exportSave(); return; // no save needed
+      case 'importSave': this.importSave(); return;
+      case 'crtGlow': this.settings.crtGlow = !this.settings.crtGlow; break;
+      case 'crtScanlines': this.settings.crtScanlines = !this.settings.crtScanlines; break;
+      case 'crtAberration': this.settings.crtAberration = !this.settings.crtAberration; break;
+      case 'crtResolution': {
+        const modes = ['auto', 'quarter', 'half', 'three-quarter', 'full'];
+        const idx = modes.indexOf(this.settings.crtResolution);
+        this.settings.crtResolution = modes[(idx + 1) % modes.length];
+        this._applyCrtQuality();
+        break;
+      }
+      default: return;
+    }
+    this._saveSettings();
+  }
+
   handleSettingsInput(key) {
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
@@ -3373,57 +3443,32 @@ class Game {
       this.setState(this.prevState || 'OVERWORLD');
       return;
     }
-    if (key === '1') {
-      this.settings.crtEffects = !this.settings.crtEffects;
-      this._saveSettings();
+
+    const items = this._getSettingsItems();
+    const maxIdx = items.length - 1;
+
+    // Cursor navigation (controller / d-pad)
+    if (key === 'ArrowDown' || key === 's' || key === 'S') {
+      this.ui.settingsCursor = Math.min((this.ui.settingsCursor || 0) + 1, maxIdx);
+      return;
     }
-    if (key === '2') {
-      this.settings.fontSize = this.settings.fontSize >= 20 ? 12 : this.settings.fontSize + 2;
-      this.renderer.setFontSize(this.settings.fontSize);
-      this.handleResize();
-      this._saveSettings();
+    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+      this.ui.settingsCursor = Math.max((this.ui.settingsCursor || 0) - 1, 0);
+      return;
     }
-    if (key === '3') {
-      this.settings.touchControls = !this.settings.touchControls;
-      this._saveSettings();
+
+    // Activate via Enter / A button
+    if (key === 'Enter' || key === ' ') {
+      const item = items[this.ui.settingsCursor || 0];
+      if (item) this._activateSettingsItem(item.id);
+      return;
     }
-    if (key === '4') {
-      const intervals = [50, 100, 200, 500];
-      const idx = intervals.indexOf(this.settings.autoSaveInterval);
-      this.settings.autoSaveInterval = intervals[(idx + 1) % intervals.length];
-      this._saveSettings();
-    }
-    if (key === '5') {
-      this.settings.showQuestNav = !this.settings.showQuestNav;
-      this._saveSettings();
-    }
-    // Music controls
-    if (key === 'v' || key === 'V') {
-      const steps = [0, 0.25, 0.5, 0.75, 1.0];
-      const curIdx = steps.indexOf(this.settings.musicVolume);
-      this.settings.musicVolume = steps[(curIdx + 1) % steps.length];
-      this.music.setVolume(this.settings.musicVolume);
-      this._saveSettings();
-    }
-    if (key === 'm' || key === 'M') {
-      this.settings.musicMuted = !this.settings.musicMuted;
-      this.music.setMuted(this.settings.musicMuted);
-      this._saveSettings();
-    }
-    // Export/Import
-    if (key === '9') { this.exportSave(); }
-    if (key === '0') { this.importSave(); }
-    // CRT sub-options
-    if (this.settings.crtEffects) {
-      if (key === '6') { this.settings.crtGlow = !this.settings.crtGlow; this._saveSettings(); }
-      if (key === '7') { this.settings.crtScanlines = !this.settings.crtScanlines; this._saveSettings(); }
-      if (key === '8') { this.settings.crtAberration = !this.settings.crtAberration; this._saveSettings(); }
-      if (key === '`' || key === '~') {
-        const modes = ['auto', 'quarter', 'half', 'three-quarter', 'full'];
-        const idx = modes.indexOf(this.settings.crtResolution);
-        this.settings.crtResolution = modes[(idx + 1) % modes.length];
-        this._applyCrtQuality();
-        this._saveSettings();
+
+    // Legacy number/letter key support (keyboard)
+    for (const item of items) {
+      if (key === item.key || key === item.key.toLowerCase()) {
+        this._activateSettingsItem(item.id);
+        return;
       }
     }
   }
@@ -3720,6 +3765,12 @@ class Game {
         this.openEquipmentMenu();
       } else if (item.action === 'rest') {
         this.openRestItemSelect(this._gamepadMenuReturnState || 'OVERWORLD');
+      } else if (item.action === 'debug') {
+        this._debugReturnState = this._gamepadMenuReturnState || 'OVERWORLD';
+        this.ui.debugTab = 0;
+        this.ui.debugCursor = 0;
+        this.ui.debugScroll = 0;
+        this.setState('DEBUG_MENU');
       } else if (item.state) {
         this.setState(item.state);
       }
@@ -5025,7 +5076,7 @@ class Game {
         break;
 
       case 'SETTINGS':
-        this.ui.drawSettings(this.settings);
+        this.ui.drawSettings(this.settings, this.ui.settingsCursor || 0);
         break;
 
       case 'DEBUG_MENU':

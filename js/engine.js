@@ -148,7 +148,7 @@ export class Renderer {
     this.cellHeight = Math.ceil(this.fontSize * 1.35);
 
     // Reserve space for touch controls on mobile so they don't overlap the game
-    const touchReserve = isMobile ? (isPortrait ? 180 : 120) : 0;
+    const touchReserve = isMobile ? (isPortrait ? Math.min(Math.floor(h * 0.35), 320) : 120) : 0;
     const availH = h - touchReserve;
 
     // Compute grid to fill available area
@@ -160,6 +160,10 @@ export class Renderer {
     if (this.cols < 30) this.cols = 30;
     // Ensure enough rows for HUD
     if (this.rows < LAYOUT.HUD_TOTAL + 5) this.rows = LAYOUT.HUD_TOTAL + 5;
+
+    // Clamp canvas to viewport — never exceed available space
+    while (this.cols * this.cellWidth > w && this.cols > 30) this.cols--;
+    while (this.rows * this.cellHeight > availH && this.rows > LAYOUT.HUD_TOTAL + 5) this.rows--;
 
     this.canvas.width = this.cols * this.cellWidth;
     this.canvas.height = this.rows * this.cellHeight;
@@ -1584,7 +1588,7 @@ export class InputManager {
     GAME_OVER: { A: 'Enter' },
     MENU: { A: 'Enter', B: 'Escape' },
     CHAR_CREATE: { A: 'Enter', B: 'Escape' },
-    DEBUG_MENU: { A: 'Enter', B: 'Escape' },
+    DEBUG_MENU: { A: 'Enter', B: 'Escape', L1: 'ArrowLeft', R1: 'ArrowRight' },
     DUNGEON: {
       X: 'g',     // Pick up
       Y: '>',     // Stairs
