@@ -3761,6 +3761,7 @@ class Game {
           break;
         case 'infiniteMana': this.debug.infiniteMana = !this.debug.infiniteMana; break;
         case 'noClip': this.debug.noClip = !this.debug.noClip; break;
+        case 'walkReallyReallyFast': this.debug.walkReallyReallyFast = !this.debug.walkReallyReallyFast; break;
         case 'disableShadows': this.debug.disableShadows = !this.debug.disableShadows; break;
         case 'disableLighting': this.debug.disableLighting = !this.debug.disableLighting; break;
         case 'disableClouds': this.debug.disableClouds = !this.debug.disableClouds; break;
@@ -7232,6 +7233,9 @@ class Game {
 
     // Update transitions
     this.updateTransition();
+
+    // Poll physical gamepad and update input state
+    this.input.update();
 
     // Process queued input (block during transitions)
     if (this.transitionTimer <= 0) {
