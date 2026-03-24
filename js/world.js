@@ -328,7 +328,7 @@ const INNER_HULL_WIDTH_CHUNKS = 8;  // ~256 tiles E-W engineering corridors
 
 // Airlock parameters — walkable passages through section walls
 const AIRLOCK_SPACING = 128;        // tiles between airlock centers along Y axis (every 4 chunks)
-const AIRLOCK_HALF_HEIGHT = 3;      // airlock is 7 tiles tall (2 frame + 5 walkable)
+const AIRLOCK_HALF_HEIGHT = 2;      // airlock is 5 tiles tall (2 frame + 3 walkable)
 
 // Wall thickness & gradient — solid hull plating with fading block gradient
 const WALL_THICKNESS = 7;           // tiles thick at each edge of the section
@@ -725,39 +725,42 @@ export class ChunkManager {
 
         if (hasAirlock && airlockPhase <= AIRLOCK_HALF_HEIGHT * 2) {
           // Airlock opening cuts through all 7 wall layers
+          const isWest = localTileX < WALL_THICKNESS;
           if (airlockPhase === 0 || airlockPhase === AIRLOCK_HALF_HEIGHT * 2) {
-            // Frame row — decorative top/bottom border
-            const frameChars = ['╔', '═', '═', '═', '═', '═', '╗']; // outer→inner for west wall
-            const isWest = localTileX < WALL_THICKNESS;
+            // Frame row — top: ╚═════╗, bottom: ╔═════╝ (west wall, mirrored for east)
+            const frameChars = ['╚', '═', '═', '═', '═', '═', '╗'];
             const frameChar = isWest ? frameChars[wallDist] : frameChars[6 - wallDist];
-            // Swap corners for bottom frame
             let ch = frameChar;
             if (airlockPhase === AIRLOCK_HALF_HEIGHT * 2) {
-              if (ch === '╔') ch = '╚';
+              if (ch === '╚') ch = '╔';
+              else if (ch === '╔') ch = '╚';
               else if (ch === '╗') ch = '╝';
+              else if (ch === '╝') ch = '╗';
             }
             return tile('AIRLOCK_FRAME', ch, '#AA8800', '#0D0800', false,
               { biome: 'hull', airlockFrame: true });
           }
-          // Passage rows — walkable with layer-appropriate decoration
-          if (wallDist <= 1) {
-            // Outer frame pillars — heavy structural border
-            const passPhase = airlockPhase % 2;
-            const ch = passPhase === 1 ? '║' : '║';
+          // Passage rows — ►▮▮►╠ pattern, center row uses ❖ as interstitial door
+          const isCenterRow = airlockPhase === AIRLOCK_HALF_HEIGHT;
+          if (wallDist === 0 || wallDist === 3) {
+            // Directional arrows — pointing inward toward habitat
+            const ch = isWest ? '►' : '◄';
+            return tile('AIRLOCK_PASSAGE', ch, '#FFAA00', '#1A1100', true,
+              { biome: 'hull', airlock: true });
+          }
+          if (wallDist === 1 || wallDist === 2) {
+            // Door panels — solid blast-door segments
+            return tile('AIRLOCK_PASSAGE', '▮', '#CC9900', '#0D0800', true,
+              { biome: 'hull', airlock: true });
+          }
+          if (wallDist === 4) {
+            // Interstitial junction — ❖ door on center row, ╠/╣ structural on others
+            if (isCenterRow) {
+              return tile('AIRLOCK_PASSAGE', '❖', '#FFCC44', '#1A1100', true,
+                { biome: 'hull', airlock: true });
+            }
+            const ch = isWest ? '╠' : '╣';
             return tile('AIRLOCK_PASSAGE', ch, '#CC9900', '#0D0800', true,
-              { biome: 'hull', airlock: true });
-          }
-          if (wallDist === 2 || wallDist === 4) {
-            // Indicator light columns — alternating amber markers
-            const lightPhase = ((airlockPhase + wallDist) % 3);
-            const ch = lightPhase === 0 ? '▐' : '·';
-            const fg = lightPhase === 0 ? '#FFAA00' : '#886600';
-            return tile('AIRLOCK_PASSAGE', ch, fg, '#1A1100', true,
-              { biome: 'hull', airlock: true });
-          }
-          if (wallDist === 3) {
-            // Center passage — main walkway
-            return tile('AIRLOCK_PASSAGE', '·', '#FFCC44', '#1A1100', true,
               { biome: 'hull', airlock: true });
           }
           // Inner layers (5-6) — transition zone with grating
@@ -1060,10 +1063,14 @@ export class ChunkManager {
     // Outer walls of the corridor (first and last 2 tiles) — with airlock openings
     if (localX < 2 || localX >= totalWidth - 2) {
       if (isAirlockY) {
-        return tile('AIRLOCK_PASSAGE', '║', '#CC9900', '#0D0800', true, { biome: 'inner_hull', airlock: true });
+        const isCenterRow = airlockPhase === AIRLOCK_HALF_HEIGHT;
+        const ch = isCenterRow ? '❖' : (isWestWall ? '╣' : '╠');
+        const fg = isCenterRow ? '#FFCC44' : '#CC9900';
+        const bg = isCenterRow ? '#1A1100' : '#0D0800';
+        return tile('AIRLOCK_PASSAGE', ch, fg, bg, true, { biome: 'inner_hull', airlock: true });
       }
       if (isAirlockFrame) {
-        const ch = isWestWall ? (airlockPhase === 0 ? '╔' : '╚') : (airlockPhase === 0 ? '╗' : '╝');
+        const ch = isWestWall ? (airlockPhase === 0 ? '╗' : '╝') : (airlockPhase === 0 ? '╚' : '╔');
         return tile('AIRLOCK_FRAME', ch, '#AA8800', '#0D0800', false, { biome: 'inner_hull', airlockFrame: true });
       }
       return tile('HULL_CORRIDOR_WALL', '█', '#334455', '#020205', false, { biome: 'inner_hull' });
