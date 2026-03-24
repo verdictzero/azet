@@ -7250,57 +7250,60 @@ class Game {
   gameLoop(timestamp) {
     if (!this.running) return;
 
-    const delta = timestamp - this.lastFrame;
-    this.lastFrame = timestamp;
+    try {
+      const delta = timestamp - this.lastFrame;
+      this.lastFrame = timestamp;
 
-    // Advance real-time clock during gameplay states
-    const gameplayStates = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'DIALOGUE', 'SHOP', 'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'COMBAT', 'QUEST_COMPASS', 'GAMEPAD_MENU'];
-    const isGameplay = gameplayStates.includes(this.state);
-    if (this.timeSystem) {
-      this.timeSystem.setRealTimePaused(!isGameplay);
-      if (isGameplay) {
-        this.timeSystem.updateRealTime(timestamp);
+      // Advance real-time clock during gameplay states
+      const gameplayStates = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'DIALOGUE', 'SHOP', 'INVENTORY', 'CHARACTER', 'QUEST_LOG', 'MAP', 'COMBAT', 'QUEST_COMPASS', 'GAMEPAD_MENU'];
+      const isGameplay = gameplayStates.includes(this.state);
+      if (this.timeSystem) {
+        this.timeSystem.setRealTimePaused(!isGameplay);
+        if (isGameplay) {
+          this.timeSystem.updateRealTime(timestamp);
+        }
       }
-    }
 
-    // Check for overworld day/night music crossfade
-    if (this.state === 'OVERWORLD' && this.music && this.timeSystem) {
-      const wantTrack = this.timeSystem.isDaytime() ? TRACKS.OVERWORLD_DAY : TRACKS.OVERWORLD_NIGHT;
-      if (this.music.currentTrack !== wantTrack) {
-        this.music.play(wantTrack);
+      // Check for overworld day/night music crossfade
+      if (this.state === 'OVERWORLD' && this.music && this.timeSystem) {
+        const wantTrack = this.timeSystem.isDaytime() ? TRACKS.OVERWORLD_DAY : TRACKS.OVERWORLD_NIGHT;
+        if (this.music.currentTrack !== wantTrack) {
+          this.music.play(wantTrack);
+        }
       }
-    }
 
-    // Update glow system
-    this.glow.update(delta / 1000);
+      // Update glow system
+      this.glow.update(delta / 1000);
 
-    // Update cloud drift
-    if (this.cloudSystem) {
-      this.cloudSystem.update(delta / 1000, this.weatherSystem.current);
-    }
-
-    // Update transitions
-    this.updateTransition();
-
-    // Poll physical gamepad and update input state
-    this.input.update();
-
-    // Process queued input (block during transitions)
-    if (this.transitionTimer <= 0) {
-      const action = this.input.consumeAction();
-      if (action) {
-        this.handleInput(action);
+      // Update cloud drift
+      if (this.cloudSystem) {
+        this.cloudSystem.update(delta / 1000, this.weatherSystem.current);
       }
-    } else {
-      this.input.consumeAction(); // discard input during transitions
-    }
 
-    // Render (includes transition overlay and post-processing)
-    this.render();
+      // Update transitions
+      this.updateTransition();
 
-    // Auto-save periodically
-    if (this.turnCount > 0 && this.turnCount % this.settings.autoSaveInterval === 0 && this.player) {
-      this.saveGame();
+      // Process queued input (block during transitions)
+      if (this.transitionTimer <= 0) {
+        const action = this.input.consumeAction();
+        if (action) {
+          this.handleInput(action);
+        }
+      } else {
+        this.input.consumeAction(); // discard input during transitions
+      }
+
+      // Render (includes transition overlay and post-processing)
+      this.render();
+
+      // Auto-save periodically
+      if (this.turnCount > 0 && this.turnCount % this.settings.autoSaveInterval === 0 && this.player) {
+        this.saveGame();
+      }
+    } catch (e) {
+      console.error('Game loop error:', e);
+      _drawErrorToCanvas(this.canvas, e);
+      return; // stop the loop — error is shown on canvas
     }
 
     requestAnimationFrame((ts) => this.gameLoop(ts));
@@ -7333,9 +7336,49 @@ class Game {
   }
 }
 
+// ─── ERROR DISPLAY ───
+
+function _drawErrorToCanvas(canvas, err) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.fillStyle = '#1a0000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = '16px monospace';
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText('ASCIIQUEST — Fatal Error', 20, 40);
+  ctx.fillStyle = '#ffaaaa';
+  ctx.font = '14px monospace';
+  const msg = String(err && err.stack ? err.stack : err);
+  const lines = msg.split('\n');
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    ctx.fillText(lines[i], 20, 70 + i * 18);
+  }
+  ctx.fillStyle = '#888888';
+  ctx.fillText('Check browser console (F12) for details.', 20, 70 + Math.min(lines.length, 20) * 18 + 20);
+}
+
 // ─── BOOTSTRAP ───
 
 window.addEventListener('DOMContentLoaded', () => {
-  const game = new Game();
-  game.start();
+  try {
+    const game = new Game();
+    game.start();
+  } catch (e) {
+    console.error('Game failed to initialize:', e);
+    _drawErrorToCanvas(document.getElementById('game-canvas'), e);
+  }
+});
+
+// Catch uncaught errors that occur during module evaluation or async init
+window.addEventListener('error', (event) => {
+  console.error('Uncaught error:', event.error || event.message);
+  const canvas = document.getElementById('game-canvas');
+  if (canvas) _drawErrorToCanvas(canvas, event.error || event.message);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+  const canvas = document.getElementById('game-canvas');
+  if (canvas) _drawErrorToCanvas(canvas, event.reason);
 });
