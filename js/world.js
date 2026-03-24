@@ -320,7 +320,7 @@ export class OverworldGenerator {
 // ============================================================================
 
 // Section dimensions in chunks
-const HABITAT_WIDTH_CHUNKS = 256;   // ~8192 tiles E-W per habitat
+const HABITAT_WIDTH_CHUNKS = 128;   // ~4096 tiles E-W per habitat
 const HABITAT_WRAP_CHUNKS = 512;    // ~16384 tiles N-S circumference
 const FACILITY_WIDTH_CHUNKS = 64;   // ~2048 tiles E-W for C2/ENG
 const FACILITY_WRAP_CHUNKS = 96;    // ~3072 tiles N-S for facilities
