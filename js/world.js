@@ -326,6 +326,10 @@ const FACILITY_WIDTH_CHUNKS = 64;   // ~2048 tiles E-W for C2/ENG
 const FACILITY_WRAP_CHUNKS = 96;    // ~3072 tiles N-S for facilities
 const INNER_HULL_WIDTH_CHUNKS = 8;  // ~256 tiles E-W engineering corridors
 
+// Airlock parameters — walkable passages through section walls
+const AIRLOCK_SPACING = 64;         // tiles between airlock centers along Y axis
+const AIRLOCK_HALF_HEIGHT = 2;      // airlock is 5 tiles tall (2 frame + 3 walkable)
+
 // Habitat biome types (H4 is always 'lush')
 const HABITAT_BIOMES = [
   'lush',           // Healthy green ecosystem — rivers, forests, settlements
@@ -681,12 +685,22 @@ export class ChunkManager {
       return tile('VOID_SPACE', ' ', '#000000', '#000000', false, { biome: 'void' });
     }
 
-    // Section walls — massive hull plating at section boundaries
+    // Section walls — massive hull plating at section boundaries, with airlock openings
     if (section.type !== 'inner_hull') {
-      const localCX = cx - section.startChunkX;
       const localTileX = wx - section.startChunkX * CHUNK_SIZE;
       // Wall is 3 tiles thick at each edge of the section
       if (localTileX < 3 || localTileX >= section.widthChunks * CHUNK_SIZE - 3) {
+        // Check if this Y position is an airlock opening
+        const airlockPhase = ((wy % AIRLOCK_SPACING) + AIRLOCK_SPACING) % AIRLOCK_SPACING;
+        if (airlockPhase <= AIRLOCK_HALF_HEIGHT * 2) {
+          // Airlock frame (top and bottom edges)
+          if (airlockPhase === 0 || airlockPhase === AIRLOCK_HALF_HEIGHT * 2) {
+            return tile('AIRLOCK_FRAME', '▓', '#AA8800', '#0D0800', false, { biome: 'hull', airlockFrame: true });
+          }
+          // Walkable airlock passage
+          return tile('AIRLOCK_PASSAGE', '░', '#FFAA00', '#1A1100', true, { biome: 'hull', airlock: true });
+        }
+        // Normal wall
         const wallDetail = (this.detailNoise.fbm(wx * 0.3, wy * 0.3, 2) + 1) / 2;
         if (wallDetail > 0.7) {
           return tile('SECTION_WALL_DETAIL', '▓', '#556677', '#1A1A22', false, { biome: 'hull', sectionWall: true });
@@ -960,6 +974,7 @@ export class ChunkManager {
   }
 
   // ── Inner hull engineering corridor generation ──
+  // Industrial machine corridors between habitat sections with circuit-trace aesthetics
   _generateInnerHullTile(wx, wy, section) {
     const localX = wx - section.startChunkX * CHUNK_SIZE;
     const totalWidth = section.widthChunks * CHUNK_SIZE; // ~256 tiles
@@ -967,40 +982,91 @@ export class ChunkManager {
 
     const detailN = (this.detailNoise.fbm(wx * 0.25, wy * 0.25, 3) + 1) / 2;
     const structN = (this.heightNoise.fbm(wx * 0.1, wy * 0.1, 3) + 1) / 2;
+    const circuitN = (this.anomalyNoise.fbm(wx * 0.15, wy * 0.15, 2) + 1) / 2;
 
-    // Outer walls of the corridor (first and last 2 tiles)
+    // Airlock check — matching openings aligned with section wall airlocks
+    const airlockPhase = ((wy % AIRLOCK_SPACING) + AIRLOCK_SPACING) % AIRLOCK_SPACING;
+    const isAirlockY = airlockPhase > 0 && airlockPhase < AIRLOCK_HALF_HEIGHT * 2;
+    const isAirlockFrame = airlockPhase === 0 || airlockPhase === AIRLOCK_HALF_HEIGHT * 2;
+
+    // Outer walls of the corridor (first and last 2 tiles) — with airlock openings
     if (localX < 2 || localX >= totalWidth - 2) {
-      return tile('HULL_CORRIDOR_WALL', '█', '#556677', '#0A0A11', false, { biome: 'inner_hull' });
+      if (isAirlockY) {
+        return tile('AIRLOCK_PASSAGE', '░', '#FFAA00', '#1A1100', true, { biome: 'inner_hull', airlock: true });
+      }
+      if (isAirlockFrame) {
+        return tile('AIRLOCK_FRAME', '▓', '#AA8800', '#0D0800', false, { biome: 'inner_hull', airlockFrame: true });
+      }
+      return tile('HULL_CORRIDOR_WALL', '█', '#334455', '#020205', false, { biome: 'inner_hull' });
     }
 
-    // Central walkway (4 tiles wide in the middle)
-    if (Math.abs(localX - centerX) < 2) {
+    // Central walkway (8 tiles wide — main traversal path)
+    const distFromCenter = Math.abs(localX - centerX);
+    if (distFromCenter < 4) {
       // Transit station marker every ~512 tiles along Y
-      const stationY = wy % (CHUNK_SIZE * 16); // station every 16 chunks
-      if (stationY >= 0 && stationY < 3 && Math.abs(localX - centerX) < 1) {
-        return tile('TRANSIT_PLATFORM', '◊', '#FFAA00', '#1A1100', true,
+      const stationY = wy % (CHUNK_SIZE * 16);
+      if (stationY >= 0 && stationY < 3 && distFromCenter < 1) {
+        return tile('TRANSIT_PLATFORM', '◊', '#FFAA00', '#0A0800', true,
           { biome: 'inner_hull', transitStation: true, corridorId: section.id });
       }
-      return tile('HULL_CATWALK', '.', '#8899AA', '#111118', true, { biome: 'inner_hull' });
+      // Walkway floor with circuit-trace grid lines
+      if (wy % 8 === 0 || localX === centerX) {
+        return tile('HULL_CATWALK_LINE', '┼', '#445566', '#030308', true, { biome: 'inner_hull' });
+      }
+      if (wy % 4 === 0) {
+        return tile('HULL_CATWALK_LINE', '─', '#334455', '#030308', true, { biome: 'inner_hull' });
+      }
+      if (localX % 4 === 0) {
+        return tile('HULL_CATWALK_LINE', '│', '#334455', '#030308', true, { biome: 'inner_hull' });
+      }
+      return tile('HULL_CATWALK', '·', '#223344', '#030308', true, { biome: 'inner_hull' });
     }
 
-    // Pipe networks along the sides
-    if (localX < 6 || localX >= totalWidth - 6) {
-      if (structN > 0.6) return tile('HULL_PIPE', '║', '#778899', '#0A0A14', false, { biome: 'inner_hull' });
-      if (detailN > 0.7) return tile('HULL_VALVE', '⊕', '#99AABB', '#0A0A14', false, { biome: 'inner_hull' });
-      return tile('HULL_GRATING', '░', '#667788', '#080810', true, { biome: 'inner_hull' });
+    // Secondary walkway zone (4 more tiles each side — narrower passages)
+    if (distFromCenter < 8) {
+      // Periodic cross-corridor catwalks
+      if (wy % 16 < 2) {
+        return tile('HULL_CATWALK', '·', '#223344', '#020206', true, { biome: 'inner_hull' });
+      }
+      // Machinery blocks
+      if (structN > 0.55) {
+        const mechChars = ['▓', '█', '■'];
+        const ci = Math.floor(structN * 10) % mechChars.length;
+        return tile('HULL_MACHINERY', mechChars[ci], '#2A3544', '#010104', false, { biome: 'inner_hull' });
+      }
+      // Circuit conduits on the floor
+      if (circuitN > 0.6) {
+        const connChars = ['─', '│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴'];
+        const ci = Math.floor(circuitN * 30) % connChars.length;
+        return tile('HULL_CONDUIT', connChars[ci], '#1A3040', '#010104', false, { biome: 'inner_hull' });
+      }
+      return tile('HULL_FLOOR', '.', '#182838', '#010104', true, { biome: 'inner_hull' });
     }
 
-    // Machinery and equipment in the middle areas
-    if (structN > 0.65) {
-      return tile('HULL_MACHINERY', '▓', '#667788', '#0A0A11', false, { biome: 'inner_hull' });
-    }
-    if (detailN > 0.75) {
-      return tile('HULL_CONDUIT', '─', '#778899', '#0A0A11', false, { biome: 'inner_hull' });
+    // Heavy pipe/machinery banks (outer zones)
+    if (localX < 10 || localX >= totalWidth - 10) {
+      // Dense pipe arrays along the outer walls
+      if (structN > 0.4) return tile('HULL_PIPE', '║', '#2A3A4A', '#010104', false, { biome: 'inner_hull' });
+      if (detailN > 0.5) return tile('HULL_VALVE', '⊕', '#334455', '#010104', false, { biome: 'inner_hull' });
+      return tile('HULL_GRATING', '░', '#1A2A3A', '#010104', true, { biome: 'inner_hull' });
     }
 
-    // Walkable floor
-    return tile('HULL_FLOOR', '.', '#556677', '#080810', true, { biome: 'inner_hull' });
+    // Industrial machinery field (between pipe banks and walkway)
+    if (structN > 0.58) {
+      return tile('HULL_MACHINERY', '▓', '#253545', '#010104', false, { biome: 'inner_hull' });
+    }
+    if (detailN > 0.65) {
+      return tile('HULL_CONDUIT', '─', '#2A3A4A', '#010104', false, { biome: 'inner_hull' });
+    }
+    if (circuitN > 0.7) {
+      // Circuit trace floor pattern
+      const connChars = ['─', '│', '┌', '┐', '└', '┘', '○'];
+      const ci = Math.floor(circuitN * 20) % connChars.length;
+      return tile('HULL_CIRCUIT', connChars[ci], '#0D2535', '#010104', false, { biome: 'inner_hull' });
+    }
+
+    // Default dark industrial floor
+    return tile('HULL_FLOOR', '·', '#0D1D2D', '#010104', true, { biome: 'inner_hull' });
   }
 
   // ── Megalithic surface structure definitions ──
