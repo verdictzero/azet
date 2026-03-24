@@ -316,7 +316,216 @@ export class OverworldGenerator {
 }
 
 // ============================================================================
-// ChunkManager — Infinite chunk-based overworld
+// SectionManager — O'Neill cylinder section layout & biome assignment
+// ============================================================================
+
+// Section dimensions in chunks
+const HABITAT_WIDTH_CHUNKS = 256;   // ~8192 tiles E-W per habitat
+const HABITAT_WRAP_CHUNKS = 512;    // ~16384 tiles N-S circumference
+const FACILITY_WIDTH_CHUNKS = 64;   // ~2048 tiles E-W for C2/ENG
+const FACILITY_WRAP_CHUNKS = 96;    // ~3072 tiles N-S for facilities
+const INNER_HULL_WIDTH_CHUNKS = 8;  // ~256 tiles E-W engineering corridors
+
+// Habitat biome types (H4 is always 'lush')
+const HABITAT_BIOMES = [
+  'lush',           // Healthy green ecosystem — rivers, forests, settlements
+  'desert',         // Arid biodiversity preserve — sand, scrub, sparse outposts
+  'boreal_frozen',  // Hull breach froze the section — ice, dead trees, cold
+  'damaged',        // Catastrophic failure — rubble, metal, fires
+  'vacuum',         // Vented to space — void, wreckage, aliens
+  'swamp_toxic',    // Life support malfunction — toxic pools, overgrown biolabs
+  'overgrown',      // Nature reclaimed — dense jungle, hidden ruins
+];
+
+// Section definitions — ordered left-to-right (west-to-east) matching the diagram
+const SECTION_DEFS = [
+  { id: 'C2',  label: 'Command & Control', type: 'facility', widthChunks: FACILITY_WIDTH_CHUNKS, wrapChunks: FACILITY_WRAP_CHUNKS, color: '#7B68A0' },
+  { id: 'H1',  label: 'Habitat Ring 1',    type: 'habitat',  widthChunks: HABITAT_WIDTH_CHUNKS,  wrapChunks: HABITAT_WRAP_CHUNKS },
+  { id: 'H2',  label: 'Habitat Ring 2',    type: 'habitat',  widthChunks: HABITAT_WIDTH_CHUNKS,  wrapChunks: HABITAT_WRAP_CHUNKS },
+  { id: 'H3',  label: 'Habitat Ring 3',    type: 'habitat',  widthChunks: HABITAT_WIDTH_CHUNKS,  wrapChunks: HABITAT_WRAP_CHUNKS },
+  { id: 'H4',  label: 'Habitat Ring 4',    type: 'habitat',  widthChunks: HABITAT_WIDTH_CHUNKS,  wrapChunks: HABITAT_WRAP_CHUNKS, fixedBiome: 'lush' },
+  { id: 'H5',  label: 'Habitat Ring 5',    type: 'habitat',  widthChunks: HABITAT_WIDTH_CHUNKS,  wrapChunks: HABITAT_WRAP_CHUNKS },
+  { id: 'H6',  label: 'Habitat Ring 6',    type: 'habitat',  widthChunks: HABITAT_WIDTH_CHUNKS,  wrapChunks: HABITAT_WRAP_CHUNKS },
+  { id: 'H7',  label: 'Habitat Ring 7',    type: 'habitat',  widthChunks: HABITAT_WIDTH_CHUNKS,  wrapChunks: HABITAT_WRAP_CHUNKS },
+  { id: 'ENG', label: 'Engineering',        type: 'facility', widthChunks: FACILITY_WIDTH_CHUNKS, wrapChunks: FACILITY_WRAP_CHUNKS, color: '#9B1B5B' },
+];
+
+export class SectionManager {
+  constructor(seed) {
+    this.seed = seed;
+    this.sections = [];
+    this.sectionById = {};
+    this.biomeAssignments = {};     // sectionId -> biome string
+    this.transitStations = {};      // sectionId -> { active: bool, worldX, worldY }
+    this._buildLayout();
+    this._assignBiomes(seed);
+  }
+
+  // Build the coordinate layout — each section occupies a range of chunk X coordinates
+  // with inner hull corridors between each pair of sections
+  _buildLayout() {
+    let chunkX = 0;
+    this.sections = [];
+
+    for (let i = 0; i < SECTION_DEFS.length; i++) {
+      const def = SECTION_DEFS[i];
+
+      // Inner hull corridor BEFORE each section (except the first)
+      if (i > 0) {
+        const corridor = {
+          id: `HULL_${SECTION_DEFS[i - 1].id}_${def.id}`,
+          label: `Inner Hull: ${SECTION_DEFS[i - 1].id}—${def.id}`,
+          type: 'inner_hull',
+          widthChunks: INNER_HULL_WIDTH_CHUNKS,
+          wrapChunks: Math.max(def.wrapChunks || HABITAT_WRAP_CHUNKS, (SECTION_DEFS[i - 1] || def).wrapChunks || HABITAT_WRAP_CHUNKS),
+          startChunkX: chunkX,
+          endChunkX: chunkX + INNER_HULL_WIDTH_CHUNKS - 1,
+          leftSection: SECTION_DEFS[i - 1].id,
+          rightSection: def.id,
+        };
+        this.sections.push(corridor);
+        this.sectionById[corridor.id] = corridor;
+        chunkX += INNER_HULL_WIDTH_CHUNKS;
+      }
+
+      // The section itself
+      const section = {
+        ...def,
+        startChunkX: chunkX,
+        endChunkX: chunkX + def.widthChunks - 1,
+        centerChunkX: chunkX + Math.floor(def.widthChunks / 2),
+      };
+      this.sections.push(section);
+      this.sectionById[section.id] = section;
+      chunkX += def.widthChunks;
+    }
+
+    this.totalWidthChunks = chunkX;
+  }
+
+  // Deterministic biome assignment per seed — H4 always lush, others random
+  _assignBiomes(seed) {
+    const rng = new SeededRNG(seed + 99999);
+
+    // Build pool: enough biomes for 6 non-H4 habitats (H1-H3, H5-H7)
+    // Shuffle all biome types so each game is unique
+    const pool = rng.shuffle([...HABITAT_BIOMES]);
+
+    let poolIdx = 0;
+    for (const def of SECTION_DEFS) {
+      if (def.type !== 'habitat') continue;
+      if (def.fixedBiome) {
+        this.biomeAssignments[def.id] = def.fixedBiome;
+      } else {
+        // Cycle through shuffled pool
+        this.biomeAssignments[def.id] = pool[poolIdx % pool.length];
+        poolIdx++;
+      }
+    }
+  }
+
+  // Get the section at a given chunk X coordinate
+  getSectionAt(chunkX) {
+    for (const s of this.sections) {
+      if (chunkX >= s.startChunkX && chunkX <= s.endChunkX) return s;
+    }
+    return null; // beyond ship boundaries
+  }
+
+  // Get section by ID
+  getSection(id) {
+    return this.sectionById[id] || null;
+  }
+
+  // Get the biome for a habitat section
+  getBiome(sectionId) {
+    return this.biomeAssignments[sectionId] || null;
+  }
+
+  // Get all habitat sections with their biome assignments
+  getHabitatBiomes() {
+    const result = [];
+    for (const def of SECTION_DEFS) {
+      if (def.type === 'habitat') {
+        result.push({ id: def.id, biome: this.biomeAssignments[def.id] });
+      }
+    }
+    return result;
+  }
+
+  // Wrap chunk Y for cylindrical looping within a section
+  wrapChunkY(cy, section) {
+    if (!section) return cy;
+    const wrap = section.wrapChunks;
+    return ((cy % wrap) + wrap) % wrap;
+  }
+
+  // Wrap world Y coordinate for a section
+  wrapWorldY(wy, section) {
+    if (!section) return wy;
+    const wrapTiles = section.wrapChunks * CHUNK_SIZE;
+    return ((wy % wrapTiles) + wrapTiles) % wrapTiles;
+  }
+
+  // Check if chunk X is a section wall (boundary between section and inner hull)
+  isWallChunkX(chunkX) {
+    for (const s of this.sections) {
+      if (s.type === 'inner_hull') continue;
+      // The first and last chunk columns of each section have walls
+      if (chunkX === s.startChunkX || chunkX === s.endChunkX) return true;
+    }
+    return false;
+  }
+
+  // Check if a world X is beyond the ship entirely
+  isBeyondShip(worldX) {
+    const cx = Math.floor(worldX / CHUNK_SIZE);
+    return cx < 0 || cx >= this.totalWidthChunks;
+  }
+
+  // Get the center world coordinates for a section (for spawning)
+  getSectionCenter(sectionId) {
+    const s = this.sectionById[sectionId];
+    if (!s) return null;
+    const centerX = (s.startChunkX + Math.floor(s.widthChunks / 2)) * CHUNK_SIZE + Math.floor(CHUNK_SIZE / 2);
+    const centerY = Math.floor((s.wrapChunks * CHUNK_SIZE) / 2);
+    return { x: centerX, y: centerY };
+  }
+
+  // Get adjacent sections (for wall interaction messages)
+  getAdjacentSections(sectionId) {
+    const idx = SECTION_DEFS.findIndex(d => d.id === sectionId);
+    if (idx < 0) return { west: null, east: null };
+    return {
+      west: idx > 0 ? SECTION_DEFS[idx - 1].id : null,
+      east: idx < SECTION_DEFS.length - 1 ? SECTION_DEFS[idx + 1].id : null,
+    };
+  }
+
+  // Get the inner hull corridor between two sections
+  getCorridorBetween(sectionA, sectionB) {
+    const corridorId = `HULL_${sectionA}_${sectionB}`;
+    const corridorIdAlt = `HULL_${sectionB}_${sectionA}`;
+    return this.sectionById[corridorId] || this.sectionById[corridorIdAlt] || null;
+  }
+
+  // Serialize for save
+  toSaveData() {
+    return {
+      biomeAssignments: { ...this.biomeAssignments },
+      transitStations: JSON.parse(JSON.stringify(this.transitStations)),
+    };
+  }
+
+  // Restore from save
+  loadSaveData(data) {
+    if (data.biomeAssignments) this.biomeAssignments = { ...data.biomeAssignments };
+    if (data.transitStations) this.transitStations = JSON.parse(JSON.stringify(data.transitStations));
+  }
+}
+
+// ============================================================================
+// ChunkManager — Section-aware chunk-based world
 // ============================================================================
 
 const CHUNK_SIZE = 32;
@@ -361,8 +570,9 @@ const LOCATION_DEFS = [
 const TOTAL_WEIGHT = LOCATION_DEFS.reduce((s, d) => s + d.weight, 0);
 
 export class ChunkManager {
-  constructor(seed) {
+  constructor(seed, sectionManager) {
     this.seed = seed;
+    this.sectionManager = sectionManager || new SectionManager(seed);
     const initRng = new SeededRNG(seed);
     this.heightNoise = new PerlinNoise(initRng);
     this.moistureNoise = new PerlinNoise(initRng);
@@ -463,25 +673,334 @@ export class ChunkManager {
   }
 
   _generateTile(wx, wy) {
+    const cx = Math.floor(wx / CHUNK_SIZE);
+    const section = this.sectionManager.getSectionAt(cx);
+
+    // Beyond ship hull — vacuum of space
+    if (!section) {
+      return tile('VOID_SPACE', ' ', '#000000', '#000000', false, { biome: 'void' });
+    }
+
+    // Section walls — massive hull plating at section boundaries
+    if (section.type !== 'inner_hull') {
+      const localCX = cx - section.startChunkX;
+      const localTileX = wx - section.startChunkX * CHUNK_SIZE;
+      // Wall is 3 tiles thick at each edge of the section
+      if (localTileX < 3 || localTileX >= section.widthChunks * CHUNK_SIZE - 3) {
+        const wallDetail = (this.detailNoise.fbm(wx * 0.3, wy * 0.3, 2) + 1) / 2;
+        if (wallDetail > 0.7) {
+          return tile('SECTION_WALL_DETAIL', '▓', '#556677', '#1A1A22', false, { biome: 'hull', sectionWall: true });
+        }
+        if (wallDetail > 0.4) {
+          return tile('SECTION_WALL', '█', '#445566', '#111118', false, { biome: 'hull', sectionWall: true });
+        }
+        return tile('SECTION_WALL_RIVET', '░', '#667788', '#1A1A22', false, { biome: 'hull', sectionWall: true });
+      }
+    }
+
+    // Inner hull engineering corridors
+    if (section.type === 'inner_hull') {
+      return this._generateInnerHullTile(wx, wy, section);
+    }
+
+    // Facility sections (C2 / ENG)
+    if (section.type === 'facility') {
+      return this._generateFacilityTile(wx, wy, section);
+    }
+
+    // Habitat sections — biome-modified terrain
+    const biome = this.sectionManager.getBiome(section.id);
+    return this._generateHabitatTile(wx, wy, biome);
+  }
+
+  // Generate terrain for habitat sections with biome modifications
+  _generateHabitatTile(wx, wy, biome) {
     let h = (this.heightNoise.fbm(wx * TERRAIN_SCALE, wy * TERRAIN_SCALE, 6) + 1) / 2;
-    const m = (this.moistureNoise.fbm(wx * TERRAIN_SCALE + 100, wy * TERRAIN_SCALE + 100, 5) + 1) / 2;
+    let m = (this.moistureNoise.fbm(wx * TERRAIN_SCALE + 100, wy * TERRAIN_SCALE + 100, 5) + 1) / 2;
     const a = (this.anomalyNoise.fbm(wx * TERRAIN_SCALE * 0.5, wy * TERRAIN_SCALE * 0.5, 4) + 1) / 2;
     const d = (this.detailNoise.fbm(wx * TERRAIN_SCALE * 2, wy * TERRAIN_SCALE * 2, 3) + 1) / 2;
-    // Very low-frequency temperature noise for massive contiguous hot/cold regions
-    const t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.1 + 200, wy * TERRAIN_SCALE * 0.1 + 200, 3) + 1) / 2;
+    let t = (this.temperatureNoise.fbm(wx * TERRAIN_SCALE * 0.1 + 200, wy * TERRAIN_SCALE * 0.1 + 200, 3) + 1) / 2;
 
-    // ── Deterministic horizontal rivers ──
+    // Apply biome modifications to noise values
+    switch (biome) {
+      case 'lush':
+        // Default — no modifications, rivers active
+        break;
+
+      case 'desert':
+        h = h * 0.7 + 0.1;       // flatten terrain, raise floor slightly
+        m = m * 0.2;              // very low moisture
+        t = t * 0.3 + 0.7;       // hot
+        // No rivers in desert
+        return this._desertTerrain(h, m, d, t);
+
+      case 'boreal_frozen':
+        t = t * 0.2;              // cold
+        m = m * 0.6 + 0.2;       // moderate moisture (snow/ice)
+        return this._frozenTerrain(h, m, d, t, wx, wy);
+
+      case 'damaged':
+        // High structural damage — mix of terrain and exposed hull
+        return this._damagedTerrain(h, m, a, d, wx, wy);
+
+      case 'vacuum':
+        // Vented to space — mostly void with wreckage
+        return this._vacuumTerrain(h, a, d, wx, wy);
+
+      case 'swamp_toxic':
+        h = h * 0.6;             // lower terrain = more water
+        m = m * 0.4 + 0.6;      // very wet
+        return this._toxicSwampTerrain(h, m, d, wx, wy);
+
+      case 'overgrown':
+        h = h * 0.85;            // slightly flatter
+        m = m * 0.3 + 0.7;      // very moist
+        return this._overgrownTerrain(h, m, d, wx, wy);
+    }
+
+    // Default (lush) — standard terrain with rivers
     const riverDist = this._getRiverDistance(wx, wy);
     if (riverDist <= RIVER_HALF_WIDTH) {
-      // River water: 3 tiles wide, cuts through any terrain
       return tile('RIVER_WATER', '~', '#4488ff', '#001144', false, { biome: 'river', waterDepth: 1 });
     }
     if (riverDist <= RIVER_HALF_WIDTH + RIVER_SHORE_WIDTH) {
-      // Shoreline: 1 tile each side
       return tile('INNER_SHORE', '\u00B7', '#8B7D5B', '#2A2210', true, { biome: 'shore', waterDepth: -1 });
     }
-
     return this._terrainGen._terrainFromNoise(h, m, a, d, t);
+  }
+
+  // ── Biome-specific terrain generators ──
+
+  _desertTerrain(h, m, d, t) {
+    if (h < 0.3) {
+      const fg = _lerpColor('#DDCC88', '#CCBB66', d);
+      return tile('SAND', '.', fg, '#332200', true, { biome: 'desert' });
+    }
+    if (h < 0.5) {
+      return tile('DUNE', '~', '#CCAA55', '#2A1A00', true, { biome: 'desert' });
+    }
+    if (h < 0.65) {
+      return tile('SCRUB', ',', '#998844', '#221100', true, { biome: 'desert' });
+    }
+    if (h < 0.75) {
+      return tile('DESERT_ROCK', '▓', '#AA8866', '#332211', false, { biome: 'desert' });
+    }
+    return tile('MESA', '△', '#BB9977', '#443322', false, { biome: 'desert' });
+  }
+
+  _frozenTerrain(h, m, d, t, wx, wy) {
+    // Frozen rivers become ice paths
+    const riverDist = this._getRiverDistance(wx, wy);
+    if (riverDist <= RIVER_HALF_WIDTH + RIVER_SHORE_WIDTH) {
+      return tile('FROZEN_RIVER', '=', '#AADDFF', '#334466', true, { biome: 'frozen', waterDepth: 0 });
+    }
+
+    if (h < 0.5) {
+      const fg = _lerpColor('#CCDDEE', '#AABBCC', d);
+      return tile('SNOW_GROUND', '.', fg, '#1A2233', true, { biome: 'frozen' });
+    }
+    if (h < 0.6) {
+      return tile('FROZEN_TREE', '♣', '#6688AA', '#0A1522', true, { biome: 'frozen' });
+    }
+    if (h < 0.7) {
+      return tile('DEAD_TREE', '♠', '#556677', '#0A1118', true, { biome: 'frozen' });
+    }
+    if (h < 0.8) {
+      return tile('ICE_ROCK', '▓', '#99BBDD', '#223344', false, { biome: 'frozen' });
+    }
+    // Hull breach zones — exposed structural ice at high elevation
+    const breachNoise = (this.tearNoise.fbm(wx * 0.1, wy * 0.1, 3) + 1) / 2;
+    if (breachNoise > 0.7) {
+      return tile('HULL_BREACH_ICE', '#', '#88AACC', '#112244', false, { biome: 'frozen', hullBreach: true });
+    }
+    return tile('ICE_FORMATION', '△', '#BBDDFF', '#223355', false, { biome: 'frozen' });
+  }
+
+  _damagedTerrain(h, m, a, d, wx, wy) {
+    const damage = (this.tearNoise.fbm(wx * 0.08, wy * 0.08, 4) + 1) / 2;
+
+    if (damage > 0.7) {
+      // Exposed substructure
+      if (d > 0.6) return tile('DAMAGE_FIRE', '~', '#FF4422', '#441100', false, { biome: 'damaged', hazard: 'fire' });
+      return tile('DAMAGE_GRID', '#', '#888888', '#1A1A1A', false, { biome: 'damaged' });
+    }
+    if (damage > 0.5) {
+      // Rubble and debris
+      return tile('RUBBLE', '%', '#AA8866', '#2A1A0A', true, { biome: 'damaged' });
+    }
+    if (damage > 0.35) {
+      // Damaged but passable
+      return tile('CRACKED_FLOOR', '.', '#887766', '#1A1408', true, { biome: 'damaged' });
+    }
+    // Surviving patches of terrain
+    if (h < 0.55) {
+      return tile('DAMAGED_GRASS', ',', '#667744', '#0E1208', true, { biome: 'damaged' });
+    }
+    return tile('CHARRED_TREE', '♠', '#554433', '#0A0804', true, { biome: 'damaged' });
+  }
+
+  _vacuumTerrain(h, a, d, wx, wy) {
+    const debris = (this.detailNoise.fbm(wx * 0.15, wy * 0.15, 3) + 1) / 2;
+    const structure = (this.tearNoise.fbm(wx * 0.06, wy * 0.06, 4) + 1) / 2;
+
+    // Scattered wreckage in void
+    if (structure > 0.75) {
+      // Intact sealed rooms (atmosphere pockets)
+      if (d > 0.7) return tile('SEALED_ROOM_WALL', '█', '#556688', '#111122', false, { biome: 'vacuum', sealed: true });
+      return tile('SEALED_ROOM_FLOOR', '.', '#445566', '#0A0A11', true, { biome: 'vacuum', sealed: true, atmosphere: true });
+    }
+    if (debris > 0.7) {
+      return tile('VACUUM_WRECKAGE', '%', '#667788', '#000008', true, { biome: 'vacuum' });
+    }
+    if (debris > 0.55) {
+      // Floating debris / structural remains
+      return tile('VACUUM_DEBRIS', '·', '#334455', '#000004', true, { biome: 'vacuum' });
+    }
+    // Open vacuum — alien structures may spawn here
+    if (a > 0.8) {
+      return tile('ALIEN_GROWTH', '*', '#CC44FF', '#110022', true, { biome: 'vacuum', alien: true });
+    }
+    return tile('VACUUM_VOID', ' ', '#080810', '#000002', true, { biome: 'vacuum' });
+  }
+
+  _toxicSwampTerrain(h, m, d, wx, wy) {
+    if (h < 0.25) {
+      return tile('TOXIC_POOL', '~', '#44FF44', '#002200', false, { biome: 'toxic', hazard: 'toxic', waterDepth: 1 });
+    }
+    if (h < 0.4) {
+      return tile('TOXIC_MUD', '.', '#556633', '#1A1A08', true, { biome: 'toxic' });
+    }
+    if (h < 0.55) {
+      return tile('MUTANT_VINE', '♣', '#33AA33', '#0A1A0A', true, { biome: 'toxic' });
+    }
+    if (h < 0.65) {
+      return tile('TOXIC_THICKET', '♠', '#228822', '#061006', true, { biome: 'toxic' });
+    }
+    if (h < 0.75) {
+      const gasNoise = (this.anomalyNoise.fbm(wx * 0.2, wy * 0.2, 2) + 1) / 2;
+      if (gasNoise > 0.7) return tile('TOXIC_GAS', '░', '#88FF88', '#113311', true, { biome: 'toxic', hazard: 'toxic_gas' });
+      return tile('BIOLAB_RUIN', '#', '#558855', '#112211', false, { biome: 'toxic' });
+    }
+    return tile('CONTAINMENT_WALL', '█', '#446644', '#0A1A0A', false, { biome: 'toxic' });
+  }
+
+  _overgrownTerrain(h, m, d, wx, wy) {
+    if (h < 0.35) {
+      return tile('VINE_FLOOR', ',', '#22CC22', '#061A06', true, { biome: 'overgrown' });
+    }
+    if (h < 0.55) {
+      const fg = _lerpColor('#11AA11', '#228822', d);
+      return tile('DENSE_JUNGLE', '♣', fg, '#041004', true, { biome: 'overgrown' });
+    }
+    if (h < 0.7) {
+      return tile('CANOPY', '♠', '#117711', '#020802', true, { biome: 'overgrown' });
+    }
+    // Hidden ruins under vegetation
+    const ruinNoise = (this.tearNoise.fbm(wx * 0.1, wy * 0.1, 3) + 1) / 2;
+    if (ruinNoise > 0.65) {
+      if (d > 0.5) return tile('OVERGROWN_WALL', '▓', '#448844', '#112211', false, { biome: 'overgrown' });
+      return tile('OVERGROWN_RUIN', '.', '#337733', '#0A1A0A', true, { biome: 'overgrown' });
+    }
+    return tile('GIANT_TREE', '♠', '#0A5A0A', '#010601', false, { biome: 'overgrown' });
+  }
+
+  // ── Facility tile generation (C2, ENG) ──
+  _generateFacilityTile(wx, wy, section) {
+    // Use noise to create room/corridor patterns
+    const roomNoise = (this.heightNoise.fbm(wx * 0.08, wy * 0.08, 4) + 1) / 2;
+    const corridorNoise = (this.moistureNoise.fbm(wx * 0.15, wy * 0.15, 3) + 1) / 2;
+    const detailN = (this.detailNoise.fbm(wx * 0.3, wy * 0.3, 2) + 1) / 2;
+
+    const isC2 = section.id === 'C2';
+    const wallFg = isC2 ? '#6655AA' : '#AA4455';
+    const wallBg = isC2 ? '#110022' : '#220011';
+    const floorFg = isC2 ? '#443366' : '#664433';
+    const floorBg = isC2 ? '#0A0011' : '#110A00';
+
+    // Room structure: high roomNoise = walls, low = floor
+    if (roomNoise > 0.68) {
+      // Walls
+      if (detailN > 0.7) return tile('FACILITY_PANEL', '░', wallFg, wallBg, false, { biome: section.id === 'C2' ? 'command' : 'engineering' });
+      return tile('FACILITY_WALL', '█', wallFg, wallBg, false, { biome: section.id === 'C2' ? 'command' : 'engineering' });
+    }
+
+    // Corridors: strong corridor noise in horizontal/vertical bands
+    const gridX = Math.abs(wx % 16 - 8);
+    const gridY = Math.abs(wy % 16 - 8);
+    const isCorridorX = gridX < 2;
+    const isCorridorY = gridY < 2;
+
+    if (isCorridorX || isCorridorY) {
+      // Main corridors — always walkable
+      if (isCorridorX && isCorridorY) {
+        // Corridor intersection
+        return tile('FACILITY_JUNCTION', '+', '#AAAAAA', floorBg, true, { biome: section.id === 'C2' ? 'command' : 'engineering' });
+      }
+      return tile('FACILITY_CORRIDOR', '.', '#888888', floorBg, true, { biome: section.id === 'C2' ? 'command' : 'engineering' });
+    }
+
+    // Room interiors
+    if (roomNoise < 0.4) {
+      // Open room floor
+      if (detailN > 0.8) {
+        // Room furniture / equipment
+        const chars = isC2 ? ['◊', '□', '○'] : ['⚙', '◊', '□'];
+        const charIdx = Math.floor(detailN * 10) % chars.length;
+        return tile('FACILITY_EQUIPMENT', chars[charIdx], isC2 ? '#8877CC' : '#CC7744', floorBg, false,
+          { biome: section.id === 'C2' ? 'command' : 'engineering' });
+      }
+      return tile('FACILITY_FLOOR', '.', floorFg, floorBg, true, { biome: section.id === 'C2' ? 'command' : 'engineering' });
+    }
+
+    // Intermediate: thin walls or doorways
+    if (corridorNoise > 0.6) {
+      return tile('FACILITY_FLOOR', '.', floorFg, floorBg, true, { biome: section.id === 'C2' ? 'command' : 'engineering' });
+    }
+    return tile('FACILITY_WALL', '█', wallFg, wallBg, false, { biome: section.id === 'C2' ? 'command' : 'engineering' });
+  }
+
+  // ── Inner hull engineering corridor generation ──
+  _generateInnerHullTile(wx, wy, section) {
+    const localX = wx - section.startChunkX * CHUNK_SIZE;
+    const totalWidth = section.widthChunks * CHUNK_SIZE; // ~256 tiles
+    const centerX = Math.floor(totalWidth / 2);
+
+    const detailN = (this.detailNoise.fbm(wx * 0.25, wy * 0.25, 3) + 1) / 2;
+    const structN = (this.heightNoise.fbm(wx * 0.1, wy * 0.1, 3) + 1) / 2;
+
+    // Outer walls of the corridor (first and last 2 tiles)
+    if (localX < 2 || localX >= totalWidth - 2) {
+      return tile('HULL_CORRIDOR_WALL', '█', '#556677', '#0A0A11', false, { biome: 'inner_hull' });
+    }
+
+    // Central walkway (4 tiles wide in the middle)
+    if (Math.abs(localX - centerX) < 2) {
+      // Transit station marker every ~512 tiles along Y
+      const stationY = wy % (CHUNK_SIZE * 16); // station every 16 chunks
+      if (stationY >= 0 && stationY < 3 && Math.abs(localX - centerX) < 1) {
+        return tile('TRANSIT_PLATFORM', '◊', '#FFAA00', '#1A1100', true,
+          { biome: 'inner_hull', transitStation: true, corridorId: section.id });
+      }
+      return tile('HULL_CATWALK', '.', '#8899AA', '#111118', true, { biome: 'inner_hull' });
+    }
+
+    // Pipe networks along the sides
+    if (localX < 6 || localX >= totalWidth - 6) {
+      if (structN > 0.6) return tile('HULL_PIPE', '║', '#778899', '#0A0A14', false, { biome: 'inner_hull' });
+      if (detailN > 0.7) return tile('HULL_VALVE', '⊕', '#99AABB', '#0A0A14', false, { biome: 'inner_hull' });
+      return tile('HULL_GRATING', '░', '#667788', '#080810', true, { biome: 'inner_hull' });
+    }
+
+    // Machinery and equipment in the middle areas
+    if (structN > 0.65) {
+      return tile('HULL_MACHINERY', '▓', '#667788', '#0A0A11', false, { biome: 'inner_hull' });
+    }
+    if (detailN > 0.75) {
+      return tile('HULL_CONDUIT', '─', '#778899', '#0A0A11', false, { biome: 'inner_hull' });
+    }
+
+    // Walkable floor
+    return tile('HULL_FLOOR', '.', '#556677', '#080810', true, { biome: 'inner_hull' });
   }
 
   // ── Megalithic surface structure definitions ──
@@ -1136,11 +1655,24 @@ export class ChunkManager {
   }
 
   _generateChunk(cx, cy) {
-    const key = this._chunkKey(cx, cy);
+    // Apply N-S cylindrical wrapping based on section
+    const section = this.sectionManager.getSectionAt(cx);
+    const wrappedCY = section ? this.sectionManager.wrapChunkY(cy, section) : cy;
+    const key = this._chunkKey(cx, wrappedCY);
     if (this.chunks.has(key)) return this.chunks.get(key);
 
+    // Beyond ship boundaries — empty void
+    if (!section) {
+      const tiles = makeTileGrid(CHUNK_SIZE, CHUNK_SIZE, () =>
+        tile('VOID_SPACE', ' ', '#000000', '#000000', false, { biome: 'void' })
+      );
+      const chunk = { tiles, locations: [], structures: [], cx, cy: wrappedCY, sectionId: null };
+      this.chunks.set(key, chunk);
+      return chunk;
+    }
+
     const ox = cx * CHUNK_SIZE;
-    const oy = cy * CHUNK_SIZE;
+    const oy = wrappedCY * CHUNK_SIZE;
     const tiles = [];
     for (let ly = 0; ly < CHUNK_SIZE; ly++) {
       tiles[ly] = [];
@@ -1149,22 +1681,35 @@ export class ChunkManager {
       }
     }
 
-    // Historical scars disabled — will re-add with lore-relevant features later
-    // this._applyMapScarsToChunk(cx, cy, tiles);
+    // Only apply tears, structures, locations, bridges to habitat sections
+    if (section.type === 'habitat') {
+      // Apply colony substructure tears — patches where floor is torn revealing metal grid
+      this._applyTears(cx, wrappedCY, tiles);
 
-    // Apply colony substructure tears — patches where floor is torn revealing metal grid
-    this._applyTears(cx, cy, tiles);
+      // Remove small isolated non-walkable clusters (< 25 tiles) to prevent movement frustration
+      this._removeSmallBlockers(tiles);
 
-    // Remove small isolated non-walkable clusters (< 25 tiles) to prevent movement frustration
+      const structures = this._placeStructures(cx, wrappedCY, tiles);
+
+      // Only place settlements in habitable biomes
+      const biome = this.sectionManager.getBiome(section.id);
+      const habitableForLocations = biome !== 'vacuum';
+      const locations = habitableForLocations ? this._placeChunkLocations(cx, wrappedCY, tiles) : [];
+
+      // Detect horizontal river segments and place bridge locations (only for biomes with rivers)
+      if (biome === 'lush') {
+        this._placeBridgeLocations(cx, wrappedCY, tiles, locations);
+      }
+
+      const chunk = { tiles, locations, structures, cx, cy: wrappedCY, sectionId: section.id };
+      this.chunks.set(key, chunk);
+      return chunk;
+    }
+
+    // For facilities and inner hull, just clean up blockers
     this._removeSmallBlockers(tiles);
 
-    const structures = this._placeStructures(cx, cy, tiles);
-    const locations = this._placeChunkLocations(cx, cy, tiles);
-
-    // Detect horizontal river segments and place bridge locations
-    this._placeBridgeLocations(cx, cy, tiles, locations);
-
-    const chunk = { tiles, locations, structures, cx, cy };
+    const chunk = { tiles, locations: [], structures: [], cx, cy: wrappedCY, sectionId: section.id };
     this.chunks.set(key, chunk);
     return chunk;
   }
@@ -1663,10 +2208,13 @@ export class ChunkManager {
 
   getTile(wx, wy) {
     const cx = Math.floor(wx / CHUNK_SIZE);
-    const cy = Math.floor(wy / CHUNK_SIZE);
+    // Apply N-S wrapping for cylindrical geometry
+    const section = this.sectionManager.getSectionAt(cx);
+    const wrappedWY = section ? this.sectionManager.wrapWorldY(wy, section) : wy;
+    const cy = Math.floor(wrappedWY / CHUNK_SIZE);
     const chunk = this._generateChunk(cx, cy);
     const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    const ly = ((wy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const ly = ((wrappedWY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     return chunk.tiles[ly][lx];
   }
 
@@ -1682,15 +2230,27 @@ export class ChunkManager {
     return locs;
   }
 
+  // Get the current section at world coordinates
+  getSectionAtWorld(wx) {
+    const cx = Math.floor(wx / CHUNK_SIZE);
+    return this.sectionManager.getSectionAt(cx);
+  }
+
   ensureChunksAround(wx, wy) {
     const pcx = Math.floor(wx / CHUNK_SIZE);
-    const pcy = Math.floor(wy / CHUNK_SIZE);
+    const section = this.sectionManager.getSectionAt(pcx);
+    const wrappedWY = section ? this.sectionManager.wrapWorldY(wy, section) : wy;
+    const pcy = Math.floor(wrappedWY / CHUNK_SIZE);
     const radius = 2; // 5x5 ring
 
     for (let dx = -radius; dx <= radius; dx++) {
+      const targetCX = pcx + dx;
+      // Don't generate chunks beyond ship boundaries
+      if (this.sectionManager.isBeyondShip(targetCX * CHUNK_SIZE)) continue;
+
       for (let dy = -radius; dy <= radius; dy++) {
-        const chunk = this._generateChunk(pcx + dx, pcy + dy);
-        this.exploredChunks.add(this._chunkKey(pcx + dx, pcy + dy));
+        const chunk = this._generateChunk(targetCX, pcy + dy);
+        this.exploredChunks.add(this._chunkKey(targetCX, chunk.cy));
       }
     }
 

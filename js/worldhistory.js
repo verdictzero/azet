@@ -694,10 +694,16 @@ export class WorldHistoryGenerator {
     const numRegions = this.rng.nextInt(8, 16);
     const shuffled = this.rng.shuffle([...REGION_NAMES]);
 
+    // O'Neill cylinder sections for lore association
+    const sectionIds = ['C2', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'ENG'];
+
     for (let i = 0; i < numRegions && i < shuffled.length; i++) {
+      // Associate each region with a ship section
+      const sectionId = sectionIds[i % sectionIds.length];
       this.regions.push({
         id: `region_${i}`,
         name: shuffled[i],
+        sectionId: sectionId, // O'Neill cylinder section
         controlledBy: null,
         resources: this.rng.random(['abundant', 'moderate', 'scarce', 'barren']),
         terrain: this.rng.random(['industrial', 'residential', 'agricultural', 'derelict', 'military', 'scientific']),
