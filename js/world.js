@@ -1290,7 +1290,7 @@ export class ChunkManager {
       // ── Temperature-biome structures ──
       {
         type: 'collapsed_habitat_dome', w: 8, h: 6, biomes: ['tundra', 'permafrost', 'desert', 'scorched_waste'],
-        build(tiles, sx, sy) {
+        build(tiles, sx, sy, rng) {
           const bg = '#0A0A10';
           // Dome outline
           for (let dx = 2; dx <= 5; dx++) tiles[sy][sx + dx] = tile('DOME_ARC', '\u2500', '#889999', bg, false, { structure: true });
@@ -1302,8 +1302,7 @@ export class ChunkManager {
           }
           // Dome interior (rubble)
           for (let dy = 2; dy <= 4; dy++) for (let dx = 1; dx <= 6; dx++) {
-            const r = Math.random();
-            if (r < 0.3) tiles[sy + dy][sx + dx] = tile('DOME_RUBBLE', '.', '#556666', bg, true, { structure: true });
+            if (rng.next() < 0.3) tiles[sy + dy][sx + dx] = tile('DOME_RUBBLE', '.', '#556666', bg, true, { structure: true });
             else tiles[sy + dy][sx + dx] = tile('DOME_FLOOR', ',', '#445555', bg, true, { structure: true });
           }
           // Base
@@ -1364,7 +1363,7 @@ export class ChunkManager {
       },
       {
         type: 'observation_deck', w: 7, h: 5, biomes: ['void_exposure'],
-        build(tiles, sx, sy) {
+        build(tiles, sx, sy, rng) {
           const bg = '#000005';
           // Viewport wall
           for (let dx = 0; dx <= 6; dx++) {
@@ -1377,7 +1376,7 @@ export class ChunkManager {
           }
           // Stars visible through viewport
           for (let dy = 1; dy <= 3; dy++) for (let dx = 1; dx <= 5; dx++) {
-            if (Math.random() < 0.15) tiles[sy + dy][sx + dx] = tile('VIEWPORT_STAR', '*', '#FFFFFF', '#000000', false, { structure: true });
+            if (rng.next() < 0.15) tiles[sy + dy][sx + dx] = tile('VIEWPORT_STAR', '*', '#FFFFFF', '#000000', false, { structure: true });
             else tiles[sy + dy][sx + dx] = tile('VIEWPORT', ' ', '#000000', '#000000', false, { structure: true });
           }
         },
@@ -1475,7 +1474,7 @@ export class ChunkManager {
       }
       if (!ok) continue;
 
-      def.build(tiles, sx, sy);
+      def.build(tiles, sx, sy, structRng);
       const lights = def.lights(sx, sy, ox, oy);
       structures.push({ type: def.type, x: ox + sx, y: oy + sy, w: def.w, h: def.h, lights });
       break;
