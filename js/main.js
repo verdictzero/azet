@@ -868,7 +868,8 @@ class Game {
       // Step 5: Create SectionManager and ChunkManager for the O'Neill cylinder
       () => {
         this._loadingStep = { current: 3, total: 10, label: 'Mapping the cylinder sections...' };
-        this.sectionManager = new SectionManager(this.seed);
+        this.debugMode = !!(this.charGenState && this.charGenState.debugMode);
+        this.sectionManager = new SectionManager(this.seed, { debugMode: this.debugMode });
         this.overworld = new ChunkManager(this.seed, this.sectionManager);
         // Wire historical map scars into terrain generation
         if (this.worldHistoryGen && this.worldHistoryGen.mapScars && this.worldHistoryGen.mapScars.length > 0) {
@@ -1633,7 +1634,7 @@ class Game {
   }
 
   handleMenuInput(key) {
-    const result = this.ui.handleHorizontalMenuInput(key, 6);
+    const result = this.ui.handleHorizontalMenuInput(key, 7);
     if (result === 'select') {
       switch (this.ui.selectedIndex) {
         case 0: // New Game
@@ -1651,20 +1652,28 @@ class Game {
           this.startNewGame();
           break;
         }
-        case 2: // Continue
+        case 2: { // Debug Start — tiny microcosm world for testing
+          this.charGenState = {
+            step: 'history_depth', race: 'human', playerClass: 'engineer',
+            name: 'Debug', historyDepth: 'short', quickStart: true, debugMode: true,
+          };
+          this.startNewGame();
+          break;
+        }
+        case 3: // Continue
           if (this.loadGame()) {
             this.ui.addMessage('Game loaded.', COLORS.BRIGHT_GREEN);
           } else {
             this.ui.addMessage('No save found.', COLORS.BRIGHT_RED);
           }
           break;
-        case 3: // Import Save
+        case 4: // Import Save
           this.importSave();
           break;
-        case 4: // Settings
+        case 5: // Settings
           this.setState('SETTINGS');
           break;
-        case 5: // Help
+        case 6: // Help
           this.setState('HELP');
           break;
       }
@@ -1770,6 +1779,23 @@ class Game {
   }
 
   handleOverworldInput(key) {
+    // Airlock confirmation prompt — Y to proceed into vacuum, N to cancel
+    if (this._pendingAirlockConfirm) {
+      if (key === 'y' || key === 'Y') {
+        const conf = this._pendingAirlockConfirm;
+        if (!this.player._confirmedAirlocks) this.player._confirmedAirlocks = new Set();
+        this.player._confirmedAirlocks.add(conf.key);
+        this._pendingAirlockConfirm = null;
+        this.ui.addMessage('You override the safety lock and open the airlock...', COLORS.BRIGHT_RED);
+        // Re-attempt movement into that tile
+        this.movePlayer(conf.x - this.player.position.x, conf.y - this.player.position.y);
+        return;
+      }
+      this._pendingAirlockConfirm = null;
+      this.ui.addMessage('You step back from the airlock. Find an EVA suit before proceeding.', COLORS.BRIGHT_CYAN);
+      return;
+    }
+
     // Open panels
     if (key === 'i' || key === 'I') { this.setState('INVENTORY'); return; }
     if (key === 'g' || key === 'G') { this.openEquipmentMenu(); return; }
@@ -4056,14 +4082,44 @@ class Game {
       return;
     }
 
-    // Airlock passage interaction — message when stepping through
-    if (tile.airlock) {
-      // Airlock tiles are walkable, so movement is allowed below.
-      // Just show a flavor message on first entry.
+    // Airlock door interaction — warn about depressurization on the other side
+    if (tile.airlockDoor) {
+      const section = this.overworld.getSectionAtWorld(nx);
+      if (section) {
+        // Determine which section is on the other side of this wall
+        const adj = this.sectionManager.getAdjacentSections(section.id);
+        const otherSectionId = tile.isWestWall ? adj.west : adj.east;
+        const otherBiome = otherSectionId ? this.sectionManager.getBiome(otherSectionId) : null;
+        const isDepressurized = otherBiome === 'vacuum';
+
+        if (isDepressurized && !this.player.hasEVA) {
+          // Check if player already confirmed this airlock (don't re-prompt every step)
+          const airlockKey = `${nx},${ny}`;
+          if (!this.player._confirmedAirlocks || !this.player._confirmedAirlocks.has(airlockKey)) {
+            // Block movement and show warning — player must confirm
+            this.ui.addMessage('╔══════════════════════════════════════╗', COLORS.BRIGHT_RED);
+            this.ui.addMessage('║  AIRLOCK WARNING: VACUUM DETECTED   ║', COLORS.BRIGHT_RED);
+            this.ui.addMessage('║  No EVA suit equipped!               ║', COLORS.BRIGHT_RED);
+            this.ui.addMessage('║  Opening will expose you to vacuum.  ║', COLORS.BRIGHT_RED);
+            this.ui.addMessage('╚══════════════════════════════════════╝', COLORS.BRIGHT_RED);
+            this.ui.addMessage('Press Y to open anyway, or N to find a vac suit first.', COLORS.BRIGHT_YELLOW);
+            this._pendingAirlockConfirm = { x: nx, y: ny, key: airlockKey };
+            return;
+          }
+        } else if (isDepressurized && this.player.hasEVA) {
+          this.ui.addMessage('Airlock: Vacuum on the other side. EVA suit sealed.', COLORS.BRIGHT_CYAN);
+        } else {
+          this.ui.addMessage('You step through the airlock. Pressurization equalizing...', COLORS.BRIGHT_YELLOW);
+        }
+      }
+    }
+
+    // Airlock passage interaction — simple flavor message
+    if (tile.airlock && !tile.airlockDoor) {
       const section = this.overworld.getSectionAtWorld(nx);
       if (section && section.type !== this.player._lastAirlockSection) {
         this.player._lastAirlockSection = section.type;
-        this.ui.addMessage('You step through the airlock. Pressurization equalizing...', COLORS.BRIGHT_YELLOW);
+        this.ui.addMessage('Passing through the airlock corridor...', COLORS.BRIGHT_YELLOW);
       }
     }
 
@@ -5174,7 +5230,9 @@ class Game {
       this.cloudSystem = new CloudSystem(this.seed);
 
       // Regenerate section manager and world from seed
-      this.sectionManager = new SectionManager(this.seed);
+      const savedDebugMode = !!(save.sectionData && save.sectionData.debugMode);
+      this.debugMode = savedDebugMode;
+      this.sectionManager = new SectionManager(this.seed, { debugMode: savedDebugMode });
       if (save.sectionData) {
         this.sectionManager.loadSaveData(save.sectionData);
       }

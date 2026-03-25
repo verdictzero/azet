@@ -695,7 +695,7 @@ export class UIManager {
     }
 
     // Horizontal linear menu below title
-    const menuItems = ['New Game', 'Quick Start', 'Continue', 'Import Save', 'Settings', 'Help'];
+    const menuItems = ['New Game', 'Quick Start', 'Debug Start', 'Continue', 'Import Save', 'Settings', 'Help'];
     const menuY = titleBlockEnd + 2;
     const sep = '   ';
     const sepLen = sep.length;
