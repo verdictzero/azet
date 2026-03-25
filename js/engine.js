@@ -566,6 +566,18 @@ export class Renderer {
   }
 
   /**
+   * Fade a hex color toward black by a factor (0 = black, 1 = original).
+   */
+  _fadeColor(hex, factor) {
+    if (!hex || hex.charAt(0) !== '#' || factor >= 1) return hex;
+    const val = parseInt(hex.slice(1), 16);
+    const r = Math.round(((val >> 16) & 0xff) * factor);
+    const g = Math.round(((val >> 8) & 0xff) * factor);
+    const b = Math.round((val & 0xff) * factor);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+
+  /**
    * Apply day/night tint based on time-of-day phase string. (Legacy)
    */
   applyDayNightTint(timeOfDay) {
@@ -965,7 +977,10 @@ export class Renderer {
   }
 
   /**
-   * Phosphor glow: bloom effect using offscreen canvas with blur.
+   * Multi-pass bloom with tone mapping.
+   * Pass 1: Wide soft bloom (large blur radius, low alpha) — atmospheric glow
+   * Pass 2: Tight bright bloom (small blur, higher alpha) — bright pixel bleed
+   * Pass 3: Reinhard-style tone mapping to compress highlights
    */
   applyPhosphorGlow() {
     this._glowFrame = (this._glowFrame || 0) + 1;
@@ -973,30 +988,63 @@ export class Renderer {
 
     const w = this.canvas.width;
     const h = this.canvas.height;
-    const scale = 0.25;
-    const sw = Math.floor(w * scale);
-    const sh = Math.floor(h * scale);
+    const ctx = this.ctx;
+
+    // ── Pass 1: Wide atmospheric bloom ──
+    const wideScale = 0.15;
+    const wSw = Math.max(1, Math.floor(w * wideScale));
+    const wSh = Math.max(1, Math.floor(h * wideScale));
+
+    if (!this._bloomWideCanvas) {
+      this._bloomWideCanvas = document.createElement('canvas');
+    }
+    this._bloomWideCanvas.width = wSw;
+    this._bloomWideCanvas.height = wSh;
+
+    const wCtx = this._bloomWideCanvas.getContext('2d');
+    wCtx.filter = 'blur(5px)';
+    wCtx.drawImage(this.canvas, 0, 0, wSw, wSh);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.08;
+    ctx.drawImage(this._bloomWideCanvas, 0, 0, w, h);
+    ctx.restore();
+
+    // ── Pass 2: Tight bright bloom ──
+    const tightScale = 0.25;
+    const tSw = Math.max(1, Math.floor(w * tightScale));
+    const tSh = Math.max(1, Math.floor(h * tightScale));
 
     if (!this._glowCanvas) {
       this._glowCanvas = document.createElement('canvas');
     }
-    this._glowCanvas.width = sw;
-    this._glowCanvas.height = sh;
+    this._glowCanvas.width = tSw;
+    this._glowCanvas.height = tSh;
 
     const gCtx = this._glowCanvas.getContext('2d');
-    gCtx.filter = 'blur(3px)';
-    gCtx.drawImage(this.canvas, 0, 0, sw, sh);
+    // Boost contrast before blur to emphasize bright pixels (threshold)
+    gCtx.filter = 'brightness(1.3) contrast(1.4) blur(3px)';
+    gCtx.drawImage(this.canvas, 0, 0, tSw, tSh);
 
-    const ctx = this.ctx;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.10;
+    ctx.globalAlpha = 0.12;
     ctx.drawImage(this._glowCanvas, 0, 0, w, h);
+    ctx.restore();
+
+    // ── Pass 3: Tone mapping (Reinhard-style highlight compression) ──
+    // Subtle warm highlight shift + desaturate bright areas
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.04;
+    ctx.fillStyle = '#ffeedd'; // warm tone map
+    ctx.fillRect(0, 0, w, h);
     ctx.restore();
 
     // Subtle blue phosphor tint (FF-style)
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 30, 0.015)';
+    ctx.fillStyle = 'rgba(0, 0, 30, 0.012)';
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
@@ -1094,34 +1142,62 @@ export class Renderer {
   }
 
   /**
-   * Phosphor glow on an arbitrary canvas context (for downscaled CRT path).
+   * Multi-pass bloom on an arbitrary canvas context (for downscaled CRT path).
    */
   _applyPhosphorGlowOn(ctx, w, h) {
     this._glowFrame = (this._glowFrame || 0) + 1;
     if (this._glowFrame % 2 !== 0) return;
 
-    const scale = 0.25;
-    const sw = Math.max(1, Math.floor(w * scale));
-    const sh = Math.max(1, Math.floor(h * scale));
+    // Wide atmospheric bloom
+    const wScale = 0.15;
+    const wSw = Math.max(1, Math.floor(w * wScale));
+    const wSh = Math.max(1, Math.floor(h * wScale));
+
+    if (!this._bloomWideCanvas) {
+      this._bloomWideCanvas = document.createElement('canvas');
+    }
+    this._bloomWideCanvas.width = wSw;
+    this._bloomWideCanvas.height = wSh;
+    const wCtx = this._bloomWideCanvas.getContext('2d');
+    wCtx.filter = 'blur(4px)';
+    wCtx.drawImage(this._crtCanvas, 0, 0, wSw, wSh);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.08;
+    ctx.drawImage(this._bloomWideCanvas, 0, 0, w, h);
+    ctx.restore();
+
+    // Tight bright bloom
+    const tScale = 0.25;
+    const tSw = Math.max(1, Math.floor(w * tScale));
+    const tSh = Math.max(1, Math.floor(h * tScale));
 
     if (!this._glowCanvas) {
       this._glowCanvas = document.createElement('canvas');
     }
-    this._glowCanvas.width = sw;
-    this._glowCanvas.height = sh;
-
+    this._glowCanvas.width = tSw;
+    this._glowCanvas.height = tSh;
     const gCtx = this._glowCanvas.getContext('2d');
-    gCtx.filter = 'blur(3px)';
-    gCtx.drawImage(this._crtCanvas, 0, 0, sw, sh);
+    gCtx.filter = 'brightness(1.3) contrast(1.4) blur(3px)';
+    gCtx.drawImage(this._crtCanvas, 0, 0, tSw, tSh);
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.10;
+    ctx.globalAlpha = 0.12;
     ctx.drawImage(this._glowCanvas, 0, 0, w, h);
     ctx.restore();
 
+    // Tone mapping + phosphor tint
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 30, 0.015)';
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.04;
+    ctx.fillStyle = '#ffeedd';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 30, 0.012)';
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }

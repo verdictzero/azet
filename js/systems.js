@@ -2558,21 +2558,48 @@ export class LightingSystem {
 }
 
 // ============================================================================
-// CloudSystem — Procedural drifting clouds with sun-responsive shadows
+// CloudSystem — Multi-layer procedural clouds with noise-driven 2D planes
 // ============================================================================
 
 export class CloudSystem {
   constructor(seed) {
-    this._noise = new PerlinNoise(new SeededRNG((seed + 7777) | 0));
-    this._detailNoise = new PerlinNoise(new SeededRNG((seed + 8888) | 0));
+    // Three cloud layers at different altitudes/scales/speeds
+    this._layers = [
+      { // High cirrus — wispy, fast
+        noise:  new PerlinNoise(new SeededRNG((seed + 7777) | 0)),
+        detail: new PerlinNoise(new SeededRNG((seed + 7778) | 0)),
+        freq: 0.010, detailFreq: 0.040,
+        speedX: 0.7, speedY: 0.05,
+        offsetX: 0, offsetY: 0,
+        weight: 0.25, opacity: 0.35,
+        chars: [' ', '\u00B7', '-', '~', '\u2500'],
+      },
+      { // Mid cumulus — billowy, medium
+        noise:  new PerlinNoise(new SeededRNG((seed + 8888) | 0)),
+        detail: new PerlinNoise(new SeededRNG((seed + 8889) | 0)),
+        freq: 0.018, detailFreq: 0.055,
+        speedX: 0.4, speedY: 0.1,
+        offsetX: 0, offsetY: 0,
+        weight: 0.50, opacity: 0.55,
+        chars: [' ', '.', '\u2591', '\u2592', '\u2593'],
+      },
+      { // Low stratus — thick, slow
+        noise:  new PerlinNoise(new SeededRNG((seed + 9999) | 0)),
+        detail: new PerlinNoise(new SeededRNG((seed + 10000) | 0)),
+        freq: 0.025, detailFreq: 0.070,
+        speedX: 0.2, speedY: 0.15,
+        offsetX: 0, offsetY: 0,
+        weight: 0.25, opacity: 0.70,
+        chars: [' ', '\u2591', '\u2592', '\u2593', '\u2588'],
+      },
+    ];
     this.windX = 0;
     this.windY = 0;
-    this.windSpeedX = 0.4;   // tiles/sec eastward drift
-    this.windSpeedY = 0.1;   // tiles/sec slight southward drift
-    this.coverage = 0.3;     // 0-1, driven by weather
+    this.windSpeedX = 0.4;
+    this.windSpeedY = 0.1;
+    this.coverage = 0.3;
   }
 
-  // Coverage mapping from weather type
   static WEATHER_COVERAGE = {
     clear: 0.15, cloudy: 0.55, rain: 0.70, storm: 0.85,
     snow: 0.50, fog: 0.60, acid_rain: 0.70, ion_storm: 0.80,
@@ -2585,31 +2612,81 @@ export class CloudSystem {
     this.windX += this.windSpeedX * dt;
     this.windY += this.windSpeedY * dt;
     this.coverage = CloudSystem.WEATHER_COVERAGE[weatherType] ?? 0.30;
+    for (const layer of this._layers) {
+      layer.offsetX += layer.speedX * dt;
+      layer.offsetY += layer.speedY * dt;
+    }
   }
 
   /**
-   * Get cloud density at a world position.
+   * Get combined cloud density at a world position (all layers blended).
    * Returns 0 (clear sky) to 1 (thick cloud).
    */
   getCloudDensity(worldX, worldY) {
-    const freq1 = 0.018;  // large billowy shapes
-    const freq2 = 0.055;  // detail/edge breakup
-    const wx = worldX + this.windX;
-    const wy = worldY + this.windY;
+    let combined = 0;
+    for (const layer of this._layers) {
+      combined += this._layerDensity(layer, worldX, worldY) * layer.weight;
+    }
+    return Math.min(1, combined);
+  }
 
-    // Two-octave noise, weighted blend
-    const n1 = this._noise.noise2D(wx * freq1, wy * freq1);       // -1..1
-    const n2 = this._detailNoise.noise2D(wx * freq2, wy * freq2); // -1..1
-    const raw = n1 * 0.7 + n2 * 0.3; // -1..1
+  /**
+   * Get per-layer cloud info at a world position for rendering.
+   * Returns { density, char, fg, bg } for the dominant visible layer.
+   */
+  getCloudVisual(worldX, worldY, hour) {
+    let bestDensity = 0;
+    let bestChar = ' ';
+    let bestLayer = null;
+    let totalDensity = 0;
 
-    // Map to 0..1 and apply coverage threshold
-    // Higher coverage → lower threshold → more cloud
-    const threshold = 1.0 - this.coverage; // e.g. coverage 0.55 → threshold 0.45
-    const mapped = (raw + 1) * 0.5;        // 0..1
+    for (const layer of this._layers) {
+      const d = this._layerDensity(layer, worldX, worldY);
+      totalDensity += d * layer.weight;
+      if (d > bestDensity) {
+        bestDensity = d;
+        bestLayer = layer;
+        const ci = Math.min(Math.floor(d * layer.chars.length), layer.chars.length - 1);
+        bestChar = layer.chars[ci];
+      }
+    }
+
+    if (totalDensity < 0.05 || bestChar === ' ') return null;
+
+    // Cloud color shifts with time of day
+    const isNight = hour < 5 || hour >= 20;
+    const isDusk = (hour >= 17 && hour < 20) || (hour >= 5 && hour < 7);
+    let fg, bg;
+    if (isNight) {
+      fg = this._lerpColor('#333344', '#555566', bestDensity);
+      bg = null; // transparent bg
+    } else if (isDusk) {
+      fg = this._lerpColor('#cc8866', '#ffaa88', bestDensity);
+      bg = null;
+    } else {
+      fg = this._lerpColor('#aabbcc', '#eeeeff', bestDensity);
+      bg = null;
+    }
+
+    return { density: totalDensity, char: bestChar, fg, opacity: bestLayer.opacity * totalDensity };
+  }
+
+  _layerDensity(layer, worldX, worldY) {
+    const wx = worldX + layer.offsetX;
+    const wy = worldY + layer.offsetY;
+    const n1 = layer.noise.noise2D(wx * layer.freq, wy * layer.freq);
+    const n2 = layer.detail.noise2D(wx * layer.detailFreq, wy * layer.detailFreq);
+    const raw = n1 * 0.7 + n2 * 0.3;
+    const threshold = 1.0 - this.coverage;
+    const mapped = (raw + 1) * 0.5;
     if (mapped < threshold) return 0;
+    return Math.min(1, (mapped - threshold) / (1.0 - threshold));
+  }
 
-    // Smooth density ramp above threshold
-    const density = (mapped - threshold) / (1.0 - threshold);
-    return Math.min(1, density);
+  _lerpColor(a, b, t) {
+    const ar = parseInt(a.slice(1, 3), 16), ag = parseInt(a.slice(3, 5), 16), ab = parseInt(a.slice(5, 7), 16);
+    const br = parseInt(b.slice(1, 3), 16), bg = parseInt(b.slice(3, 5), 16), bb = parseInt(b.slice(5, 7), 16);
+    const r = Math.round(ar + (br - ar) * t), g = Math.round(ag + (bg - ag) * t), bl = Math.round(ab + (bb - ab) * t);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
   }
 }

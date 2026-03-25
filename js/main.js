@@ -5819,8 +5819,8 @@ class Game {
     const lightInfo = this.player.hasLightSource();
     const sunDir = this.timeSystem.getSunDirection();
 
-    // FOV range adjusted by night and light source
-    let viewRange = 30;
+    // FOV range — extended draw distance during day, light-based at night
+    let viewRange = 60;
     if (isNight) {
       viewRange = lightInfo.hasLight ? (lightInfo.radius + 2) : 3;
     }
@@ -5941,6 +5941,19 @@ class Game {
     }
     this._highlightBuf = highlightBuf;
 
+    // Grass LOD characters by distance (more detail near player, sparse far away)
+    const GRASS_LOD_NEAR   = [',', '`', '.', ';', '\'', '\u00B7', '"'];
+    const GRASS_LOD_MID    = [',', '.', '`', ';'];
+    const GRASS_LOD_FAR    = ['.', '\u00B7'];
+    const GRASS_TYPES = { GRASSLAND: 1, MEADOW: 1, TALL_GRASS: 1, SCRUBLAND: 1, FIELD: 1, BARREN_WASTE: 1 };
+
+    // Player position for distance checks
+    const px = this.player.position.x;
+    const py = this.player.position.y;
+
+    // Cloud rendering hour
+    const cloudHour = this.timeSystem.hour;
+
     // Render tiles with density expansion
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
       for (let wx_off = 0; wx_off < worldW; wx_off++) {
@@ -5991,13 +6004,41 @@ class Game {
         }
 
         // Fog of war — only at night; daytime has full visibility
-        const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
+        const dist = distance(wx, wy, px, py);
         const isFogged = isNight && dist > viewRange;
 
+        // Distance fade for extended draw distance (soft fade at edges)
+        let distFade = 1.0;
+        if (!isNight && dist > 40) {
+          distFade = Math.max(0.3, 1.0 - (dist - 40) / 30);
+        }
+
+        // Grass LOD: pick character set based on distance to player
+        const isGrass = GRASS_TYPES[tile.type];
+
         if (density === 1) {
-          const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type);
-          const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
+          let ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+          let fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type);
+          let bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
+
+          // Grass LOD: more varied characters near player
+          if (isGrass && !isFogged) {
+            const hash = ((wx * 73856093) ^ (wy * 19349663)) >>> 0;
+            if (dist < 10) {
+              ch = GRASS_LOD_NEAR[hash % GRASS_LOD_NEAR.length];
+            } else if (dist < 25) {
+              ch = GRASS_LOD_MID[hash % GRASS_LOD_MID.length];
+            } else {
+              ch = GRASS_LOD_FAR[hash % GRASS_LOD_FAR.length];
+            }
+            ch = r.getAnimatedChar(ch, tile.type, wx, wy);
+          }
+
+          // Apply distance fade to fg color
+          if (distFade < 1.0 && !isFogged) {
+            fg = r._fadeColor(fg, distFade);
+          }
+
           r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, bg);
         } else {
           const expanded = expandTile(tile, density, wx, wy);
@@ -6006,10 +6047,54 @@ class Game {
               const screenX = viewLeft + wx_off * density + dx;
               const screenY = viewTop + wy_off * density + dy;
               if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                let ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx + dx / density, wy + dy / density);
+                let fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
                 const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
+
+                // Grass LOD in expanded mode
+                if (isGrass && !isFogged) {
+                  const hash = ((wx * 73856093 + dx * 12345) ^ (wy * 19349663 + dy * 67890)) >>> 0;
+                  if (dist < 8) {
+                    ch = GRASS_LOD_NEAR[hash % GRASS_LOD_NEAR.length];
+                  } else if (dist < 20) {
+                    ch = GRASS_LOD_MID[hash % GRASS_LOD_MID.length];
+                  } else {
+                    ch = GRASS_LOD_FAR[hash % GRASS_LOD_FAR.length];
+                  }
+                  ch = r.getAnimatedChar(ch, tile.type, wx + dx / density, wy + dy / density);
+                }
+
+                if (distFade < 1.0 && !isFogged) {
+                  fg = r._fadeColor(fg, distFade);
+                }
+
                 r.drawChar(screenX, screenY, ch, fg, bg);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ── Cloud overlay (layered procedural noise, drawn over terrain) ──
+    if (this.cloudSystem && !isNight) {
+      for (let wy_off = 0; wy_off < worldH; wy_off++) {
+        for (let wx_off = 0; wx_off < worldW; wx_off++) {
+          const wx = camX + wx_off;
+          const wy = camY + wy_off;
+          const cloud = this.cloudSystem.getCloudVisual(wx, wy, cloudHour);
+          if (!cloud || cloud.char === ' ') continue;
+
+          if (density === 1) {
+            r.tintCell(viewLeft + wx_off, viewTop + wy_off, cloud.fg, cloud.opacity * 0.4);
+          } else {
+            for (let dy = 0; dy < density; dy++) {
+              for (let dx = 0; dx < density; dx++) {
+                const sx = viewLeft + wx_off * density + dx;
+                const sy = viewTop + wy_off * density + dy;
+                if (sx < viewLeft + viewW && sy < viewTop + viewH) {
+                  r.tintCell(sx, sy, cloud.fg, cloud.opacity * 0.4);
+                }
               }
             }
           }
