@@ -6,7 +6,7 @@ import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, Inven
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
 import { getMonsterArt } from './monsterart.js';
-import { expandTile } from './tileExpansion.js';
+import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 
 // ─── Save Export/Import Cipher ───
@@ -601,6 +601,15 @@ class Game {
       this.camera.viewportRows = worldH;
     }
     this.renderer.invalidate();
+  }
+
+  // Clear cached rendering data to prevent stale artifacts across state transitions.
+  _clearRenderCaches() {
+    this._shadowCacheKey = null;
+    this._shadowBuf = null;
+    this._highlightBuf = null;
+    this._shadowBufData = null;
+    clearTileCache();
   }
 
   // Start a screen fade transition. Fades out, runs callback, fades in.
@@ -1481,9 +1490,16 @@ class Game {
 
       this.gameContext.currentLocationName = 'World';
       this.gameContext.currentLocation = null;
+      // Update camera viewport dimensions for restored zoom level
+      const density = this.renderer.densityLevel;
+      const viewW = this.renderer.cols - 2;
+      const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+      this.camera.viewportCols = Math.floor(viewW / density);
+      this.camera.viewportRows = Math.floor(viewH / density);
       this.camera.follow(this.player);
       this.camera.x = this.camera.targetX;
       this.camera.y = this.camera.targetY;
+      this._clearRenderCaches();
       this.renderer.invalidate();
       this.setState('OVERWORLD');
 
@@ -1912,9 +1928,16 @@ class Game {
           this.renderer.setZoom(this._preLocationZoom);
           this._preLocationZoom = null;
         }
+        // Update camera viewport dimensions for restored zoom level
+        const density = this.renderer.densityLevel;
+        const viewW = this.renderer.cols - 2;
+        const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+        this.camera.viewportCols = Math.floor(viewW / density);
+        this.camera.viewportRows = Math.floor(viewH / density);
         this.camera.follow(this.player);
         this.camera.x = this.camera.targetX;
         this.camera.y = this.camera.targetY;
+        this._clearRenderCaches();
         this.renderer.invalidate();
         this.setState('OVERWORLD');
         this.ui.addMessage('You leave the settlement.', COLORS.WHITE);
@@ -1971,22 +1994,31 @@ class Game {
       this.startTransition(() => {
         this.currentDungeon = null;
         this.currentTower = null;
+        this.currentSettlement = null;
         this.enemies = [];
         this.items = [];
+        this.npcs = [];
         if (this.gameContext.currentLocation) {
           this.player.position.x = this.gameContext.currentLocation.x;
           this.player.position.y = this.gameContext.currentLocation.y;
         }
         this.gameContext.currentLocationName = 'World';
         this.gameContext.currentLocation = null;
-        // Restore zoom level from before entering the town
+        // Restore zoom level from before entering
         if (this._preLocationZoom) {
           this.renderer.setZoom(this._preLocationZoom);
           this._preLocationZoom = null;
         }
+        // Update camera viewport dimensions for restored zoom level
+        const density = this.renderer.densityLevel;
+        const viewW = this.renderer.cols - 2;
+        const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+        this.camera.viewportCols = Math.floor(viewW / density);
+        this.camera.viewportRows = Math.floor(viewH / density);
         this.camera.follow(this.player);
         this.camera.x = this.camera.targetX;
         this.camera.y = this.camera.targetY;
+        this._clearRenderCaches();
         this.renderer.invalidate();
         this.setState('OVERWORLD');
         this.ui.addMessage('You escape the dungeon.', COLORS.WHITE);
@@ -2109,17 +2141,32 @@ class Game {
           } else {
             this.currentDungeon = null;
             this.currentTower = null;
+            this.currentSettlement = null;
             this.enemies = [];
             this.items = [];
+            this.npcs = [];
             if (this.gameContext.currentLocation) {
               this.player.position.x = this.gameContext.currentLocation.x;
               this.player.position.y = this.gameContext.currentLocation.y;
             }
-            // Restore zoom level from before entering the town
+            this.gameContext.currentLocationName = 'World';
+            this.gameContext.currentLocation = null;
+            // Restore zoom level from before entering
             if (this._preLocationZoom) {
               this.renderer.setZoom(this._preLocationZoom);
               this._preLocationZoom = null;
             }
+            // Update camera viewport dimensions for restored zoom level
+            const density = this.renderer.densityLevel;
+            const viewW = this.renderer.cols - 2;
+            const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+            this.camera.viewportCols = Math.floor(viewW / density);
+            this.camera.viewportRows = Math.floor(viewH / density);
+            this.camera.follow(this.player);
+            this.camera.x = this.camera.targetX;
+            this.camera.y = this.camera.targetY;
+            this._clearRenderCaches();
+            this.renderer.invalidate();
             this.setState('OVERWORLD');
             this.ui.addMessage('You exit to the surface.', COLORS.WHITE);
           }
