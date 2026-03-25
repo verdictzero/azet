@@ -462,9 +462,18 @@ const TYPE_PATTERNS = {
   SECTION_WALL_DETAIL: { 2: WALL_2x2, 3: WALL_3x3 },
   SECTION_WALL_RIVET:  { 2: WALL_2x2, 3: WALL_3x3 },
 
-  // Airlock frames and passages
+  // Airlock frames, passages, doors, and gates
   AIRLOCK_FRAME:       { 2: WALL_2x2, 3: WALL_3x3 },
   AIRLOCK_PASSAGE:     { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  AIRLOCK_DOOR:        { 2: DOOR_2x2, 3: DOOR_3x3 },
+  AIRLOCK_GATE:        { 2: WALL_2x2, 3: WALL_3x3 },
+
+  // Tower structures at chunk intersections
+  TOWER_CORNER:        { 2: WALL_2x2, 3: WALL_3x3 },
+  TOWER_WALL:          { 2: WALL_2x2, 3: WALL_3x3 },
+  TOWER_SPIRE:         { 2: WALL_2x2, 3: WALL_3x3 },
+  TOWER_FLOOR:         { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  TOWER_DOOR:          { 2: DOOR_2x2, 3: DOOR_3x3 },
 
   // Inner hull engineering corridors
   HULL_CORRIDOR_WALL:  { 2: WALL_2x2, 3: WALL_3x3 },
