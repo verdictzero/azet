@@ -453,7 +453,7 @@ export class SectionManager {
 
     // Build pool: enough biomes for 6 non-H4 habitats (H1-H3, H5-H7)
     // Shuffle all biome types so each game is unique
-    const pool = rng.shuffle([...HABITAT_BIOMES]);
+    const pool = rng.shuffle([...HABITAT_BIOMES].filter(b => !this.debugMode || b !== 'vacuum'));
 
     let poolIdx = 0;
     for (const def of SECTION_DEFS) {
@@ -1862,7 +1862,7 @@ export class ChunkManager {
         const idx = y * S + x;
         if (visited[idx]) continue;
         const t = tiles[y][x];
-        if (t.walkable || t.structure || t.locationId || t.tearZone || WATER_TYPES.has(t.type)) {
+        if (t.walkable || t.structure || t.locationId || t.tearZone || t.airlockFrame || WATER_TYPES.has(t.type)) {
           visited[idx] = 1;
           continue;
         }
@@ -1878,7 +1878,7 @@ export class ChunkManager {
             const ni = ny * S + nx;
             if (visited[ni]) continue;
             const nt = tiles[ny][nx];
-            if (nt.walkable || nt.structure || nt.locationId || WATER_TYPES.has(nt.type)) {
+            if (nt.walkable || nt.structure || nt.locationId || nt.airlockFrame || WATER_TYPES.has(nt.type)) {
               visited[ni] = 1;
               continue;
             }
