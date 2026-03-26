@@ -1,6 +1,188 @@
 // ============================================================================
 // world.js — World generation for ASCIIQUEST, a colony salvage roguelike
 // ============================================================================
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │              WORLD GENERATION SYSTEMS — HEURISTIC ANALYSIS             │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ── 1. GENERATION PIPELINE (execution order) ─────────────────────────────
+//
+// A) CHUNK GENERATION — ChunkManager._generateChunk() [line ~1486]
+//    Chunks are 32×32 tiles, generated on demand when player is within
+//    Manhattan distance 2 (5×5 ring). Cached by "cx,cy" key string.
+//
+//    Per-tile generation: _generateTile(wx, wy) [line ~720]
+//    Priority/override order (first match wins):
+//      1. VOID — beyond ship hull → VOID_SPACE
+//      2. SECTION WALL — within 7 tiles of section edge → WALL_GRADIENT
+//         2a. AIRLOCK — deterministic hash selects 50% of 128-tile slots
+//             Layers: outer hull → blast corridor → blast door → junction
+//                     → grating → AIRLOCK_DOOR (habitat side, interactable)
+//      3. INNER HULL — _generateInnerHullTile() [line ~1085]
+//         Outer walls → central walkway → secondary walkway → machinery
+//         Airlock openings aligned with adjacent section walls via hash match
+//      4. FACILITY — _generateFacilityTile() [line ~1030]
+//         C2 (Command) or ENG (Engineering) rooms/corridors
+//      5. HABITAT BIOME — _generateHabitatTile() [line ~838]
+//         Uses noise layers: height, moisture, anomaly, detail, temperature
+//         Biome modifiers alter noise → terrain assignment
+//
+//    Post-chunk passes (after all 32×32 tiles generated):
+//      B1. Colony substructure tears [line ~1516] — noise > 0.74 → tear tiles
+//      B2. Remove small isolated blockers [line ~1519]
+//      B3. Place megalithic structures [line ~1521] — obelisks, relay towers
+//      B4. Place settlement/location markers [line ~1526] — from overworld locs
+//      B5. Place bridge locations for rivers [line ~1530]
+//      B6. Place watchtowers at chunk corners [line ~1534]
+//
+// ── 2. RENDERING PIPELINE ────────────────────────────────────────────────
+//
+// OVERWORLD — renderOverworld() [main.js line ~5913]
+//   Stage 1: Shadow/lighting computation (cached by camera+sun+density)
+//     - TILE_HEIGHTS lookup for each tile type
+//     - Recessed tiles (height < 0): self-shadow at 0.625 opacity
+//     - Raised tiles (height > 0): cast linear shadow rays toward sun
+//     - Vegetation reduces shadow alpha by 0.5x
+//     - Shadow fades quadratically along ray
+//   Stage 2: Tile rendering
+//     - VOID_SPACE → procedural circuitry background
+//     - Inner hull machinery → circuit pattern overlay on non-walkable
+//     - Fog of war (night): tiles > viewRange dimmed
+//     - Density expansion: expandTile() for zoom levels 2/3
+//     - Color animation: getAnimatedColor() for special tile types
+//   Stage 3: Location markers (▣□○▼♦†▪▲) with glow categories
+//   Stage 4: Player (@) with pulsing reticle corners
+//   Stage 5: Quest navigation line overlay
+//
+// DUNGEON — renderDungeon() [main.js line ~6357]
+//   Stage 1: Light source collection (player + tile-based)
+//     - Fireplace/Torch: fast jittery flicker
+//     - Crystal: slow wave with color shift
+//     - Ember: medium pulse with flares
+//     - Pulse (machinery): smooth steady pulse
+//   Stage 2: LightingSystem.compute() → per-tile brightness map
+//     - Opacity function: walls and non-walkable block light
+//   Stage 3: FOV/visibility determination
+//     - With lighting: brightness > 0.02 = visible
+//     - Legacy: raycasting to viewport perimeter
+//   Stage 4: Tile rendering with brightness modulation
+//     - Interactive tiles (stairs, doors, chests): glow effect
+//     - Non-visible tiles: procedural circuitry background
+//   Stage 5: Entities (enemies, items, player)
+//
+// ── 3. STATE TRANSITIONS & CLEANUP ───────────────────────────────────────
+//
+// OVERWORLD → DUNGEON (enterDungeon, line ~1249):
+//   - Saves _preLocationZoom, sets zoom to 3
+//   - Generates dungeon tiles, rooms, entity spots
+//   - Spawns enemies + items from entity spots
+//   - Places player at entrance room center
+//   - setState('DUNGEON') — NO fade transition!
+//
+// DUNGEON → OVERWORLD (STAIRS_UP at floor 0, line ~2142):
+//   - Nulls currentDungeon, currentTower, currentSettlement
+//   - Clears enemies[], items[], npcs[]
+//   - Restores player position from currentLocation.x/y
+//   - Restores _preLocationZoom
+//   - Recalculates camera viewport
+//   - _clearRenderCaches() → clears shadow cache, highlight buf, tile cache
+//   - setState('OVERWORLD') — NO fade transition!
+//
+// OVERWORLD → LOCATION (enterLocation, line ~1059):
+//   - Generates settlement tiles + NPCs
+//   - Creates locationCamera
+//   - setState('LOCATION') — with startTransition() fade
+//
+// LOCATION → OVERWORLD (Escape, line ~1916):
+//   - startTransition() fade → restores position, clears settlement/NPCs
+//   - Restores zoom, recalculates camera
+//   - _clearRenderCaches()
+//
+// ── 4. KNOWN ARTIFACT RISK AREAS ─────────────────────────────────────────
+//
+// [A] NO FADE ON DUNGEON EXIT — lines 2142-2170
+//     Location exit uses startTransition() but dungeon STAIRS_UP exit does
+//     NOT. This causes instant state swap with potential 1-frame glitch as
+//     camera/viewport/zoom all change simultaneously without a black frame
+//     buffer. Compare with location exit at line 1916 which fades properly.
+//
+// [B] DENSITY MISMATCH FRAME — lines 2155-2164
+//     On dungeon exit: zoom restore → viewport recalc → camera snap → render.
+//     If render fires between zoom restore and camera snap, viewport may
+//     show tiles at wrong density. The camera.follow() + immediate x/y snap
+//     happens in the same frame, but setState triggers a render.
+//
+// [C] SHADOW CACHE STALE ON CAMERA JUMP — _shadowCacheKey at line ~608
+//     Shadow cache keyed by camera position + sun + density. After dungeon
+//     exit, camera snaps to a new position. If the NEW position generates
+//     the same cache key as a PRE-dungeon cached frame (unlikely but
+//     possible with integer truncation), stale shadow data could render.
+//     _clearRenderCaches() should prevent this, but verify it's called
+//     BEFORE the first render frame after exit.
+//
+// [D] CHUNK CACHE ACROSS STATE TRANSITIONS
+//     ChunkManager caches chunks by "cx,cy". These are never explicitly
+//     invalidated on dungeon entry/exit. This is CORRECT behavior (overworld
+//     chunks should persist), but if any generation code has side effects
+//     on shared state (noise generators, RNG), chunks generated after
+//     returning from dungeon could differ from pre-dungeon chunks at the
+//     same coordinates. Verify noise objects are stateless/pure.
+//
+// [E] TILE EXPANSION CACHE (tileExpansion.js)
+//     expandTile() may cache by position hash. Dungeon tiles and overworld
+//     tiles use separate coordinate spaces (dungeon: 0-60, overworld:
+//     world coords). If cache is global and not cleared, expansion patterns
+//     from dungeon coords could bleed into overworld at matching positions.
+//     clearTileCache() in _clearRenderCaches() should handle this.
+//
+// [F] INNER HULL AIRLOCK HASH ALIGNMENT — lines 1095-1107
+//     Inner hull corridor airlock openings use hash matching against
+//     adjacent section walls. The hash inputs differ between wall side
+//     and corridor side:
+//       Wall: _wallHash(section.startChunkX * 7 + (isWest ? 0 : 1), slot)
+//       Hull: _wallHash(section.startChunkX * 7 - 7 + 1, slot) [west]
+//             _wallHash((startChunkX + widthChunks) * 7, slot) [east]
+//     These MUST produce identical results for adjacent section pairs.
+//     An off-by-one in the multiplier/offset would cause airlock openings
+//     in the corridor wall to not line up with habitat wall openings,
+//     creating sealed corridors or floating passages.
+//
+// [G] locationCamera NOT NULLED ON DUNGEON EXIT — line 2142
+//     On dungeon exit, currentSettlement is set to null but locationCamera
+//     is not explicitly cleared. If render dispatch checks locationCamera
+//     before checking state, a stale camera could affect rendering.
+//
+// [H] PLAYER POSITION FALLBACK — line 2148-2150
+//     Player position restored from gameContext.currentLocation.x/y.
+//     If currentLocation is null (e.g., entered dungeon via debug), player
+//     position remains at dungeon coordinates (0-60 range), which maps to
+//     a completely wrong overworld location near the west edge of C2.
+//
+// ── 5. TILE OVERRIDE PRIORITY (generation time) ──────────────────────────
+//
+// Highest → Lowest:
+//   1. Section wall / airlock (non-overridable structural boundary)
+//   2. Tear zones (noise-based, overwrites terrain in concentric rings)
+//   3. Structure placement (obelisks, towers — sets structure:true flag)
+//   4. Settlement/location markers (sets locationId)
+//   5. Road construction (A* path, only overwrites walkable terrain)
+//   6. Bridge placement (overwrites water with bridge tiles)
+//   7. Base biome terrain (noise-derived, lowest priority)
+//
+// ── 6. RENDERING OVERRIDE PRIORITY (draw time) ───────────────────────────
+//
+// Layer 0: Background (circuitry for non-visible/void areas)
+// Layer 1: Terrain tiles (grass, water, mountains, floor)
+// Layer 2: Structure tiles (buildings, walls, tears, machinery)
+// Layer 3: Location markers (settlement icons with glow)
+// Layer 4: Shadow/lighting overlay (multiplicative dimming)
+// Layer 5: Fog of war (night desaturation)
+// Layer 6: Entities (enemies, NPCs, items)
+// Layer 7: Player character (@) with reticle
+// Layer 8: UI overlays (quest nav, HUD, minimap)
+//
+// ============================================================================
 
 import { SeededRNG, PerlinNoise, CellularNoise, AStar, distance, floodFill } from './utils.js';
 
@@ -800,13 +982,11 @@ export class ChunkManager {
               { biome: 'hull', airlock: true });
           }
           // wallDist 6: AIRLOCK DOOR — the habitat-side entrance the player interacts with
-          // This is the main interactable door, visually distinct
+          // Non-walkable: player must press E/Enter to interact and enter engineering space
           if (isCenterRow) {
-            // Determine which section is on the other side of this wall
-            const otherSectionId = isWest ? null : null; // computed at interaction time
-            return tile('AIRLOCK_DOOR', '⊞', '#FFDD44', '#221100', true,
+            return tile('AIRLOCK_DOOR', '⊞', '#FFDD44', '#221100', false,
               { biome: 'hull', airlockDoor: true, airlock: true, isWestWall: isWest,
-                sectionId: section.id });
+                sectionId: section.id, airlockSlot });
           }
           // Non-center rows at habitat edge: gate pillars
           return tile('AIRLOCK_GATE', '║', '#AA8800', '#0D0800', false,
@@ -5003,5 +5183,253 @@ export class RuinGenerator {
         }
       }
     }
+  }
+}
+
+// ============================================================================
+// EngineeringSpaceGenerator — Procedural inter-habitat engineering corridors
+// ============================================================================
+
+export class EngineeringSpaceGenerator {
+
+  generate(rng, width = 48, height = 32, sectionId, airlockSlot, isWestWall) {
+    // Fill with hull walls
+    const tiles = makeTileGrid(width, height, () =>
+      tile('WALL', '#', '#334455', '#0A0A12', false)
+    );
+
+    // BSP room generation (simplified from DungeonGenerator)
+    const minRoomSize = 4;
+    const maxSplitDepth = 4;
+    const root = { x: 1, y: 1, w: width - 2, h: height - 2, left: null, right: null, room: null };
+    this._splitNode(rng, root, 0, maxSplitDepth, minRoomSize);
+
+    const rooms = [];
+    this._createRooms(rng, root, rooms, minRoomSize);
+
+    // Connect rooms with L-shaped corridors
+    const corridors = [];
+    this._connectRooms(rng, root, tiles, corridors);
+
+    // Carve rooms with industrial floor tiles
+    for (const room of rooms) {
+      for (let y = room.y; y < room.y + room.h; y++) {
+        for (let x = room.x; x < room.x + room.w; x++) {
+          tiles[y][x] = this._hullFloorTile(rng, x, y);
+        }
+      }
+    }
+
+    // Carve corridors
+    for (const cor of corridors) {
+      for (const p of cor.points) {
+        if (p.x >= 0 && p.y >= 0 && p.x < width && p.y < height) {
+          tiles[p.y][p.x] = this._hullFloorTile(rng, p.x, p.y);
+        }
+      }
+    }
+
+    // Add industrial decorations to rooms
+    this._decorateRooms(rng, tiles, rooms, width, height);
+
+    // Resolve wall characters to box-drawing
+    this._resolveWallChars(tiles, width, height);
+
+    // Place entrance and exit doors
+    // Entrance: west side if player entered from a west-facing wall, east side if east-facing
+    const entranceSide = isWestWall ? 'west' : 'east';
+    const exitSide = isWestWall ? 'east' : 'west';
+
+    const entrance = this._placeAccessDoor(tiles, rooms, width, height, entranceSide, 'ENGINEERING_ENTRANCE');
+    const exit = this._placeAccessDoor(tiles, rooms, width, height, exitSide, 'ENGINEERING_AIRLOCK');
+
+    return { tiles, width, height, rooms, corridors, entrance, exit, sectionId, airlockSlot, isWestWall };
+  }
+
+  _placeAccessDoor(tiles, rooms, width, height, side, doorType) {
+    // Find the room closest to the target wall
+    let bestRoom = rooms[0];
+    let bestDist = Infinity;
+
+    for (const room of rooms) {
+      const cx = room.x + Math.floor(room.w / 2);
+      let dist;
+      if (side === 'west') dist = cx;
+      else dist = width - cx;
+
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestRoom = room;
+      }
+    }
+
+    // Place door on the wall edge closest to this room
+    const roomCY = bestRoom.y + Math.floor(bestRoom.h / 2);
+    let dx, dy;
+
+    if (side === 'west') {
+      dx = 0;
+      dy = Math.max(1, Math.min(height - 2, roomCY));
+    } else {
+      dx = width - 1;
+      dy = Math.max(1, Math.min(height - 2, roomCY));
+    }
+
+    // Carve a short passage from the door to the nearest room
+    const targetX = side === 'west' ? bestRoom.x : bestRoom.x + bestRoom.w - 1;
+    const stepDir = side === 'west' ? 1 : -1;
+    for (let x = dx; x !== targetX; x += stepDir) {
+      if (x >= 0 && x < width) {
+        tiles[dy][x] = this._hullFloorTile(null, x, dy);
+      }
+    }
+
+    // Place the door tile
+    const isEntrance = doorType === 'ENGINEERING_ENTRANCE';
+    const doorChar = isEntrance ? '⊞' : '⊟';
+    const doorFg = isEntrance ? '#FFDD44' : '#FF6644';
+    tiles[dy][dx] = tile(doorType, doorChar, doorFg, '#221100', true,
+      { biome: 'engineering', engineeringDoor: true, doorSide: side, isEntrance });
+
+    return { x: dx, y: dy };
+  }
+
+  _hullFloorTile(rng, x, y) {
+    const hash = ((x * 2654435761) ^ (y * 2246822519)) >>> 0;
+    const v = (hash % 100) / 100;
+
+    if (v < 0.05) {
+      return tile('HULL_VALVE', '⊕', '#334455', '#030308', true, { biome: 'engineering' });
+    }
+    if (v < 0.10) {
+      const conduits = ['─', '│', '┌', '┐', '└', '┘'];
+      return tile('HULL_CONDUIT', conduits[hash % conduits.length], '#1A3040', '#030308', true, { biome: 'engineering' });
+    }
+    if (v < 0.15) {
+      return tile('HULL_GRATING', '░', '#1A2A3A', '#030308', true, { biome: 'engineering' });
+    }
+    if ((x + y) % 8 === 0) {
+      return tile('HULL_CATWALK_LINE', '┼', '#445566', '#030308', true, { biome: 'engineering' });
+    }
+    if (x % 4 === 0) {
+      return tile('HULL_CATWALK_LINE', '│', '#334455', '#030308', true, { biome: 'engineering' });
+    }
+    if (y % 4 === 0) {
+      return tile('HULL_CATWALK_LINE', '─', '#334455', '#030308', true, { biome: 'engineering' });
+    }
+    return tile('HULL_CATWALK', '·', '#223344', '#030308', true, { biome: 'engineering' });
+  }
+
+  _decorateRooms(rng, tiles, rooms, width, height) {
+    for (const room of rooms) {
+      const machCount = rng.nextInt(1, Math.max(2, Math.floor(room.w * room.h / 12)));
+      for (let i = 0; i < machCount; i++) {
+        const mx = rng.nextInt(room.x + 1, room.x + room.w - 2);
+        const my = rng.nextInt(room.y + 1, room.y + room.h - 2);
+        if (tiles[my][mx].walkable) {
+          if (rng.chance(0.4)) {
+            tiles[my][mx] = tile('HULL_MACHINERY', '▓', '#253545', '#030308', false, { biome: 'engineering' });
+          } else if (rng.chance(0.3)) {
+            tiles[my][mx] = tile('HULL_PIPE', '║', '#2A3A4A', '#030308', false, { biome: 'engineering' });
+          } else {
+            tiles[my][mx] = tile('HULL_CONDUIT', '○', '#0D2535', '#030308', false,
+              { biome: 'engineering', lightSource: 'pulse' });
+          }
+        }
+      }
+    }
+  }
+
+  _resolveWallChars(tiles, width, height) {
+    const chars = [
+      '○', '║', '═', '╚', '║', '║', '╔', '╠',
+      '═', '╝', '═', '╩', '╗', '╣', '╦', '╬',
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y][x].type !== 'WALL') continue;
+        const isWall = (nx, ny) => {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) return true;
+          return !tiles[ny][nx].walkable;
+        };
+        let mask = 0;
+        if (isWall(x, y - 1)) mask |= 1;
+        if (isWall(x + 1, y)) mask |= 2;
+        if (isWall(x, y + 1)) mask |= 4;
+        if (isWall(x - 1, y)) mask |= 8;
+        tiles[y][x] = tile('WALL', chars[mask], '#445566', '#0A0A12', false, { biome: 'engineering' });
+      }
+    }
+  }
+
+  _splitNode(rng, node, depth, maxDepth, minSize) {
+    if (depth >= maxDepth) return;
+    const canH = node.h >= minSize * 2 + 2;
+    const canV = node.w >= minSize * 2 + 2;
+    if (!canH && !canV) return;
+
+    let splitH;
+    if (canH && canV) splitH = node.h > node.w ? rng.chance(0.7) : rng.chance(0.3);
+    else splitH = canH;
+
+    if (splitH) {
+      const at = rng.nextInt(node.y + minSize, node.y + node.h - minSize);
+      node.left = { x: node.x, y: node.y, w: node.w, h: at - node.y, left: null, right: null, room: null };
+      node.right = { x: node.x, y: at, w: node.w, h: node.y + node.h - at, left: null, right: null, room: null };
+    } else {
+      const at = rng.nextInt(node.x + minSize, node.x + node.w - minSize);
+      node.left = { x: node.x, y: node.y, w: at - node.x, h: node.h, left: null, right: null, room: null };
+      node.right = { x: at, y: node.y, w: node.x + node.w - at, h: node.h, left: null, right: null, room: null };
+    }
+
+    this._splitNode(rng, node.left, depth + 1, maxDepth, minSize);
+    this._splitNode(rng, node.right, depth + 1, maxDepth, minSize);
+  }
+
+  _createRooms(rng, node, rooms, minSize) {
+    if (node.left || node.right) {
+      if (node.left) this._createRooms(rng, node.left, rooms, minSize);
+      if (node.right) this._createRooms(rng, node.right, rooms, minSize);
+      return;
+    }
+    const rw = rng.nextInt(minSize, Math.max(minSize, node.w - 2));
+    const rh = rng.nextInt(minSize, Math.max(minSize, node.h - 2));
+    const rx = rng.nextInt(node.x, node.x + node.w - rw);
+    const ry = rng.nextInt(node.y, node.y + node.h - rh);
+    node.room = { x: rx, y: ry, w: rw, h: rh };
+    rooms.push(node.room);
+  }
+
+  _getRoom(node) {
+    if (node.room) return node.room;
+    if (node.left) { const r = this._getRoom(node.left); if (r) return r; }
+    if (node.right) { const r = this._getRoom(node.right); if (r) return r; }
+    return null;
+  }
+
+  _connectRooms(rng, node, tiles, corridors) {
+    if (!node.left || !node.right) return;
+    this._connectRooms(rng, node.left, tiles, corridors);
+    this._connectRooms(rng, node.right, tiles, corridors);
+
+    const roomA = this._getRoom(node.left);
+    const roomB = this._getRoom(node.right);
+    if (!roomA || !roomB) return;
+
+    const ax = roomA.x + Math.floor(roomA.w / 2);
+    const ay = roomA.y + Math.floor(roomA.h / 2);
+    const bx = roomB.x + Math.floor(roomB.w / 2);
+    const by = roomB.y + Math.floor(roomB.h / 2);
+
+    const points = [];
+    if (rng.chance(0.5)) {
+      for (let x = ax; x !== bx; x += (bx > ax ? 1 : -1)) points.push({ x, y: ay });
+      for (let y = ay; y !== by + (by > ay ? 1 : -1); y += (by > ay ? 1 : -1)) points.push({ x: bx, y });
+    } else {
+      for (let y = ay; y !== by; y += (by > ay ? 1 : -1)) points.push({ x: ax, y });
+      for (let x = ax; x !== bx + (bx > ax ? 1 : -1); x += (bx > ax ? 1 : -1)) points.push({ x, y: by });
+    }
+    corridors.push({ points });
   }
 }
