@@ -1,6 +1,6 @@
 import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
-import { OverworldGenerator, ChunkManager, SectionManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator } from './world.js';
+import { OverworldGenerator, ChunkManager, SectionManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator, EngineeringSpaceGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms, QUEST_CHAIN_DEFINITIONS } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
@@ -204,6 +204,7 @@ class Game {
     this.towerGen = new TowerGenerator();
     this.ruinGen = new RuinGenerator();
     this.bridgeGen = new BridgeDungeonGenerator();
+    this.engineeringGen = new EngineeringSpaceGenerator();
 
     // Systems
     this.combat = new CombatSystem();
@@ -533,6 +534,12 @@ class Game {
         this.music.play(this._currentTownTrack, leavingBattle ? { fadeDuration: 50 } : undefined);
         break;
       case 'DUNGEON':
+        if (!this._currentRuinsTrack) {
+          this._currentRuinsTrack = TRACKS.RUINS[Math.floor(Math.random() * TRACKS.RUINS.length)];
+        }
+        this.music.play(this._currentRuinsTrack, leavingBattle ? { fadeDuration: 50 } : undefined);
+        break;
+      case 'ENGINEERING_SPACE':
         if (!this._currentRuinsTrack) {
           this._currentRuinsTrack = TRACKS.RUINS[Math.floor(Math.random() * TRACKS.RUINS.length)];
         }
@@ -1511,6 +1518,302 @@ class Game {
     });
   }
 
+  // ── Engineering Space (inter-habitat corridors) ──────────────────────────
+
+  enterEngineeringSpace(sectionId, airlockSlot, isWestWall, overworldX, overworldY) {
+    const engSeed = this.seed + (sectionId.charCodeAt(0) || 0) * 3000 + airlockSlot * 7 + (isWestWall ? 0 : 1);
+    const engRng = new SeededRNG(engSeed);
+
+    const engSpace = this.engineeringGen.generate(engRng, 48, 32, sectionId, airlockSlot, isWestWall);
+    this.currentEngineeringSpace = engSpace;
+
+    // Store overworld return position (the airlock door tile the player interacted with)
+    this._engineeringReturnPos = { x: overworldX, y: overworldY, sectionId, airlockSlot, isWestWall };
+
+    // Save zoom and set dungeon-style zoom
+    this._preLocationZoom = this.renderer.densityLevel;
+    this.renderer.setZoom(3);
+
+    // Place player at entrance
+    this.player.position.x = engSpace.entrance.x + (isWestWall ? 1 : -1);
+    this.player.position.y = engSpace.entrance.y;
+
+    // Create camera for engineering space
+    const density = this.renderer.densityLevel;
+    this.locationCamera = new Camera(
+      Math.floor((this.renderer.cols - 2) / density),
+      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density)
+    );
+    this.locationCamera.follow(this.player);
+    this.locationCamera.x = this.locationCamera.targetX;
+    this.locationCamera.y = this.locationCamera.targetY;
+
+    this.gameContext.currentLocationName = `Engineering Bay ${sectionId}-${airlockSlot}`;
+    this.setState('ENGINEERING_SPACE');
+    this.ui.addMessage('You enter the engineering bay. Machinery hums in the dim light.', '#FFAA00');
+    this.ui.addMessage('Navigate to the airlock on the far side to reach the adjacent habitat.', '#AACCFF');
+  }
+
+  _exitEngineeringSpace(toAdjacentHabitat) {
+    this.startTransition(() => {
+      const engSpace = this.currentEngineeringSpace;
+      const returnPos = this._engineeringReturnPos;
+      this.currentEngineeringSpace = null;
+      this._engineeringReturnPos = null;
+      this.locationCamera = null;
+
+      // Restore zoom
+      if (this._preLocationZoom) {
+        this.renderer.setZoom(this._preLocationZoom);
+        this._preLocationZoom = null;
+      }
+
+      if (toAdjacentHabitat && engSpace && returnPos) {
+        // Exit to adjacent habitat — find the matching airlock on the other side
+        const adj = this.sectionManager.getAdjacentSections(returnPos.sectionId);
+        const targetSectionId = returnPos.isWestWall ? adj.west : adj.east;
+
+        if (targetSectionId) {
+          const targetSection = this.sectionManager.getSection(targetSectionId);
+          if (targetSection) {
+            // Calculate the X position of the matching airlock on the target section's wall
+            // If we exited through west wall of our section, we arrive at east wall of target section
+            const targetSectionWidth = targetSection.widthChunks * 32;
+            let targetX;
+            if (returnPos.isWestWall) {
+              // Arrived at east wall of target (target's right edge, wallDist=6 from right = near habitat)
+              targetX = targetSection.startChunkX * 32 + targetSectionWidth - 8; // just inside the wall
+            } else {
+              // Arrived at west wall of target (target's left edge)
+              targetX = targetSection.startChunkX * 32 + 8; // just inside the wall
+            }
+
+            this.player.position.x = targetX;
+            this.player.position.y = returnPos.y; // Same Y (N-S position preserved)
+            this.ui.addMessage(`You pass through the airlock into ${targetSection.label}.`, '#44FFAA');
+          }
+        } else {
+          // No adjacent section, return to same position
+          this.player.position.x = returnPos.x;
+          this.player.position.y = returnPos.y;
+          this.ui.addMessage('The airlock leads nowhere. You turn back.', '#FFAA00');
+        }
+      } else {
+        // Return to habitat side (cancelled / went back through entrance)
+        if (returnPos) {
+          this.player.position.x = returnPos.x;
+          this.player.position.y = returnPos.y;
+        }
+        this.ui.addMessage('You step back into the habitat.', '#AACCFF');
+      }
+
+      this.gameContext.currentLocationName = 'World';
+      const density = this.renderer.densityLevel;
+      const viewW = this.renderer.cols - 2;
+      const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+      this.camera.viewportCols = Math.floor(viewW / density);
+      this.camera.viewportRows = Math.floor(viewH / density);
+      this.camera.follow(this.player);
+      this.camera.x = this.camera.targetX;
+      this.camera.y = this.camera.targetY;
+      this._clearRenderCaches();
+      this.renderer.invalidate();
+      this.setState('OVERWORLD');
+    });
+  }
+
+  handleEngineeringSpaceInput(key) {
+    if (key === 'i' || key === 'I') { this.setState('INVENTORY'); return; }
+    if (key === 'c' || key === 'C') { this.setState('CHARACTER'); return; }
+    if (key === '?') { this.setState('HELP'); return; }
+    if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
+
+    // Zoom controls
+    if (key === '+' || key === '=') { this._zoomIn(); return; }
+    if (key === '-') { this._zoomOut(); return; }
+
+    // Escape — return to habitat (go back through entrance)
+    if (key === 'Escape') {
+      this._exitEngineeringSpace(false);
+      return;
+    }
+
+    // Movement
+    const dir = this.getDirection(key);
+    if (dir) {
+      this._movePlayerInEngineeringSpace(dir.dx, dir.dy);
+    }
+
+    // Interact with doors
+    if (key === 'Enter' || key === 'e' || key === 'E') {
+      this._interactEngineeringSpace();
+    }
+  }
+
+  _movePlayerInEngineeringSpace(dx, dy) {
+    if (!this.currentEngineeringSpace) return;
+
+    const nx = this.player.position.x + dx;
+    const ny = this.player.position.y + dy;
+    const tiles = this.currentEngineeringSpace.tiles;
+
+    if (ny < 0 || ny >= tiles.length || nx < 0 || nx >= tiles[0].length) return;
+
+    const t = tiles[ny][nx];
+    if (!t.walkable) {
+      this.ui.addMessage('You can\'t go that way.', '#888888');
+      return;
+    }
+
+    this.player.position.x = nx;
+    this.player.position.y = ny;
+
+    // Check if player stepped on a door tile
+    if (t.engineeringDoor) {
+      if (t.isEntrance) {
+        this.ui.addMessage('Entrance door. Press Escape to return to the habitat.', '#FFDD44');
+      } else {
+        this.ui.addMessage('Airlock door. Press E to pass through to the adjacent habitat.', '#FF6644');
+      }
+    }
+  }
+
+  _interactEngineeringSpace() {
+    if (!this.currentEngineeringSpace) return;
+
+    const px = this.player.position.x;
+    const py = this.player.position.y;
+    const tiles = this.currentEngineeringSpace.tiles;
+
+    // Check current tile and adjacent tiles for engineering doors
+    const checkPositions = [
+      { x: px, y: py },
+      { x: px + 1, y: py }, { x: px - 1, y: py },
+      { x: px, y: py + 1 }, { x: px, y: py - 1 },
+    ];
+
+    for (const pos of checkPositions) {
+      if (pos.y < 0 || pos.y >= tiles.length || pos.x < 0 || pos.x >= tiles[0].length) continue;
+      const t = tiles[pos.y][pos.x];
+      if (t.engineeringDoor && !t.isEntrance) {
+        // Exit airlock — pass through to adjacent habitat
+        this._exitEngineeringSpace(true);
+        return;
+      }
+      if (t.engineeringDoor && t.isEntrance) {
+        // Entrance — return to habitat
+        this._exitEngineeringSpace(false);
+        return;
+      }
+    }
+
+    this.ui.addMessage('Nothing to interact with here.', '#888888');
+  }
+
+  renderEngineeringSpace() {
+    if (!this.currentEngineeringSpace) return;
+
+    const tiles = this.currentEngineeringSpace.tiles;
+    const density = this.renderer.densityLevel;
+    const viewW = Math.floor((this.renderer.cols - 2) / density);
+    const viewH = Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density);
+
+    if (this.locationCamera) {
+      this.locationCamera.follow(this.player);
+      this.locationCamera.update();
+    }
+
+    const camX = this.locationCamera ? this.locationCamera.x : this.player.position.x - Math.floor(viewW / 2);
+    const camY = this.locationCamera ? this.locationCamera.y : this.player.position.y - Math.floor(viewH / 2);
+
+    const r = this.renderer;
+    const startRow = LAYOUT.VIEWPORT_TOP;
+
+    for (let vy = 0; vy < viewH; vy++) {
+      for (let vx = 0; vx < viewW; vx++) {
+        const wx = camX + vx;
+        const wy = camY + vy;
+
+        const screenX = 1 + vx * density;
+        const screenY = startRow + vy * density;
+
+        if (wy < 0 || wy >= tiles.length || wx < 0 || wx >= tiles[0].length) {
+          // Out of bounds — draw hull background
+          for (let dy = 0; dy < density; dy++) {
+            for (let dx = 0; dx < density; dx++) {
+              r.drawChar(screenX + dx, screenY + dy, '░', '#0A0A12', '#000000');
+            }
+          }
+          continue;
+        }
+
+        const t = tiles[wy][wx];
+
+        // Calculate basic distance-based lighting from player
+        const dist = Math.abs(wx - this.player.position.x) + Math.abs(wy - this.player.position.y);
+        const maxLight = 12;
+        let brightness = Math.max(0.15, 1.0 - dist / maxLight);
+
+        // Light sources boost brightness
+        if (t.lightSource) brightness = Math.min(1.0, brightness + 0.4);
+
+        // Dim the colors
+        const dimFg = this._dimColor(t.fg, brightness);
+        const dimBg = this._dimColor(t.bg, brightness);
+
+        if (density === 1) {
+          r.drawChar(screenX, screenY, t.char, dimFg, dimBg);
+        } else {
+          // Use tile expansion for higher density
+          const expanded = this._expandEngineeringTile(t, density, wx, wy);
+          for (let dy = 0; dy < density; dy++) {
+            for (let dx = 0; dx < density; dx++) {
+              const ch = expanded.chars[dy][dx] || t.char;
+              const fg = this._dimColor(expanded.fgs[dy][dx] || t.fg, brightness);
+              const bg = this._dimColor(expanded.bgs[dy][dx] || t.bg, brightness);
+              r.drawChar(screenX + dx, screenY + dy, ch, fg, bg);
+            }
+          }
+        }
+      }
+    }
+
+    // Draw player
+    const px = this.player.position.x - camX;
+    const py = this.player.position.y - camY;
+    if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
+      const sx = 1 + px * density + Math.floor(density / 2);
+      const sy = startRow + py * density + Math.floor(density / 2);
+      r.drawChar(sx, sy, '@', '#FFFFFF', null);
+    }
+  }
+
+  _expandEngineeringTile(t, density, wx, wy) {
+    // Simple expansion for engineering tiles
+    const chars = [];
+    const fgs = [];
+    const bgs = [];
+    for (let dy = 0; dy < density; dy++) {
+      chars[dy] = [];
+      fgs[dy] = [];
+      bgs[dy] = [];
+      for (let dx = 0; dx < density; dx++) {
+        if (dy === Math.floor(density / 2) && dx === Math.floor(density / 2)) {
+          chars[dy][dx] = t.char;
+        } else if (t.type === 'WALL') {
+          chars[dy][dx] = '█';
+        } else if (t.type === 'HULL_MACHINERY' || t.type === 'HULL_PIPE') {
+          chars[dy][dx] = t.char;
+        } else {
+          chars[dy][dx] = dy === 0 || dx === 0 ? '·' : ' ';
+        }
+        fgs[dy][dx] = t.fg;
+        bgs[dy][dx] = t.bg;
+      }
+    }
+    return { chars, fgs, bgs };
+  }
+
   _markBridgeBroken(bridgeLoc) {
     // Replace bridge tiles on the world map with red X markers
     if (!this.overworld) return;
@@ -1615,6 +1918,7 @@ class Game {
       case 'OVERWORLD': return this.handleOverworldInput(key);
       case 'LOCATION': return this.handleLocationInput(key);
       case 'DUNGEON': return this.handleDungeonInput(key);
+      case 'ENGINEERING_SPACE': return this.handleEngineeringSpaceInput(key);
       case 'DIALOGUE': return this.handleDialogueInput(key);
       case 'SHOP': return this.handleShopInput(key);
       case 'INVENTORY': return this.handleInventoryInput(key);
@@ -1857,8 +2161,30 @@ class Game {
       this.movePlayer(dir.dx, dir.dy);
     }
 
-    // Enter location
+    // Enter location or interact with airlock door
     if (key === 'Enter' || key === 'e' || key === 'E') {
+      // Check for adjacent airlock doors first
+      const px = this.player.position.x;
+      const py = this.player.position.y;
+      const adjDirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
+      for (const ad of adjDirs) {
+        const ax = px + ad.dx;
+        const ay = py + ad.dy;
+        const adjTile = this.overworld.getTile(ax, ay);
+        if (adjTile && adjTile.airlockDoor) {
+          this.startTransition(() => {
+            this.renderer.invalidate();
+            this.enterEngineeringSpace(
+              adjTile.sectionId,
+              adjTile.airlockSlot,
+              adjTile.isWestWall,
+              px, py
+            );
+          });
+          return;
+        }
+      }
+
       const loc = this.overworld.getLocation(this.player.position.x, this.player.position.y);
       if (loc) {
         this.startTransition(() => {
@@ -4129,36 +4455,10 @@ class Game {
       return;
     }
 
-    // Airlock door interaction — warn about depressurization on the other side
+    // Airlock door interaction — now non-walkable, prompt player to press E
     if (tile.airlockDoor) {
-      const section = this.overworld.getSectionAtWorld(nx);
-      if (section) {
-        // Determine which section is on the other side of this wall
-        const adj = this.sectionManager.getAdjacentSections(section.id);
-        const otherSectionId = tile.isWestWall ? adj.west : adj.east;
-        const otherBiome = otherSectionId ? this.sectionManager.getBiome(otherSectionId) : null;
-        const isDepressurized = otherBiome === 'vacuum';
-
-        if (isDepressurized && !this.player.hasEVA) {
-          // Check if player already confirmed this airlock (don't re-prompt every step)
-          const airlockKey = `${nx},${ny}`;
-          if (!this.player._confirmedAirlocks || !this.player._confirmedAirlocks.has(airlockKey)) {
-            // Block movement and show warning — player must confirm
-            this.ui.addMessage('╔══════════════════════════════════════╗', COLORS.BRIGHT_RED);
-            this.ui.addMessage('║  AIRLOCK WARNING: VACUUM DETECTED   ║', COLORS.BRIGHT_RED);
-            this.ui.addMessage('║  No EVA suit equipped!               ║', COLORS.BRIGHT_RED);
-            this.ui.addMessage('║  Opening will expose you to vacuum.  ║', COLORS.BRIGHT_RED);
-            this.ui.addMessage('╚══════════════════════════════════════╝', COLORS.BRIGHT_RED);
-            this.ui.addMessage('Press Y to open anyway, or N to find a vac suit first.', COLORS.BRIGHT_YELLOW);
-            this._pendingAirlockConfirm = { x: nx, y: ny, key: airlockKey };
-            return;
-          }
-        } else if (isDepressurized && this.player.hasEVA) {
-          this.ui.addMessage('Airlock: Vacuum on the other side. EVA suit sealed.', COLORS.BRIGHT_CYAN);
-        } else {
-          this.ui.addMessage('You step through the airlock. Pressurization equalizing...', COLORS.BRIGHT_YELLOW);
-        }
-      }
+      this.ui.addMessage('An airlock door. Press E to enter the engineering bay.', COLORS.BRIGHT_YELLOW);
+      return;
     }
 
     // Airlock passage interaction — simple flavor message
@@ -5400,7 +5700,9 @@ class Game {
       this.overworld.ensureChunksAround(this.player.position.x, this.player.position.y);
 
       this.camera.follow(this.player);
-      this.setState(save.state || 'OVERWORLD');
+      // Engineering space is not persisted — fall back to overworld on load
+      const loadState = save.state === 'ENGINEERING_SPACE' ? 'OVERWORLD' : (save.state || 'OVERWORLD');
+      this.setState(loadState);
       return true;
     } catch (e) {
       return false;
@@ -5457,6 +5759,14 @@ class Game {
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
         this.ui.drawMinimap(this.renderer, this.currentDungeon, this.player, this.enemies);
         this._renderQuestNavIndicator();
+        break;
+
+      case 'ENGINEERING_SPACE':
+        this.renderEngineeringSpace();
+        this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
+        if (this.currentEngineeringSpace) {
+          this.ui.drawMinimap(this.renderer, this.currentEngineeringSpace, this.player, []);
+        }
         break;
 
       case 'DIALOGUE':
