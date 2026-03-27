@@ -462,11 +462,19 @@ const TYPE_PATTERNS = {
   SECTION_WALL_DETAIL: { 2: WALL_2x2, 3: WALL_3x3 },
   SECTION_WALL_RIVET:  { 2: WALL_2x2, 3: WALL_3x3 },
 
-  // Airlock frames, passages, doors, and gates
-  AIRLOCK_FRAME:       { 2: WALL_2x2, 3: WALL_3x3 },
-  AIRLOCK_PASSAGE:     { 2: FLOOR_2x2, 3: FLOOR_3x3 },
-  AIRLOCK_DOOR:        { 2: DOOR_2x2, 3: DOOR_3x3 },
-  AIRLOCK_GATE:        { 2: WALL_2x2, 3: WALL_3x3 },
+  // Entrance frames, passages, doors, and gates (inter-habitat connections)
+  ENTRANCE_FRAME:      { 2: WALL_2x2, 3: WALL_3x3 },
+  ENTRANCE_PASSAGE:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  ENTRANCE_DOOR:       { 2: DOOR_2x2, 3: DOOR_3x3 },
+  ENTRANCE_GATE:       { 2: WALL_2x2, 3: WALL_3x3 },
+  SPECIAL_ACCESS_DOOR: { 2: DOOR_2x2, 3: DOOR_3x3 },
+
+  // Engineering space tiles
+  ENGINEERING_ENTRANCE: { 2: DOOR_2x2, 3: DOOR_3x3 },
+  ENGINEERING_AIRLOCK:  { 2: DOOR_2x2, 3: DOOR_3x3 },
+  ENG_LIGHT:           { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  ENG_DAMAGED_FLOOR:   { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  ENG_SPARKING:        { 2: FLOOR_2x2, 3: FLOOR_3x3 },
 
   // Tower structures at chunk intersections
   TOWER_CORNER:        { 2: WALL_2x2, 3: WALL_3x3 },

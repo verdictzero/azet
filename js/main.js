@@ -1519,24 +1519,27 @@ class Game {
   }
 
   // ── Engineering Space (inter-habitat corridors) ──────────────────────────
+  // Two-phase transition: Hab A → Eng Space A → Airlock → Eng Space B → Hab B
 
-  enterEngineeringSpace(sectionId, airlockSlot, isWestWall, overworldX, overworldY) {
-    const engSeed = this.seed + (sectionId.charCodeAt(0) || 0) * 3000 + airlockSlot * 7 + (isWestWall ? 0 : 1);
+  enterEngineeringSpace(sectionId, entranceIndex, isWestWall, overworldX, overworldY, isSpecialAccess = false) {
+    // Seed based on sectionId + wall side (same space for all 3 doors of same wall)
+    const engSeed = this.seed + (sectionId.charCodeAt(0) || 0) * 3000 + (sectionId.charCodeAt(1) || 0) * 100 + (isWestWall ? 0 : 1);
     const engRng = new SeededRNG(engSeed);
 
-    const engSpace = this.engineeringGen.generate(engRng, 48, 32, sectionId, airlockSlot, isWestWall);
+    const engSpace = this.engineeringGen.generate(engRng, sectionId, isWestWall, isSpecialAccess);
     this.currentEngineeringSpace = engSpace;
 
-    // Store overworld return position (the airlock door tile the player interacted with)
-    this._engineeringReturnPos = { x: overworldX, y: overworldY, sectionId, airlockSlot, isWestWall };
+    // Store overworld return position
+    this._engineeringReturnPos = { x: overworldX, y: overworldY, sectionId, entranceIndex, isWestWall, isSpecialAccess };
 
     // Save zoom and set dungeon-style zoom
     this._preLocationZoom = this.renderer.densityLevel;
     this.renderer.setZoom(3);
 
-    // Place player at entrance
-    this.player.position.x = engSpace.entrance.x + (isWestWall ? 1 : -1);
-    this.player.position.y = engSpace.entrance.y;
+    // Place player at the corresponding entrance door
+    const entrance = engSpace.entrances[Math.min(entranceIndex, engSpace.entrances.length - 1)];
+    this.player.position.x = entrance.x + (isWestWall ? 1 : -1);
+    this.player.position.y = entrance.y;
 
     // Create camera for engineering space
     const density = this.renderer.densityLevel;
@@ -1548,78 +1551,199 @@ class Game {
     this.locationCamera.x = this.locationCamera.targetX;
     this.locationCamera.y = this.locationCamera.targetY;
 
-    this.gameContext.currentLocationName = `Engineering Bay ${sectionId}-${airlockSlot}`;
+    const wallLabel = isWestWall ? 'West' : 'East';
+    this.gameContext.currentLocationName = `Engineering Bay ${sectionId} ${wallLabel}`;
     this.setState('ENGINEERING_SPACE');
     this.ui.addMessage('You enter the engineering bay. Machinery hums in the dim light.', '#FFAA00');
-    this.ui.addMessage('Navigate to the airlock on the far side to reach the adjacent habitat.', '#AACCFF');
+    if (isSpecialAccess) {
+      this.ui.addMessage('This passage leads to a restricted section of the ship.', '#FF6644');
+    } else {
+      this.ui.addMessage('Navigate to the airlock on the far side to reach the adjacent habitat.', '#AACCFF');
+    }
   }
 
-  _exitEngineeringSpace(toAdjacentHabitat) {
+  _exitEngineeringSpace(exitType) {
+    // exitType: 'entrance' (back to habitat), 'airlock' (through to adjacent eng space)
+    if (exitType === 'airlock') {
+      this._transitThroughAirlock();
+      return;
+    }
+
+    // Exit back to habitat through an entrance door
     this.startTransition(() => {
-      const engSpace = this.currentEngineeringSpace;
       const returnPos = this._engineeringReturnPos;
       this.currentEngineeringSpace = null;
       this._engineeringReturnPos = null;
       this.locationCamera = null;
 
-      // Restore zoom
       if (this._preLocationZoom) {
         this.renderer.setZoom(this._preLocationZoom);
         this._preLocationZoom = null;
       }
 
-      if (toAdjacentHabitat && engSpace && returnPos) {
-        // Exit to adjacent habitat — find the matching airlock on the other side
-        const adj = this.sectionManager.getAdjacentSections(returnPos.sectionId);
-        const targetSectionId = returnPos.isWestWall ? adj.west : adj.east;
-
-        if (targetSectionId) {
-          const targetSection = this.sectionManager.getSection(targetSectionId);
-          if (targetSection) {
-            // Calculate the X position of the matching airlock on the target section's wall
-            // If we exited through west wall of our section, we arrive at east wall of target section
-            const targetSectionWidth = targetSection.widthChunks * 32;
-            let targetX;
-            if (returnPos.isWestWall) {
-              // Arrived at east wall of target (target's right edge, wallDist=6 from right = near habitat)
-              targetX = targetSection.startChunkX * 32 + targetSectionWidth - 8; // just inside the wall
-            } else {
-              // Arrived at west wall of target (target's left edge)
-              targetX = targetSection.startChunkX * 32 + 8; // just inside the wall
-            }
-
-            this.player.position.x = targetX;
-            this.player.position.y = returnPos.y; // Same Y (N-S position preserved)
-            this.ui.addMessage(`You pass through the airlock into ${targetSection.label}.`, '#44FFAA');
-          }
-        } else {
-          // No adjacent section, return to same position
-          this.player.position.x = returnPos.x;
-          this.player.position.y = returnPos.y;
-          this.ui.addMessage('The airlock leads nowhere. You turn back.', '#FFAA00');
-        }
-      } else {
-        // Return to habitat side (cancelled / went back through entrance)
-        if (returnPos) {
-          this.player.position.x = returnPos.x;
-          this.player.position.y = returnPos.y;
-        }
-        this.ui.addMessage('You step back into the habitat.', '#AACCFF');
+      if (returnPos) {
+        this.player.position.x = returnPos.x;
+        this.player.position.y = returnPos.y;
       }
+      this.ui.addMessage('You step back into the habitat.', '#AACCFF');
 
-      this.gameContext.currentLocationName = 'World';
-      const density = this.renderer.densityLevel;
-      const viewW = this.renderer.cols - 2;
-      const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
-      this.camera.viewportCols = Math.floor(viewW / density);
-      this.camera.viewportRows = Math.floor(viewH / density);
-      this.camera.follow(this.player);
-      this.camera.x = this.camera.targetX;
-      this.camera.y = this.camera.targetY;
-      this._clearRenderCaches();
-      this.renderer.invalidate();
+      this._restoreOverworldCamera();
       this.setState('OVERWORLD');
     });
+  }
+
+  _transitThroughAirlock() {
+    this.startTransition(() => {
+      const returnPos = this._engineeringReturnPos;
+      if (!returnPos) {
+        this._exitEngineeringSpace('entrance');
+        return;
+      }
+
+      // Determine the adjacent habitat section
+      const adj = this.sectionManager.getAdjacentSections(returnPos.sectionId);
+      const targetSectionId = returnPos.isWestWall ? adj.west : adj.east;
+
+      if (!targetSectionId) {
+        // Edge of ship — no adjacent section (shouldn't happen for normal entrances)
+        this.ui.addMessage('The airlock leads to a sealed bulkhead. You turn back.', '#FFAA00');
+        return;
+      }
+
+      const targetSection = this.sectionManager.getSection(targetSectionId);
+      if (!targetSection) {
+        this._exitEngineeringSpace('entrance');
+        return;
+      }
+
+      // Check if the target is a facility (C2 or ENG) — special access
+      if (targetSection.type === 'facility') {
+        // Exit directly into the facility (overworld), placing player inside
+        this.currentEngineeringSpace = null;
+        this._engineeringReturnPos = null;
+        this.locationCamera = null;
+
+        if (this._preLocationZoom) {
+          this.renderer.setZoom(this._preLocationZoom);
+          this._preLocationZoom = null;
+        }
+
+        const facilityCenter = this.sectionManager.getSectionCenter(targetSectionId);
+        this.player.position.x = facilityCenter.x;
+        this.player.position.y = facilityCenter.y;
+        this.ui.addMessage(`You pass through the restricted access door into ${targetSection.label}.`, '#FF4444');
+
+        this._restoreOverworldCamera();
+        this.setState('OVERWORLD');
+        return;
+      }
+
+      // Generate the adjacent habitat's engineering space (from the airlock side)
+      // The adjacent eng space is on the OPPOSITE wall of the target section
+      const adjIsWestWall = !returnPos.isWestWall;
+      const adjIsSpecialAccess = (targetSectionId === 'H1' && adjIsWestWall) || (targetSectionId === 'H7' && !adjIsWestWall);
+      const adjEngSeed = this.seed + (targetSectionId.charCodeAt(0) || 0) * 3000 + (targetSectionId.charCodeAt(1) || 0) * 100 + (adjIsWestWall ? 0 : 1);
+      const adjEngRng = new SeededRNG(adjEngSeed);
+
+      const adjEngSpace = this.engineeringGen.generate(adjEngRng, targetSectionId, adjIsWestWall, adjIsSpecialAccess);
+      this.currentEngineeringSpace = adjEngSpace;
+
+      // Update return pos for the new eng space — when player exits an entrance here, they go to target habitat
+      // Calculate overworld position for the entrance the player will eventually exit through
+      const targetSectionWidth = targetSection.widthChunks * 32;
+      const exitOverworldX = adjIsWestWall
+        ? targetSection.startChunkX * 32 + 7   // just inside west wall (wallDist 6)
+        : targetSection.startChunkX * 32 + targetSectionWidth - 8; // just inside east wall
+      this._engineeringReturnPos = {
+        x: exitOverworldX,
+        y: returnPos.y,
+        sectionId: targetSectionId,
+        entranceIndex: 1, // default to middle entrance
+        isWestWall: adjIsWestWall,
+        isSpecialAccess: adjIsSpecialAccess,
+      };
+
+      // Place player at the airlock door of the new eng space
+      this.player.position.x = adjEngSpace.airlock.x + (adjIsWestWall ? -1 : 1);
+      this.player.position.y = adjEngSpace.airlock.y;
+
+      // Update camera
+      const density = this.renderer.densityLevel;
+      this.locationCamera = new Camera(
+        Math.floor((this.renderer.cols - 2) / density),
+        Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density)
+      );
+      this.locationCamera.follow(this.player);
+      this.locationCamera.x = this.locationCamera.targetX;
+      this.locationCamera.y = this.locationCamera.targetY;
+
+      const wallLabel = adjIsWestWall ? 'West' : 'East';
+      this.gameContext.currentLocationName = `Engineering Bay ${targetSectionId} ${wallLabel}`;
+      this.ui.addMessage(`You pass through the airlock into ${targetSection.label}'s engineering bay.`, '#44FFAA');
+      this.ui.addMessage('Find an exit door to enter the habitat.', '#AACCFF');
+      this.renderer.invalidate();
+    });
+  }
+
+  _exitEngineeringToHabitat(entranceIndex) {
+    // Exit through one of the 3 entrance doors into the habitat overworld
+    this.startTransition(() => {
+      const returnPos = this._engineeringReturnPos;
+      this.currentEngineeringSpace = null;
+      this._engineeringReturnPos = null;
+      this.locationCamera = null;
+
+      if (this._preLocationZoom) {
+        this.renderer.setZoom(this._preLocationZoom);
+        this._preLocationZoom = null;
+      }
+
+      if (returnPos) {
+        // Position player at the matching entrance on the habitat wall
+        const section = this.sectionManager.getSection(returnPos.sectionId);
+        if (section) {
+          const sectionWidth = section.widthChunks * 32;
+          const wrapHeight = section.wrapChunks * 32;
+          const entrancePositions = [
+            Math.floor(wrapHeight / 4),
+            Math.floor(wrapHeight / 2),
+            Math.floor(3 * wrapHeight / 4),
+          ];
+
+          // X position: just inside the wall on the habitat side
+          if (returnPos.isWestWall) {
+            this.player.position.x = section.startChunkX * 32 + 7; // wallDist 6 (habitat side)
+          } else {
+            this.player.position.x = section.startChunkX * 32 + sectionWidth - 8;
+          }
+
+          // Y position: at the entrance the player is exiting through
+          const exitEntranceIdx = Math.min(entranceIndex, entrancePositions.length - 1);
+          this.player.position.y = entrancePositions[exitEntranceIdx];
+        } else {
+          this.player.position.x = returnPos.x;
+          this.player.position.y = returnPos.y;
+        }
+      }
+
+      this.ui.addMessage('You step into the habitat.', '#44FFAA');
+      this._restoreOverworldCamera();
+      this.setState('OVERWORLD');
+    });
+  }
+
+  _restoreOverworldCamera() {
+    this.gameContext.currentLocationName = 'World';
+    const density = this.renderer.densityLevel;
+    const viewW = this.renderer.cols - 2;
+    const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
+    this.camera.viewportCols = Math.floor(viewW / density);
+    this.camera.viewportRows = Math.floor(viewH / density);
+    this.camera.follow(this.player);
+    this.camera.x = this.camera.targetX;
+    this.camera.y = this.camera.targetY;
+    this._clearRenderCaches();
+    this.renderer.invalidate();
   }
 
   handleEngineeringSpaceInput(key) {
@@ -1632,9 +1756,9 @@ class Game {
     if (key === '+' || key === '=') { this._zoomIn(); return; }
     if (key === '-') { this._zoomOut(); return; }
 
-    // Escape — return to habitat (go back through entrance)
+    // Escape — return to habitat (go back through nearest entrance)
     if (key === 'Escape') {
-      this._exitEngineeringSpace(false);
+      this._exitEngineeringSpace('entrance');
       return;
     }
 
@@ -1671,7 +1795,7 @@ class Game {
     // Check if player stepped on a door tile
     if (t.engineeringDoor) {
       if (t.isEntrance) {
-        this.ui.addMessage('Entrance door. Press Escape to return to the habitat.', '#FFDD44');
+        this.ui.addMessage('Exit door. Press E to return to the habitat.', '#FFDD44');
       } else {
         this.ui.addMessage('Airlock door. Press E to pass through to the adjacent habitat.', '#FF6644');
       }
@@ -1696,13 +1820,14 @@ class Game {
       if (pos.y < 0 || pos.y >= tiles.length || pos.x < 0 || pos.x >= tiles[0].length) continue;
       const t = tiles[pos.y][pos.x];
       if (t.engineeringDoor && !t.isEntrance) {
-        // Exit airlock — pass through to adjacent habitat
-        this._exitEngineeringSpace(true);
+        // Airlock — transit to adjacent habitat's engineering space
+        this._exitEngineeringSpace('airlock');
         return;
       }
       if (t.engineeringDoor && t.isEntrance) {
-        // Entrance — return to habitat
-        this._exitEngineeringSpace(false);
+        // Entrance door — exit into habitat
+        const exitIndex = t.entranceIndex != null ? t.entranceIndex : 0;
+        this._exitEngineeringToHabitat(exitIndex);
         return;
       }
     }
@@ -2161,9 +2286,9 @@ class Game {
       this.movePlayer(dir.dx, dir.dy);
     }
 
-    // Enter location or interact with airlock door
+    // Enter location or interact with entrance door
     if (key === 'Enter' || key === 'e' || key === 'E') {
-      // Check for adjacent airlock doors first
+      // Check for adjacent entrance doors first (engineering bay entrances)
       const px = this.player.position.x;
       const py = this.player.position.y;
       const adjDirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
@@ -2171,14 +2296,15 @@ class Game {
         const ax = px + ad.dx;
         const ay = py + ad.dy;
         const adjTile = this.overworld.getTile(ax, ay);
-        if (adjTile && adjTile.airlockDoor) {
+        if (adjTile && adjTile.entranceDoor) {
           this.startTransition(() => {
             this.renderer.invalidate();
             this.enterEngineeringSpace(
               adjTile.sectionId,
-              adjTile.airlockSlot,
+              adjTile.entranceIndex,
               adjTile.isWestWall,
-              px, py
+              px, py,
+              adjTile.isSpecialAccess || false
             );
           });
           return;
@@ -4455,18 +4581,22 @@ class Game {
       return;
     }
 
-    // Airlock door interaction — now non-walkable, prompt player to press E
-    if (tile.airlockDoor) {
-      this.ui.addMessage('An airlock door. Press E to enter the engineering bay.', COLORS.BRIGHT_YELLOW);
+    // Entrance door interaction — non-walkable, prompt player to press E
+    if (tile.entranceDoor) {
+      if (tile.isSpecialAccess) {
+        this.ui.addMessage('A restricted access door. Press E to enter.', COLORS.BRIGHT_RED);
+      } else {
+        this.ui.addMessage('An engineering bay entrance. Press E to enter.', COLORS.BRIGHT_YELLOW);
+      }
       return;
     }
 
-    // Airlock passage interaction — simple flavor message
-    if (tile.airlock && !tile.airlockDoor) {
+    // Entrance passage interaction — simple flavor message
+    if (tile.entrance && !tile.entranceDoor) {
       const section = this.overworld.getSectionAtWorld(nx);
       if (section && section.type !== this.player._lastAirlockSection) {
         this.player._lastAirlockSection = section.type;
-        this.ui.addMessage('Passing through the airlock corridor...', COLORS.BRIGHT_YELLOW);
+        this.ui.addMessage('Passing through the entrance corridor...', COLORS.BRIGHT_YELLOW);
       }
     }
 
