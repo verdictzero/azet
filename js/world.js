@@ -975,40 +975,32 @@ export class ChunkManager {
               }
               let ch;
               if (wallDist === 0) ch = isTop ? (isWest ? '╔' : '╗') : (isWest ? '╚' : '╝');
-              else ch = '═';
+              else ch = '─';
               return tile('ENTRANCE_FRAME', ch, isSpecialAccess ? '#DD4444' : '#CC9900', '#0D0800', false,
                 { biome: 'hull', entranceFrame: true });
             }
 
             // Passage rows (3 walkable rows between frames)
+            // Clean gradient: arrow → light shade → medium shade → open → panel → door
             // wallDist 0: Outer hull entrance — directional arrow
             if (wallDist === 0) {
               const ch = isWest ? '►' : '◄';
               return tile('ENTRANCE_PASSAGE', ch, '#FFAA00', '#1A1100', true,
                 { biome: 'hull', entrance: true });
             }
-            // wallDist 1-2: Blast corridor — heavy door panels
+            // wallDist 1-2: Blast corridor — light shade blending with wall
             if (wallDist === 1 || wallDist === 2) {
-              return tile('ENTRANCE_PASSAGE', '▮', '#CC9900', '#0D0800', true,
+              return tile('ENTRANCE_PASSAGE', '░', '#CC9900', '#0D0800', true,
                 { biome: 'hull', entrance: true });
             }
-            // wallDist 3: Inner blast door — center row gets warning marker
+            // wallDist 3: Inner blast door — medium shade continuing gradient
             if (wallDist === 3) {
-              if (isCenterRow) {
-                return tile('ENTRANCE_PASSAGE', '⚠', '#FF6600', '#1A0800', true,
-                  { biome: 'hull', entrance: true });
-              }
-              return tile('ENTRANCE_PASSAGE', '▮', '#AA7700', '#0D0800', true,
+              return tile('ENTRANCE_PASSAGE', '▒', '#AA7700', '#0D0800', true,
                 { biome: 'hull', entrance: true });
             }
-            // wallDist 4: Interstitial junction
+            // wallDist 4: Interstitial junction — open passage
             if (wallDist === 4) {
-              if (isCenterRow) {
-                return tile('ENTRANCE_PASSAGE', '❖', '#FFCC44', '#1A1100', true,
-                  { biome: 'hull', entrance: true });
-              }
-              const ch = isWest ? '╠' : '╣';
-              return tile('ENTRANCE_PASSAGE', ch, '#CC9900', '#0D0800', true,
+              return tile('ENTRANCE_PASSAGE', '·', '#FFCC44', '#1A1100', true,
                 { biome: 'hull', entrance: true });
             }
             // wallDist 5: Gold paneling transition
@@ -2203,6 +2195,9 @@ export class SettlementGenerator {
     // Add roads leading from settlement edges outward
     this._generateOutskirtRoads(rng, tiles, pad, coreW, coreH, width, height);
 
+    // Place the fallen mechanical arm to the left of every settlement
+    this._placeMechanicalArm(tiles, pad, coreW, coreH, width, height);
+
     return { tiles, width, height, buildings, npcSlots, coreOffset: { x: pad, y: pad } };
   }
 
@@ -2351,6 +2346,87 @@ export class SettlementGenerator {
         tiles[cy][x] = tile('ROAD', '=', '#ccaa44', '#332211', true, { buildingId: null });
       }
     }
+  }
+
+  _placeMechanicalArm(tiles, pad, coreW, coreH, width, height) {
+    const template = this._getMechanicalArmTemplate();
+    const tH = template.length;
+    const tW = template[0].length;
+
+    // Position: left of settlement core, vertically centered
+    const armX = Math.max(1, pad - tW - 2);
+    const armY = Math.max(1, pad + Math.floor(coreH / 2) - Math.floor(tH / 2));
+
+    for (let row = 0; row < tH; row++) {
+      for (let col = 0; col < tW; col++) {
+        const cell = template[row][col];
+        if (!cell) continue;
+        const tx = armX + col;
+        const ty = armY + row;
+        if (tx < 0 || tx >= width || ty < 0 || ty >= height) continue;
+        const existing = tiles[ty][tx];
+        if (existing.type !== 'GRASSLAND' && existing.type !== 'TREE' &&
+            existing.type !== 'TREE_CANOPY' && existing.type !== 'TREE_TRUNK' &&
+            existing.type !== 'FOREST' && existing.type !== 'DEEP_FOREST') continue;
+        tiles[ty][tx] = tile(cell.type, cell.char, cell.fg, cell.bg, false, { structure: true });
+      }
+    }
+  }
+
+  _getMechanicalArmTemplate() {
+    // Shorthand helpers
+    const _ = null; // empty cell
+    const M = (char, fg, bg) => ({ type: 'MECH_ARM', char, fg, bg: bg || '#0D0D1A' });
+
+    // Metallic palette
+    const BRIGHT = '#8899AA';  // highlights/edges
+    const MID    = '#667788';  // main metal
+    const DARK   = '#556677';  // darker metal
+    const DIM    = '#445566';  // recessed/shadow
+    const RUST   = '#887766';  // weathered
+    const SPARK  = '#FFAA00';  // sparks at break
+    const SPARK2 = '#FF6600';  // deeper sparks
+    const WIRE   = '#44AACC';  // exposed wiring
+    const BG     = '#0D0D1A';  // default dark bg
+    const BG2    = '#111122';  // slightly lighter bg
+    const BG3    = '#1A0A00';  // warm spark bg
+
+    // 30 cols x 16 rows — hand (left) → forearm break → upper arm → shoulder (right)
+    // The arm is lying on the ground, shoulder at top-right, hand spread open at bottom-left
+    return [
+      // Row 0: Shoulder top
+      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('╔',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('╗',BRIGHT,BG), _],
+      // Row 1: Shoulder body
+      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('║',BRIGHT,BG), M('█',MID,BG2),   M('▓',MID,BG2),   M('⊕',BRIGHT,BG2),M('▓',MID,BG2),   M('║',BRIGHT,BG), _],
+      // Row 2: Shoulder body with internal detail
+      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('║',BRIGHT,BG), M('▓',MID,BG2),   M('█',MID,BG2),   M('█',MID,BG2),   M('█',MID,BG2),   M('║',BRIGHT,BG), _],
+      // Row 3: Shoulder bottom + upper arm start
+      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('╔',MID,BG),  M('═',MID,BG),   M('═',MID,BG),    M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('╠',BRIGHT,BG), M('▓',DARK,BG2),  M('⊕',BRIGHT,BG2),M('▓',DARK,BG2),  M('▓',DARK,BG2),  M('╣',BRIGHT,BG), _],
+      // Row 4: Upper arm body
+      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('║',MID,BG),  M('█',DARK,BG2), M('─',DIM,BG2),   M('─',DIM,BG2),  M('█',DARK,BG2), M('─',DIM,BG2),  M('─',DIM,BG2),  M('█',DARK,BG2), M('║',MID,BG),    M('█',DARK,BG2),  M('│',DIM,BG2),   M('█',DARK,BG2),  M('█',DARK,BG2),  M('║',BRIGHT,BG), _],
+      // Row 5: Upper arm body with conduits
+      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('║',MID,BG),  M('▓',DARK,BG2), M('═',WIRE,BG2),  M('═',WIRE,BG2), M('▓',DARK,BG2), M('═',WIRE,BG2), M('▓',DARK,BG2), M('▓',DARK,BG2), M('║',MID,BG),    M('▓',DARK,BG2),  M('▓',DARK,BG2),  M('▓',DARK,BG2),  M('▓',DARK,BG2),  M('╣',BRIGHT,BG), _],
+      // Row 6: Upper arm bottom + break start
+      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('╚',MID,BG),  M('═',MID,BG),   M('═',MID,BG),    M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('╝',MID,BG),   _,                 M('╚',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('╝',BRIGHT,BG), _],
+      // Row 7: Break zone — sparks and jagged metal
+      [_,_,_,_,_,_,_,_,_,_,_,_,  M('╔',MID,BG),  M('═',MID,BG),    M('╗',MID,BG),    M('░',RUST,BG2),  M('▒',SPARK,BG3), M('⚡',SPARK,BG3),M('░',RUST,BG2),  _,_,_,_,_,_,_,_],
+      // Row 8: Break zone — exposed internals
+      [_,_,_,_,_,_,_,_,_,_,_,_,  M('║',MID,BG),  M('═',WIRE,BG2),  M('║',MID,BG),    M('▒',RUST,BG2),  M('⚡',SPARK2,BG3),M('░',RUST,BG2),  _,_,_,_,_,_,_,_,_],
+      // Row 9: Forearm body
+      [_,_,_,_,_,_,_,_,_,_,_,_,  M('║',MID,BG),  M('█',DARK,BG2),  M('║',MID,BG),    M('░',RUST,BG2),  _,_,_,_,_,_,_,_,_,_,_],
+      // Row 10: Forearm bottom + wrist
+      [_,_,_,_,_,_,  M('╔',MID,BG),M('═',MID,BG), M('═',MID,BG),   M('═',MID,BG),    M('═',MID,BG),    M('═',MID,BG),      M('╩',MID,BG),   M('═',MID,BG),    M('╝',MID,BG),    _,_,_,_,_,_,_,_,_,_,_],
+      // Row 11: Wrist joint + palm start
+      [_,_,_,_,_,_,  M('║',MID,BG),M('▓',DARK,BG2),M('⊕',BRIGHT,BG2),M('▓',DARK,BG2),M('█',DARK,BG2),  M('▓',DARK,BG2),    M('▓',DARK,BG2), M('▓',DARK,BG2),  _,_,_,_,_,_,_,_,_,_,_,_],
+      // Row 12: Palm + finger bases
+      [_,_,_,  M('/',DIM,BG),M('│',DIM,BG),_,  M('╚',MID,BG), M('═',MID,BG),  M('═',MID,BG),   M('═',MID,BG),    M('═',MID,BG),    M('╝',MID,BG),    _,_,_,_,_,_,_,_,_,_,_,_,_,_],
+      // Row 13: Fingers spread
+      [_,  M('/',DIM,BG), _,  M('│',DIM,BG),M('│',DIM,BG),M('/',DIM,BG),  _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+      // Row 14: Fingertips
+      [M('·',RUST,BG),M('·',RUST,BG),_,  M('·',RUST,BG),M('·',RUST,BG),M('·',RUST,BG), _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+      // Row 15: Thumb (separate, to the side)
+      [_,_,_,_,_,_,  M('\\',DIM,BG),M('·',RUST,BG),_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+    ];
   }
 
   _generateCastle(rng, tiles, w, h, buildings, npcSlots) {
@@ -4873,16 +4949,17 @@ export class CorridorGenerator {
     // ── Generate meandering main path ──
     const pathY = [];  // track Y position of main corridor center at each X
     let curY = Math.floor(height / 2);
+    const meanderInterval = rng.nextInt(15, 25); // pre-compute once for consistent RNG
     for (let x = 0; x < width; x++) {
       pathY[x] = curY;
-      // Meander every 15-25 tiles
-      if (x > 0 && x < width - 5 && x % rng.nextInt(15, 25) === 0) {
-        const shift = rng.nextInt(1, 3) * (rng.chance(0.5) ? 1 : -1);
+      // Meander at fixed intervals, shift by at most 1 to guarantee corridor overlap
+      if (x > 0 && x < width - 5 && x % meanderInterval === 0) {
+        const shift = rng.chance(0.5) ? 1 : -1;
         curY = Math.max(3, Math.min(height - 4, curY + shift));
       }
     }
 
-    // Carve main corridor (3 tiles tall)
+    // Carve main corridor (3 tiles tall) with smooth transitions
     for (let x = 1; x < width - 1; x++) {
       const cy = pathY[x];
       for (let dy = -1; dy <= 1; dy++) {
@@ -4891,21 +4968,33 @@ export class CorridorGenerator {
           tiles[y][x] = this._hullFloorTile(x, y);
         }
       }
+      // At path transitions, carve union of both Y ranges to ensure traversability
+      if (x > 1 && pathY[x] !== pathY[x - 1]) {
+        const minY = Math.min(pathY[x], pathY[x - 1]) - 1;
+        const maxY = Math.max(pathY[x], pathY[x - 1]) + 1;
+        for (let y = minY; y <= maxY; y++) {
+          if (y >= 1 && y < height - 1) {
+            tiles[y][x] = this._hullFloorTile(x, y);
+          }
+        }
+      }
     }
 
     // ── Branch sub-rooms off the main path ──
+    const ROOM_TYPES = ['cargo', 'maintenance', 'operations'];
     const rooms = [];
     let nextRoomX = rng.nextInt(20, 35);
     while (nextRoomX < width - 20) {
-      const roomW = rng.nextInt(5, 8);
-      const roomH = rng.nextInt(4, 6);
+      const roomW = rng.nextInt(6, 10);
+      const roomH = rng.nextInt(5, 8);
       const cy = pathY[nextRoomX];
       const above = rng.chance(0.5);
       const roomY = above ? cy - 2 - roomH : cy + 2;
 
       // Check bounds
       if (roomY >= 1 && roomY + roomH < height - 1 && nextRoomX + roomW < width - 2) {
-        const room = { x: nextRoomX, y: roomY, w: roomW, h: roomH };
+        const roomType = ROOM_TYPES[rooms.length % ROOM_TYPES.length];
+        const room = { x: nextRoomX, y: roomY, w: roomW, h: roomH, roomType };
         rooms.push(room);
 
         // Carve room
@@ -4915,18 +5004,32 @@ export class CorridorGenerator {
           }
         }
 
-        // Connect room to corridor with 1-tile doorway
+        // Connect room to corridor with 3-tile-wide doorway
         const doorX = nextRoomX + Math.floor(roomW / 2);
         const connStart = above ? roomY + roomH : cy + 1;
         const connEnd = above ? cy - 1 : roomY;
-        for (let y = Math.min(connStart, connEnd); y <= Math.max(connStart, connEnd); y++) {
-          if (y >= 1 && y < height - 1) {
-            tiles[y][doorX] = this._hullFloorTile(doorX, y);
+        const doorTiles = [];
+        for (let ddx = -1; ddx <= 1; ddx++) {
+          const dx = doorX + ddx;
+          if (dx < 1 || dx >= width - 1) continue;
+          for (let y = Math.min(connStart, connEnd); y <= Math.max(connStart, connEnd); y++) {
+            if (y >= 1 && y < height - 1) {
+              tiles[y][dx] = this._hullFloorTile(dx, y);
+              doorTiles.push({ x: dx, y });
+            }
           }
         }
+        room.doorTiles = doorTiles;
 
         // Fill room with boxes/crates and conduits
         this._decorateSubRoom(rng, tiles, room, width, height);
+
+        // Restore doorway tiles in case decorations overwrote them
+        for (const dt of room.doorTiles) {
+          if (!tiles[dt.y][dt.x].walkable) {
+            tiles[dt.y][dt.x] = this._hullFloorTile(dt.x, dt.y);
+          }
+        }
       }
 
       nextRoomX += rng.nextInt(25, 40);
@@ -5102,44 +5205,63 @@ export class CorridorGenerator {
       tile('WALL', '#', '#334455', '#0A0A12', false)
     );
 
-    // Carve the tube passage (3 tiles tall)
+    // Carve the tube passage (3 tiles tall) with structural ribs
     for (let x = 0; x < width; x++) {
       for (let dy = -1; dy <= 1; dy++) {
         const y = centerY + dy;
         if (y >= 0 && y < height) {
-          tiles[y][x] = tile('UMBILICAL_FLOOR', '·', '#2A4A5A', '#050A10', true,
+          // Structural ribs every 8 tiles on center row
+          if (dy === 0 && x % 8 === 0 && x > 2 && x < width - 3) {
+            tiles[y][x] = tile('UMBILICAL_RIB', '┼', '#3A5A6A', '#050A10', true,
+              { biome: 'engineering' });
+          } else {
+            tiles[y][x] = tile('UMBILICAL_FLOOR', '·', '#2A4A5A', '#050A10', true,
+              { biome: 'engineering' });
+          }
+        }
+      }
+
+      // Transparent tube walls (top and bottom of passage) — void visible
+      const topY = centerY - 2;
+      const botY = centerY + 2;
+      const wallYs = [];
+      if (topY >= 0) wallYs.push(topY);
+      if (botY < height) wallYs.push(botY);
+
+      for (const wallY of wallYs) {
+        const hash = ((x * 73856093) ^ (wallY * 19349663)) >>> 0;
+        const starChance = (hash % 100) / 100;
+        if (x >= 3 && x < width - 3) {
+          // Viewport sections every ~10 tiles (4 tiles wide) — more transparent
+          const isViewport = (x % 10 >= 3 && x % 10 <= 6);
+          if (isViewport) {
+            // Viewport: more visible starfield
+            let ch, fg;
+            if (starChance < 0.15) { ch = '·'; fg = '#8899BB'; }
+            else if (starChance < 0.18) { ch = '*'; fg = '#AABBDD'; }
+            else { ch = ' '; fg = '#0A1020'; }
+            tiles[wallY][x] = tile('UMBILICAL_VIEWPORT', ch, fg, '#010204', false,
+              { biome: 'engineering' });
+          } else {
+            // Standard tube wall with enhanced starfield
+            let ch, fg;
+            if (starChance < 0.12) { ch = '·'; fg = '#8899BB'; }
+            else if (starChance < 0.15) { ch = '*'; fg = '#BBCCEE'; }
+            else { ch = '░'; fg = '#1A2A3A'; }
+            tiles[wallY][x] = tile('UMBILICAL_WALL', ch, fg, '#020408', false,
+              { biome: 'engineering' });
+          }
+        } else {
+          // Bulkhead ends — structural framing
+          tiles[wallY][x] = tile('WALL', '▓', '#445566', '#0A0A12', false,
             { biome: 'engineering' });
         }
       }
 
-      // Transparent tube walls (top and bottom of passage)
-      const topY = centerY - 2;
-      const botY = centerY + 2;
-      if (topY >= 0) {
-        // Starfield/void visible through semi-transparent walls
-        const hash = ((x * 73856093) ^ (topY * 19349663)) >>> 0;
-        const starChance = (hash % 100) / 100;
-        if (x >= 3 && x < width - 3) {
-          const ch = starChance < 0.08 ? '·' : '░';
-          const fg = starChance < 0.08 ? '#8899BB' : '#1A2A3A';
-          tiles[topY][x] = tile('UMBILICAL_WALL', ch, fg, '#020408', false,
-            { biome: 'engineering' });
-        } else {
-          // Bulkhead ends
-          tiles[topY][x] = tile('WALL', '▓', '#445566', '#0A0A12', false,
-            { biome: 'engineering' });
-        }
-      }
-      if (botY < height) {
-        const hash = ((x * 73856093) ^ (botY * 19349663)) >>> 0;
-        const starChance = (hash % 100) / 100;
-        if (x >= 3 && x < width - 3) {
-          const ch = starChance < 0.08 ? '·' : '░';
-          const fg = starChance < 0.08 ? '#8899BB' : '#1A2A3A';
-          tiles[botY][x] = tile('UMBILICAL_WALL', ch, fg, '#020408', false,
-            { biome: 'engineering' });
-        } else {
-          tiles[botY][x] = tile('WALL', '▓', '#445566', '#0A0A12', false,
+      // Structural rib markers on walls too (every 8 tiles)
+      if (x % 8 === 0 && x > 2 && x < width - 3) {
+        for (const wallY of wallYs) {
+          tiles[wallY][x] = tile('UMBILICAL_WALL', '║', '#3A5A6A', '#020408', false,
             { biome: 'engineering' });
         }
       }
@@ -5149,43 +5271,44 @@ export class CorridorGenerator {
   }
 
   _carveConnection(tiles, x1, y1, x2, y2, totalWidth, totalHeight) {
-    // Carve a short horizontal+vertical connection between two points
-    const startX = Math.min(x1, x2);
-    const endX = Math.max(x1, x2);
-    const midX = Math.floor((startX + endX) / 2);
+    // Straight horizontal if Y matches (common for well-aligned corridors)
+    if (y1 === y2) {
+      for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+        if (x >= 0 && x < totalWidth) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const y = y1 + dy;
+            if (y >= 1 && y < totalHeight - 1) {
+              tiles[y][x] = this._hullFloorTile(x, y);
+            }
+          }
+        }
+      }
+      return;
+    }
 
-    // Horizontal from x1 to midX at y1
-    for (let x = Math.min(x1, midX); x <= Math.max(x1, midX); x++) {
-      if (x >= 0 && x < totalWidth) {
-        for (let dy = -1; dy <= 1; dy++) {
-          const y = y1 + dy;
-          if (y >= 1 && y < totalHeight - 1) {
-            tiles[y][x] = this._hullFloorTile(x, y);
+    // Smooth diagonal transition: shift Y by 1 per X step, then go straight
+    const dx = x2 > x1 ? 1 : -1;
+    const yDiff = y2 - y1;
+    const yDir = yDiff > 0 ? 1 : -1;
+    const absYDiff = Math.abs(yDiff);
+    let curY = y1;
+
+    for (let x = x1; x !== x2 + dx; x += dx) {
+      if (x < 0 || x >= totalWidth) continue;
+      // Shift Y toward target gradually (1 per step until aligned)
+      if (curY !== y2) {
+        const xRemaining = Math.abs(x2 - x);
+        if (xRemaining <= absYDiff || Math.abs(curY - y2) > 0) {
+          const stepsNeeded = Math.abs(curY - y2);
+          if (stepsNeeded > 0 && xRemaining <= stepsNeeded + 2) {
+            curY += yDir;
           }
         }
       }
-    }
-    // Vertical from y1 to y2 at midX
-    const minY = Math.min(y1, y2);
-    const maxY = Math.max(y1, y2);
-    for (let y = minY; y <= maxY; y++) {
-      if (y >= 1 && y < totalHeight - 1) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const x = midX + dx;
-          if (x >= 0 && x < totalWidth) {
-            tiles[y][x] = this._hullFloorTile(x, y);
-          }
-        }
-      }
-    }
-    // Horizontal from midX to x2 at y2
-    for (let x = Math.min(midX, x2); x <= Math.max(midX, x2); x++) {
-      if (x >= 0 && x < totalWidth) {
-        for (let dy = -1; dy <= 1; dy++) {
-          const y = y2 + dy;
-          if (y >= 1 && y < totalHeight - 1) {
-            tiles[y][x] = this._hullFloorTile(x, y);
-          }
+      for (let dy = -1; dy <= 1; dy++) {
+        const y = curY + dy;
+        if (y >= 1 && y < totalHeight - 1) {
+          tiles[y][x] = this._hullFloorTile(x, y);
         }
       }
     }
@@ -5218,28 +5341,107 @@ export class CorridorGenerator {
   }
 
   _decorateSubRoom(rng, tiles, room, width, height) {
-    // Fill sub-rooms with boxes, crates, and machinery
-    const itemCount = rng.nextInt(3, Math.max(4, Math.floor(room.w * room.h / 6)));
-    for (let i = 0; i < itemCount; i++) {
-      const mx = rng.nextInt(room.x + 1, room.x + room.w - 2);
-      const my = rng.nextInt(room.y + 1, room.y + room.h - 2);
-      if (mx >= 1 && mx < width - 1 && my >= 1 && my < height - 1 && tiles[my][mx].walkable) {
-        const r = rng.next();
-        if (r < 0.35) {
-          // Crate/box
-          tiles[my][mx] = tile('HULL_MACHINERY', '▓', '#354555', '#040410', false, { biome: 'engineering' });
-        } else if (r < 0.55) {
-          // Storage container
-          tiles[my][mx] = tile('HULL_MACHINERY', '□', '#556677', '#040410', false, { biome: 'engineering' });
-        } else if (r < 0.7) {
-          // Heavy crate
-          tiles[my][mx] = tile('HULL_MACHINERY', '■', '#2A3A4A', '#040410', false, { biome: 'engineering' });
-        } else if (r < 0.85) {
-          // Pipe/conduit
-          tiles[my][mx] = tile('HULL_PIPE', '║', '#2A4A4A', '#040410', false, { biome: 'engineering' });
-        } else {
-          // Equipment
-          tiles[my][mx] = tile('HULL_MACHINERY', '⚡', '#FFAA00', '#040410', false, { biome: 'engineering' });
+    const roomType = room.roomType || 'cargo';
+
+    // Collect wall-adjacent interior positions (1 tile inside each wall)
+    const wallPositions = [];
+    for (let rx = room.x + 1; rx < room.x + room.w - 1; rx++) {
+      wallPositions.push({ x: rx, y: room.y });             // top wall
+      wallPositions.push({ x: rx, y: room.y + room.h - 1 }); // bottom wall
+    }
+    for (let ry = room.y + 1; ry < room.y + room.h - 1; ry++) {
+      wallPositions.push({ x: room.x, y: ry });              // left wall
+      wallPositions.push({ x: room.x + room.w - 1, y: ry }); // right wall
+    }
+
+    // Shuffle wall positions
+    for (let i = wallPositions.length - 1; i > 0; i--) {
+      const j = rng.nextInt(0, i);
+      [wallPositions[i], wallPositions[j]] = [wallPositions[j], wallPositions[i]];
+    }
+
+    // Determine decoration count and items based on room type
+    const itemCount = rng.nextInt(4, Math.max(6, Math.floor(room.w * room.h / 4)));
+    let placed = 0;
+
+    if (roomType === 'cargo') {
+      // Cargo: containers along walls + some mid-room stacks
+      for (const pos of wallPositions) {
+        if (placed >= itemCount) break;
+        if (pos.x >= 1 && pos.x < width - 1 && pos.y >= 1 && pos.y < height - 1 && tiles[pos.y][pos.x].walkable) {
+          const r = rng.next();
+          if (r < 0.4) {
+            tiles[pos.y][pos.x] = tile('HULL_MACHINERY', '▓', '#887766', '#040410', false, { biome: 'engineering' });
+          } else if (r < 0.7) {
+            tiles[pos.y][pos.x] = tile('HULL_MACHINERY', '■', '#665544', '#040410', false, { biome: 'engineering' });
+          } else {
+            tiles[pos.y][pos.x] = tile('HULL_MACHINERY', '□', '#778888', '#040410', false, { biome: 'engineering' });
+          }
+          placed++;
+        }
+      }
+      // A few mid-room cargo containers
+      for (let i = 0; i < 2 && placed < itemCount; i++) {
+        const mx = rng.nextInt(room.x + 2, room.x + room.w - 3);
+        const my = rng.nextInt(room.y + 2, room.y + room.h - 3);
+        if (mx >= 1 && mx < width - 1 && my >= 1 && my < height - 1 && tiles[my][mx].walkable) {
+          tiles[my][mx] = tile('HULL_MACHINERY', '▓', '#776655', '#040410', false, { biome: 'engineering' });
+          placed++;
+        }
+      }
+    } else if (roomType === 'maintenance') {
+      // Maintenance: pipes, valves, conduits along walls, workbench
+      for (const pos of wallPositions) {
+        if (placed >= itemCount) break;
+        if (pos.x >= 1 && pos.x < width - 1 && pos.y >= 1 && pos.y < height - 1 && tiles[pos.y][pos.x].walkable) {
+          const r = rng.next();
+          if (r < 0.3) {
+            tiles[pos.y][pos.x] = tile('HULL_PIPE', '║', '#4A5A6A', '#040410', false, { biome: 'engineering' });
+          } else if (r < 0.5) {
+            tiles[pos.y][pos.x] = tile('HULL_VALVE', '⊕', '#5A6A7A', '#040410', false, { biome: 'engineering' });
+          } else if (r < 0.7) {
+            tiles[pos.y][pos.x] = tile('HULL_CONDUIT', '┐', '#3A5A5A', '#040410', false, { biome: 'engineering' });
+          } else if (r < 0.85) {
+            tiles[pos.y][pos.x] = tile('HULL_PIPE', '═', '#4A5A6A', '#040410', false, { biome: 'engineering' });
+          } else {
+            tiles[pos.y][pos.x] = tile('HULL_MACHINERY', '▬', '#6A7A8A', '#040410', false, { biome: 'engineering' });
+          }
+          placed++;
+        }
+      }
+    } else if (roomType === 'operations') {
+      // Operations: consoles and screens along back wall (wall furthest from door)
+      // Sort wall positions to prefer the wall furthest from corridor
+      const doorY = room.doorTiles ? room.doorTiles[0].y : room.y;
+      const backWallY = Math.abs(room.y - doorY) > Math.abs(room.y + room.h - 1 - doorY)
+        ? room.y : room.y + room.h - 1;
+      // Place consoles along back wall first
+      const backPositions = wallPositions.filter(p => p.y === backWallY);
+      const otherPositions = wallPositions.filter(p => p.y !== backWallY);
+
+      for (const pos of backPositions) {
+        if (placed >= itemCount) break;
+        if (pos.x >= 1 && pos.x < width - 1 && pos.y >= 1 && pos.y < height - 1 && tiles[pos.y][pos.x].walkable) {
+          const r = rng.next();
+          if (r < 0.5) {
+            tiles[pos.y][pos.x] = tile('HULL_MACHINERY', '▣', '#44CCCC', '#040410', false, { biome: 'engineering' });
+          } else {
+            tiles[pos.y][pos.x] = tile('HULL_MACHINERY', '▪', '#44CC88', '#040410', false, { biome: 'engineering' });
+          }
+          placed++;
+        }
+      }
+      // Fill remaining walls with secondary equipment
+      for (const pos of otherPositions) {
+        if (placed >= itemCount) break;
+        if (pos.x >= 1 && pos.x < width - 1 && pos.y >= 1 && pos.y < height - 1 && tiles[pos.y][pos.x].walkable) {
+          const r = rng.next();
+          if (r < 0.4) {
+            tiles[pos.y][pos.x] = tile('HULL_MACHINERY', '□', '#556677', '#040410', false, { biome: 'engineering' });
+          } else {
+            tiles[pos.y][pos.x] = tile('HULL_CONDUIT', '─', '#3A5A5A', '#040410', false, { biome: 'engineering' });
+          }
+          placed++;
         }
       }
     }
@@ -5356,6 +5558,31 @@ export class CorridorGenerator {
         if (isWall(x, y + 1)) mask |= 4;
         if (isWall(x - 1, y)) mask |= 8;
         tiles[y][x] = tile('WALL', chars[mask], '#445566', '#0A0A12', false, { biome: 'engineering' });
+      }
+    }
+
+    // Depth shading pass — walls near walkable floors get edge highlighting
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (tiles[y][x].type !== 'WALL') continue;
+        // Check Manhattan distance to nearest walkable tile (max 3)
+        let minDist = 4;
+        for (let dy = -2; dy <= 2 && minDist > 1; dy++) {
+          for (let dx = -2; dx <= 2 && minDist > 1; dx++) {
+            const ny = y + dy, nx = x + dx;
+            if (ny >= 0 && ny < height && nx >= 0 && nx < width && tiles[ny][nx].walkable) {
+              minDist = Math.min(minDist, Math.abs(dx) + Math.abs(dy));
+            }
+          }
+        }
+        if (minDist === 1) {
+          tiles[y][x].fg = '#667788'; // bright edge highlight
+          tiles[y][x].bg = '#141422';
+        } else if (minDist === 2) {
+          tiles[y][x].fg = '#556677'; // medium depth
+          tiles[y][x].bg = '#101018';
+        }
+        // minDist >= 3: keep default dark
       }
     }
   }

@@ -586,6 +586,11 @@ const TYPE_PATTERNS = {
   ENG_LIGHT_SWITCH:    { 2: ENG_LIGHT_SWITCH_2x2, 3: ENG_LIGHT_SWITCH_3x3 },
   UMBILICAL_WALL:      { 2: UMBILICAL_WALL_2x2, 3: UMBILICAL_WALL_3x3 },
   UMBILICAL_FLOOR:     { 2: UMBILICAL_FLOOR_2x2, 3: UMBILICAL_FLOOR_3x3 },
+  UMBILICAL_VIEWPORT:  { 2: UMBILICAL_WALL_2x2, 3: UMBILICAL_WALL_3x3 },
+  UMBILICAL_RIB:       { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+
+  // Mechanical arm landmark (near settlements)
+  MECH_ARM:            { 2: MECH_2x2, 3: MECH_3x3 },
 
   // Tower structures at chunk intersections
   TOWER_CORNER:        { 2: WALL_2x2, 3: WALL_3x3 },
