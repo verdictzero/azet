@@ -16,9 +16,9 @@
 //    Priority/override order (first match wins):
 //      1. VOID — beyond ship hull → VOID_SPACE
 //      2. SECTION WALL — within 7 tiles of section edge → WALL_GRADIENT
-//         2a. AIRLOCK — deterministic hash selects 50% of 128-tile slots
+//         2a. ENTRANCE — 3 fixed entrances per wall (top/mid/bottom)
 //             Layers: outer hull → blast corridor → blast door → junction
-//                     → grating → AIRLOCK_DOOR (habitat side, interactable)
+//                     → grating → ENTRANCE_DOOR (habitat side, interactable)
 //      3. INNER HULL — _generateInnerHullTile() [line ~1085]
 //         Outer walls → central walkway → secondary walkway → machinery
 //         Airlock openings aligned with adjacent section walls via hash match
@@ -31,10 +31,8 @@
 //    Post-chunk passes (after all 32×32 tiles generated):
 //      B1. Colony substructure tears [line ~1516] — noise > 0.74 → tear tiles
 //      B2. Remove small isolated blockers [line ~1519]
-//      B3. Place megalithic structures [line ~1521] — obelisks, relay towers
-//      B4. Place settlement/location markers [line ~1526] — from overworld locs
-//      B5. Place bridge locations for rivers [line ~1530]
-//      B6. Place watchtowers at chunk corners [line ~1534]
+//      B3. Place settlement/location markers — from overworld locs
+//      B4. Place bridge locations for rivers
 //
 // ── 2. RENDERING PIPELINE ────────────────────────────────────────────────
 //
@@ -136,17 +134,10 @@
 //     from dungeon coords could bleed into overworld at matching positions.
 //     clearTileCache() in _clearRenderCaches() should handle this.
 //
-// [F] INNER HULL AIRLOCK HASH ALIGNMENT — lines 1095-1107
-//     Inner hull corridor airlock openings use hash matching against
-//     adjacent section walls. The hash inputs differ between wall side
-//     and corridor side:
-//       Wall: _wallHash(section.startChunkX * 7 + (isWest ? 0 : 1), slot)
-//       Hull: _wallHash(section.startChunkX * 7 - 7 + 1, slot) [west]
-//             _wallHash((startChunkX + widthChunks) * 7, slot) [east]
-//     These MUST produce identical results for adjacent section pairs.
-//     An off-by-one in the multiplier/offset would cause airlock openings
-//     in the corridor wall to not line up with habitat wall openings,
-//     creating sealed corridors or floating passages.
+// [F] ENTRANCE ALIGNMENT (replaced old hash system)
+//     Habitat walls now use 3 fixed entrances at 1/4, 1/2, 3/4 of wrap height.
+//     Inner hull corridor openings match these positions by checking the
+//     adjacent habitat section's entrance positions via _getEntranceAtY().
 //
 // [G] locationCamera NOT NULLED ON DUNGEON EXIT — line 2142
 //     On dungeon exit, currentSettlement is set to null but locationCamera
@@ -508,19 +499,42 @@ const FACILITY_WIDTH_CHUNKS = 64;   // ~2048 tiles E-W for C2/ENG
 const FACILITY_WRAP_CHUNKS = 96;    // ~3072 tiles N-S for facilities
 const INNER_HULL_WIDTH_CHUNKS = 8;  // ~256 tiles E-W engineering corridors
 
-// Airlock parameters — walkable passages through section walls
-const AIRLOCK_SPACING = 128;        // tiles between airlock centers along Y axis (every 4 chunks)
-const AIRLOCK_HALF_HEIGHT = 2;      // airlock is 5 tiles tall (2 frame + 3 walkable)
+// Entrance parameters — 3 fixed entrances per habitat wall (top/middle/bottom)
+const ENTRANCE_COUNT = 3;           // entrances per wall side
+const ENTRANCE_HALF_HEIGHT = 2;     // entrance is 5 tiles tall (2 frame + 3 walkable)
 
 // Wall thickness & gradient — solid hull plating with fading block gradient
 const WALL_THICKNESS = 7;           // tiles thick at each edge of the section
 
-// Deterministic hash for airlock spawn chance (50% per slot)
-function _wallHash(a, b) {
-  let h = Math.imul(a, 374761393) + Math.imul(b, 668265263);
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  h = h ^ (h >>> 16);
-  return (h >>> 0) / 4294967296;
+// Get the 3 entrance Y positions for a given section (evenly spaced at 1/4, 1/2, 3/4 of wrap height)
+function _getEntrancePositions(section) {
+  const wrapHeight = section.wrapChunks * CHUNK_SIZE;
+  return [
+    Math.floor(wrapHeight / 4),       // entrance 0 — top
+    Math.floor(wrapHeight / 2),       // entrance 1 — middle
+    Math.floor(3 * wrapHeight / 4),   // entrance 2 — bottom
+  ];
+}
+
+// Check if a Y coordinate is at an entrance position for the given section
+// Returns { entranceIndex, phase } or null if not at an entrance
+function _getEntranceAtY(wy, section) {
+  const wrapHeight = section.wrapChunks * CHUNK_SIZE;
+  const wrappedY = ((wy % wrapHeight) + wrapHeight) % wrapHeight;
+  const positions = _getEntrancePositions(section);
+
+  // Special cases: H1 west gets only entrance 1, H7 east gets only entrance 1
+  // (handled by caller based on isWest flag)
+
+  for (let i = 0; i < positions.length; i++) {
+    const centerY = positions[i];
+    const dy = wrappedY - centerY;
+    // Entrance spans from -ENTRANCE_HALF_HEIGHT to +ENTRANCE_HALF_HEIGHT (5 tiles total)
+    if (dy >= -ENTRANCE_HALF_HEIGHT && dy <= ENTRANCE_HALF_HEIGHT) {
+      return { entranceIndex: i, phase: dy + ENTRANCE_HALF_HEIGHT }; // phase 0-4 (0 and 4 are frames)
+    }
+  }
+  return null;
 }
 
 // Wall gradient: index 0 = outermost (hull exterior), index 6 = innermost (habitat side)
@@ -908,7 +922,7 @@ export class ChunkManager {
       return tile('VOID_SPACE', ' ', '#000000', '#000000', false, { biome: 'void' });
     }
 
-    // Section walls — 7-tile-thick hull plating with fading gradient, decorative airlocks
+    // Section walls — 7-tile-thick hull plating with 3 fixed entrances per wall
     if (section.type !== 'inner_hull') {
       const localTileX = wx - section.startChunkX * CHUNK_SIZE;
       const sectionWidth = section.widthChunks * CHUNK_SIZE;
@@ -919,78 +933,95 @@ export class ChunkManager {
       else if (localTileX >= sectionWidth - WALL_THICKNESS) wallDist = sectionWidth - 1 - localTileX;
 
       if (wallDist >= 0) {
-        // Check for airlock at this Y position — debug mode: 100% chance, every 32 tiles; normal: 50% every 128 tiles
-        const airlockSpace = this.sectionManager.debugMode ? 32 : AIRLOCK_SPACING;
-        const airlockSlot = Math.floor(((wy % (airlockSpace * 1024)) + airlockSpace * 1024) / airlockSpace);
-        const airlockChance = this.sectionManager.debugMode ? 1.0 : 0.5;
-        const hasAirlock = _wallHash(section.startChunkX * 7 + (localTileX < WALL_THICKNESS ? 0 : 1), airlockSlot) < airlockChance;
-        const airlockPhase = ((wy % airlockSpace) + airlockSpace) % airlockSpace;
+        const isWest = localTileX < WALL_THICKNESS;
 
-        if (hasAirlock && airlockPhase <= AIRLOCK_HALF_HEIGHT * 2) {
-          // ── Redesigned airlock: a larger, noticeable structure with interactable door ──
-          // Layers (wallDist): 0=outer hull, 1-2=blast corridor, 3=inner blast door,
-          //   4=interstitial junction, 5=transition grating, 6=AIRLOCK DOOR (habitat side)
-          const isWest = localTileX < WALL_THICKNESS;
-          const isCenterRow = airlockPhase === AIRLOCK_HALF_HEIGHT;
+        // Check for entrance at this Y position (3 fixed entrances per wall)
+        if (section.type === 'habitat') {
+          const entranceInfo = _getEntranceAtY(wy, section);
 
-          if (airlockPhase === 0 || airlockPhase === AIRLOCK_HALF_HEIGHT * 2) {
-            // Frame rows — top and bottom of airlock structure
-            // Gate archway: ╔═══════╗ (top) / ╚═══════╝ (bottom)
-            const isTop = airlockPhase === 0;
-            let ch;
-            if (wallDist === 0) ch = isTop ? (isWest ? '╔' : '╗') : (isWest ? '╚' : '╝');
-            else if (wallDist === 6) ch = isTop ? (isWest ? '╗' : '╔') : (isWest ? '╝' : '╚');
-            else ch = '═';
-            return tile('AIRLOCK_FRAME', ch, '#CC9900', '#0D0800', false,
-              { biome: 'hull', airlockFrame: true });
-          }
-
-          // Passage rows (3 walkable rows between frames)
-          // wallDist 0: Outer hull entrance — directional arrow
-          if (wallDist === 0) {
-            const ch = isWest ? '►' : '◄';
-            return tile('AIRLOCK_PASSAGE', ch, '#FFAA00', '#1A1100', true,
-              { biome: 'hull', airlock: true });
-          }
-          // wallDist 1-2: Blast corridor — heavy door panels
-          if (wallDist === 1 || wallDist === 2) {
-            return tile('AIRLOCK_PASSAGE', '▮', '#CC9900', '#0D0800', true,
-              { biome: 'hull', airlock: true });
-          }
-          // wallDist 3: Inner blast door — center row gets warning marker
-          if (wallDist === 3) {
-            if (isCenterRow) {
-              return tile('AIRLOCK_PASSAGE', '⚠', '#FF6600', '#1A0800', true,
-                { biome: 'hull', airlock: true });
+          // Determine if this wall side should have entrances
+          // H1 west wall: single special entrance (index 1 only) → C2 access
+          // H7 east wall: single special entrance (index 1 only) → ENG access
+          // All other habitat walls: 3 entrances
+          let hasEntrance = false;
+          let isSpecialAccess = false;
+          if (entranceInfo) {
+            if (section.id === 'H1' && isWest) {
+              hasEntrance = entranceInfo.entranceIndex === 1;
+              isSpecialAccess = true;
+            } else if (section.id === 'H7' && !isWest) {
+              hasEntrance = entranceInfo.entranceIndex === 1;
+              isSpecialAccess = true;
+            } else {
+              hasEntrance = true;
             }
-            return tile('AIRLOCK_PASSAGE', '▮', '#AA7700', '#0D0800', true,
-              { biome: 'hull', airlock: true });
           }
-          // wallDist 4: Interstitial junction — machine space connector
-          if (wallDist === 4) {
-            if (isCenterRow) {
-              return tile('AIRLOCK_PASSAGE', '❖', '#FFCC44', '#1A1100', true,
-                { biome: 'hull', airlock: true, interstitial: true });
+
+          if (hasEntrance && entranceInfo) {
+            const { entranceIndex, phase } = entranceInfo;
+            const isCenterRow = phase === ENTRANCE_HALF_HEIGHT;
+
+            // Frame rows — top and bottom of entrance (phase 0 and phase 4)
+            if (phase === 0 || phase === ENTRANCE_HALF_HEIGHT * 2) {
+              const isTop = phase === 0;
+              let ch;
+              if (wallDist === 0) ch = isTop ? (isWest ? '╔' : '╗') : (isWest ? '╚' : '╝');
+              else if (wallDist === 6) ch = isTop ? (isWest ? '╗' : '╔') : (isWest ? '╝' : '╚');
+              else ch = '═';
+              return tile('ENTRANCE_FRAME', ch, isSpecialAccess ? '#DD4444' : '#CC9900', '#0D0800', false,
+                { biome: 'hull', entranceFrame: true });
             }
-            const ch = isWest ? '╠' : '╣';
-            return tile('AIRLOCK_PASSAGE', ch, '#CC9900', '#0D0800', true,
-              { biome: 'hull', airlock: true });
+
+            // Passage rows (3 walkable rows between frames)
+            // wallDist 0: Outer hull entrance — directional arrow
+            if (wallDist === 0) {
+              const ch = isWest ? '►' : '◄';
+              return tile('ENTRANCE_PASSAGE', ch, '#FFAA00', '#1A1100', true,
+                { biome: 'hull', entrance: true });
+            }
+            // wallDist 1-2: Blast corridor — heavy door panels
+            if (wallDist === 1 || wallDist === 2) {
+              return tile('ENTRANCE_PASSAGE', '▮', '#CC9900', '#0D0800', true,
+                { biome: 'hull', entrance: true });
+            }
+            // wallDist 3: Inner blast door — center row gets warning marker
+            if (wallDist === 3) {
+              if (isCenterRow) {
+                return tile('ENTRANCE_PASSAGE', '⚠', '#FF6600', '#1A0800', true,
+                  { biome: 'hull', entrance: true });
+              }
+              return tile('ENTRANCE_PASSAGE', '▮', '#AA7700', '#0D0800', true,
+                { biome: 'hull', entrance: true });
+            }
+            // wallDist 4: Interstitial junction
+            if (wallDist === 4) {
+              if (isCenterRow) {
+                return tile('ENTRANCE_PASSAGE', '❖', '#FFCC44', '#1A1100', true,
+                  { biome: 'hull', entrance: true });
+              }
+              const ch = isWest ? '╠' : '╣';
+              return tile('ENTRANCE_PASSAGE', ch, '#CC9900', '#0D0800', true,
+                { biome: 'hull', entrance: true });
+            }
+            // wallDist 5: Transition grating
+            if (wallDist === 5) {
+              return tile('ENTRANCE_PASSAGE', '░', '#CC8800', '#0F0800', true,
+                { biome: 'hull', entrance: true });
+            }
+            // wallDist 6: ENTRANCE DOOR — the habitat-side door the player interacts with
+            // Non-walkable: player must press E/Enter to interact and enter engineering space
+            if (isCenterRow) {
+              const doorChar = isSpecialAccess ? '⊠' : '⊞';
+              const doorFg = isSpecialAccess ? '#FF4444' : '#FFDD44';
+              const doorType = isSpecialAccess ? 'SPECIAL_ACCESS_DOOR' : 'ENTRANCE_DOOR';
+              return tile(doorType, doorChar, doorFg, '#221100', false,
+                { biome: 'hull', entranceDoor: true, entrance: true, isWestWall: isWest,
+                  sectionId: section.id, entranceIndex, isSpecialAccess });
+            }
+            // Non-center rows at habitat edge: gate pillars
+            return tile('ENTRANCE_GATE', '║', isSpecialAccess ? '#AA3333' : '#AA8800', '#0D0800', false,
+              { biome: 'hull', entranceFrame: true });
           }
-          // wallDist 5: Transition grating
-          if (wallDist === 5) {
-            return tile('AIRLOCK_PASSAGE', '░', '#CC8800', '#0F0800', true,
-              { biome: 'hull', airlock: true });
-          }
-          // wallDist 6: AIRLOCK DOOR — the habitat-side entrance the player interacts with
-          // Non-walkable: player must press E/Enter to interact and enter engineering space
-          if (isCenterRow) {
-            return tile('AIRLOCK_DOOR', '⊞', '#FFDD44', '#221100', false,
-              { biome: 'hull', airlockDoor: true, airlock: true, isWestWall: isWest,
-                sectionId: section.id, airlockSlot });
-          }
-          // Non-center rows at habitat edge: gate pillars
-          return tile('AIRLOCK_GATE', '║', '#AA8800', '#0D0800', false,
-            { biome: 'hull', airlockFrame: true });
         }
 
         // Solid gradient wall — no noise variation, clean fading block characters
@@ -1272,33 +1303,48 @@ export class ChunkManager {
     const structN = (this.heightNoise.fbm(wx * 0.1, wy * 0.1, 3) + 1) / 2;
     const circuitN = (this.anomalyNoise.fbm(wx * 0.15, wy * 0.15, 2) + 1) / 2;
 
-    // Airlock check — matching openings aligned with section wall airlocks (same spacing & chance)
-    const airlockSpace = this.sectionManager.debugMode ? 32 : AIRLOCK_SPACING;
-    const airlockChance = this.sectionManager.debugMode ? 1.0 : 0.5;
-    const airlockSlot = Math.floor(((wy % (airlockSpace * 1024)) + airlockSpace * 1024) / airlockSpace);
-    const airlockPhase = ((wy % airlockSpace) + airlockSpace) % airlockSpace;
-    // Use left/right section startChunkX to match the adjacent section wall's airlock hash
+    // Fixed entrance openings — match the 3 entrance positions from adjacent habitat walls
     const isWestWall = localX < 2;
-    const adjacentHash = isWestWall
-      ? _wallHash(section.startChunkX * 7 - 7 + 1, airlockSlot)  // match right edge of section to the west
-      : _wallHash((section.startChunkX + section.widthChunks) * 7, airlockSlot);  // match left edge of section to the east
-    const hasAirlock = adjacentHash < airlockChance;
-    const isAirlockY = hasAirlock && airlockPhase > 0 && airlockPhase < AIRLOCK_HALF_HEIGHT * 2;
-    const isAirlockFrame = hasAirlock && (airlockPhase === 0 || airlockPhase === AIRLOCK_HALF_HEIGHT * 2);
+    // Find the adjacent habitat section to match its entrance positions
+    const adjSectionId = isWestWall ? section.leftSection : section.rightSection;
+    const adjSection = adjSectionId ? this.sectionManager.getSection(adjSectionId) : null;
 
-    // Outer walls of the corridor (first and last 2 tiles) — with airlock openings
+    let hasEntrance = false;
+    if (adjSection && adjSection.type === 'habitat') {
+      const entranceInfo = _getEntranceAtY(wy, adjSection);
+      if (entranceInfo) {
+        // H1 west / H7 east only have entrance index 1
+        if (adjSection.id === 'H1' && !isWestWall) {
+          hasEntrance = entranceInfo.entranceIndex === 1;
+        } else if (adjSection.id === 'H7' && isWestWall) {
+          hasEntrance = entranceInfo.entranceIndex === 1;
+        } else {
+          hasEntrance = true;
+        }
+        if (hasEntrance) {
+          const isPassageY = entranceInfo.phase > 0 && entranceInfo.phase < ENTRANCE_HALF_HEIGHT * 2;
+          const isFrameY = entranceInfo.phase === 0 || entranceInfo.phase === ENTRANCE_HALF_HEIGHT * 2;
+
+          // Outer walls of the corridor — with entrance openings
+          if (localX < 2 || localX >= totalWidth - 2) {
+            if (isPassageY) {
+              const isCenterRow = entranceInfo.phase === ENTRANCE_HALF_HEIGHT;
+              const ch = isCenterRow ? '❖' : (isWestWall ? '╣' : '╠');
+              const fg = isCenterRow ? '#FFCC44' : '#CC9900';
+              const bg = isCenterRow ? '#1A1100' : '#0D0800';
+              return tile('ENTRANCE_PASSAGE', ch, fg, bg, true, { biome: 'inner_hull', entrance: true });
+            }
+            if (isFrameY) {
+              const ch = isWestWall ? (entranceInfo.phase === 0 ? '╗' : '╝') : (entranceInfo.phase === 0 ? '╚' : '╔');
+              return tile('ENTRANCE_FRAME', ch, '#AA8800', '#0D0800', false, { biome: 'inner_hull', entranceFrame: true });
+            }
+          }
+        }
+      }
+    }
+
+    // Outer walls of the corridor (first and last 2 tiles) — solid wall if no entrance
     if (localX < 2 || localX >= totalWidth - 2) {
-      if (isAirlockY) {
-        const isCenterRow = airlockPhase === AIRLOCK_HALF_HEIGHT;
-        const ch = isCenterRow ? '❖' : (isWestWall ? '╣' : '╠');
-        const fg = isCenterRow ? '#FFCC44' : '#CC9900';
-        const bg = isCenterRow ? '#1A1100' : '#0D0800';
-        return tile('AIRLOCK_PASSAGE', ch, fg, bg, true, { biome: 'inner_hull', airlock: true });
-      }
-      if (isAirlockFrame) {
-        const ch = isWestWall ? (airlockPhase === 0 ? '╗' : '╝') : (airlockPhase === 0 ? '╚' : '╔');
-        return tile('AIRLOCK_FRAME', ch, '#AA8800', '#0D0800', false, { biome: 'inner_hull', airlockFrame: true });
-      }
       return tile('HULL_CORRIDOR_WALL', '█', '#334455', '#020205', false, { biome: 'inner_hull' });
     }
 
@@ -1371,297 +1417,7 @@ export class ChunkManager {
     return tile('HULL_FLOOR', '·', '#0D1D2D', '#010104', true, { biome: 'inner_hull' });
   }
 
-  // ── Megalithic surface structure definitions ──
-  _structureDefs() {
-    return [
-      {
-        type: 'signal_obelisk', w: 3, h: 5, biomes: null, // any biome
-        build(tiles, sx, sy) {
-          // Tall pillar with beacon
-          for (let dy = 0; dy < 5; dy++) tiles[sy + dy][sx + 1] = tile('OBELISK', '|', '#6688AA', '#111122', false, { structure: true });
-          tiles[sy][sx + 1] = tile('OBELISK_TOP', '*', '#44FFFF', '#111122', false, { structure: true });
-          tiles[sy + 4][sx] = tile('OBELISK_BASE', '[', '#556677', '#111122', false, { structure: true });
-          tiles[sy + 4][sx + 2] = tile('OBELISK_BASE', ']', '#556677', '#111122', false, { structure: true });
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 1, y: oy + sy, radius: 8, r: 0, g: 0.8, b: 1, intensity: 0.9 }];
-        },
-      },
-      {
-        type: 'reactor_monolith', w: 5, h: 5, biomes: ['reactor_slag'],
-        build(tiles, sx, sy) {
-          for (let dy = 0; dy < 5; dy++) for (let dx = 0; dx < 5; dx++) {
-            if (dx === 0 || dx === 4 || dy === 0 || dy === 4)
-              tiles[sy + dy][sx + dx] = tile('REACTOR_WALL', '#', '#AA4400', '#331100', false, { structure: true });
-            else
-              tiles[sy + dy][sx + dx] = tile('REACTOR_CORE', '~', '#FF8822', '#441100', false, { structure: true });
-          }
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 2, y: oy + sy + 2, radius: 12, r: 1, g: 0.4, b: 0, intensity: 1.0 }];
-        },
-      },
-      {
-        type: 'alien_spire', w: 4, h: 7, biomes: ['alien_crash', 'crystal_zone'],
-        build(tiles, sx, sy) {
-          for (let dy = 0; dy < 7; dy++) {
-            tiles[sy + dy][sx + 1] = tile('ALIEN_PILLAR', '|', '#CC44FF', '#220033', false, { structure: true });
-            tiles[sy + dy][sx + 2] = tile('ALIEN_PILLAR', '|', '#CC44FF', '#220033', false, { structure: true });
-          }
-          tiles[sy][sx + 1] = tile('ALIEN_NODE', '*', '#FF88FF', '#220033', false, { structure: true });
-          tiles[sy][sx + 2] = tile('ALIEN_NODE', '*', '#FF88FF', '#220033', false, { structure: true });
-          tiles[sy + 3][sx] = tile('ALIEN_NODE', '*', '#DD66FF', '#220033', false, { structure: true });
-          tiles[sy + 3][sx + 3] = tile('ALIEN_NODE', '*', '#DD66FF', '#220033', false, { structure: true });
-        },
-        lights(sx, sy, ox, oy) {
-          return [
-            { x: ox + sx + 1, y: oy + sy, radius: 10, r: 0.8, g: 0, b: 1, intensity: 0.85 },
-            { x: ox + sx + 1, y: oy + sy + 3, radius: 6, r: 0.6, g: 0, b: 0.8, intensity: 0.5 },
-          ];
-        },
-      },
-      {
-        type: 'cryo_pylon', w: 3, h: 3, biomes: ['frozen_deck'],
-        build(tiles, sx, sy) {
-          tiles[sy][sx] = tile('CRYO_HOUSING', '[', '#6688AA', '#112233', false, { structure: true });
-          tiles[sy][sx + 2] = tile('CRYO_HOUSING', ']', '#6688AA', '#112233', false, { structure: true });
-          tiles[sy][sx + 1] = tile('CRYO_EMITTER', '*', '#88DDFF', '#112233', false, { structure: true });
-          tiles[sy + 1][sx] = tile('CRYO_HOUSING', '[', '#6688AA', '#112233', false, { structure: true });
-          tiles[sy + 1][sx + 2] = tile('CRYO_HOUSING', ']', '#6688AA', '#112233', false, { structure: true });
-          tiles[sy + 2][sx + 1] = tile('CRYO_BASE', '=', '#556688', '#112233', false, { structure: true });
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 1, y: oy + sy, radius: 6, r: 0.3, g: 0.6, b: 1, intensity: 0.7 }];
-        },
-      },
-      {
-        type: 'data_shrine', w: 4, h: 4, biomes: ['glitch_zone'],
-        build(tiles, sx, sy) {
-          for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) {
-            if (dx === 0 || dx === 3 || dy === 0 || dy === 3)
-              tiles[sy + dy][sx + dx] = tile('DATA_FRAME', '#', '#FF4488', '#110011', false, { structure: true });
-            else
-              tiles[sy + dy][sx + dx] = tile('DATA_CORE', '?', '#FF0088', '#220011', false, { structure: true });
-          }
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 2, y: oy + sy + 2, radius: 6, r: 1, g: 0, b: 0.5, intensity: 0.8 }];
-        },
-      },
-      {
-        type: 'void_gate', w: 5, h: 3, biomes: ['void_rift'],
-        build(tiles, sx, sy) {
-          tiles[sy][sx] = tile('VOID_ARCH', '(', '#6644AA', '#000011', false, { structure: true });
-          tiles[sy][sx + 4] = tile('VOID_ARCH', ')', '#6644AA', '#000011', false, { structure: true });
-          tiles[sy + 1][sx] = tile('VOID_ARCH', '(', '#6644AA', '#000011', false, { structure: true });
-          tiles[sy + 1][sx + 4] = tile('VOID_ARCH', ')', '#6644AA', '#000011', false, { structure: true });
-          tiles[sy + 2][sx + 1] = tile('VOID_BASE', '=', '#443366', '#000011', false, { structure: true });
-          tiles[sy + 2][sx + 3] = tile('VOID_BASE', '=', '#443366', '#000011', false, { structure: true });
-          // Void center
-          for (let dx = 1; dx <= 3; dx++) {
-            tiles[sy][sx + dx] = tile('VOID_CENTER', ' ', '#110022', '#000000', false, { structure: true });
-            tiles[sy + 1][sx + dx] = tile('VOID_CENTER', ' ', '#110022', '#000000', false, { structure: true });
-          }
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 2, y: oy + sy + 1, radius: 10, r: 0.4, g: 0, b: 0.8, intensity: 0.9 }];
-        },
-      },
-      // ── Temperature-biome structures ──
-      {
-        type: 'collapsed_habitat_dome', w: 8, h: 6, biomes: ['tundra', 'permafrost', 'desert', 'scorched_waste'],
-        build(tiles, sx, sy, rng) {
-          const bg = '#0A0A10';
-          // Dome outline
-          for (let dx = 2; dx <= 5; dx++) tiles[sy][sx + dx] = tile('DOME_ARC', '\u2500', '#889999', bg, false, { structure: true });
-          tiles[sy + 1][sx + 1] = tile('DOME_ARC', '/', '#889999', bg, false, { structure: true });
-          tiles[sy + 1][sx + 6] = tile('DOME_ARC', '\\', '#889999', bg, false, { structure: true });
-          for (let dy = 2; dy <= 4; dy++) {
-            tiles[sy + dy][sx] = tile('DOME_WALL', '|', '#778888', bg, false, { structure: true });
-            tiles[sy + dy][sx + 7] = tile('DOME_WALL', '|', '#778888', bg, false, { structure: true });
-          }
-          // Dome interior (rubble)
-          for (let dy = 2; dy <= 4; dy++) for (let dx = 1; dx <= 6; dx++) {
-            if (rng.next() < 0.3) tiles[sy + dy][sx + dx] = tile('DOME_RUBBLE', '.', '#556666', bg, true, { structure: true });
-            else tiles[sy + dy][sx + dx] = tile('DOME_FLOOR', ',', '#445555', bg, true, { structure: true });
-          }
-          // Base
-          for (let dx = 0; dx <= 7; dx++) tiles[sy + 5][sx + dx] = tile('DOME_BASE', '=', '#667777', bg, false, { structure: true });
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 4, y: oy + sy + 3, radius: 7, r: 0.5, g: 0.7, b: 0.9, intensity: 0.6 }];
-        },
-      },
-      {
-        type: 'frozen_transport', w: 6, h: 3, biomes: ['tundra', 'permafrost', 'frozen_deck'],
-        build(tiles, sx, sy) {
-          const bg = '#0A1520';
-          tiles[sy][sx + 1] = tile('TRANSPORT_CAB', '[', '#6688AA', bg, false, { structure: true });
-          tiles[sy][sx + 2] = tile('TRANSPORT_CAB', '=', '#5577AA', bg, false, { structure: true });
-          tiles[sy][sx + 3] = tile('TRANSPORT_CAB', '=', '#5577AA', bg, false, { structure: true });
-          tiles[sy][sx + 4] = tile('TRANSPORT_CAB', ']', '#6688AA', bg, false, { structure: true });
-          for (let dx = 0; dx <= 5; dx++) tiles[sy + 1][sx + dx] = tile('TRANSPORT_BODY', '#', '#4466AA', bg, false, { structure: true });
-          tiles[sy + 2][sx + 1] = tile('TRANSPORT_WHEEL', 'o', '#334488', bg, false, { structure: true });
-          tiles[sy + 2][sx + 4] = tile('TRANSPORT_WHEEL', 'o', '#334488', bg, false, { structure: true });
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 3, y: oy + sy + 1, radius: 4, r: 0.3, g: 0.5, b: 1, intensity: 0.4 }];
-        },
-      },
-      {
-        type: 'magma_drill', w: 5, h: 7, biomes: ['magma_fields', 'inferno_core', 'scorched_waste'],
-        build(tiles, sx, sy) {
-          const bg = '#2A0800';
-          // Drill tower
-          for (let dy = 0; dy < 5; dy++) {
-            tiles[sy + dy][sx + 2] = tile('DRILL_SHAFT', '|', '#CC6622', bg, false, { structure: true });
-          }
-          tiles[sy][sx + 2] = tile('DRILL_TOP', '*', '#FF8844', bg, false, { structure: true });
-          // Platform
-          for (let dx = 0; dx <= 4; dx++) tiles[sy + 5][sx + dx] = tile('DRILL_PLATFORM', '=', '#AA5522', bg, false, { structure: true });
-          // Lava pool
-          for (let dx = 1; dx <= 3; dx++) tiles[sy + 6][sx + dx] = tile('DRILL_POOL', '~', '#FF4400', '#330000', false, { structure: true });
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 2, y: oy + sy + 6, radius: 10, r: 1, g: 0.3, b: 0, intensity: 0.9 }];
-        },
-      },
-      {
-        type: 'exposed_conduit_grid', w: 6, h: 6, biomes: ['structural_grid', 'void_exposure'],
-        build(tiles, sx, sy) {
-          const bg = '#060610';
-          for (let dy = 0; dy < 6; dy++) for (let dx = 0; dx < 6; dx++) {
-            if (dy % 2 === 0 || dx % 2 === 0)
-              tiles[sy + dy][sx + dx] = tile('CONDUIT', '+', '#556677', bg, false, { structure: true });
-            else
-              tiles[sy + dy][sx + dx] = tile('CONDUIT_GAP', '.', '#334455', bg, true, { structure: true });
-          }
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 3, y: oy + sy + 3, radius: 5, r: 0.3, g: 0.4, b: 0.8, intensity: 0.5 }];
-        },
-      },
-      {
-        type: 'observation_deck', w: 7, h: 5, biomes: ['void_exposure'],
-        build(tiles, sx, sy, rng) {
-          const bg = '#000005';
-          // Viewport wall
-          for (let dx = 0; dx <= 6; dx++) {
-            tiles[sy][sx + dx] = tile('OBS_WALL', '=', '#556677', bg, false, { structure: true });
-            tiles[sy + 4][sx + dx] = tile('OBS_WALL', '=', '#556677', bg, false, { structure: true });
-          }
-          for (let dy = 1; dy <= 3; dy++) {
-            tiles[sy + dy][sx] = tile('OBS_WALL', '|', '#556677', bg, false, { structure: true });
-            tiles[sy + dy][sx + 6] = tile('OBS_WALL', '|', '#556677', bg, false, { structure: true });
-          }
-          // Stars visible through viewport
-          for (let dy = 1; dy <= 3; dy++) for (let dx = 1; dx <= 5; dx++) {
-            if (rng.next() < 0.15) tiles[sy + dy][sx + dx] = tile('VIEWPORT_STAR', '*', '#FFFFFF', '#000000', false, { structure: true });
-            else tiles[sy + dy][sx + dx] = tile('VIEWPORT', ' ', '#000000', '#000000', false, { structure: true });
-          }
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 3, y: oy + sy + 2, radius: 4, r: 0.8, g: 0.8, b: 1, intensity: 0.3 }];
-        },
-      },
-      {
-        type: 'ruined_cooling_tower', w: 5, h: 6, biomes: null,
-        build(tiles, sx, sy) {
-          const bg = '#111111';
-          for (let dy = 0; dy < 6; dy++) {
-            tiles[sy + dy][sx] = tile('TOWER_WALL', '|', '#777777', bg, false, { structure: true });
-            tiles[sy + dy][sx + 4] = tile('TOWER_WALL', '|', '#777777', bg, false, { structure: true });
-          }
-          for (let dx = 1; dx <= 3; dx++) {
-            tiles[sy][sx + dx] = tile('TOWER_TOP', '=', '#888888', bg, false, { structure: true });
-            tiles[sy + 5][sx + dx] = tile('TOWER_BASE', '=', '#666666', bg, false, { structure: true });
-          }
-          tiles[sy + 1][sx + 2] = tile('TOWER_VENT', '~', '#AABBCC', bg, false, { structure: true });
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 2, y: oy + sy + 1, radius: 5, r: 0.6, g: 0.6, b: 0.7, intensity: 0.5 }];
-        },
-      },
-      {
-        type: 'abandoned_checkpoint', w: 7, h: 3, biomes: null,
-        build(tiles, sx, sy) {
-          const bg = '#111108';
-          // Fence/barriers
-          for (let dx = 0; dx <= 6; dx++) {
-            tiles[sy][sx + dx] = tile('CHECKPOINT_FENCE', '-', '#887744', bg, false, { structure: true });
-            tiles[sy + 2][sx + dx] = tile('CHECKPOINT_FENCE', '-', '#887744', bg, false, { structure: true });
-          }
-          // Guard booth
-          tiles[sy + 1][sx] = tile('CHECKPOINT_WALL', '[', '#776633', bg, false, { structure: true });
-          tiles[sy + 1][sx + 1] = tile('CHECKPOINT_BOOTH', '#', '#665522', bg, false, { structure: true });
-          tiles[sy + 1][sx + 2] = tile('CHECKPOINT_WALL', ']', '#776633', bg, false, { structure: true });
-          // Gate opening
-          tiles[sy + 1][sx + 3] = tile('CHECKPOINT_GATE', '.', '#554422', bg, true, { structure: true });
-          tiles[sy + 1][sx + 4] = tile('CHECKPOINT_GATE', '.', '#554422', bg, true, { structure: true });
-          // Barrier
-          tiles[sy + 1][sx + 5] = tile('CHECKPOINT_BARRIER', '|', '#AA6633', bg, false, { structure: true });
-          tiles[sy + 1][sx + 6] = tile('CHECKPOINT_BARRIER', '|', '#AA6633', bg, false, { structure: true });
-        },
-        lights(sx, sy, ox, oy) {
-          return [{ x: ox + sx + 3, y: oy + sy + 1, radius: 5, r: 0.8, g: 0.7, b: 0.3, intensity: 0.5 }];
-        },
-      },
-    ];
-  }
-
-  _placeStructures(cx, cy, tiles) {
-    const rng = this._chunkRng(cx, cy);
-    // Use a separate roll so we don't disturb location placement RNG
-    const structRng = new SeededRNG(rng.nextInt(0, 999999));
-
-    if (structRng.next() > 0.15) return []; // 15% chance per chunk
-
-    const ox = cx * CHUNK_SIZE;
-    const oy = cy * CHUNK_SIZE;
-
-    // Tally biomes in this chunk to weight structure selection
-    const biomeCounts = {};
-    for (let ly = 0; ly < CHUNK_SIZE; ly++) {
-      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-        const b = tiles[ly][lx].biome;
-        if (b) biomeCounts[b] = (biomeCounts[b] || 0) + 1;
-      }
-    }
-
-    const defs = this._structureDefs();
-    // Filter to structures that fit this chunk's biomes
-    const candidates = defs.filter(d => {
-      if (!d.biomes) return true; // universal
-      return d.biomes.some(b => (biomeCounts[b] || 0) > 10);
-    });
-    if (candidates.length === 0) return [];
-
-    const def = structRng.random(candidates);
-    const structures = [];
-
-    // Try to place structure
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const sx = structRng.nextInt(2, CHUNK_SIZE - def.w - 2);
-      const sy = structRng.nextInt(2, CHUNK_SIZE - def.h - 2);
-
-      // Check area is walkable
-      let ok = true;
-      for (let dy = 0; dy < def.h && ok; dy++) {
-        for (let dx = 0; dx < def.w && ok; dx++) {
-          const t = tiles[sy + dy][sx + dx];
-          if (t.type === 'LOCATION' || t.structure) ok = false;
-        }
-      }
-      if (!ok) continue;
-
-      def.build(tiles, sx, sy, structRng);
-      const lights = def.lights(sx, sy, ox, oy);
-      structures.push({ type: def.type, x: ox + sx, y: oy + sy, w: def.w, h: def.h, lights });
-      break;
-    }
-
-    return structures;
-  }
+  // (Megalithic structures removed — will be re-added deliberately later)
 
   _generateChunk(cx, cy) {
     // Apply N-S cylindrical wrapping based on section
@@ -1690,15 +1446,13 @@ export class ChunkManager {
       }
     }
 
-    // Only apply tears, structures, locations, bridges to habitat sections
+    // Only apply tears, locations, bridges to habitat sections
     if (section.type === 'habitat') {
       // Apply colony substructure tears — patches where floor is torn revealing metal grid
       this._applyTears(cx, wrappedCY, tiles);
 
       // Remove small isolated non-walkable clusters (< 25 tiles) to prevent movement frustration
       this._removeSmallBlockers(tiles);
-
-      const structures = this._placeStructures(cx, wrappedCY, tiles);
 
       // Only place settlements in habitable biomes
       const biome = this.sectionManager.getBiome(section.id);
@@ -1710,10 +1464,7 @@ export class ChunkManager {
         this._placeBridgeLocations(cx, wrappedCY, tiles, locations);
       }
 
-      // Place enterable tower at chunk corner intersection (where 4 chunks meet)
-      this._placeTowerAtCorner(cx, wrappedCY, tiles, locations, structures, section);
-
-      const chunk = { tiles, locations, structures, cx, cy: wrappedCY, sectionId: section.id };
+      const chunk = { tiles, locations, structures: [], cx, cy: wrappedCY, sectionId: section.id };
       this.chunks.set(key, chunk);
       return chunk;
     }
@@ -1724,104 +1475,6 @@ export class ChunkManager {
     const chunk = { tiles, locations: [], structures: [], cx, cy: wrappedCY, sectionId: section.id };
     this.chunks.set(key, chunk);
     return chunk;
-  }
-
-  // Place an enterable tower at the (0,0) corner of each chunk — the intersection of 4 chunks.
-  // Rivers and colony floor tears prevent tower placement.
-  _placeTowerAtCorner(cx, cy, tiles, locations, structures, section) {
-    const ox = cx * CHUNK_SIZE;
-    const oy = cy * CHUNK_SIZE;
-
-    // Skip wall chunks (first/last chunks of a section have walls at tile 0)
-    const localCX = cx - section.startChunkX;
-    if (localCX <= 0 || localCX >= section.widthChunks - 1) return;
-
-    // Check for river at corner — skip if too close
-    const biome = this.sectionManager.getBiome(section.id);
-    if (biome === 'lush') {
-      const riverDist = this._getRiverDistance(ox + 2, oy + 2);
-      if (riverDist < 5) return;
-    }
-
-    // Check for tear at corner — skip if tear zone
-    const tearVal = this.tearNoise.fbm(ox * 0.008, oy * 0.008, 4, 0.5);
-    if (tearVal > 0.65) return;
-
-    // Tower footprint: 5x5 at tiles (0,0)-(4,4)
-    const TW = 5;
-    const TH = 5;
-
-    // Check the corner tiles are walkable terrain (not wall, structure, location, water)
-    for (let dy = 0; dy < TH; dy++) {
-      for (let dx = 0; dx < TW; dx++) {
-        const t = tiles[dy][dx];
-        if (!t.walkable || t.structure || t.type === 'LOCATION' ||
-            t.type === 'SECTION_WALL' || t.biome === 'hull' ||
-            t.type === 'RIVER_WATER' || t.type === 'INNER_SHORE' ||
-            t.type === 'TEAR_GRID' || t.type === 'TEAR_DARK_METAL') return;
-      }
-    }
-
-    const bg = '#0D0D18';
-    const wallFg = '#7788AA';
-    const accentFg = '#99AABB';
-
-    // Build a 5x5 tower structure
-    // Top row: ╔═▲═╗
-    tiles[0][0] = tile('TOWER_CORNER', '\u2554', wallFg, bg, false, { structure: true, tower: true });
-    tiles[0][1] = tile('TOWER_WALL', '\u2550', wallFg, bg, false, { structure: true, tower: true });
-    tiles[0][2] = tile('TOWER_SPIRE', '\u25B2', accentFg, bg, false, { structure: true, tower: true });
-    tiles[0][3] = tile('TOWER_WALL', '\u2550', wallFg, bg, false, { structure: true, tower: true });
-    tiles[0][4] = tile('TOWER_CORNER', '\u2557', wallFg, bg, false, { structure: true, tower: true });
-    // Row 1: ║ . . ║
-    tiles[1][0] = tile('TOWER_WALL', '\u2551', wallFg, bg, false, { structure: true, tower: true });
-    tiles[1][1] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[1][2] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[1][3] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[1][4] = tile('TOWER_WALL', '\u2551', wallFg, bg, false, { structure: true, tower: true });
-    // Row 2: ║ . ⚙ ║  (center has stairs/entrance)
-    tiles[2][0] = tile('TOWER_WALL', '\u2551', wallFg, bg, false, { structure: true, tower: true });
-    tiles[2][1] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[2][2] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[2][3] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[2][4] = tile('TOWER_WALL', '\u2551', wallFg, bg, false, { structure: true, tower: true });
-    // Row 3: ║ . . ║
-    tiles[3][0] = tile('TOWER_WALL', '\u2551', wallFg, bg, false, { structure: true, tower: true });
-    tiles[3][1] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[3][2] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[3][3] = tile('TOWER_FLOOR', '.', '#556677', bg, true, { structure: true, tower: true });
-    tiles[3][4] = tile('TOWER_WALL', '\u2551', wallFg, bg, false, { structure: true, tower: true });
-    // Bottom row: ╚═ ♦ ═╝  (entrance door)
-    tiles[4][0] = tile('TOWER_CORNER', '\u255A', wallFg, bg, false, { structure: true, tower: true });
-    tiles[4][1] = tile('TOWER_WALL', '\u2550', wallFg, bg, false, { structure: true, tower: true });
-    tiles[4][2] = tile('TOWER_DOOR', '\u2666', '#FFCC44', '#1A1A22', true, { structure: true, tower: true });
-    tiles[4][3] = tile('TOWER_WALL', '\u2550', wallFg, bg, false, { structure: true, tower: true });
-    tiles[4][4] = tile('TOWER_CORNER', '\u255D', wallFg, bg, false, { structure: true, tower: true });
-
-    // Register as an enterable location at the door tile
-    const wx = ox + 2;
-    const wy = oy + 4;
-    const id = (cx + 50000) * 100000 + (cy + 50000) * 10 + 8;
-    const towerRng = this._chunkRng(cx, cy);
-    const loc = {
-      id,
-      name: this._generateName(towerRng, 'tower'),
-      type: 'tower',
-      x: wx, y: wy,
-      population: towerRng.nextInt(2, 10),
-      difficulty: 3 + towerRng.nextInt(0, 4),
-    };
-    locations.push(loc);
-    this.locationMap.set(`${wx},${wy}`, loc);
-
-    // Mark the door tile as a location entrance
-    tiles[4][2] = tile('LOCATION', '\u2666', '#FFCC44', '#1A1A22', true,
-      { biome: 'tower', locationId: id, structure: true, tower: true });
-
-    structures.push({
-      type: 'chunk_tower', x: ox, y: oy, w: TW, h: TH,
-      lights: [{ x: ox + 2, y: oy, radius: 8, r: 0.5, g: 0.6, b: 1, intensity: 0.7 }],
-    });
   }
 
   _applyTears(cx, cy, tiles) {
@@ -5188,26 +4841,43 @@ export class RuinGenerator {
 
 // ============================================================================
 // EngineeringSpaceGenerator — Procedural inter-habitat engineering corridors
+// 3 entrances (habitat side) + 1 airlock (opposite side), all connected
 // ============================================================================
 
 export class EngineeringSpaceGenerator {
 
-  generate(rng, width = 48, height = 32, sectionId, airlockSlot, isWestWall) {
+  generate(rng, sectionId, isWestWall, isSpecialAccess = false) {
+    const width = 80;
+    const height = 60;
+
     // Fill with hull walls
     const tiles = makeTileGrid(width, height, () =>
       tile('WALL', '#', '#334455', '#0A0A12', false)
     );
 
-    // BSP room generation (simplified from DungeonGenerator)
-    const minRoomSize = 4;
-    const maxSplitDepth = 4;
-    const root = { x: 1, y: 1, w: width - 2, h: height - 2, left: null, right: null, room: null };
+    // Determine door positions
+    // Entrance side: where the habitat entrances are (west if player came from west wall, east if east wall)
+    const entranceSide = isWestWall ? 'west' : 'east';
+    const airlockSide = isWestWall ? 'east' : 'west';
+
+    // 3 entrance Y positions (or 1 for special access)
+    const entranceYs = isSpecialAccess
+      ? [Math.floor(height / 2)]                                    // single central door
+      : [Math.floor(height / 5), Math.floor(height / 2), Math.floor(4 * height / 5)]; // top, mid, bottom
+
+    // Airlock Y position (always center)
+    const airlockY = Math.floor(height / 2);
+
+    // BSP room generation — larger space with more depth
+    const minRoomSize = 5;
+    const maxSplitDepth = 5;
+    const root = { x: 2, y: 2, w: width - 4, h: height - 4, left: null, right: null, room: null };
     this._splitNode(rng, root, 0, maxSplitDepth, minRoomSize);
 
     const rooms = [];
     this._createRooms(rng, root, rooms, minRoomSize);
 
-    // Connect rooms with L-shaped corridors
+    // Connect rooms with L-shaped corridors (BSP tree traversal)
     const corridors = [];
     this._connectRooms(rng, root, tiles, corridors);
 
@@ -5215,124 +4885,207 @@ export class EngineeringSpaceGenerator {
     for (const room of rooms) {
       for (let y = room.y; y < room.y + room.h; y++) {
         for (let x = room.x; x < room.x + room.w; x++) {
-          tiles[y][x] = this._hullFloorTile(rng, x, y);
+          tiles[y][x] = this._hullFloorTile(x, y);
         }
       }
     }
 
-    // Carve corridors
+    // Carve BSP corridors
     for (const cor of corridors) {
       for (const p of cor.points) {
-        if (p.x >= 0 && p.y >= 0 && p.x < width && p.y < height) {
-          tiles[p.y][p.x] = this._hullFloorTile(rng, p.x, p.y);
+        if (p.x >= 1 && p.y >= 1 && p.x < width - 1 && p.y < height - 1) {
+          tiles[p.y][p.x] = this._hullFloorTile(p.x, p.y);
         }
       }
     }
 
-    // Add industrial decorations to rooms
+    // ── Guaranteed connectivity: vertical spine + horizontal branches ──
+
+    // Place entrance doors on the habitat side
+    const entranceX = entranceSide === 'west' ? 0 : width - 1;
+    const entrances = [];
+    for (let i = 0; i < entranceYs.length; i++) {
+      const ey = entranceYs[i];
+      tiles[ey][entranceX] = tile('ENGINEERING_ENTRANCE', '⊞', '#FFDD44', '#221100', true,
+        { biome: 'engineering', engineeringDoor: true, doorSide: entranceSide, isEntrance: true, entranceIndex: i });
+      entrances.push({ x: entranceX, y: ey, index: i });
+    }
+
+    // Place airlock door on the opposite side
+    const airlockX = airlockSide === 'west' ? 0 : width - 1;
+    tiles[airlockY][airlockX] = tile('ENGINEERING_AIRLOCK', '⊟', '#FF6644', '#221100', true,
+      { biome: 'engineering', engineeringDoor: true, doorSide: airlockSide, isEntrance: false });
+    const airlock = { x: airlockX, y: airlockY };
+
+    // Carve vertical spine corridor connecting all entrance Y positions
+    const spineX = entranceSide === 'west' ? 6 : width - 7;
+    const minSpineY = Math.min(...entranceYs) - 1;
+    const maxSpineY = Math.max(...entranceYs) + 1;
+    for (let y = Math.max(1, minSpineY); y <= Math.min(height - 2, maxSpineY); y++) {
+      for (let dx = -1; dx <= 1; dx++) {  // 3-tile wide spine
+        const sx = spineX + dx;
+        if (sx >= 1 && sx < width - 1) {
+          tiles[y][sx] = this._hullFloorTile(sx, y);
+        }
+      }
+    }
+
+    // Carve horizontal corridors from each entrance door to the vertical spine
+    for (const ent of entrances) {
+      const startX = Math.min(ent.x, spineX);
+      const endX = Math.max(ent.x, spineX);
+      for (let x = startX; x <= endX; x++) {
+        if (x >= 0 && x < width) {
+          tiles[ent.y][x] = this._hullFloorTile(x, ent.y);
+          // Widen corridor by 1 tile above and below for navigability
+          if (ent.y > 1) tiles[ent.y - 1][x] = this._hullFloorTile(x, ent.y - 1);
+          if (ent.y < height - 2) tiles[ent.y + 1][x] = this._hullFloorTile(x, ent.y + 1);
+        }
+      }
+    }
+
+    // Carve horizontal corridor from vertical spine to airlock (central hub corridor)
+    const hubY = airlockY;
+    const hubStartX = Math.min(spineX, airlockX);
+    const hubEndX = Math.max(spineX, airlockX);
+    for (let x = hubStartX; x <= hubEndX; x++) {
+      if (x >= 0 && x < width) {
+        tiles[hubY][x] = this._hullFloorTile(x, hubY);
+        if (hubY > 1) tiles[hubY - 1][x] = this._hullFloorTile(x, hubY - 1);
+        if (hubY < height - 2) tiles[hubY + 1][x] = this._hullFloorTile(x, hubY + 1);
+      }
+    }
+
+    // Create a hub room around the airlock side center
+    const hubRoomX = airlockSide === 'west' ? 2 : width - 12;
+    const hubRoomY = Math.max(2, hubY - 4);
+    const hubRoomW = 10;
+    const hubRoomH = 9;
+    for (let dy = 0; dy < hubRoomH; dy++) {
+      for (let dx = 0; dx < hubRoomW; dx++) {
+        const rx = hubRoomX + dx;
+        const ry = hubRoomY + dy;
+        if (rx >= 1 && rx < width - 1 && ry >= 1 && ry < height - 1) {
+          tiles[ry][rx] = this._hullFloorTile(rx, ry);
+        }
+      }
+    }
+
+    // Decorate rooms with industrial machinery and flickering lights
     this._decorateRooms(rng, tiles, rooms, width, height);
+    this._addFlickeringLights(rng, tiles, width, height);
+    this._addDamagedSections(rng, tiles, width, height);
 
     // Resolve wall characters to box-drawing
     this._resolveWallChars(tiles, width, height);
 
-    // Place entrance and exit doors
-    // Entrance: west side if player entered from a west-facing wall, east side if east-facing
-    const entranceSide = isWestWall ? 'west' : 'east';
-    const exitSide = isWestWall ? 'east' : 'west';
-
-    const entrance = this._placeAccessDoor(tiles, rooms, width, height, entranceSide, 'ENGINEERING_ENTRANCE');
-    const exit = this._placeAccessDoor(tiles, rooms, width, height, exitSide, 'ENGINEERING_AIRLOCK');
-
-    return { tiles, width, height, rooms, corridors, entrance, exit, sectionId, airlockSlot, isWestWall };
+    return { tiles, width, height, rooms, corridors, entrances, airlock, sectionId, isWestWall, isSpecialAccess };
   }
 
-  _placeAccessDoor(tiles, rooms, width, height, side, doorType) {
-    // Find the room closest to the target wall
-    let bestRoom = rooms[0];
-    let bestDist = Infinity;
-
-    for (const room of rooms) {
-      const cx = room.x + Math.floor(room.w / 2);
-      let dist;
-      if (side === 'west') dist = cx;
-      else dist = width - cx;
-
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestRoom = room;
-      }
-    }
-
-    // Place door on the wall edge closest to this room
-    const roomCY = bestRoom.y + Math.floor(bestRoom.h / 2);
-    let dx, dy;
-
-    if (side === 'west') {
-      dx = 0;
-      dy = Math.max(1, Math.min(height - 2, roomCY));
-    } else {
-      dx = width - 1;
-      dy = Math.max(1, Math.min(height - 2, roomCY));
-    }
-
-    // Carve a short passage from the door to the nearest room
-    const targetX = side === 'west' ? bestRoom.x : bestRoom.x + bestRoom.w - 1;
-    const stepDir = side === 'west' ? 1 : -1;
-    for (let x = dx; x !== targetX; x += stepDir) {
-      if (x >= 0 && x < width) {
-        tiles[dy][x] = this._hullFloorTile(null, x, dy);
-      }
-    }
-
-    // Place the door tile
-    const isEntrance = doorType === 'ENGINEERING_ENTRANCE';
-    const doorChar = isEntrance ? '⊞' : '⊟';
-    const doorFg = isEntrance ? '#FFDD44' : '#FF6644';
-    tiles[dy][dx] = tile(doorType, doorChar, doorFg, '#221100', true,
-      { biome: 'engineering', engineeringDoor: true, doorSide: side, isEntrance });
-
-    return { x: dx, y: dy };
-  }
-
-  _hullFloorTile(rng, x, y) {
+  _hullFloorTile(x, y) {
     const hash = ((x * 2654435761) ^ (y * 2246822519)) >>> 0;
     const v = (hash % 100) / 100;
 
-    if (v < 0.05) {
-      return tile('HULL_VALVE', '⊕', '#334455', '#030308', true, { biome: 'engineering' });
+    if (v < 0.04) {
+      return tile('HULL_VALVE', '⊕', '#445566', '#040410', true, { biome: 'engineering' });
     }
-    if (v < 0.10) {
+    if (v < 0.08) {
       const conduits = ['─', '│', '┌', '┐', '└', '┘'];
-      return tile('HULL_CONDUIT', conduits[hash % conduits.length], '#1A3040', '#030308', true, { biome: 'engineering' });
+      return tile('HULL_CONDUIT', conduits[hash % conduits.length], '#2A3A4A', '#040410', true, { biome: 'engineering' });
     }
-    if (v < 0.15) {
-      return tile('HULL_GRATING', '░', '#1A2A3A', '#030308', true, { biome: 'engineering' });
+    if (v < 0.12) {
+      return tile('HULL_GRATING', '░', '#2A3A4A', '#040410', true, { biome: 'engineering' });
     }
     if ((x + y) % 8 === 0) {
-      return tile('HULL_CATWALK_LINE', '┼', '#445566', '#030308', true, { biome: 'engineering' });
+      return tile('HULL_CATWALK_LINE', '┼', '#445566', '#040410', true, { biome: 'engineering' });
     }
     if (x % 4 === 0) {
-      return tile('HULL_CATWALK_LINE', '│', '#334455', '#030308', true, { biome: 'engineering' });
+      return tile('HULL_CATWALK_LINE', '│', '#3A4A5A', '#040410', true, { biome: 'engineering' });
     }
     if (y % 4 === 0) {
-      return tile('HULL_CATWALK_LINE', '─', '#334455', '#030308', true, { biome: 'engineering' });
+      return tile('HULL_CATWALK_LINE', '─', '#3A4A5A', '#040410', true, { biome: 'engineering' });
     }
-    return tile('HULL_CATWALK', '·', '#223344', '#030308', true, { biome: 'engineering' });
+    return tile('HULL_CATWALK', '·', '#2A3A4A', '#040410', true, { biome: 'engineering' });
   }
 
   _decorateRooms(rng, tiles, rooms, width, height) {
     for (const room of rooms) {
-      const machCount = rng.nextInt(1, Math.max(2, Math.floor(room.w * room.h / 12)));
+      // Assign room purposes for visual variety
+      const purpose = rng.nextInt(0, 5);
+      const machCount = rng.nextInt(2, Math.max(3, Math.floor(room.w * room.h / 10)));
+
       for (let i = 0; i < machCount; i++) {
         const mx = rng.nextInt(room.x + 1, room.x + room.w - 2);
         const my = rng.nextInt(room.y + 1, room.y + room.h - 2);
-        if (tiles[my][mx].walkable) {
-          if (rng.chance(0.4)) {
-            tiles[my][mx] = tile('HULL_MACHINERY', '▓', '#253545', '#030308', false, { biome: 'engineering' });
-          } else if (rng.chance(0.3)) {
-            tiles[my][mx] = tile('HULL_PIPE', '║', '#2A3A4A', '#030308', false, { biome: 'engineering' });
+        if (mx >= 1 && mx < width - 1 && my >= 1 && my < height - 1 && tiles[my][mx].walkable) {
+          if (purpose === 0) {
+            // Power relay room
+            tiles[my][mx] = rng.chance(0.5)
+              ? tile('HULL_MACHINERY', '⚡', '#FFAA00', '#040410', false, { biome: 'engineering' })
+              : tile('HULL_MACHINERY', '▓', '#354555', '#040410', false, { biome: 'engineering' });
+          } else if (purpose === 1) {
+            // Life support junction
+            tiles[my][mx] = rng.chance(0.4)
+              ? tile('HULL_PIPE', '║', '#2A4A4A', '#040410', false, { biome: 'engineering' })
+              : tile('HULL_MACHINERY', '○', '#1A4A3A', '#040410', false, { biome: 'engineering', lightSource: 'pulse' });
+          } else if (purpose === 2) {
+            // Coolant system
+            tiles[my][mx] = rng.chance(0.5)
+              ? tile('HULL_PIPE', '═', '#3A5A6A', '#040410', false, { biome: 'engineering' })
+              : tile('HULL_MACHINERY', '~', '#4488AA', '#040410', false, { biome: 'engineering' });
+          } else if (purpose === 3) {
+            // Control panels
+            tiles[my][mx] = rng.chance(0.6)
+              ? tile('HULL_MACHINERY', '□', '#556677', '#040410', false, { biome: 'engineering' })
+              : tile('HULL_CONDUIT', '◊', '#4A5A6A', '#040410', false, { biome: 'engineering', lightSource: 'pulse' });
           } else {
-            tiles[my][mx] = tile('HULL_CONDUIT', '○', '#0D2535', '#030308', false,
+            // General machinery
+            if (rng.chance(0.4)) {
+              tiles[my][mx] = tile('HULL_MACHINERY', '▓', '#354555', '#040410', false, { biome: 'engineering' });
+            } else if (rng.chance(0.3)) {
+              tiles[my][mx] = tile('HULL_PIPE', '║', '#2A3A4A', '#040410', false, { biome: 'engineering' });
+            } else {
+              tiles[my][mx] = tile('HULL_CONDUIT', '○', '#1A3545', '#040410', false,
+                { biome: 'engineering', lightSource: 'pulse' });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  _addFlickeringLights(rng, tiles, width, height) {
+    // Scatter flickering light sources along corridors and rooms
+    const lightCount = rng.nextInt(15, 30);
+    for (let i = 0; i < lightCount; i++) {
+      const lx = rng.nextInt(2, width - 3);
+      const ly = rng.nextInt(2, height - 3);
+      if (tiles[ly][lx].walkable && !tiles[ly][lx].engineeringDoor) {
+        tiles[ly][lx] = tile('ENG_LIGHT', '◦', '#FFCC66', '#0A0A12', true,
+          { biome: 'engineering', lightSource: 'pulse' });
+      }
+    }
+  }
+
+  _addDamagedSections(rng, tiles, width, height) {
+    // Add damaged patches: cracked floor, sparking conduits
+    const damagePatches = rng.nextInt(3, 8);
+    for (let p = 0; p < damagePatches; p++) {
+      const cx = rng.nextInt(5, width - 6);
+      const cy = rng.nextInt(5, height - 6);
+      const radius = rng.nextInt(2, 5);
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const tx = cx + dx;
+          const ty = cy + dy;
+          if (tx < 1 || tx >= width - 1 || ty < 1 || ty >= height - 1) continue;
+          if (dx * dx + dy * dy > radius * radius) continue;
+          if (!tiles[ty][tx].walkable || tiles[ty][tx].engineeringDoor) continue;
+          if (rng.chance(0.4)) {
+            tiles[ty][tx] = tile('ENG_DAMAGED_FLOOR', '%', '#3A2A1A', '#040408', true,
+              { biome: 'engineering' });
+          } else if (rng.chance(0.2)) {
+            tiles[ty][tx] = tile('ENG_SPARKING', '*', '#FFAA00', '#1A0A00', true,
               { biome: 'engineering', lightSource: 'pulse' });
           }
         }
