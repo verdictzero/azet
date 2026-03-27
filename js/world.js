@@ -1011,9 +1011,10 @@ export class ChunkManager {
             // wallDist 6: ENTRANCE DOOR — the habitat-side door the player interacts with
             // Non-walkable: player must press E/Enter to interact and enter engineering space
             if (isCenterRow) {
-              const doorChar = isSpecialAccess ? '⊠' : '⊞';
+              const doorChar = isSpecialAccess ? '⊠' : (isWest ? '◄' : '►');
               const doorFg = isSpecialAccess ? '#FF4444' : '#FFDD44';
-              const doorType = isSpecialAccess ? 'SPECIAL_ACCESS_DOOR' : 'ENTRANCE_DOOR';
+              const dirSuffix = isWest ? '_W' : '_E';
+              const doorType = isSpecialAccess ? 'SPECIAL_ACCESS_DOOR' + dirSuffix : 'ENTRANCE_DOOR' + dirSuffix;
               return tile(doorType, doorChar, doorFg, '#221100', false,
                 { biome: 'hull', entranceDoor: true, entrance: true, isWestWall: isWest,
                   sectionId: section.id, entranceIndex, isSpecialAccess });
@@ -4856,9 +4857,11 @@ export class EngineeringSpaceGenerator {
     );
 
     // Determine door positions
-    // Entrance side: where the habitat entrances are (west if player came from west wall, east if east wall)
-    const entranceSide = isWestWall ? 'west' : 'east';
-    const airlockSide = isWestWall ? 'east' : 'west';
+    // Entrance side: OPPOSITE to the habitat wall — entering through habitat's west wall
+    // means the engineering space entrance faces EAST (back toward that habitat),
+    // and the airlock faces WEST (toward the adjacent habitat)
+    const entranceSide = isWestWall ? 'east' : 'west';
+    const airlockSide = isWestWall ? 'west' : 'east';
 
     // 3 entrance Y positions (or 1 for special access)
     const entranceYs = isSpecialAccess
@@ -4906,14 +4909,18 @@ export class EngineeringSpaceGenerator {
     const entrances = [];
     for (let i = 0; i < entranceYs.length; i++) {
       const ey = entranceYs[i];
-      tiles[ey][entranceX] = tile('ENGINEERING_ENTRANCE', '⊞', '#FFDD44', '#221100', true,
+      const entranceType = entranceSide === 'west' ? 'ENGINEERING_ENTRANCE_W' : 'ENGINEERING_ENTRANCE_E';
+      const entranceChar = entranceSide === 'west' ? '◄' : '►';
+      tiles[ey][entranceX] = tile(entranceType, entranceChar, '#FFDD44', '#221100', true,
         { biome: 'engineering', engineeringDoor: true, doorSide: entranceSide, isEntrance: true, entranceIndex: i });
       entrances.push({ x: entranceX, y: ey, index: i });
     }
 
     // Place airlock door on the opposite side
     const airlockX = airlockSide === 'west' ? 0 : width - 1;
-    tiles[airlockY][airlockX] = tile('ENGINEERING_AIRLOCK', '⊟', '#FF6644', '#221100', true,
+    const airlockType = airlockSide === 'west' ? 'ENGINEERING_AIRLOCK_W' : 'ENGINEERING_AIRLOCK_E';
+    const airlockChar = airlockSide === 'west' ? '◄' : '►';
+    tiles[airlockY][airlockX] = tile(airlockType, airlockChar, '#FF6644', '#221100', true,
       { biome: 'engineering', engineeringDoor: true, doorSide: airlockSide, isEntrance: false });
     const airlock = { x: airlockX, y: airlockY };
 

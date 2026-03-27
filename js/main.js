@@ -1537,8 +1537,11 @@ class Game {
     this.renderer.setZoom(3);
 
     // Place player at the corresponding entrance door
+    // Entrances are on the OPPOSITE side from the habitat wall:
+    // west wall entry → entrance on east edge → player one tile west of door
+    // east wall entry → entrance on west edge → player one tile east of door
     const entrance = engSpace.entrances[Math.min(entranceIndex, engSpace.entrances.length - 1)];
-    this.player.position.x = entrance.x + (isWestWall ? 1 : -1);
+    this.player.position.x = entrance.x + (isWestWall ? -1 : 1);
     this.player.position.y = entrance.y;
 
     // Create camera for engineering space
@@ -1664,7 +1667,10 @@ class Game {
       };
 
       // Place player at the airlock door of the new eng space
-      this.player.position.x = adjEngSpace.airlock.x + (adjIsWestWall ? -1 : 1);
+      // Airlock is on the OPPOSITE side from entrances:
+      // adjIsWestWall=true → airlock on west edge → player one tile east
+      // adjIsWestWall=false → airlock on east edge → player one tile west
+      this.player.position.x = adjEngSpace.airlock.x + (adjIsWestWall ? 1 : -1);
       this.player.position.y = adjEngSpace.airlock.y;
 
       // Update camera
@@ -1914,10 +1920,68 @@ class Game {
   }
 
   _expandEngineeringTile(t, density, wx, wy) {
-    // Simple expansion for engineering tiles
     const chars = [];
     const fgs = [];
     const bgs = [];
+
+    // Directional door types get specialized expansion
+    if (t.type.startsWith('ENGINEERING_ENTRANCE_') || t.type.startsWith('ENGINEERING_AIRLOCK_')) {
+      const isWest = t.type.endsWith('_W');
+      const isAirlock = t.type.includes('AIRLOCK');
+      const frameFg = isAirlock ? '#FF6644' : '#FFDD44';
+      const frameBg = '#221100';
+      const arrowChar = isWest ? '◄' : '►';
+
+      if (density === 2) {
+        if (isAirlock) {
+          // Heavy sealed bulkhead
+          if (isWest) {
+            chars[0] = ['▓', arrowChar]; chars[1] = ['▓', '░'];
+          } else {
+            chars[0] = [arrowChar, '▓']; chars[1] = ['░', '▓'];
+          }
+        } else {
+          // Entrance portal
+          if (isWest) {
+            chars[0] = [arrowChar, '║']; chars[1] = ['░', '║'];
+          } else {
+            chars[0] = ['║', arrowChar]; chars[1] = ['║', '░'];
+          }
+        }
+        fgs[0] = [frameFg, frameFg]; fgs[1] = [frameFg, frameFg];
+        bgs[0] = [frameBg, frameBg]; bgs[1] = [frameBg, frameBg];
+      } else {
+        // density === 3
+        if (isAirlock) {
+          if (isWest) {
+            chars[0] = ['▓', '▓', '▓'];
+            chars[1] = [arrowChar, t.char, '▓'];
+            chars[2] = ['▓', '▓', '▓'];
+          } else {
+            chars[0] = ['▓', '▓', '▓'];
+            chars[1] = ['▓', t.char, arrowChar];
+            chars[2] = ['▓', '▓', '▓'];
+          }
+        } else {
+          if (isWest) {
+            chars[0] = ['╔', '─', '║'];
+            chars[1] = [arrowChar, t.char, '║'];
+            chars[2] = ['╚', '─', '║'];
+          } else {
+            chars[0] = ['║', '─', '╗'];
+            chars[1] = ['║', t.char, arrowChar];
+            chars[2] = ['║', '─', '╝'];
+          }
+        }
+        for (let dy = 0; dy < 3; dy++) {
+          fgs[dy] = [frameFg, frameFg, frameFg];
+          bgs[dy] = [frameBg, frameBg, frameBg];
+        }
+      }
+      return { chars, fgs, bgs };
+    }
+
+    // Default expansion for non-door engineering tiles
     for (let dy = 0; dy < density; dy++) {
       chars[dy] = [];
       fgs[dy] = [];
