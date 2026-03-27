@@ -175,6 +175,14 @@ const DOOR_3x3 = [
   [['\u2588','\u2593','\u2588'],['\u2593','+','\u2593'],[' ',' ',' ']],
 ];
 
+// ── Gold paneling for habitat entrance doors ──
+const ENTRANCE_PANEL_2x2 = [
+  [['▓','▓'],['▓','▓']],
+];
+const ENTRANCE_PANEL_3x3 = [
+  [['▓','▓','▓'],['▓','▓','▓'],['▓','▓','▓']],
+];
+
 // ── Directional door patterns (entrance/airlock doors with direction indicators) ──
 
 // Entrance doors — framed portal with directional arrow showing exit direction
@@ -220,6 +228,39 @@ const ENG_ENTRANCE_E_2x2 = [
 ];
 const ENG_ENTRANCE_E_3x3 = [
   [['║','─','╗'],['║',null,'►'],['║','─','╝']],
+];
+
+// Engineering terminal — interactive console
+const ENG_TERMINAL_2x2 = [
+  [['▣','│'],['─','▣']],
+];
+const ENG_TERMINAL_3x3 = [
+  [['┌','─','┐'],['│','▣','│'],['└','─','┘']],
+];
+
+// Engineering light switch — toggle lighting
+const ENG_LIGHT_SWITCH_2x2 = [
+  [['╔','╗'],['◘','║']],
+];
+const ENG_LIGHT_SWITCH_3x3 = [
+  [['╔','═','╗'],['║','◘','║'],['╚','═','╝']],
+];
+
+// Umbilical tube walls — semi-transparent with star hints
+const UMBILICAL_WALL_2x2 = [
+  [['░','░'],['░','░']],
+];
+const UMBILICAL_WALL_3x3 = [
+  [['░','░','░'],['░','░','░'],['░','░','░']],
+];
+
+// Umbilical tube floor — clean walkway
+const UMBILICAL_FLOOR_2x2 = [
+  [['·',' '],[' ','·']],
+  [[' ','·'],['·',' ']],
+];
+const UMBILICAL_FLOOR_3x3 = [
+  [['·',' ','·'],[' ','·',' '],['·',' ','·']],
 ];
 
 // Engineering airlock doors — heavy sealed bulkhead with pressure indicators
@@ -525,6 +566,7 @@ const TYPE_PATTERNS = {
 
   // Entrance frames, passages, doors, and gates (inter-habitat connections)
   ENTRANCE_FRAME:      { 2: WALL_2x2, 3: WALL_3x3 },
+  ENTRANCE_PANEL:      { 2: ENTRANCE_PANEL_2x2, 3: ENTRANCE_PANEL_3x3 },
   ENTRANCE_PASSAGE:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
   ENTRANCE_DOOR_W:     { 2: ENTRANCE_DOOR_W_2x2, 3: ENTRANCE_DOOR_W_3x3 },
   ENTRANCE_DOOR_E:     { 2: ENTRANCE_DOOR_E_2x2, 3: ENTRANCE_DOOR_E_3x3 },
@@ -540,6 +582,10 @@ const TYPE_PATTERNS = {
   ENG_LIGHT:           { 2: FLOOR_2x2, 3: FLOOR_3x3 },
   ENG_DAMAGED_FLOOR:   { 2: FLOOR_2x2, 3: FLOOR_3x3 },
   ENG_SPARKING:        { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  ENG_TERMINAL:        { 2: ENG_TERMINAL_2x2, 3: ENG_TERMINAL_3x3 },
+  ENG_LIGHT_SWITCH:    { 2: ENG_LIGHT_SWITCH_2x2, 3: ENG_LIGHT_SWITCH_3x3 },
+  UMBILICAL_WALL:      { 2: UMBILICAL_WALL_2x2, 3: UMBILICAL_WALL_3x3 },
+  UMBILICAL_FLOOR:     { 2: UMBILICAL_FLOOR_2x2, 3: UMBILICAL_FLOOR_3x3 },
 
   // Tower structures at chunk intersections
   TOWER_CORNER:        { 2: WALL_2x2, 3: WALL_3x3 },

@@ -1,6 +1,6 @@
 import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
-import { OverworldGenerator, ChunkManager, SectionManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator, EngineeringSpaceGenerator } from './world.js';
+import { OverworldGenerator, ChunkManager, SectionManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator, CorridorGenerator } from './world.js';
 import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms, QUEST_CHAIN_DEFINITIONS } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
@@ -204,7 +204,7 @@ class Game {
     this.towerGen = new TowerGenerator();
     this.ruinGen = new RuinGenerator();
     this.bridgeGen = new BridgeDungeonGenerator();
-    this.engineeringGen = new EngineeringSpaceGenerator();
+    this.engineeringGen = new CorridorGenerator();
 
     // Systems
     this.combat = new CombatSystem();
@@ -1522,11 +1522,39 @@ class Game {
   // Two-phase transition: Hab A → Eng Space A → Airlock → Eng Space B → Hab B
 
   enterEngineeringSpace(sectionId, entranceIndex, isWestWall, overworldX, overworldY, isSpecialAccess = false) {
-    // Seed based on sectionId + wall side (same space for all 3 doors of same wall)
-    const engSeed = this.seed + (sectionId.charCodeAt(0) || 0) * 3000 + (sectionId.charCodeAt(1) || 0) * 100 + (isWestWall ? 0 : 1);
+    // Seed per door (unique per section + wall + entrance index)
+    const engSeed = this.seed + (sectionId.charCodeAt(0) || 0) * 3000 + (sectionId.charCodeAt(1) || 0) * 100 + (isWestWall ? 0 : 1) + entranceIndex * 10;
     const engRng = new SeededRNG(engSeed);
 
-    const engSpace = this.engineeringGen.generate(engRng, sectionId, isWestWall, isSpecialAccess);
+    // Determine adjacent section for the full corridor
+    const adj = this.sectionManager.getAdjacentSections(sectionId);
+    const adjSectionId = isWestWall ? adj.west : adj.east;
+
+    let engSpace;
+    if (adjSectionId) {
+      const adjSection = this.sectionManager.getSection(adjSectionId);
+      const adjIsWestWall = !isWestWall;
+      const adjIsSpecialAccess = (adjSectionId === 'H1' && adjIsWestWall) || (adjSectionId === 'H7' && !adjIsWestWall);
+
+      // Second corridor seed (for the other side)
+      const adjSeed = this.seed + (adjSectionId.charCodeAt(0) || 0) * 3000 + (adjSectionId.charCodeAt(1) || 0) * 100 + (adjIsWestWall ? 0 : 1);
+      const adjRng = new SeededRNG(adjSeed);
+
+      // Check if target is a facility — if so, just generate single corridor
+      if (adjSection && adjSection.type === 'facility') {
+        engSpace = this.engineeringGen.generate(engRng, sectionId, entranceIndex, isWestWall, isSpecialAccess);
+        engSpace._facilityTarget = adjSectionId;
+      } else {
+        engSpace = this.engineeringGen.generateFullCorridor(
+          engRng, adjRng, sectionId, entranceIndex, isWestWall, isSpecialAccess,
+          adjSectionId, adjIsWestWall, adjIsSpecialAccess
+        );
+      }
+    } else {
+      // Edge of ship — single corridor with dead end
+      engSpace = this.engineeringGen.generate(engRng, sectionId, entranceIndex, isWestWall, isSpecialAccess);
+    }
+
     this.currentEngineeringSpace = engSpace;
 
     // Store overworld return position
@@ -1536,13 +1564,10 @@ class Game {
     this._preLocationZoom = this.renderer.densityLevel;
     this.renderer.setZoom(3);
 
-    // Place player at the corresponding entrance door
-    // Entrances are on the OPPOSITE side from the habitat wall:
-    // west wall entry → entrance on east edge → player one tile west of door
-    // east wall entry → entrance on west edge → player one tile east of door
-    const entrance = engSpace.entrances[Math.min(entranceIndex, engSpace.entrances.length - 1)];
-    this.player.position.x = entrance.x + (isWestWall ? -1 : 1);
-    this.player.position.y = entrance.y;
+    // Place player at the source entrance
+    const sourceEntrance = engSpace.sourceEntrance || engSpace.entrances[0];
+    this.player.position.x = sourceEntrance.x + (isWestWall ? -1 : 1);
+    this.player.position.y = sourceEntrance.y;
 
     // Create camera for engineering space
     const density = this.renderer.densityLevel;
@@ -1555,18 +1580,18 @@ class Game {
     this.locationCamera.y = this.locationCamera.targetY;
 
     const wallLabel = isWestWall ? 'West' : 'East';
-    this.gameContext.currentLocationName = `Engineering Bay ${sectionId} ${wallLabel}`;
+    this.gameContext.currentLocationName = `Corridor ${sectionId} ${wallLabel}`;
     this.setState('ENGINEERING_SPACE');
-    this.ui.addMessage('You enter the engineering bay. Machinery hums in the dim light.', '#FFAA00');
+    this.ui.addMessage('You enter the engineering corridor. Machinery hums in the dim light.', '#FFAA00');
     if (isSpecialAccess) {
       this.ui.addMessage('This passage leads to a restricted section of the ship.', '#FF6644');
     } else {
-      this.ui.addMessage('Navigate to the airlock on the far side to reach the adjacent habitat.', '#AACCFF');
+      this.ui.addMessage('Follow the corridor through the umbilical to reach the adjacent habitat.', '#AACCFF');
     }
   }
 
   _exitEngineeringSpace(exitType) {
-    // exitType: 'entrance' (back to habitat), 'airlock' (through to adjacent eng space)
+    // exitType: 'entrance' (back to habitat), 'airlock' (facility access only)
     if (exitType === 'airlock') {
       this._transitThroughAirlock();
       return;
@@ -1596,6 +1621,7 @@ class Game {
   }
 
   _transitThroughAirlock() {
+    // Only used for facility targets (C2/ENG) — single corridor with airlock to facility
     this.startTransition(() => {
       const returnPos = this._engineeringReturnPos;
       if (!returnPos) {
@@ -1603,98 +1629,19 @@ class Game {
         return;
       }
 
-      // Determine the adjacent habitat section
-      const adj = this.sectionManager.getAdjacentSections(returnPos.sectionId);
-      const targetSectionId = returnPos.isWestWall ? adj.west : adj.east;
-
-      if (!targetSectionId) {
-        // Edge of ship — no adjacent section (shouldn't happen for normal entrances)
+      const facilityId = this.currentEngineeringSpace?._facilityTarget;
+      if (!facilityId) {
         this.ui.addMessage('The airlock leads to a sealed bulkhead. You turn back.', '#FFAA00');
         return;
       }
 
-      const targetSection = this.sectionManager.getSection(targetSectionId);
+      const targetSection = this.sectionManager.getSection(facilityId);
       if (!targetSection) {
         this._exitEngineeringSpace('entrance');
         return;
       }
 
-      // Check if the target is a facility (C2 or ENG) — special access
-      if (targetSection.type === 'facility') {
-        // Exit directly into the facility (overworld), placing player inside
-        this.currentEngineeringSpace = null;
-        this._engineeringReturnPos = null;
-        this.locationCamera = null;
-
-        if (this._preLocationZoom) {
-          this.renderer.setZoom(this._preLocationZoom);
-          this._preLocationZoom = null;
-        }
-
-        const facilityCenter = this.sectionManager.getSectionCenter(targetSectionId);
-        this.player.position.x = facilityCenter.x;
-        this.player.position.y = facilityCenter.y;
-        this.ui.addMessage(`You pass through the restricted access door into ${targetSection.label}.`, '#FF4444');
-
-        this._restoreOverworldCamera();
-        this.setState('OVERWORLD');
-        return;
-      }
-
-      // Generate the adjacent habitat's engineering space (from the airlock side)
-      // The adjacent eng space is on the OPPOSITE wall of the target section
-      const adjIsWestWall = !returnPos.isWestWall;
-      const adjIsSpecialAccess = (targetSectionId === 'H1' && adjIsWestWall) || (targetSectionId === 'H7' && !adjIsWestWall);
-      const adjEngSeed = this.seed + (targetSectionId.charCodeAt(0) || 0) * 3000 + (targetSectionId.charCodeAt(1) || 0) * 100 + (adjIsWestWall ? 0 : 1);
-      const adjEngRng = new SeededRNG(adjEngSeed);
-
-      const adjEngSpace = this.engineeringGen.generate(adjEngRng, targetSectionId, adjIsWestWall, adjIsSpecialAccess);
-      this.currentEngineeringSpace = adjEngSpace;
-
-      // Update return pos for the new eng space — when player exits an entrance here, they go to target habitat
-      // Calculate overworld position for the entrance the player will eventually exit through
-      const targetSectionWidth = targetSection.widthChunks * 32;
-      const exitOverworldX = adjIsWestWall
-        ? targetSection.startChunkX * 32 + 7   // just inside west wall (wallDist 6)
-        : targetSection.startChunkX * 32 + targetSectionWidth - 8; // just inside east wall
-      this._engineeringReturnPos = {
-        x: exitOverworldX,
-        y: returnPos.y,
-        sectionId: targetSectionId,
-        entranceIndex: 1, // default to middle entrance
-        isWestWall: adjIsWestWall,
-        isSpecialAccess: adjIsSpecialAccess,
-      };
-
-      // Place player at the airlock door of the new eng space
-      // Airlock is on the OPPOSITE side from entrances:
-      // adjIsWestWall=true → airlock on west edge → player one tile east
-      // adjIsWestWall=false → airlock on east edge → player one tile west
-      this.player.position.x = adjEngSpace.airlock.x + (adjIsWestWall ? 1 : -1);
-      this.player.position.y = adjEngSpace.airlock.y;
-
-      // Update camera
-      const density = this.renderer.densityLevel;
-      this.locationCamera = new Camera(
-        Math.floor((this.renderer.cols - 2) / density),
-        Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density)
-      );
-      this.locationCamera.follow(this.player);
-      this.locationCamera.x = this.locationCamera.targetX;
-      this.locationCamera.y = this.locationCamera.targetY;
-
-      const wallLabel = adjIsWestWall ? 'West' : 'East';
-      this.gameContext.currentLocationName = `Engineering Bay ${targetSectionId} ${wallLabel}`;
-      this.ui.addMessage(`You pass through the airlock into ${targetSection.label}'s engineering bay.`, '#44FFAA');
-      this.ui.addMessage('Find an exit door to enter the habitat.', '#AACCFF');
-      this.renderer.invalidate();
-    });
-  }
-
-  _exitEngineeringToHabitat(entranceIndex) {
-    // Exit through one of the 3 entrance doors into the habitat overworld
-    this.startTransition(() => {
-      const returnPos = this._engineeringReturnPos;
+      // Exit directly into the facility (overworld)
       this.currentEngineeringSpace = null;
       this._engineeringReturnPos = null;
       this.locationCamera = null;
@@ -1704,9 +1651,46 @@ class Game {
         this._preLocationZoom = null;
       }
 
-      if (returnPos) {
-        // Position player at the matching entrance on the habitat wall
-        const section = this.sectionManager.getSection(returnPos.sectionId);
+      const facilityCenter = this.sectionManager.getSectionCenter(facilityId);
+      this.player.position.x = facilityCenter.x;
+      this.player.position.y = facilityCenter.y;
+      this.ui.addMessage(`You pass through the restricted access door into ${targetSection.label}.`, '#FF4444');
+
+      this._restoreOverworldCamera();
+      this.setState('OVERWORLD');
+    });
+  }
+
+  _exitEngineeringToHabitat(entranceIndex, doorTile) {
+    // Exit through an entrance door into the habitat overworld
+    // doorTile may contain destination info for combined corridor exits
+    this.startTransition(() => {
+      let targetSectionId, targetIsWestWall;
+
+      if (doorTile && doorTile.isDestEntrance) {
+        // Exiting through the far-end entrance → destination habitat
+        targetSectionId = doorTile.destSectionId;
+        targetIsWestWall = doorTile.destIsWestWall;
+      } else {
+        // Exiting through source entrance → back to original habitat
+        const returnPos = this._engineeringReturnPos;
+        if (returnPos) {
+          targetSectionId = returnPos.sectionId;
+          targetIsWestWall = returnPos.isWestWall;
+        }
+      }
+
+      this.currentEngineeringSpace = null;
+      this._engineeringReturnPos = null;
+      this.locationCamera = null;
+
+      if (this._preLocationZoom) {
+        this.renderer.setZoom(this._preLocationZoom);
+        this._preLocationZoom = null;
+      }
+
+      if (targetSectionId) {
+        const section = this.sectionManager.getSection(targetSectionId);
         if (section) {
           const sectionWidth = section.widthChunks * 32;
           const wrapHeight = section.wrapChunks * 32;
@@ -1717,8 +1701,8 @@ class Game {
           ];
 
           // X position: just inside the wall on the habitat side
-          if (returnPos.isWestWall) {
-            this.player.position.x = section.startChunkX * 32 + 7; // wallDist 6 (habitat side)
+          if (targetIsWestWall) {
+            this.player.position.x = section.startChunkX * 32 + 7;
           } else {
             this.player.position.x = section.startChunkX * 32 + sectionWidth - 8;
           }
@@ -1726,7 +1710,10 @@ class Game {
           // Y position: at the entrance the player is exiting through
           const exitEntranceIdx = Math.min(entranceIndex, entrancePositions.length - 1);
           this.player.position.y = entrancePositions[exitEntranceIdx];
-        } else {
+        }
+      } else {
+        const returnPos = this._engineeringReturnPos;
+        if (returnPos) {
           this.player.position.x = returnPos.x;
           this.player.position.y = returnPos.y;
         }
@@ -1798,12 +1785,29 @@ class Game {
     this.player.position.x = nx;
     this.player.position.y = ny;
 
-    // Check if player stepped on a door tile
+    // Check if player stepped on a door tile or is adjacent to interactive
     if (t.engineeringDoor) {
       if (t.isEntrance) {
-        this.ui.addMessage('Exit door. Press E to return to the habitat.', '#FFDD44');
+        this.ui.addMessage('Exit door. Press E to enter the habitat.', '#FFDD44');
       } else {
-        this.ui.addMessage('Airlock door. Press E to pass through to the adjacent habitat.', '#FF6644');
+        this.ui.addMessage('Airlock door. Press E to interact.', '#FF6644');
+      }
+    }
+
+    // Check adjacency for interactive tiles
+    const adjDirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
+    for (const ad of adjDirs) {
+      const ax = nx + ad.dx, ay = ny + ad.dy;
+      if (ay >= 0 && ay < tiles.length && ax >= 0 && ax < tiles[0].length) {
+        const at = tiles[ay][ax];
+        if (at.interactive && at.type === 'ENG_TERMINAL') {
+          this.ui.addMessage('A data terminal. Press E to access.', '#44CCCC');
+          break;
+        }
+        if (at.interactive && at.lightSwitch) {
+          this.ui.addMessage('A light switch. Press E to toggle.', '#FFDD44');
+          break;
+        }
       }
     }
   }
@@ -1815,7 +1819,7 @@ class Game {
     const py = this.player.position.y;
     const tiles = this.currentEngineeringSpace.tiles;
 
-    // Check current tile and adjacent tiles for engineering doors
+    // Check current tile and adjacent tiles
     const checkPositions = [
       { x: px, y: py },
       { x: px + 1, y: py }, { x: px - 1, y: py },
@@ -1825,20 +1829,58 @@ class Game {
     for (const pos of checkPositions) {
       if (pos.y < 0 || pos.y >= tiles.length || pos.x < 0 || pos.x >= tiles[0].length) continue;
       const t = tiles[pos.y][pos.x];
+
+      // Airlock — only for facility targets now
       if (t.engineeringDoor && !t.isEntrance) {
-        // Airlock — transit to adjacent habitat's engineering space
-        this._exitEngineeringSpace('airlock');
+        if (this.currentEngineeringSpace._facilityTarget) {
+          this._exitEngineeringSpace('airlock');
+        } else {
+          this.ui.addMessage('The airlock connects to the umbilical. Keep walking.', '#AACCFF');
+        }
         return;
       }
+
+      // Entrance door — exit into habitat (source or destination)
       if (t.engineeringDoor && t.isEntrance) {
-        // Entrance door — exit into habitat
         const exitIndex = t.entranceIndex != null ? t.entranceIndex : 0;
-        this._exitEngineeringToHabitat(exitIndex);
+        this._exitEngineeringToHabitat(exitIndex, t);
+        return;
+      }
+
+      // Interactive terminal
+      if (t.interactive && t.type === 'ENG_TERMINAL') {
+        this._showTerminalDialog(t.terminalId || 0);
+        return;
+      }
+
+      // Light switch
+      if (t.interactive && t.lightSwitch) {
+        this.currentEngineeringSpace.lightsOn = !this.currentEngineeringSpace.lightsOn;
+        const state = this.currentEngineeringSpace.lightsOn ? 'ON' : 'OFF';
+        this.ui.addMessage(`You flip the switch. Corridor lights: ${state}`, '#FFDD44');
+        this.renderer.invalidate();
         return;
       }
     }
 
     this.ui.addMessage('Nothing to interact with here.', '#888888');
+  }
+
+  _showTerminalDialog(terminalId) {
+    const readouts = [
+      ['SYSTEM DIAGNOSTIC v4.2.1', '─────────────────────────', 'Core temp: 342K (nominal)', 'Coolant flow: 98.2%', 'Hull integrity: NOMINAL', 'Power grid: 87% capacity', '', '> All systems within parameters.'],
+      ['LIFE SUPPORT STATUS', '─────────────────────────', 'O2 recycler: OPERATIONAL', 'CO2 scrubber: OPERATIONAL', 'Humidity: 62% (target: 60%)', 'Atmospheric pressure: 101.3 kPa', '', '> Minor calibration recommended.'],
+      ['NAVIGATION LOG', '─────────────────────────', 'Current heading: 271.4°', 'Velocity: 0.03c relative', 'ETA destination: [REDACTED]', 'Course correction: PENDING', '', '> Awaiting command authority.'],
+      ['MAINTENANCE SCHEDULE', '─────────────────────────', 'Conduit inspection: OVERDUE', 'Valve replacement: 847 cycles', 'Structural scan: INCOMPLETE', 'Last service: [DATA CORRUPT]', '', '> WARNING: Maintenance backlog.'],
+      ['CREW MANIFEST', '─────────────────────────', 'Registered personnel: 0', 'Life signs detected: ERROR', 'Stasis pods: OFFLINE', 'Medical bay: UNRESPONSIVE', '', '> No active crew records found.'],
+    ];
+
+    const readout = readouts[terminalId % readouts.length];
+    this.ui.addMessage('═══ TERMINAL OUTPUT ═══', '#44CCCC');
+    for (const line of readout) {
+      this.ui.addMessage(line, line.startsWith('>') ? '#FFAA44' : '#88CCCC');
+    }
+    this.ui.addMessage('═══════════════════════', '#44CCCC');
   }
 
   renderEngineeringSpace() {
@@ -1882,8 +1924,9 @@ class Game {
 
         // Calculate basic distance-based lighting from player
         const dist = Math.abs(wx - this.player.position.x) + Math.abs(wy - this.player.position.y);
-        const maxLight = 12;
-        let brightness = Math.max(0.15, 1.0 - dist / maxLight);
+        const lightsOn = this.currentEngineeringSpace.lightsOn !== false;
+        const maxLight = lightsOn ? 22 : 8;
+        let brightness = Math.max(lightsOn ? 0.25 : 0.08, 1.0 - dist / maxLight);
 
         // Light sources boost brightness
         if (t.lightSource) brightness = Math.min(1.0, brightness + 0.4);
@@ -1993,6 +2036,27 @@ class Game {
           chars[dy][dx] = '█';
         } else if (t.type === 'HULL_MACHINERY' || t.type === 'HULL_PIPE') {
           chars[dy][dx] = t.char;
+        } else if (t.type === 'ENG_TERMINAL') {
+          // Terminal with frame
+          if (density === 2) {
+            const termChars = [['▣','│'],['─','▣']];
+            chars[dy][dx] = termChars[dy][dx];
+          } else {
+            const termChars = [['┌','─','┐'],['│','▣','│'],['└','─','┘']];
+            chars[dy][dx] = termChars[dy][dx];
+          }
+        } else if (t.type === 'ENG_LIGHT_SWITCH') {
+          if (density === 2) {
+            const swChars = [['╔','╗'],['◘','║']];
+            chars[dy][dx] = swChars[dy][dx];
+          } else {
+            const swChars = [['╔','═','╗'],['║','◘','║'],['╚','═','╝']];
+            chars[dy][dx] = swChars[dy][dx];
+          }
+        } else if (t.type === 'UMBILICAL_WALL') {
+          chars[dy][dx] = '░';
+        } else if (t.type === 'UMBILICAL_FLOOR') {
+          chars[dy][dx] = (dy + dx) % 2 === 0 ? '·' : ' ';
         } else {
           chars[dy][dx] = dy === 0 || dx === 0 ? '·' : ' ';
         }
