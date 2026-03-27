@@ -1854,8 +1854,8 @@ class Game {
       this.locationCamera.update();
     }
 
-    const camX = this.locationCamera ? this.locationCamera.x : this.player.position.x - Math.floor(viewW / 2);
-    const camY = this.locationCamera ? this.locationCamera.y : this.player.position.y - Math.floor(viewH / 2);
+    const camX = this.locationCamera ? Math.floor(this.locationCamera.x) : this.player.position.x - Math.floor(viewW / 2);
+    const camY = this.locationCamera ? Math.floor(this.locationCamera.y) : this.player.position.y - Math.floor(viewH / 2);
 
     const r = this.renderer;
     const startRow = LAYOUT.VIEWPORT_TOP;
