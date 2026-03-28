@@ -171,7 +171,7 @@
 // Layer 5: Fog of war (night desaturation)
 // Layer 6: Entities (enemies, NPCs, items)
 // Layer 7: Player character (@) with reticle
-// Layer 8: UI overlays (quest nav, HUD, minimap)
+// Layer 8: UI overlays (quest nav, HUD)
 //
 // ============================================================================
 

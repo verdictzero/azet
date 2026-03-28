@@ -329,55 +329,6 @@ export class UIManager {
     r.drawString(arrowX + 2, indicatorY, `${dir} ${dist}t`, COLORS.BRIGHT_YELLOW, bg);
   }
 
-  /**
-   * Draw a minimap in the top-right corner during sealed zone exploration.
-   */
-  drawMinimap(renderer, dungeon, player, enemies = []) {
-    if (!dungeon || !dungeon.tiles) return;
-
-    const r = renderer;
-    const mapW = 14;
-    const mapH = 10;
-    const startX = r.cols - mapW - 3;
-    const startY = LAYOUT.VIEWPORT_TOP;
-
-    r.drawBox(startX, startY, mapW + 2, mapH + 2, COLORS.FF_BORDER, COLORS.FF_BLUE_DARK, ' Map ');
-
-    const scaleX = dungeon.tiles[0].length / mapW;
-    const scaleY = dungeon.tiles.length / mapH;
-
-    for (let my = 0; my < mapH; my++) {
-      for (let mx = 0; mx < mapW; mx++) {
-        const wx = Math.floor(mx * scaleX);
-        const wy = Math.floor(my * scaleY);
-        if (wy < dungeon.tiles.length && wx < dungeon.tiles[0].length) {
-          const tile = dungeon.tiles[wy][wx];
-          if (tile.walkable) {
-            r.drawChar(startX + 1 + mx, startY + 1 + my, '.', COLORS.BRIGHT_BLACK);
-          } else if (tile.type === 'WALL') {
-            r.drawChar(startX + 1 + mx, startY + 1 + my, '#', COLORS.WHITE);
-          }
-        }
-      }
-    }
-
-    // Draw enemies on minimap
-    for (const enemy of enemies) {
-      const mx = Math.floor(enemy.position.x / scaleX);
-      const my = Math.floor(enemy.position.y / scaleY);
-      if (mx >= 0 && mx < mapW && my >= 0 && my < mapH) {
-        r.drawChar(startX + 1 + mx, startY + 1 + my, '!', COLORS.BRIGHT_RED);
-      }
-    }
-
-    // Draw player
-    const pmx = Math.floor(player.position.x / scaleX);
-    const pmy = Math.floor(player.position.y / scaleY);
-    if (pmx >= 0 && pmx < mapW && pmy >= 0 && pmy < mapH) {
-      r.drawChar(startX + 1 + pmx, startY + 1 + pmy, '@', COLORS.BRIGHT_YELLOW);
-    }
-  }
-
   drawMessageLog(rows) {
     const r = this.renderer;
     const cols = r.cols;
