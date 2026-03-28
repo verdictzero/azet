@@ -263,6 +263,38 @@ const UMBILICAL_FLOOR_3x3 = [
   [['·',' ','·'],[' ','·',' '],['·',' ','·']],
 ];
 
+// Umbilical outer hull — heavy plating
+const UMBILICAL_OUTER_HULL_2x2 = [
+  [['▓','▓'],['▓','▓']],
+];
+const UMBILICAL_OUTER_HULL_3x3 = [
+  [['▓','▓','▓'],['▓','▓','▓'],['▓','▓','▓']],
+];
+
+// Umbilical structural rails — horizontal lines
+const UMBILICAL_RAIL_2x2 = [
+  [['─','─'],['─','─']],
+];
+const UMBILICAL_RAIL_3x3 = [
+  [['─','═','─'],['═','─','═'],['─','═','─']],
+];
+
+// Umbilical frame — metallic wall between viewports
+const UMBILICAL_FRAME_2x2 = [
+  [['▒','▒'],['▒','▒']],
+];
+const UMBILICAL_FRAME_3x3 = [
+  [['▒','▒','▒'],['▒','▒','▒'],['▒','▒','▒']],
+];
+
+// Umbilical viewport glass — bright illuminated window
+const UMBILICAL_VIEWPORT_GLASS_2x2 = [
+  [['█','█'],['█','█']],
+];
+const UMBILICAL_VIEWPORT_GLASS_3x3 = [
+  [['█','█','█'],['█','█','█'],['█','█','█']],
+];
+
 // Engineering airlock doors — heavy sealed bulkhead with pressure indicators
 const ENG_AIRLOCK_W_2x2 = [
   [['▓','◄'],['▓','░']],
@@ -636,6 +668,10 @@ const TYPE_PATTERNS = {
   UMBILICAL_FLOOR:     { 2: UMBILICAL_FLOOR_2x2, 3: UMBILICAL_FLOOR_3x3 },
   UMBILICAL_VIEWPORT:  { 2: UMBILICAL_WALL_2x2, 3: UMBILICAL_WALL_3x3 },
   UMBILICAL_RIB:       { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  UMBILICAL_OUTER_HULL:     { 2: UMBILICAL_OUTER_HULL_2x2, 3: UMBILICAL_OUTER_HULL_3x3 },
+  UMBILICAL_RAIL:           { 2: UMBILICAL_RAIL_2x2, 3: UMBILICAL_RAIL_3x3 },
+  UMBILICAL_FRAME:          { 2: UMBILICAL_FRAME_2x2, 3: UMBILICAL_FRAME_3x3 },
+  UMBILICAL_VIEWPORT_GLASS: { 2: UMBILICAL_VIEWPORT_GLASS_2x2, 3: UMBILICAL_VIEWPORT_GLASS_3x3 },
 
   // Mechanical arm landmark (near settlements)
   MECH_ARM:            { 2: MECH_2x2, 3: MECH_3x3 },

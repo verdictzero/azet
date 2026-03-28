@@ -2054,6 +2054,14 @@ class Game {
             const swChars = [['╔','═','╗'],['║','◘','║'],['╚','═','╝']];
             chars[dy][dx] = swChars[dy][dx];
           }
+        } else if (t.type === 'UMBILICAL_OUTER_HULL') {
+          chars[dy][dx] = '▓';
+        } else if (t.type === 'UMBILICAL_RAIL') {
+          chars[dy][dx] = dx === 1 ? '═' : '─';
+        } else if (t.type === 'UMBILICAL_FRAME') {
+          chars[dy][dx] = '▒';
+        } else if (t.type === 'UMBILICAL_VIEWPORT_GLASS') {
+          chars[dy][dx] = '█';
         } else if (t.type === 'UMBILICAL_WALL') {
           chars[dy][dx] = '░';
         } else if (t.type === 'UMBILICAL_FLOOR') {
