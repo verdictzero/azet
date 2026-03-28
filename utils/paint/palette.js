@@ -8,12 +8,14 @@ export class PaletteUI {
     this._activeCharTab = 'Common';
     this._buildColorPalettes();
     this._buildCharPalette();
+    this._buildQuickSelect();
     this._setupCustomCharInput();
     this._updatePreview();
 
     state.on('pick', () => {
       this._syncColorSelection();
       this._updatePreview();
+      this._syncQuickSelect();
     });
     state.on('change', () => this._updatePreview());
   }
@@ -173,10 +175,88 @@ export class PaletteUI {
     infoBG.style.backgroundColor = s.bgColor;
   }
 
+  _buildQuickSelect() {
+    const container = document.getElementById('quickSelect');
+    container.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'quick-select-label';
+    label.textContent = 'Quick:';
+    container.appendChild(label);
+
+    const keys = ['1','2','3','4','5','6','7','8','9','0'];
+    for (let i = 0; i < 10; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'quick-slot';
+      slot.dataset.index = i;
+
+      const s = this.state.quickSlots[i];
+      slot.style.backgroundColor = s.bg;
+      slot.style.color = s.fg;
+      slot.textContent = s.char;
+
+      const keyLabel = document.createElement('span');
+      keyLabel.className = 'quick-slot-key';
+      keyLabel.textContent = keys[i];
+      slot.appendChild(keyLabel);
+
+      // Left-click: select this slot
+      slot.addEventListener('click', () => this.selectQuickSlot(i));
+
+      // Right-click: assign current char+colors to this slot
+      slot.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        this.assignQuickSlot(i);
+      });
+
+      slot.title = `Click: select | Right-click: assign current (${keys[i]})`;
+      container.appendChild(slot);
+    }
+  }
+
+  _syncQuickSelect() {
+    const container = document.getElementById('quickSelect');
+    const slots = container.querySelectorAll('.quick-slot');
+    for (let i = 0; i < slots.length; i++) {
+      const s = this.state.quickSlots[i];
+      const slot = slots[i];
+      slot.style.backgroundColor = s.bg;
+      slot.style.color = s.fg;
+      // Preserve the key label span
+      const keySpan = slot.querySelector('.quick-slot-key');
+      slot.textContent = s.char;
+      slot.appendChild(keySpan);
+      slot.classList.toggle('active',
+        s.char === this.state.currentChar &&
+        s.fg === this.state.fgColor &&
+        s.bg === this.state.bgColor);
+    }
+  }
+
+  selectQuickSlot(index) {
+    const s = this.state.quickSlots[index];
+    this.state.currentChar = s.char;
+    this.state.fgColor = s.fg;
+    this.state.bgColor = s.bg;
+    this._syncColorSelection();
+    this._renderCharGrid();
+    this._updatePreview();
+    this._syncQuickSelect();
+  }
+
+  assignQuickSlot(index) {
+    this.state.quickSlots[index] = {
+      char: this.state.currentChar,
+      fg: this.state.fgColor,
+      bg: this.state.bgColor,
+    };
+    this._syncQuickSelect();
+  }
+
   // Allow external refresh (e.g. after load)
   refresh() {
     this._syncColorSelection();
     this._renderCharGrid();
     this._updatePreview();
+    this._syncQuickSelect();
   }
 }

@@ -301,6 +301,20 @@ export class App {
         }
       }
 
+      // Quick-select palette: 1-9, 0 (Shift+number to assign)
+      if (!ctrl && e.key >= '0' && e.key <= '9') {
+        const index = e.key === '0' ? 9 : parseInt(e.key) - 1;
+        if (e.shiftKey) {
+          this.palette.assignQuickSlot(index);
+          this._setStatus(`Assigned to quick slot ${e.key}`);
+        } else {
+          this.palette.selectQuickSlot(index);
+          this._setStatus(`Quick slot ${e.key}`);
+        }
+        this.renderer.markDirty();
+        return;
+      }
+
       // Tool hotkeys (single letter, not in text mode)
       if (!ctrl && e.key.length === 1) {
         const hotkeys = {

@@ -67,14 +67,34 @@ export const EXTENDED_PALETTE = [
 ];
 
 export const CHAR_CATEGORIES = {
-  'Common':   ' @#$%&*+-=~^.,:;\'"!?/\\|_<>(){}[]0123456789',
-  'Blocks':   '█▓▒░▀▄▌▐■▪▫▬▮▯',
-  'Box':      '─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╯╰',
-  'Symbols':  '♥♦♣♠★☆●○◆◇△▽§¶†‡©®™°±×÷≈≠≤≥∞µ',
-  'Arrows':   '←→↑↓↔↕◄►▲▼↖↗↘↙',
-  'Game':     '⚔⛨✦☠♥☀☁☂♪♫✿❖◈⌂⚑',
-  'ASCII':    null, // generated dynamically
+  'Common':     ' @#$%&*+-=~^.,:;\'"!?/\\|_<>(){}[]0123456789',
+  'Blocks':     '█▓▒░▀▄▌▐■▪▫▬▮▯▰▱▂▃▅▆▇▉▊▋▍▎▏',
+  'Box Light':  '─│┌┐└┘├┤┬┴┼╌╎┄┆┈┊',
+  'Box Heavy':  '━┃┏┓┗┛┣┫┳┻╋╍╏┅┇┉┋',
+  'Box Double': '═║╔╗╚╝╠╣╦╩╬',
+  'Box Round':  '╭╮╯╰',
+  'Box Mixed':  '╒╓╕╖╘╙╛╜╞╟╡╢╤╥╧╨╪╫',
+  'Braille':    null, // generated dynamically
+  'Geometric':  '◆◇◈○●◐◑◒◓◔◕◖◗◘◙◚◛◜◝◞◟◠◡◢◣◤◥◦◧◨◩◪◫◬◭◮',
+  'Symbols':    '♥♦♣♠★☆●○◆◇△▽§¶†‡©®™°±×÷≈≠≤≥∞µ∑∏∫√∂∇',
+  'Arrows':     '←→↑↓↔↕◄►▲▼↖↗↘↙⇐⇒⇑⇓⇔⇕↩↪↰↱↲↳↴↵↶↷',
+  'Math':       '∀∃∄∅∆∈∉∊∋∌∍∎∏∐∑−∓∔∕∖∗∘∙√∛∜∝∞∟∠∡∢∣∤∥∦',
+  'Dingbats':   '✁✂✃✄✆✇✈✉✌✍✎✏✐✑✒✓✔✕✖✗✘✙✚✛✜✝✞✟✠✡✢✣✤✥✦✧',
+  'Stars':      '✩✪✫✬✭✮✯✰✱✲✳✴✵✶✷✸✹✺✻✼✽✾✿❀❁❂❃❇❈❉❊❋',
+  'Enclosed':   '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳',
+  'Game':       '⚔⛨✦☠♥☀☁☂♪♫✿❖◈⌂⚑⚐⚒⚓⚕⚖⚗⚘⚙⚛⚜⛏⛰⛵⛺',
+  'Faces':      '☺☻☹🙂🙃😀😁😂😃😄😅😆😇😈😉😊😋😌😍😎😏',
+  'Weather':    '☀☁☂☃☄★☆☇☈☉☊☋☌☍☼☽☾',
+  'Music':      '♩♪♫♬♭♮♯',
+  'Currency':   '$¢£¤¥€₹₽₿₩₪₫₭₮₱₲₳₴₵₸₺₻₼₾',
+  'Latin':      'ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ',
+  'Greek':      'ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω',
+  'ASCII':      null, // generated dynamically
 };
+
+// Build Braille block (U+2800 - U+283F)
+CHAR_CATEGORIES['Braille'] = '';
+for (let i = 0x2800; i <= 0x283F; i++) CHAR_CATEGORIES['Braille'] += String.fromCharCode(i);
 
 // Build full printable ASCII range
 CHAR_CATEGORIES['ASCII'] = '';
@@ -105,6 +125,20 @@ export class State {
     this.clipboard = null; // {w, h, cells: 2D}
     this.clipboardHistory = []; // Array of {w, h, cells, timestamp}
     this.activeClipboardIndex = 0;
+
+    // Quick-select palette (keys 1-9, 0)
+    this.quickSlots = [
+      { char: '@', fg: CGA.BRIGHT_GREEN, bg: CGA.BLACK },
+      { char: '#', fg: CGA.BRIGHT_WHITE, bg: CGA.BLACK },
+      { char: '█', fg: CGA.BRIGHT_BLUE, bg: CGA.BLACK },
+      { char: '▓', fg: CGA.BRIGHT_CYAN, bg: CGA.BLACK },
+      { char: '░', fg: CGA.WHITE, bg: CGA.BLACK },
+      { char: '─', fg: CGA.BRIGHT_WHITE, bg: CGA.BLACK },
+      { char: '│', fg: CGA.BRIGHT_WHITE, bg: CGA.BLACK },
+      { char: '★', fg: CGA.BRIGHT_YELLOW, bg: CGA.BLACK },
+      { char: '●', fg: CGA.BRIGHT_RED, bg: CGA.BLACK },
+      { char: ' ', fg: CGA.BRIGHT_WHITE, bg: CGA.BLACK },
+    ];
 
     // Text tool cursor
     this.textCursor = null; // {col, row}

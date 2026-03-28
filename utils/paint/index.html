@@ -84,22 +84,28 @@
         <div class="palette-grid" id="bgPalette"></div>
       </div>
 
-      <!-- Characters -->
-      <div class="section char-section">
-        <h2>&#9656; Characters</h2>
-        <div class="char-tabs" id="charTabs"></div>
-        <div class="char-grid" id="charGrid"></div>
-        <div class="char-custom">
-          <label>Custom:</label>
-          <input type="text" id="customChar" maxlength="1" style="width:40px;text-align:center">
-        </div>
-      </div>
     </div>
 
-    <!-- Canvas Area -->
-    <div class="canvas-area">
-      <div class="canvas-container" id="canvasContainer">
-        <canvas id="paintCanvas"></canvas>
+    <!-- Center Column: Canvas + Character Panel -->
+    <div class="center-column">
+      <div class="canvas-area">
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="paintCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Character Panel (bottom) -->
+      <div class="char-panel">
+        <div class="char-panel-header">
+          <h2>&#9656; Characters</h2>
+          <div class="char-tabs" id="charTabs"></div>
+          <div class="char-custom">
+            <label>Custom:</label>
+            <input type="text" id="customChar" maxlength="1" style="width:40px;text-align:center">
+          </div>
+        </div>
+        <div class="quick-select" id="quickSelect"></div>
+        <div class="char-grid" id="charGrid"></div>
       </div>
     </div>
 
