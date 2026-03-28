@@ -7,11 +7,13 @@ export class ToolManager {
     this.state = state;
     // Track cells painted during a single drag so pencil/eraser don't repeat
     this._paintedThisStroke = new Set();
+    // Offset between click position and floating content origin during drag
+    this._floatingDragOffset = null;
   }
 
   // ── Floating content (GIMP-like paste placement) ──
 
-  enterFloatingMode(content, origin = null) {
+  enterFloatingMode(content, origin = null, originalCells = null) {
     const s = this.state;
     s.floatingContent = {
       w: content.w,
@@ -19,7 +21,11 @@ export class ToolManager {
       cells: content.cells.map(row => row.map(c => ({ ...c }))),
     };
     s.floatingOrigin = origin;
-    s.floatingPos = s.hoverCell ? { col: s.hoverCell.col, row: s.hoverCell.row } : { col: 0, row: 0 };
+    s.floatingOriginalCells = originalCells;
+    const pos = s.hoverCell
+      ? { col: s.hoverCell.col, row: s.hoverCell.row }
+      : { col: Math.floor((s.cols - content.w) / 2), row: Math.floor((s.rows - content.h) / 2) };
+    s.floatingPos = this._clampFloatingPos(pos.col, pos.row);
     s.emit('change');
   }
 
@@ -38,6 +44,7 @@ export class ToolManager {
     s.floatingContent = null;
     s.floatingPos = null;
     s.floatingOrigin = null;
+    s.floatingOriginalCells = null;
     s.pushHistory();
     s.emit('change');
   }
@@ -45,26 +52,47 @@ export class ToolManager {
   cancelFloating() {
     const s = this.state;
     if (!s.floatingContent) return;
+    // Restore original cells if this was a move/cut operation
+    if (s.floatingOrigin && s.floatingOriginalCells) {
+      const { col, row } = s.floatingOrigin;
+      const { w, h } = s.floatingContent;
+      for (let r = 0; r < h; r++) {
+        for (let c = 0; c < w; c++) {
+          const cell = s.floatingOriginalCells[r][c];
+          s.setCell(col + c, row + r, cell.char, cell.fg, cell.bg);
+        }
+      }
+    }
     s.floatingContent = null;
     s.floatingPos = null;
     s.floatingOrigin = null;
+    s.floatingOriginalCells = null;
     s.emit('change');
   }
 
   nudgeFloating(dx, dy) {
     const s = this.state;
     if (!s.floatingContent || !s.floatingPos) return;
-    s.floatingPos.col += dx;
-    s.floatingPos.row += dy;
+    const clamped = this._clampFloatingPos(s.floatingPos.col + dx, s.floatingPos.row + dy);
+    s.floatingPos.col = clamped.col;
+    s.floatingPos.row = clamped.row;
     s.emit('change');
   }
 
   onMouseDown(col, row, button) {
     const s = this.state;
 
-    // Floating content: left-click places, right-click cancels
+    // Floating content: left-click inside drags, outside places, right-click cancels
     if (s.floatingContent) {
       if (button === 0) {
+        const fp = s.floatingPos;
+        const fc = s.floatingContent;
+        if (fp && col >= fp.col && col < fp.col + fc.w && row >= fp.row && row < fp.row + fc.h) {
+          // Click inside floating content — start dragging with offset
+          this._floatingDragOffset = { dc: col - fp.col, dr: row - fp.row };
+          s.mouseDown = true;
+          return;
+        }
         this.placeFloatingContent();
       } else {
         this.cancelFloating();
@@ -112,14 +140,16 @@ export class ToolManager {
                 cells[r][c] = cell ? { ...cell } : { char: ' ', fg: '#f8f0ff', bg: '#000000' };
               }
             }
+            // Store original cells for cancel-restore
+            const originalCells = cells.map(row => row.map(c => ({ ...c })));
             // Clear the original area
             for (let r = 0; r < sel.h; r++) {
               for (let c = 0; c < sel.w; c++) {
-                s.setCell(sel.x + c, sel.y + r, ' ', s.bgColor, s.bgColor);
+                s.setCell(sel.x + c, sel.y + r, ' ', s.fgColor, s.bgColor);
               }
             }
             s.selection = null;
-            this.enterFloatingMode({ w: sel.w, h: sel.h, cells }, { col: sel.x, row: sel.y });
+            this.enterFloatingMode({ w: sel.w, h: sel.h, cells }, { col: sel.x, row: sel.y }, originalCells);
           }
         }
         break;
@@ -133,7 +163,16 @@ export class ToolManager {
 
     // Update floating content position
     if (s.floatingContent) {
-      s.floatingPos = { col, row };
+      if (s.mouseDown && this._floatingDragOffset) {
+        // Dragging: maintain click offset
+        s.floatingPos = this._clampFloatingPos(
+          col - this._floatingDragOffset.dc,
+          row - this._floatingDragOffset.dr,
+        );
+      } else {
+        // Hovering: follow cursor directly
+        s.floatingPos = this._clampFloatingPos(col, row);
+      }
       s.emit('change');
       if (!s.mouseDown) return;
     }
@@ -161,6 +200,7 @@ export class ToolManager {
     const s = this.state;
     if (!s.mouseDown) return;
     s.mouseDown = false;
+    this._floatingDragOffset = null;
     s.dragEnd = { col, row };
 
     const start = s.dragStart;
@@ -223,6 +263,17 @@ export class ToolManager {
     s.pushHistory();
     s.emit('change');
     return true;
+  }
+
+  // Clamp floating position so at least 1 cell remains visible
+  _clampFloatingPos(col, row) {
+    const s = this.state;
+    const fc = s.floatingContent;
+    if (!fc) return { col, row };
+    return {
+      col: Math.max(-(fc.w - 1), Math.min(s.cols - 1, col)),
+      row: Math.max(-(fc.h - 1), Math.min(s.rows - 1, row)),
+    };
   }
 
   // ── Private ──
@@ -294,8 +345,9 @@ export class ToolManager {
     const maxCells = s.cols * s.rows;
     let count = 0;
 
-    while (queue.length > 0 && count < maxCells) {
-      const [c, r] = queue.shift();
+    let head = 0;
+    while (head < queue.length && count < maxCells) {
+      const [c, r] = queue[head++];
       const key = `${c},${r}`;
       if (visited.has(key)) continue;
       if (c < 0 || c >= s.cols || r < 0 || r >= s.rows) continue;

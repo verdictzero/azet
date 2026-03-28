@@ -30,6 +30,7 @@ export class App {
     this.state.on('change', () => {
       this.renderer.markDirty();
       this._updateStatus();
+      this._updateCursor();
     });
 
     // Sync toolbar when tool changes programmatically (e.g. eraser→pencil)
@@ -38,6 +39,7 @@ export class App {
         btn.classList.toggle('active', btn.dataset.tool === this.state.tool);
       });
       this._updateStatus();
+      this._updateCursor();
     });
 
     this._updateStatus();
@@ -84,7 +86,7 @@ export class App {
     document.addEventListener('mouseup', e => {
       if (e.button === 1 && this._panning) {
         this._panning = false;
-        canvas.style.cursor = 'crosshair';
+        this._updateCursor();
         return;
       }
     });
@@ -94,13 +96,14 @@ export class App {
       const { col, row } = this._eventToCell(e);
       this.state.hoverCell = (col >= 0 && col < this.state.cols && row >= 0 && row < this.state.rows)
         ? { col, row } : null;
-      if (this.state.mouseDown) {
+      if (this.state.mouseDown || this.state.floatingContent) {
         const clampedCol = Math.max(0, Math.min(this.state.cols - 1, col));
         const clampedRow = Math.max(0, Math.min(this.state.rows - 1, row));
         this.tools.onMouseMove(clampedCol, clampedRow);
       }
       this.renderer.markDirty();
       this._updateStatus();
+      this._updateCursor();
     });
 
     canvas.addEventListener('mouseup', e => {
@@ -247,14 +250,18 @@ export class App {
           case 'x':
             e.preventDefault();
             if (this.state.selection) {
+              const sel = this.state.selection;
+              const origin = { col: sel.x, row: sel.y };
               this.tools.copySelection();
               const content = {
                 w: this.state.clipboard.w,
                 h: this.state.clipboard.h,
                 cells: this.state.clipboard.cells.map(row => row.map(c => ({ ...c }))),
               };
+              // Store original cells before deleting for cancel-restore
+              const originalCells = content.cells.map(row => row.map(c => ({ ...c })));
               this.tools.deleteSelection();
-              this.tools.enterFloatingMode(content);
+              this.tools.enterFloatingMode(content, origin, originalCells);
               this._setStatus('Cut — click to place, Escape to cancel');
               this.renderer.markDirty();
             }
@@ -507,6 +514,40 @@ export class App {
     a.click();
     URL.revokeObjectURL(a.href);
     this._setStatus('Exported text');
+  }
+
+  // ── Cursor ──
+
+  _updateCursor() {
+    const s = this.state;
+    const canvas = this.canvas;
+
+    if (this._panning) {
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
+    if (s.floatingContent) {
+      canvas.style.cursor = s.mouseDown ? 'grabbing' : 'grab';
+      return;
+    }
+
+    const hover = s.hoverCell;
+    const sel = s.selection;
+
+    if (s.tool === 'move' && sel && hover &&
+        hover.col >= sel.x && hover.col < sel.x + sel.w &&
+        hover.row >= sel.y && hover.row < sel.y + sel.h) {
+      canvas.style.cursor = 'grab';
+      return;
+    }
+
+    const cursorMap = {
+      pencil: 'crosshair', eraser: 'crosshair', fill: 'crosshair',
+      line: 'crosshair', rect: 'crosshair', ellipse: 'crosshair',
+      text: 'text', pick: 'crosshair', select: 'crosshair',
+      move: 'default',
+    };
+    canvas.style.cursor = cursorMap[s.tool] || 'crosshair';
   }
 
   // ── Status Bar ──
