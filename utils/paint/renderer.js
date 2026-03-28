@@ -11,6 +11,9 @@ export class Renderer {
     this.cellH = 0;
     this._dirty = true;
     this._rafId = null;
+    this._lastMarchStep = -1;
+    this._lastBlinkStep = -1;
+    this._animTimer = null;
 
     this._measure();
     this._loop();
@@ -32,6 +35,14 @@ export class Renderer {
   }
 
   markDirty() { this._dirty = true; }
+
+  _scheduleAnimRedraw(ms) {
+    if (this._animTimer) return; // Already scheduled
+    this._animTimer = setTimeout(() => {
+      this._animTimer = null;
+      this._dirty = true;
+    }, ms);
+  }
 
   _loop() {
     this._rafId = requestAnimationFrame(() => this._loop());
@@ -55,12 +66,13 @@ export class Renderer {
 
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // Draw cells
+    // Draw cells (viewport-culled)
     ctx.font = `${fontSize}px ${this.fontFamily}`;
     ctx.textBaseline = 'top';
 
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
+    const { minCol, minRow, maxCol, maxRow } = this._getVisibleRange();
+    for (let r = minRow; r <= maxRow; r++) {
+      for (let c = minCol; c <= maxCol; c++) {
         const cell = grid[r][c];
         const x = c * cellW;
         const y = r * cellH;
@@ -148,7 +160,7 @@ export class Renderer {
 
   _drawSelection(ctx) {
     const sel = this.state.selection;
-    if (!sel) return;
+    if (!sel) { this._lastMarchStep = -1; return; }
     const { cellW, cellH } = this;
     const x = sel.x * cellW;
     const y = sel.y * cellH;
@@ -160,16 +172,20 @@ export class Renderer {
     ctx.fillRect(x, y, w, h);
 
     // Marching ants: animate dash offset
-    const offset = Math.floor(Date.now() / 100) % 8;
+    const step = Math.floor(Date.now() / 100) % 8;
     ctx.strokeStyle = '#55FF55';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 4]);
-    ctx.lineDashOffset = -offset;
+    ctx.lineDashOffset = -step;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
 
-    this._dirty = true; // Keep animating
+    // Schedule next animation frame only when step changes
+    if (step !== this._lastMarchStep) {
+      this._lastMarchStep = step;
+      this._scheduleAnimRedraw(100);
+    }
   }
 
   _drawFloatingContent(ctx) {
@@ -209,8 +225,6 @@ export class Renderer {
     ctx.strokeRect(col * cellW, row * cellH, w * cellW, h * cellH);
     ctx.setLineDash([]);
     ctx.restore();
-
-    this._dirty = true; // Keep redrawing while floating for smooth tracking
   }
 
   _drawCursor(ctx) {
@@ -239,14 +253,37 @@ export class Renderer {
 
   _drawTextCursor(ctx) {
     const tc = this.state.textCursor;
-    if (!tc || this.state.tool !== 'text') return;
+    if (!tc || this.state.tool !== 'text') { this._lastBlinkStep = -1; return; }
     const { cellW, cellH } = this;
     // Blinking cursor (uses time)
-    if (Math.floor(Date.now() / 500) % 2 === 0) {
+    const step = Math.floor(Date.now() / 500) % 2;
+    if (step === 0) {
       ctx.fillStyle = '#55FF55cc';
       ctx.fillRect(tc.col * cellW, tc.row * cellH + cellH - 2, cellW, 2);
     }
-    this._dirty = true; // Keep animating for blink
+    // Schedule next blink only when step changes
+    if (step !== this._lastBlinkStep) {
+      this._lastBlinkStep = step;
+      this._scheduleAnimRedraw(500);
+    }
+  }
+
+  _getVisibleRange() {
+    const canvasArea = this.canvas.closest('.canvas-area');
+    if (!canvasArea) return { minCol: 0, minRow: 0, maxCol: this.state.cols - 1, maxRow: this.state.rows - 1 };
+
+    const scrollLeft = canvasArea.scrollLeft;
+    const scrollTop = canvasArea.scrollTop;
+    const viewW = canvasArea.clientWidth;
+    const viewH = canvasArea.clientHeight;
+    const pad = 20; // canvas container padding
+
+    return {
+      minCol: Math.max(0, Math.floor((scrollLeft - pad) / this.cellW)),
+      minRow: Math.max(0, Math.floor((scrollTop - pad) / this.cellH)),
+      maxCol: Math.min(this.state.cols - 1, Math.ceil((scrollLeft + viewW - pad) / this.cellW)),
+      maxRow: Math.min(this.state.rows - 1, Math.ceil((scrollTop + viewH - pad) / this.cellH)),
+    };
   }
 
   // Convert pixel coordinates (relative to canvas) to grid col, row
