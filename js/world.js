@@ -4989,74 +4989,73 @@ export class CorridorGenerator {
     const entranceSide = isWestWall ? 'east' : 'west';
     const airlockSide = isWestWall ? 'west' : 'east';
 
-    // ── Generate meandering main path ──
-    const pathY = [];  // track Y position of main corridor center at each X
-    let curY = Math.floor(height / 2);
-    const meanderInterval = rng.nextInt(15, 25); // pre-compute once for consistent RNG
-    for (let x = 0; x < width; x++) {
-      pathY[x] = curY;
-      // Meander at fixed intervals, shift by at most 1 to guarantee corridor overlap
-      if (x > 0 && x < width - 5 && x % meanderInterval === 0) {
-        const shift = rng.chance(0.5) ? 1 : -1;
-        curY = Math.max(3, Math.min(height - 4, curY + shift));
-      }
-    }
+    // ── Layered cross-section: pipes → wall → shades → panels → walkway ──
+    const corridorCenterY = Math.floor(height / 2); // row 10
+    // Fixed pathY for backward compat with helper methods
+    const pathY = new Array(width).fill(corridorCenterY);
 
-    // Carve main corridor (3 tiles tall) with smooth transitions
-    for (let x = 1; x < width - 1; x++) {
-      const cy = pathY[x];
-      for (let dy = -1; dy <= 1; dy++) {
-        const y = cy + dy;
-        if (y >= 1 && y < height - 1) {
+    // Paint the layered structure across the full corridor width
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height; y++) {
+        const edgeDist = Math.min(y, height - 1 - y); // distance from nearest top/bottom edge
+
+        if (edgeDist <= 1) {
+          // Pipe conduit runs (rows 0-1 top, 18-19 bottom)
+          tiles[y][x] = this._pipeConduitTile(x, y, edgeDist);
+        } else if (edgeDist === 2) {
+          // Solid wall █ (rows 2, 17)
+          tiles[y][x] = tile('CORRIDOR_WALL', '█', '#334455', '#020205', false, { biome: 'engineering' });
+        } else if (edgeDist === 3) {
+          // Dark shade ▓ (rows 3, 16)
+          tiles[y][x] = tile('CORRIDOR_DARK_SHADE', '▓', '#2A3A4A', '#020206', false, { biome: 'engineering' });
+        } else if (edgeDist === 4) {
+          // Medium shade ▒ (rows 4, 15)
+          tiles[y][x] = tile('CORRIDOR_MED_SHADE', '▒', '#223344', '#010104', false, { biome: 'engineering' });
+        } else if (edgeDist === 5) {
+          // Panel/grating ◘ (rows 5, 14)
+          tiles[y][x] = tile('CORRIDOR_PANEL', '◘', '#1A2A3A', '#010104', false, { biome: 'engineering' });
+        } else {
+          // Open walkway ◙ (rows 6-13)
           tiles[y][x] = this._hullFloorTile(x, y);
         }
       }
-      // At path transitions, carve union of both Y ranges to ensure traversability
-      if (x > 1 && pathY[x] !== pathY[x - 1]) {
-        const minY = Math.min(pathY[x], pathY[x - 1]) - 1;
-        const maxY = Math.max(pathY[x], pathY[x - 1]) + 1;
-        for (let y = minY; y <= maxY; y++) {
-          if (y >= 1 && y < height - 1) {
-            tiles[y][x] = this._hullFloorTile(x, y);
-          }
-        }
-      }
     }
 
-    // ── Branch sub-rooms off the main path ──
+    // ── Branch sub-rooms off the walkway into the wall layers ──
     const ROOM_TYPES = ['cargo', 'maintenance', 'operations'];
     const rooms = [];
     let nextRoomX = rng.nextInt(20, 35);
     while (nextRoomX < width - 20) {
       const roomW = rng.nextInt(6, 10);
-      const roomH = rng.nextInt(5, 8);
-      const cy = pathY[nextRoomX];
+      const roomH = rng.nextInt(3, 5); // smaller rooms to fit in wall zone
       const above = rng.chance(0.5);
-      const roomY = above ? cy - 2 - roomH : cy + 2;
+      // Rooms sit in the wall/pipe zone (rows 0-5 above, rows 14-19 below)
+      const roomY = above ? Math.max(0, 5 - roomH) : 14;
 
-      // Check bounds
-      if (roomY >= 1 && roomY + roomH < height - 1 && nextRoomX + roomW < width - 2) {
+      if (nextRoomX + roomW < width - 2) {
         const roomType = ROOM_TYPES[rooms.length % ROOM_TYPES.length];
         const room = { x: nextRoomX, y: roomY, w: roomW, h: roomH, roomType };
         rooms.push(room);
 
-        // Carve room
+        // Carve room interior
         for (let ry = roomY; ry < roomY + roomH; ry++) {
           for (let rx = nextRoomX; rx < nextRoomX + roomW; rx++) {
-            tiles[ry][rx] = this._hullFloorTile(rx, ry);
+            if (rx >= 0 && rx < width && ry >= 0 && ry < height) {
+              tiles[ry][rx] = this._hullFloorTile(rx, ry);
+            }
           }
         }
 
-        // Connect room to corridor with 3-tile-wide doorway
+        // Carve doorway through wall layers connecting room to walkway
         const doorX = nextRoomX + Math.floor(roomW / 2);
-        const connStart = above ? roomY + roomH : cy + 1;
-        const connEnd = above ? cy - 1 : roomY;
+        const connStart = above ? roomY + roomH : corridorCenterY + 4; // walkway edge
+        const connEnd = above ? 6 : roomY; // walkway row 6 (top) or room start
         const doorTiles = [];
         for (let ddx = -1; ddx <= 1; ddx++) {
           const dx = doorX + ddx;
-          if (dx < 1 || dx >= width - 1) continue;
+          if (dx < 0 || dx >= width) continue;
           for (let y = Math.min(connStart, connEnd); y <= Math.max(connStart, connEnd); y++) {
-            if (y >= 1 && y < height - 1) {
+            if (y >= 0 && y < height) {
               tiles[y][dx] = this._hullFloorTile(dx, y);
               doorTiles.push({ x: dx, y });
             }
@@ -5248,9 +5247,10 @@ export class CorridorGenerator {
       tile('WALL', '#', '#334455', '#0A0A12', false)
     );
 
-    // Carve the tube passage (3 tiles tall) with structural ribs
+    // Wider tube passage (7 tiles tall) to match corridor walkway proportions
+    const halfPassage = 3;
     for (let x = 0; x < width; x++) {
-      for (let dy = -1; dy <= 1; dy++) {
+      for (let dy = -halfPassage; dy <= halfPassage; dy++) {
         const y = centerY + dy;
         if (y >= 0 && y < height) {
           // Structural ribs every 8 tiles on center row
@@ -5265,8 +5265,8 @@ export class CorridorGenerator {
       }
 
       // Transparent tube walls (top and bottom of passage) — void visible
-      const topY = centerY - 2;
-      const botY = centerY + 2;
+      const topY = centerY - halfPassage - 1;
+      const botY = centerY + halfPassage + 1;
       const wallYs = [];
       if (topY >= 0) wallYs.push(topY);
       if (botY < height) wallYs.push(botY);
@@ -5275,10 +5275,8 @@ export class CorridorGenerator {
         const hash = ((x * 73856093) ^ (wallY * 19349663)) >>> 0;
         const starChance = (hash % 100) / 100;
         if (x >= 3 && x < width - 3) {
-          // Viewport sections every ~10 tiles (4 tiles wide) — more transparent
           const isViewport = (x % 10 >= 3 && x % 10 <= 6);
           if (isViewport) {
-            // Viewport: more visible starfield
             let ch, fg;
             if (starChance < 0.15) { ch = '·'; fg = '#8899BB'; }
             else if (starChance < 0.18) { ch = '*'; fg = '#AABBDD'; }
@@ -5286,7 +5284,6 @@ export class CorridorGenerator {
             tiles[wallY][x] = tile('UMBILICAL_VIEWPORT', ch, fg, '#010204', false,
               { biome: 'engineering' });
           } else {
-            // Standard tube wall with enhanced starfield
             let ch, fg;
             if (starChance < 0.12) { ch = '·'; fg = '#8899BB'; }
             else if (starChance < 0.15) { ch = '*'; fg = '#BBCCEE'; }
@@ -5295,7 +5292,6 @@ export class CorridorGenerator {
               { biome: 'engineering' });
           }
         } else {
-          // Bulkhead ends — structural framing
           tiles[wallY][x] = tile('WALL', '▓', '#445566', '#0A0A12', false,
             { biome: 'engineering' });
         }
@@ -5314,11 +5310,14 @@ export class CorridorGenerator {
   }
 
   _carveConnection(tiles, x1, y1, x2, y2, totalWidth, totalHeight) {
-    // Straight horizontal if Y matches (common for well-aligned corridors)
+    // Wider carve (4 tiles each side of center) to match the 8-row walkway
+    const halfWidth = 3;
+
+    // Straight horizontal if Y matches
     if (y1 === y2) {
       for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
         if (x >= 0 && x < totalWidth) {
-          for (let dy = -1; dy <= 1; dy++) {
+          for (let dy = -halfWidth; dy <= halfWidth; dy++) {
             const y = y1 + dy;
             if (y >= 1 && y < totalHeight - 1) {
               tiles[y][x] = this._hullFloorTile(x, y);
@@ -5329,7 +5328,7 @@ export class CorridorGenerator {
       return;
     }
 
-    // Smooth diagonal transition: shift Y by 1 per X step, then go straight
+    // Smooth diagonal transition
     const dx = x2 > x1 ? 1 : -1;
     const yDiff = y2 - y1;
     const yDir = yDiff > 0 ? 1 : -1;
@@ -5338,23 +5337,50 @@ export class CorridorGenerator {
 
     for (let x = x1; x !== x2 + dx; x += dx) {
       if (x < 0 || x >= totalWidth) continue;
-      // Shift Y toward target gradually (1 per step until aligned)
       if (curY !== y2) {
         const xRemaining = Math.abs(x2 - x);
-        if (xRemaining <= absYDiff || Math.abs(curY - y2) > 0) {
-          const stepsNeeded = Math.abs(curY - y2);
-          if (stepsNeeded > 0 && xRemaining <= stepsNeeded + 2) {
-            curY += yDir;
-          }
+        const stepsNeeded = Math.abs(curY - y2);
+        if (stepsNeeded > 0 && xRemaining <= stepsNeeded + 2) {
+          curY += yDir;
         }
       }
-      for (let dy = -1; dy <= 1; dy++) {
+      for (let dy = -halfWidth; dy <= halfWidth; dy++) {
         const y = curY + dy;
         if (y >= 1 && y < totalHeight - 1) {
           tiles[y][x] = this._hullFloorTile(x, y);
         }
       }
     }
+  }
+
+  _pipeConduitTile(x, y, bandRow) {
+    // 4-phase repeating pipe pattern along X axis
+    const phase = ((x % 4) + 4) % 4;
+    const jointPeriod = 10;
+    const jointPos = ((x % jointPeriod) + jointPeriod) % jointPeriod;
+
+    let ch, fg;
+    if (phase === 0 || phase === 2) {
+      // Straight runs with vertical junction pairs
+      if (jointPos === 0 || jointPos === 1) {
+        ch = '║'; fg = '#4A6A8A';
+      } else {
+        ch = '═'; fg = '#3A5A7A';
+      }
+    } else {
+      // Bend/junction rows
+      if (jointPos === 0) {
+        ch = (phase === 1) ? '╝' : '╗'; fg = '#4A6A8A';
+      } else if (jointPos === 1) {
+        ch = '║'; fg = '#4A6A8A';
+      } else if (jointPos === jointPeriod - 1) {
+        ch = (phase === 1) ? '╔' : '╚'; fg = '#4A6A8A';
+      } else {
+        ch = '═'; fg = '#3A5A7A';
+      }
+    }
+
+    return tile('CORRIDOR_PIPE', ch, fg, '#020208', false, { biome: 'engineering' });
   }
 
   _hullFloorTile(x, y) {
@@ -5491,42 +5517,33 @@ export class CorridorGenerator {
   }
 
   _addWallConduits(rng, tiles, pathY, width, height) {
-    // Place conduit decorations along corridor walls
-    for (let x = 5; x < width - 5; x += rng.nextInt(3, 6)) {
-      const cy = pathY[x];
-      // Top wall conduits
-      const topY = cy - 2;
-      if (topY >= 1 && tiles[topY][x].type === 'WALL') {
-        if (rng.chance(0.5)) {
-          const conduits = ['─', '═', '┌', '┐'];
-          tiles[topY][x] = tile('WALL', rng.random(conduits), '#2A4A5A', '#0A0A12', false,
-            { biome: 'engineering' });
+    // Layered walls already provide visual structure — add subtle conduit details on panel rows
+    for (let x = 5; x < width - 5; x += rng.nextInt(4, 8)) {
+      if (rng.chance(0.4)) {
+        // Top panel row (row 5)
+        if (tiles[5][x].type === 'CORRIDOR_PANEL') {
+          tiles[5][x] = tile('CORRIDOR_PANEL', '◙', '#2A3A4A', '#010104', false, { biome: 'engineering' });
         }
       }
-      // Bottom wall conduits
-      const botY = cy + 2;
-      if (botY < height - 1 && tiles[botY][x].type === 'WALL') {
-        if (rng.chance(0.5)) {
-          const conduits = ['─', '═', '└', '┘'];
-          tiles[botY][x] = tile('WALL', rng.random(conduits), '#2A4A5A', '#0A0A12', false,
-            { biome: 'engineering' });
+      if (rng.chance(0.4)) {
+        // Bottom panel row (row 14)
+        if (tiles[14][x].type === 'CORRIDOR_PANEL') {
+          tiles[14][x] = tile('CORRIDOR_PANEL', '◙', '#2A3A4A', '#010104', false, { biome: 'engineering' });
         }
       }
     }
   }
 
   _placeTerminals(rng, tiles, pathY, width, height) {
-    // Place 3-5 interactive terminals along the corridor walls
+    // Place 3-5 interactive terminals on the panel rows (row 5 top, row 14 bottom)
     const termCount = rng.nextInt(3, 5);
     const spacing = Math.floor(width / (termCount + 1));
     for (let i = 0; i < termCount; i++) {
       const tx = spacing * (i + 1) + rng.nextInt(-5, 5);
       if (tx < 3 || tx >= width - 3) continue;
-      const cy = pathY[tx];
-      // Place on top or bottom wall
       const above = rng.chance(0.5);
-      const ty = above ? cy - 2 : cy + 2;
-      if (ty >= 1 && ty < height - 1 && !tiles[ty][tx].walkable && !tiles[ty][tx].engineeringDoor) {
+      const ty = above ? 5 : 14; // panel rows
+      if (!tiles[ty][tx].walkable && !tiles[ty][tx].engineeringDoor) {
         tiles[ty][tx] = tile('ENG_TERMINAL', '▣', '#44CCCC', '#040410', false,
           { biome: 'engineering', interactive: true, terminalId: i });
       }
@@ -5534,15 +5551,12 @@ export class CorridorGenerator {
   }
 
   _placeLightSwitch(rng, tiles, pathY, width, height, entranceSide) {
-    // Place 1 light switch near the entrance
+    // Place 1 light switch near the entrance on a panel row
     const switchX = entranceSide === 'west' ? rng.nextInt(5, 15) : width - rng.nextInt(5, 15);
-    const cy = pathY[Math.min(Math.max(switchX, 0), width - 1)];
     const above = rng.chance(0.5);
-    const sy = above ? cy - 2 : cy + 2;
-    if (sy >= 1 && sy < height - 1) {
-      tiles[sy][switchX] = tile('ENG_LIGHT_SWITCH', '◘', '#FFDD44', '#040410', false,
-        { biome: 'engineering', interactive: true, lightSwitch: true });
-    }
+    const sy = above ? 5 : 14; // panel rows
+    tiles[sy][switchX] = tile('ENG_LIGHT_SWITCH', '◘', '#FFDD44', '#040410', false,
+      { biome: 'engineering', interactive: true, lightSwitch: true });
   }
 
   _addFlickeringLights(rng, tiles, width, height) {
