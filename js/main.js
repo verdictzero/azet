@@ -1004,6 +1004,7 @@ class Game {
         const startLoc = loadedLocs.find(l => l.type === 'village') || loadedLocs[0];
         if (startLoc) {
           startLoc.name = 'Broken Arm';
+          startLoc.type = 'town';  // Upgrade to town for bigger settlement
           this.player.position.x = startLoc.x;
           this.player.position.y = startLoc.y;
           this.player.knownLocations = new Set([startLoc.id]);
@@ -6428,6 +6429,7 @@ class Game {
     CRYO_HOUSING: 2, CRYO_EMITTER: 3, CRYO_BASE: 1,
     DATA_FRAME: 2, DATA_CORE: 1,
     VOID_ARCH: 4, VOID_BASE: 2, VOID_CENTER: 0,
+    MECH_ARM: 2,
     // Mechanical mega-structure tiles
     MANUFACTORY_WALL: 3, MANUFACTORY_STACK: 5, MANUFACTORY_STACK_TOP: 6,
     MANUFACTORY_GEAR: 2, MANUFACTORY_CONVEYOR: 1, MANUFACTORY_FURNACE: 2, MANUFACTORY_FLOOR: 0,

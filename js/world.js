@@ -2374,58 +2374,64 @@ export class SettlementGenerator {
   }
 
   _getMechanicalArmTemplate() {
-    // Shorthand helpers
-    const _ = null; // empty cell
+    // Based on broken_arm.txt — metallic depth shading
+    // Top rows (fingertips) are brightest, bottom rows (shoulder) are darkest
+    const _ = null;
     const M = (char, fg, bg) => ({ type: 'MECH_ARM', char, fg, bg: bg || '#0D0D1A' });
 
-    // Metallic palette
-    const BRIGHT = '#8899AA';  // highlights/edges
-    const MID    = '#667788';  // main metal
-    const DARK   = '#556677';  // darker metal
-    const DIM    = '#445566';  // recessed/shadow
-    const RUST   = '#887766';  // weathered
-    const SPARK  = '#FFAA00';  // sparks at break
-    const SPARK2 = '#FF6600';  // deeper sparks
-    const WIRE   = '#44AACC';  // exposed wiring
-    const BG     = '#0D0D1A';  // default dark bg
-    const BG2    = '#111122';  // slightly lighter bg
-    const BG3    = '#1A0A00';  // warm spark bg
+    // Metallic palette — depth-based gradient (bright = high/near, dark = low/far)
+    const TIP   = '#BBCCDD';  // Brightest — fingertip edges catching light
+    const BRI   = '#AABBCC';  // Bright — finger body, hand structural edges
+    const MID   = '#8899AA';  // Mid — hand/palm surface
+    const STL   = '#778899';  // Steel — wrist transition
+    const FRM   = '#667788';  // Forearm — mid structure
+    const DRK   = '#556677';  // Dark — forearm body
+    const DIM   = '#445566';  // Dim — upper arm
+    const DEP   = '#334455';  // Deepest — shoulder, lowest surfaces
+    const BG    = '#0D0D1A';  // Default dark bg
+    const BG2   = '#111122';  // Slightly lighter bg for solid surfaces
 
-    // 30 cols x 16 rows — hand (left) → forearm break → upper arm → shoulder (right)
-    // The arm is lying on the ground, shoulder at top-right, hand spread open at bottom-left
+    // 11 cols x 19 rows — fingertips at top, shoulder/base at bottom
+    // Derived from broken_arm.txt with depth-aware metallic shading
     return [
-      // Row 0: Shoulder top
-      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('╔',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('╗',BRIGHT,BG), _],
-      // Row 1: Shoulder body
-      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('║',BRIGHT,BG), M('█',MID,BG2),   M('▓',MID,BG2),   M('⊕',BRIGHT,BG2),M('▓',MID,BG2),   M('║',BRIGHT,BG), _],
-      // Row 2: Shoulder body with internal detail
-      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('║',BRIGHT,BG), M('▓',MID,BG2),   M('█',MID,BG2),   M('█',MID,BG2),   M('█',MID,BG2),   M('║',BRIGHT,BG), _],
-      // Row 3: Shoulder bottom + upper arm start
-      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('╔',MID,BG),  M('═',MID,BG),   M('═',MID,BG),    M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('╠',BRIGHT,BG), M('▓',DARK,BG2),  M('⊕',BRIGHT,BG2),M('▓',DARK,BG2),  M('▓',DARK,BG2),  M('╣',BRIGHT,BG), _],
-      // Row 4: Upper arm body
-      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('║',MID,BG),  M('█',DARK,BG2), M('─',DIM,BG2),   M('─',DIM,BG2),  M('█',DARK,BG2), M('─',DIM,BG2),  M('─',DIM,BG2),  M('█',DARK,BG2), M('║',MID,BG),    M('█',DARK,BG2),  M('│',DIM,BG2),   M('█',DARK,BG2),  M('█',DARK,BG2),  M('║',BRIGHT,BG), _],
-      // Row 5: Upper arm body with conduits
-      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('║',MID,BG),  M('▓',DARK,BG2), M('═',WIRE,BG2),  M('═',WIRE,BG2), M('▓',DARK,BG2), M('═',WIRE,BG2), M('▓',DARK,BG2), M('▓',DARK,BG2), M('║',MID,BG),    M('▓',DARK,BG2),  M('▓',DARK,BG2),  M('▓',DARK,BG2),  M('▓',DARK,BG2),  M('╣',BRIGHT,BG), _],
-      // Row 6: Upper arm bottom + break start
-      [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,  M('╚',MID,BG),  M('═',MID,BG),   M('═',MID,BG),    M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('═',MID,BG),   M('╝',MID,BG),   _,                 M('╚',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('═',BRIGHT,BG), M('╝',BRIGHT,BG), _],
-      // Row 7: Break zone — sparks and jagged metal
-      [_,_,_,_,_,_,_,_,_,_,_,_,  M('╔',MID,BG),  M('═',MID,BG),    M('╗',MID,BG),    M('░',RUST,BG2),  M('▒',SPARK,BG3), M('⚡',SPARK,BG3),M('░',RUST,BG2),  _,_,_,_,_,_,_,_],
-      // Row 8: Break zone — exposed internals
-      [_,_,_,_,_,_,_,_,_,_,_,_,  M('║',MID,BG),  M('═',WIRE,BG2),  M('║',MID,BG),    M('▒',RUST,BG2),  M('⚡',SPARK2,BG3),M('░',RUST,BG2),  _,_,_,_,_,_,_,_,_],
-      // Row 9: Forearm body
-      [_,_,_,_,_,_,_,_,_,_,_,_,  M('║',MID,BG),  M('█',DARK,BG2),  M('║',MID,BG),    M('░',RUST,BG2),  _,_,_,_,_,_,_,_,_,_,_],
-      // Row 10: Forearm bottom + wrist
-      [_,_,_,_,_,_,  M('╔',MID,BG),M('═',MID,BG), M('═',MID,BG),   M('═',MID,BG),    M('═',MID,BG),    M('═',MID,BG),      M('╩',MID,BG),   M('═',MID,BG),    M('╝',MID,BG),    _,_,_,_,_,_,_,_,_,_,_],
-      // Row 11: Wrist joint + palm start
-      [_,_,_,_,_,_,  M('║',MID,BG),M('▓',DARK,BG2),M('⊕',BRIGHT,BG2),M('▓',DARK,BG2),M('█',DARK,BG2),  M('▓',DARK,BG2),    M('▓',DARK,BG2), M('▓',DARK,BG2),  _,_,_,_,_,_,_,_,_,_,_,_],
-      // Row 12: Palm + finger bases
-      [_,_,_,  M('/',DIM,BG),M('│',DIM,BG),_,  M('╚',MID,BG), M('═',MID,BG),  M('═',MID,BG),   M('═',MID,BG),    M('═',MID,BG),    M('╝',MID,BG),    _,_,_,_,_,_,_,_,_,_,_,_,_,_],
-      // Row 13: Fingers spread
-      [_,  M('/',DIM,BG), _,  M('│',DIM,BG),M('│',DIM,BG),M('/',DIM,BG),  _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
-      // Row 14: Fingertips
-      [M('·',RUST,BG),M('·',RUST,BG),_,  M('·',RUST,BG),M('·',RUST,BG),M('·',RUST,BG), _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
-      // Row 15: Thumb (separate, to the side)
-      [_,_,_,_,_,_,  M('\\',DIM,BG),M('·',RUST,BG),_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+      // Row 0: Fingertip tops (brightest — highest point)
+      [_,_,_,_,_, M('\u256D',TIP,BG), M('\u256E',TIP,BG), M('\u256D',TIP,BG), M('\u256E',TIP,BG), _,_],
+      // Row 1: Finger joints
+      [_,_,_, M('\u256D',TIP,BG), M('\u256E',TIP,BG), M('\u2560',TIP,BG), M('\u2563',TIP,BG), M('\u2560',TIP,BG), M('\u2563',TIP,BG), M('\u256D',TIP,BG), M('\u256E',TIP,BG)],
+      // Row 2: Finger body
+      [_,_,_, M('\u2560',BRI,BG), M('\u2563',BRI,BG), M('\u2560',BRI,BG), M('\u2563',BRI,BG), M('\u2560',BRI,BG), M('\u2563',BRI,BG), M('\u2560',BRI,BG), M('\u2563',BRI,BG)],
+      // Row 3: Finger body + thumb bracket
+      [M('\u250C',BRI,BG), M('\u2510',BRI,BG), _, M('\u2560',BRI,BG), M('\u2563',BRI,BG), M('\u2560',BRI,BG), M('\u2563',BRI,BG), M('\u2560',BRI,BG), M('\u2563',BRI,BG), M('\u2560',BRI,BG), M('\u2563',BRI,BG)],
+      // Row 4: Palm top — depth transition with recesses
+      [M('\u251C',MID,BG), M('\u2588',MID,BG2), _, M('\u2560',MID,BG), M('\u2591',STL,BG2), M('\u2580',MID,BG), M('\u2584',STL,BG), M('\u2584',STL,BG), M('\u2580',MID,BG), M('\u2591',STL,BG2), M('\u2563',MID,BG)],
+      // Row 5: Palm body — deeper recesses
+      [M('\u2514',MID,BG), M('\u2588',MID,BG2), M('\u2588',MID,BG2), M('\u256C',MID,BG), M('\u2593',STL,BG2), M('\u2592',DRK,BG2), M('\u2592',DRK,BG2), M('\u2592',DRK,BG2), M('\u2592',DRK,BG2), M('\u2593',STL,BG2), M('\u2563',MID,BG)],
+      // Row 6: Palm bottom
+      [_, M('\u2514',STL,BG), M('\u2534',STL,BG), M('\u255A',STL,BG), M('\u2588',STL,BG2), M('\u2592',DRK,BG2), M('\u2584',STL,BG), M('\u2584',STL,BG), M('\u2592',DRK,BG2), M('\u2588',STL,BG2), M('\u255D',STL,BG)],
+      // Row 7: Wrist — solid structural band
+      [_,_,_,_, M('\u2588',FRM,BG2), M('\u2588',FRM,BG2), M('\u2588',FRM,BG2), M('\u2588',FRM,BG2), M('\u2588',FRM,BG2), M('\u2588',FRM,BG2), _],
+      // Row 8: Wrist joint
+      [_,_,_,_,_, M('\u2560',FRM,BG), M('\u2593',DRK,BG2), M('\u2593',DRK,BG2), M('\u2563',FRM,BG), _,_],
+      // Row 9: Forearm flare — widening
+      [_,_,_, M('\u2584',FRM,BG), M('\u2588',FRM,BG2), M('\u2588',FRM,BG2), M('\u2593',DRK,BG2), M('\u2593',DRK,BG2), M('\u2588',FRM,BG2), M('\u2588',FRM,BG2), M('\u2584',FRM,BG)],
+      // Row 10: Forearm body
+      [_,_,_, M('\u2590',DRK,BG), M('\u2588',DRK,BG2), M('\u2580',DRK,BG), M('\u2588',DRK,BG2), M('\u2588',DRK,BG2), M('\u2588',DRK,BG2), M('\u2588',DRK,BG2), M('\u2588',DRK,BG2)],
+      // Row 11: Break zone — jagged fracture
+      [_,_,_,_,_,_, M('\u2588',DRK,BG2), M('\u2588',DRK,BG2), M('\u2588',DRK,BG2), M('\u2580',DRK,BG), M('\u258C',DRK,BG)],
+      // Row 12: Break gap
+      [_,_,_,_,_,_,_, M('\u2580',DIM,BG), M('\u2580',DIM,BG), _,_],
+      // Row 13: Upper arm start (after break)
+      [_,_,_,_, M('\u2584',DIM,BG), _,_,_,_,_,_],
+      // Row 14: Upper arm body
+      [_,_,_, M('\u2590',DIM,BG), M('\u2588',DIM,BG2), M('\u2584',DIM,BG), M('\u2584',DIM,BG), _,_, M('\u2584',DIM,BG), _],
+      // Row 15: Upper arm widening
+      [_,_,_, M('\u2588',DIM,BG2), M('\u2588',DIM,BG2), M('\u2588',DIM,BG2), M('\u2588',DIM,BG2), M('\u2584',DEP,BG), M('\u2584',DEP,BG), M('\u2588',DIM,BG2), M('\u258C',DIM,BG)],
+      // Row 16: Shoulder joint — recessed center
+      [_,_,_, M('\u2588',DEP,BG2), M('\u2588',DEP,BG2), M('\u2588',DEP,BG2), M('\u2593',DEP,BG2), M('\u2593',DEP,BG2), M('\u2588',DEP,BG2), M('\u2588',DEP,BG2), M('\u2588',DEP,BG2)],
+      // Row 17: Shoulder base
+      [_,_,_,_, M('\u2588',DEP,BG2), M('\u2588',DEP,BG2), M('\u2593',DEP,BG2), M('\u2593',DEP,BG2), M('\u2588',DEP,BG2), M('\u2588',DEP,BG2), _],
+      // Row 18: Shoulder bottom
+      [_,_,_,_, M('\u2590',DEP,BG), M('\u2580',DEP,BG), M('\u2588',DEP,BG2), M('\u2588',DEP,BG2), M('\u2588',DEP,BG2), M('\u258C',DEP,BG), _],
     ];
   }
 
@@ -2590,7 +2596,7 @@ export class SettlementGenerator {
     // Determine building count based on type — just core buildings
     const buildingCounts = {
       village: { house: 3, tavern: 1, shop: 1 },
-      town: { house: 6, tavern: 1, shop: 2, blacksmith: 1, temple: 1 },
+      town: { house: 10, tavern: 2, shop: 3, blacksmith: 2, temple: 1, guild_hall: 1, barracks: 1 },
       city: { house: 10, tavern: 2, shop: 3, blacksmith: 2, temple: 1, guild_hall: 1, barracks: 1 },
     };
 
@@ -2673,7 +2679,21 @@ export class SettlementGenerator {
       this._carveRoad(tiles, doorX, doorY + 1, fcx, fcy, w, h);
     }
 
-    // Towns are just buildings and grass — no extra decorations
+    // Extra wandering townspeople for towns and cities
+    if (type === 'town' || type === 'city') {
+      const extraRoles = ['guard', 'guard', 'guard', 'farmer', 'farmer', 'scholar', 'hunter', 'beggar', 'child', 'child', 'noble'];
+      for (const role of extraRoles) {
+        for (let attempt = 0; attempt < 50; attempt++) {
+          const nx = rng.nextInt(1, w - 1);
+          const ny = rng.nextInt(1, h - 1);
+          const t = tiles[ny][nx];
+          if (t.walkable && (t.type === 'ROAD' || t.type === 'GRASSLAND') && !t.metadata?.buildingId) {
+            npcSlots.push({ buildingId: null, role, position: { x: nx, y: ny } });
+            break;
+          }
+        }
+      }
+    }
   }
 
   // ── Multi-tile tree templates and placement ──
