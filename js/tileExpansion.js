@@ -649,13 +649,19 @@ const TYPE_PATTERNS = {
 
   // Inner hull engineering corridors
   HULL_CORRIDOR_WALL:  { 2: WALL_2x2, 3: WALL_3x3 },
+  HULL_SHADE_DARK:     { 2: WALL_2x2, 3: WALL_3x3 },
+  HULL_SHADE_MED:      { 2: WALL_2x2, 3: WALL_3x3 },
+  HULL_PANEL:          { 2: WALL_2x2, 3: WALL_3x3 },
+  HULL_WALKWAY:        { 2: FLOOR_2x2, 3: FLOOR_3x3 },
   HULL_CATWALK:        { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  HULL_CATWALK_LINE:   { 2: FLOOR_2x2, 3: FLOOR_3x3 },
   HULL_FLOOR:          { 2: FLOOR_2x2, 3: FLOOR_3x3 },
   HULL_GRATING:        { 2: FLOOR_2x2, 3: FLOOR_3x3 },
   HULL_PIPE:           { 2: MECH_2x2, 3: MECH_3x3 },
   HULL_VALVE:          { 2: MECH_2x2, 3: MECH_3x3 },
   HULL_MACHINERY:      { 2: MECH_2x2, 3: MECH_3x3 },
   HULL_CONDUIT:        { 2: MECH_2x2, 3: MECH_3x3 },
+  HULL_CIRCUIT:        { 2: MECH_2x2, 3: MECH_3x3 },
   TRANSIT_PLATFORM:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
 
   // Facility tiles (C2 / ENG)

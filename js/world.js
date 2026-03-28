@@ -1294,49 +1294,39 @@ export class ChunkManager {
   }
 
   // ── Inner hull engineering corridor generation ──
-  // Industrial machine corridors between habitat sections with circuit-trace aesthetics
+  // Layered industrial corridors: pipe runs → wall gradient → open walkway → wall gradient → pipe runs
   _generateInnerHullTile(wx, wy, section) {
     const localX = wx - section.startChunkX * CHUNK_SIZE;
     const totalWidth = section.widthChunks * CHUNK_SIZE; // ~256 tiles
-    const centerX = Math.floor(totalWidth / 2);
 
-    const detailN = (this.detailNoise.fbm(wx * 0.25, wy * 0.25, 3) + 1) / 2;
-    const structN = (this.heightNoise.fbm(wx * 0.1, wy * 0.1, 3) + 1) / 2;
-    const circuitN = (this.anomalyNoise.fbm(wx * 0.15, wy * 0.15, 2) + 1) / 2;
+    // ── Entrance openings — match the 3 entrance positions from adjacent habitat walls ──
+    const isWestEdge = localX < 2;
+    const isEastEdge = localX >= totalWidth - 2;
+    if (isWestEdge || isEastEdge) {
+      const adjSectionId = isWestEdge ? section.leftSection : section.rightSection;
+      const adjSection = adjSectionId ? this.sectionManager.getSection(adjSectionId) : null;
 
-    // Fixed entrance openings — match the 3 entrance positions from adjacent habitat walls
-    const isWestWall = localX < 2;
-    // Find the adjacent habitat section to match its entrance positions
-    const adjSectionId = isWestWall ? section.leftSection : section.rightSection;
-    const adjSection = adjSectionId ? this.sectionManager.getSection(adjSectionId) : null;
-
-    let hasEntrance = false;
-    if (adjSection && adjSection.type === 'habitat') {
-      const entranceInfo = _getEntranceAtY(wy, adjSection);
-      if (entranceInfo) {
-        // H1 west / H7 east only have entrance index 1
-        if (adjSection.id === 'H1' && !isWestWall) {
-          hasEntrance = entranceInfo.entranceIndex === 1;
-        } else if (adjSection.id === 'H7' && isWestWall) {
-          hasEntrance = entranceInfo.entranceIndex === 1;
-        } else {
-          hasEntrance = true;
-        }
-        if (hasEntrance) {
-          const isPassageY = entranceInfo.phase > 0 && entranceInfo.phase < ENTRANCE_HALF_HEIGHT * 2;
-          const isFrameY = entranceInfo.phase === 0 || entranceInfo.phase === ENTRANCE_HALF_HEIGHT * 2;
-
-          // Outer walls of the corridor — with entrance openings
-          if (localX < 2 || localX >= totalWidth - 2) {
+      if (adjSection && adjSection.type === 'habitat') {
+        const entranceInfo = _getEntranceAtY(wy, adjSection);
+        if (entranceInfo) {
+          let hasEntrance = true;
+          if (adjSection.id === 'H1' && !isWestEdge) {
+            hasEntrance = entranceInfo.entranceIndex === 1;
+          } else if (adjSection.id === 'H7' && isWestEdge) {
+            hasEntrance = entranceInfo.entranceIndex === 1;
+          }
+          if (hasEntrance) {
+            const isPassageY = entranceInfo.phase > 0 && entranceInfo.phase < ENTRANCE_HALF_HEIGHT * 2;
+            const isFrameY = entranceInfo.phase === 0 || entranceInfo.phase === ENTRANCE_HALF_HEIGHT * 2;
             if (isPassageY) {
               const isCenterRow = entranceInfo.phase === ENTRANCE_HALF_HEIGHT;
-              const ch = isCenterRow ? '❖' : (isWestWall ? '╣' : '╠');
+              const ch = isCenterRow ? '❖' : (isWestEdge ? '╣' : '╠');
               const fg = isCenterRow ? '#FFCC44' : '#CC9900';
               const bg = isCenterRow ? '#1A1100' : '#0D0800';
               return tile('ENTRANCE_PASSAGE', ch, fg, bg, true, { biome: 'inner_hull', entrance: true });
             }
             if (isFrameY) {
-              const ch = isWestWall ? (entranceInfo.phase === 0 ? '╗' : '╝') : (entranceInfo.phase === 0 ? '╚' : '╔');
+              const ch = isWestEdge ? (entranceInfo.phase === 0 ? '╗' : '╝') : (entranceInfo.phase === 0 ? '╚' : '╔');
               return tile('ENTRANCE_FRAME', ch, '#AA8800', '#0D0800', false, { biome: 'inner_hull', entranceFrame: true });
             }
           }
@@ -1344,78 +1334,111 @@ export class ChunkManager {
       }
     }
 
-    // Outer walls of the corridor (first and last 2 tiles) — solid wall if no entrance
-    if (localX < 2 || localX >= totalWidth - 2) {
+    // ── Symmetrical layer zones — distance from nearest edge ──
+    const distFromWest = localX;
+    const distFromEast = totalWidth - 1 - localX;
+    const edgeDist = Math.min(distFromWest, distFromEast);
+
+    // Layer boundaries (tiles from each edge, symmetrical)
+    const PIPE_ZONE = 40;       // 0–39: pipe conduit runs
+    const WALL_ZONE = 48;       // 40–47: solid wall █
+    const DARK_ZONE = 54;       // 48–53: dark shade ▓
+    const MED_ZONE = 60;        // 54–59: medium shade ▒
+    const PANEL_ZONE = 68;      // 60–67: panel/grating ◘
+    // 68+: open walkway ◙
+
+    // ── Pipe conduit zone (outermost 40 tiles each side) ──
+    if (edgeDist < PIPE_ZONE) {
+      // 4-row repeating pipe joint pattern
+      // Joint pairs at regular intervals along the pipe run
+      const pipeLocalX = edgeDist; // 0–39 from the nearest edge
+      const rowPhase = ((wy % 4) + 4) % 4;
+      const jointPeriod = 10;
+      const jointPos = pipeLocalX % jointPeriod;
+
+      // Determine pipe character based on row phase and joint position
+      let ch, fg;
+      if (rowPhase === 0 || rowPhase === 2) {
+        // Straight runs with vertical junction pairs
+        if (jointPos === 0 || jointPos === 1) {
+          ch = '║';
+          fg = '#4A6A8A';
+        } else {
+          ch = '═';
+          fg = '#3A5A7A';
+        }
+      } else {
+        // Bend/junction rows (phase 1 and 3)
+        if (jointPos === 0) {
+          ch = (rowPhase === 1) ? '╝' : '╗';
+          fg = '#4A6A8A';
+        } else if (jointPos === 1) {
+          ch = '║';
+          fg = '#4A6A8A';
+        } else if (jointPos === jointPeriod - 1) {
+          ch = (rowPhase === 1) ? '╔' : '╚';
+          fg = '#4A6A8A';
+        } else {
+          ch = '═';
+          fg = '#3A5A7A';
+        }
+      }
+
+      // Slight brightness variation across the pipe field
+      const pipeDepth = pipeLocalX / PIPE_ZONE;
+      const brightness = 0.7 + 0.3 * pipeDepth;
+      const r = Math.floor(parseInt(fg.slice(1, 3), 16) * brightness);
+      const g = Math.floor(parseInt(fg.slice(3, 5), 16) * brightness);
+      const b = Math.floor(parseInt(fg.slice(5, 7), 16) * brightness);
+      const adjFg = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+      return tile('HULL_PIPE', ch, adjFg, '#020208', false, { biome: 'inner_hull' });
+    }
+
+    // ── Solid wall zone ──
+    if (edgeDist < WALL_ZONE) {
       return tile('HULL_CORRIDOR_WALL', '█', '#334455', '#020205', false, { biome: 'inner_hull' });
     }
 
-    // Central walkway (8 tiles wide — main traversal path)
+    // ── Dark shade zone ──
+    if (edgeDist < DARK_ZONE) {
+      return tile('HULL_SHADE_DARK', '▓', '#2A3A4A', '#020206', false, { biome: 'inner_hull' });
+    }
+
+    // ── Medium shade zone ──
+    if (edgeDist < MED_ZONE) {
+      return tile('HULL_SHADE_MED', '▒', '#223344', '#010104', false, { biome: 'inner_hull' });
+    }
+
+    // ── Panel/grating zone ──
+    if (edgeDist < PANEL_ZONE) {
+      return tile('HULL_PANEL', '◘', '#1A2A3A', '#010104', false, { biome: 'inner_hull' });
+    }
+
+    // ── Central walkway (everything beyond the panel zone) ──
+    const centerX = Math.floor(totalWidth / 2);
     const distFromCenter = Math.abs(localX - centerX);
-    if (distFromCenter < 4) {
-      // Transit station marker every ~512 tiles along Y
-      const stationY = wy % (CHUNK_SIZE * 16);
-      if (stationY >= 0 && stationY < 3 && distFromCenter < 1) {
-        return tile('TRANSIT_PLATFORM', '◊', '#FFAA00', '#0A0800', true,
-          { biome: 'inner_hull', transitStation: true, corridorId: section.id });
-      }
-      // Walkway floor with circuit-trace grid lines
-      if (wy % 8 === 0 || localX === centerX) {
-        return tile('HULL_CATWALK_LINE', '┼', '#445566', '#030308', true, { biome: 'inner_hull' });
-      }
-      if (wy % 4 === 0) {
-        return tile('HULL_CATWALK_LINE', '─', '#334455', '#030308', true, { biome: 'inner_hull' });
-      }
-      if (localX % 4 === 0) {
-        return tile('HULL_CATWALK_LINE', '│', '#334455', '#030308', true, { biome: 'inner_hull' });
-      }
-      return tile('HULL_CATWALK', '·', '#223344', '#030308', true, { biome: 'inner_hull' });
+
+    // Transit station marker every ~512 tiles along Y
+    const stationY = wy % (CHUNK_SIZE * 16);
+    if (stationY >= 0 && stationY < 3 && distFromCenter < 1) {
+      return tile('TRANSIT_PLATFORM', '◊', '#FFAA00', '#0A0800', true,
+        { biome: 'inner_hull', transitStation: true, corridorId: section.id });
     }
 
-    // Secondary walkway zone (4 more tiles each side — narrower passages)
-    if (distFromCenter < 8) {
-      // Periodic cross-corridor catwalks
-      if (wy % 16 < 2) {
-        return tile('HULL_CATWALK', '·', '#223344', '#020206', true, { biome: 'inner_hull' });
-      }
-      // Machinery blocks
-      if (structN > 0.55) {
-        const mechChars = ['▓', '█', '■'];
-        const ci = Math.floor(structN * 10) % mechChars.length;
-        return tile('HULL_MACHINERY', mechChars[ci], '#2A3544', '#010104', false, { biome: 'inner_hull' });
-      }
-      // Circuit conduits on the floor
-      if (circuitN > 0.6) {
-        const connChars = ['─', '│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴'];
-        const ci = Math.floor(circuitN * 30) % connChars.length;
-        return tile('HULL_CONDUIT', connChars[ci], '#1A3040', '#010104', false, { biome: 'inner_hull' });
-      }
-      return tile('HULL_FLOOR', '.', '#182838', '#010104', true, { biome: 'inner_hull' });
+    // Subtle grid lines on the walkway floor
+    if (wy % 16 === 0 && localX === centerX) {
+      return tile('HULL_CATWALK_LINE', '┼', '#1A2A3A', '#030308', true, { biome: 'inner_hull' });
+    }
+    if (wy % 16 === 0) {
+      return tile('HULL_CATWALK_LINE', '─', '#152535', '#030308', true, { biome: 'inner_hull' });
+    }
+    if (localX === centerX) {
+      return tile('HULL_CATWALK_LINE', '│', '#152535', '#030308', true, { biome: 'inner_hull' });
     }
 
-    // Heavy pipe/machinery banks (outer zones)
-    if (localX < 10 || localX >= totalWidth - 10) {
-      // Dense pipe arrays along the outer walls
-      if (structN > 0.4) return tile('HULL_PIPE', '║', '#2A3A4A', '#010104', false, { biome: 'inner_hull' });
-      if (detailN > 0.5) return tile('HULL_VALVE', '⊕', '#334455', '#010104', false, { biome: 'inner_hull' });
-      return tile('HULL_GRATING', '░', '#1A2A3A', '#010104', true, { biome: 'inner_hull' });
-    }
-
-    // Industrial machinery field (between pipe banks and walkway)
-    if (structN > 0.58) {
-      return tile('HULL_MACHINERY', '▓', '#253545', '#010104', false, { biome: 'inner_hull' });
-    }
-    if (detailN > 0.65) {
-      return tile('HULL_CONDUIT', '─', '#2A3A4A', '#010104', false, { biome: 'inner_hull' });
-    }
-    if (circuitN > 0.7) {
-      // Circuit trace floor pattern
-      const connChars = ['─', '│', '┌', '┐', '└', '┘', '○'];
-      const ci = Math.floor(circuitN * 20) % connChars.length;
-      return tile('HULL_CIRCUIT', connChars[ci], '#0D2535', '#010104', false, { biome: 'inner_hull' });
-    }
-
-    // Default dark industrial floor
-    return tile('HULL_FLOOR', '·', '#0D1D2D', '#010104', true, { biome: 'inner_hull' });
+    // Default walkway floor
+    return tile('HULL_WALKWAY', '◙', '#0D1D2D', '#030308', true, { biome: 'inner_hull' });
   }
 
   // (Megalithic structures removed — will be re-added deliberately later)
