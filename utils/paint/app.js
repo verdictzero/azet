@@ -4,6 +4,7 @@ import { State, CGA, CHAR_CATEGORIES } from './state.js';
 import { Renderer } from './renderer.js';
 import { ToolManager } from './tools.js';
 import { PaletteUI } from './palette.js';
+import { ClipboardHistoryUI } from './clipboard-ui.js';
 
 export class App {
   constructor() {
@@ -12,6 +13,12 @@ export class App {
     this.renderer = new Renderer(this.canvas, this.state);
     this.tools = new ToolManager(this.state);
     this.palette = new PaletteUI(this.state);
+    this.clipboardUI = new ClipboardHistoryUI(this.state);
+
+    // Panning state
+    this._panning = false;
+    this._panStart = { x: 0, y: 0 };
+    this._panScrollStart = { left: 0, top: 0 };
 
     this.renderer.resize();
 
@@ -25,6 +32,14 @@ export class App {
       this._updateStatus();
     });
 
+    // Sync toolbar when tool changes programmatically (e.g. eraser→pencil)
+    this.state.on('toolchange', () => {
+      document.querySelectorAll('.tool-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tool === this.state.tool);
+      });
+      this._updateStatus();
+    });
+
     this._updateStatus();
     this._setStatus('Ready — start painting!');
   }
@@ -33,18 +48,49 @@ export class App {
 
   _setupCanvasEvents() {
     const canvas = this.canvas;
+    const canvasArea = canvas.closest('.canvas-area');
 
     // Prevent context menu on canvas
     canvas.addEventListener('contextmenu', e => e.preventDefault());
 
     canvas.addEventListener('mousedown', e => {
+      // Middle click = start panning
+      if (e.button === 1) {
+        e.preventDefault();
+        this._panning = true;
+        this._panStart = { x: e.clientX, y: e.clientY };
+        this._panScrollStart = { left: canvasArea.scrollLeft, top: canvasArea.scrollTop };
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
+
       const { col, row } = this._eventToCell(e);
       if (col < 0 || col >= this.state.cols || row < 0 || row >= this.state.rows) return;
       this.tools.onMouseDown(col, row, e.button);
       this.renderer.markDirty();
     });
 
+    // Panning mousemove/mouseup on document so dragging outside canvas still works
+    document.addEventListener('mousemove', e => {
+      if (this._panning) {
+        const dx = e.clientX - this._panStart.x;
+        const dy = e.clientY - this._panStart.y;
+        canvasArea.scrollLeft = this._panScrollStart.left - dx;
+        canvasArea.scrollTop = this._panScrollStart.top - dy;
+        return;
+      }
+    });
+
+    document.addEventListener('mouseup', e => {
+      if (e.button === 1 && this._panning) {
+        this._panning = false;
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
+    });
+
     canvas.addEventListener('mousemove', e => {
+      if (this._panning) return;
       const { col, row } = this._eventToCell(e);
       this.state.hoverCell = (col >= 0 && col < this.state.cols && row >= 0 && row < this.state.rows)
         ? { col, row } : null;
@@ -58,6 +104,7 @@ export class App {
     });
 
     canvas.addEventListener('mouseup', e => {
+      if (this._panning) return;
       const { col, row } = this._eventToCell(e);
       const clampedCol = Math.max(0, Math.min(this.state.cols - 1, col));
       const clampedRow = Math.max(0, Math.min(this.state.rows - 1, row));
@@ -70,25 +117,8 @@ export class App {
       this.renderer.markDirty();
     });
 
-    // Middle click = eyedropper
-    canvas.addEventListener('mousedown', e => {
-      if (e.button === 1) {
-        e.preventDefault();
-        const { col, row } = this._eventToCell(e);
-        const cell = this.state.getCell(col, row);
-        if (cell) {
-          if (cell.char !== ' ') this.state.currentChar = cell.char;
-          this.state.fgColor = cell.fg;
-          this.state.bgColor = cell.bg;
-          this.state.emit('pick');
-          this.state.emit('change');
-          this._setStatus(`Picked: "${cell.char}" from (${col}, ${row})`);
-        }
-      }
-    });
-
     // Scroll wheel = zoom
-    canvas.parentElement.addEventListener('wheel', e => {
+    canvasArea.addEventListener('wheel', e => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.25 : 0.25;
       this.state.zoom = Math.max(0.5, Math.min(4, this.state.zoom + delta));
@@ -198,7 +228,10 @@ export class App {
           case 'c':
             e.preventDefault();
             this.tools.copySelection();
-            if (this.state.clipboard) this._setStatus('Copied selection');
+            if (this.state.clipboard) {
+              const n = this.state.clipboardHistory.length;
+              this._setStatus(`Copied selection (${n} in history)`);
+            }
             return;
           case 'x':
             e.preventDefault();
@@ -432,4 +465,3 @@ export class App {
     document.getElementById('statusMsg').textContent = msg;
   }
 }
-

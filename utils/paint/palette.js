@@ -1,6 +1,6 @@
 // palette.js — Color and character palette UI
 
-import { CGA, CGA_NAMES, CGA_VALUES, CHAR_CATEGORIES } from './state.js';
+import { CGA, CGA_NAMES, CGA_VALUES, CHAR_CATEGORIES, EXTENDED_PALETTE } from './state.js';
 
 export class PaletteUI {
   constructor(state) {
@@ -22,48 +22,77 @@ export class PaletteUI {
     const fgContainer = document.getElementById('fgPalette');
     const bgContainer = document.getElementById('bgPalette');
 
-    for (let i = 0; i < CGA_VALUES.length; i++) {
-      const hex = CGA_VALUES[i];
-      const name = CGA_NAMES[i].replace(/_/g, ' ');
-
-      // FG swatch
-      const fgSwatch = document.createElement('div');
-      fgSwatch.className = 'palette-swatch';
-      fgSwatch.style.backgroundColor = hex;
-      fgSwatch.title = name;
-      fgSwatch.dataset.color = hex;
-      if (hex === this.state.fgColor) fgSwatch.classList.add('active');
-      fgSwatch.addEventListener('click', () => {
-        this.state.fgColor = hex;
-        this._syncColorSelection();
-        this._updatePreview();
+    for (const group of EXTENDED_PALETTE) {
+      // FG group
+      const fgGroup = document.createElement('div');
+      fgGroup.className = 'palette-group';
+      const fgHeader = document.createElement('div');
+      fgHeader.className = 'palette-group-header';
+      fgHeader.textContent = group.name;
+      fgHeader.addEventListener('click', () => {
+        fgGrid.classList.toggle('collapsed');
+        fgHeader.classList.toggle('collapsed');
       });
-      fgContainer.appendChild(fgSwatch);
+      fgGroup.appendChild(fgHeader);
+      const fgGrid = document.createElement('div');
+      fgGrid.className = 'palette-group-grid';
+      for (const hex of group.colors) {
+        const sw = document.createElement('div');
+        sw.className = 'palette-swatch';
+        sw.style.backgroundColor = hex;
+        sw.title = hex;
+        sw.dataset.color = hex;
+        if (hex === this.state.fgColor) sw.classList.add('active');
+        sw.addEventListener('click', () => {
+          this.state.fgColor = hex;
+          this._syncColorSelection();
+          this._updatePreview();
+        });
+        fgGrid.appendChild(sw);
+      }
+      fgGroup.appendChild(fgGrid);
+      fgContainer.appendChild(fgGroup);
 
-      // BG swatch
-      const bgSwatch = document.createElement('div');
-      bgSwatch.className = 'palette-swatch';
-      bgSwatch.style.backgroundColor = hex;
-      bgSwatch.title = name;
-      bgSwatch.dataset.color = hex;
-      if (hex === this.state.bgColor) bgSwatch.classList.add('active');
-      bgSwatch.addEventListener('click', () => {
-        this.state.bgColor = hex;
-        this._syncColorSelection();
-        this._updatePreview();
+      // BG group
+      const bgGroup = document.createElement('div');
+      bgGroup.className = 'palette-group';
+      const bgHeader = document.createElement('div');
+      bgHeader.className = 'palette-group-header';
+      bgHeader.textContent = group.name;
+      bgHeader.addEventListener('click', () => {
+        bgGrid.classList.toggle('collapsed');
+        bgHeader.classList.toggle('collapsed');
       });
-      bgContainer.appendChild(bgSwatch);
+      bgGroup.appendChild(bgHeader);
+      const bgGrid = document.createElement('div');
+      bgGrid.className = 'palette-group-grid';
+      for (const hex of group.colors) {
+        const sw = document.createElement('div');
+        sw.className = 'palette-swatch';
+        sw.style.backgroundColor = hex;
+        sw.title = hex;
+        sw.dataset.color = hex;
+        if (hex === this.state.bgColor) sw.classList.add('active');
+        sw.addEventListener('click', () => {
+          this.state.bgColor = hex;
+          this._syncColorSelection();
+          this._updatePreview();
+        });
+        bgGrid.appendChild(sw);
+      }
+      bgGroup.appendChild(bgGrid);
+      bgContainer.appendChild(bgGroup);
     }
   }
 
   _syncColorSelection() {
     // Update FG swatches
-    const fgSwatches = document.getElementById('fgPalette').children;
+    const fgSwatches = document.getElementById('fgPalette').querySelectorAll('.palette-swatch');
     for (const sw of fgSwatches) {
       sw.classList.toggle('active', sw.dataset.color === this.state.fgColor);
     }
     // Update BG swatches
-    const bgSwatches = document.getElementById('bgPalette').children;
+    const bgSwatches = document.getElementById('bgPalette').querySelectorAll('.palette-swatch');
     for (const sw of bgSwatches) {
       sw.classList.toggle('active', sw.dataset.color === this.state.bgColor);
     }

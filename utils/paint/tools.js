@@ -22,9 +22,22 @@ export class ToolManager {
         if (button === 0) this._paint(col, row);
         else if (button === 2) this._erase(col, row);
         break;
-      case 'eraser':
-        this._erase(col, row);
+      case 'eraser': {
+        const cell = this.state.getCell(col, row);
+        if (cell && cell.char !== ' ') {
+          // Pick up the character and switch to pencil mode
+          this.state.currentChar = cell.char;
+          this.state.fgColor = cell.fg;
+          this.state.bgColor = cell.bg;
+          this.state.tool = 'pencil';
+          this.state.emit('pick');
+          this.state.emit('toolchange');
+          this.state.emit('change');
+        } else {
+          this._erase(col, row);
+        }
         break;
+      }
       case 'fill':
         if (button === 0) this._floodFill(col, row);
         break;
@@ -239,6 +252,13 @@ export class ToolManager {
       }
     }
     s.clipboard = { w: sel.w, h: sel.h, cells };
+
+    // Push to clipboard history (deep copy so entries are independent)
+    const historyCells = cells.map(row => row.map(c => ({ ...c })));
+    s.clipboardHistory.unshift({ w: sel.w, h: sel.h, cells: historyCells, timestamp: Date.now() });
+    if (s.clipboardHistory.length > 20) s.clipboardHistory.pop();
+    s.activeClipboardIndex = 0;
+    s.emit('clipboardchange');
   }
 
   cutSelection() {
