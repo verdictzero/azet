@@ -10,8 +10,11 @@
 <div class="app">
   <!-- Top Toolbar -->
   <div class="toolbar">
+    <button id="btnHamburger" class="hamburger-btn" title="Menu">&#9776;</button>
+    <button id="btnToggleLeft" class="sidebar-toggle sidebar-toggle-left" title="Colors &amp; Palette">&#9658; Colors</button>
+    <button id="btnToggleRight" class="sidebar-toggle sidebar-toggle-right" title="Clipboard">Clip &#9668;</button>
     <div class="toolbar-group">
-      <span class="toolbar-title">╔═ ASCII PAINT ═╗</span>
+      <span class="toolbar-title">&#9556;&#9552; ASCII PAINT &#9552;&#9559;</span>
     </div>
     <div class="toolbar-group">
       <button id="btnNew" title="New (Ctrl+N)">New</button>
@@ -124,6 +127,8 @@
       <div class="clipboard-items" id="clipboardItems"></div>
     </div>
   </div>
+
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
   <!-- Status Bar -->
   <div class="statusbar">

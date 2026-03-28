@@ -279,7 +279,7 @@ export class ToolManager {
   // ── Private ──
 
   _getBrushCells(col, row) {
-    const size = this.state.brushSize;
+    const size = this.state.penPressureBrush ?? this.state.brushSize;
     if (size <= 1) return [[col, row]];
     const half = Math.floor(size / 2);
     const cells = [];

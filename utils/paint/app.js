@@ -5,6 +5,7 @@ import { Renderer } from './renderer.js';
 import { ToolManager } from './tools.js';
 import { PaletteUI } from './palette.js';
 import { ClipboardHistoryUI } from './clipboard-ui.js';
+import { InputManager } from './input.js';
 
 export class App {
   constructor() {
@@ -15,15 +16,19 @@ export class App {
     this.palette = new PaletteUI(this.state);
     this.clipboardUI = new ClipboardHistoryUI(this.state, this.tools);
 
-    // Panning state
-    this._panning = false;
-    this._panStart = { x: 0, y: 0 };
-    this._panScrollStart = { left: 0, top: 0 };
-
     this.renderer.resize();
 
-    this._setupCanvasEvents();
+    // Unified input (pointer events: mouse, touch, S Pen)
+    const canvasArea = this.canvas.closest('.canvas-area');
+    this.input = new InputManager(this.canvas, canvasArea, this.state, this.tools, this.renderer, {
+      markDirty: () => this.renderer.markDirty(),
+      updateStatus: () => this._updateStatus(),
+      updateCursor: () => this._updateCursor(),
+      setStatus: (msg) => this._setStatus(msg),
+    });
+
     this._setupToolbar();
+    this._setupMobileUI();
     this._setupKeyboard();
     this._setupStatusBar();
 
@@ -44,105 +49,6 @@ export class App {
 
     this._updateStatus();
     this._setStatus('Ready — start painting!');
-  }
-
-  // ── Canvas mouse events ──
-
-  _setupCanvasEvents() {
-    const canvas = this.canvas;
-    const canvasArea = canvas.closest('.canvas-area');
-
-    // Prevent context menu on canvas
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
-
-    canvas.addEventListener('mousedown', e => {
-      // Middle click = start panning
-      if (e.button === 1) {
-        e.preventDefault();
-        this._panning = true;
-        this._panStart = { x: e.clientX, y: e.clientY };
-        this._panScrollStart = { left: canvasArea.scrollLeft, top: canvasArea.scrollTop };
-        canvas.style.cursor = 'grabbing';
-        return;
-      }
-
-      const { col, row } = this._eventToCell(e);
-      if (col < 0 || col >= this.state.cols || row < 0 || row >= this.state.rows) return;
-      this.tools.onMouseDown(col, row, e.button);
-      this.renderer.markDirty();
-    });
-
-    // Panning mousemove/mouseup on document so dragging outside canvas still works
-    document.addEventListener('mousemove', e => {
-      if (this._panning) {
-        const dx = e.clientX - this._panStart.x;
-        const dy = e.clientY - this._panStart.y;
-        canvasArea.scrollLeft = this._panScrollStart.left - dx;
-        canvasArea.scrollTop = this._panScrollStart.top - dy;
-        return;
-      }
-    });
-
-    document.addEventListener('mouseup', e => {
-      if (e.button === 1 && this._panning) {
-        this._panning = false;
-        this._updateCursor();
-        return;
-      }
-    });
-
-    canvas.addEventListener('mousemove', e => {
-      if (this._panning) return;
-      const { col, row } = this._eventToCell(e);
-      this.state.hoverCell = (col >= 0 && col < this.state.cols && row >= 0 && row < this.state.rows)
-        ? { col, row } : null;
-      if (this.state.mouseDown || this.state.floatingContent) {
-        const clampedCol = Math.max(0, Math.min(this.state.cols - 1, col));
-        const clampedRow = Math.max(0, Math.min(this.state.rows - 1, row));
-        this.tools.onMouseMove(clampedCol, clampedRow);
-      }
-      this.renderer.markDirty();
-      this._updateStatus();
-      this._updateCursor();
-    });
-
-    canvas.addEventListener('mouseup', e => {
-      if (this._panning) return;
-      const { col, row } = this._eventToCell(e);
-      const clampedCol = Math.max(0, Math.min(this.state.cols - 1, col));
-      const clampedRow = Math.max(0, Math.min(this.state.rows - 1, row));
-      this.tools.onMouseUp(clampedCol, clampedRow);
-      this.renderer.markDirty();
-    });
-
-    canvas.addEventListener('mouseleave', () => {
-      this.state.hoverCell = null;
-      this.renderer.markDirty();
-    });
-
-    // Scroll wheel = zoom
-    canvasArea.addEventListener('wheel', e => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.25 : 0.25;
-      this.state.zoom = Math.max(0.5, Math.min(4, this.state.zoom + delta));
-      this.renderer.resize();
-      this.renderer.markDirty();
-      this._updateStatus();
-    }, { passive: false });
-
-    // Prevent browser-level zoom (Ctrl+wheel / pinch) from scaling the entire page
-    document.addEventListener('wheel', e => {
-      if (e.ctrlKey) e.preventDefault();
-    }, { passive: false });
-  }
-
-  _eventToCell(e) {
-    const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
-    const px = (e.clientX - rect.left) * scaleX;
-    const py = (e.clientY - rect.top) * scaleY;
-    return this.renderer.pixelToCell(px, py);
   }
 
   // ── Toolbar ──
@@ -522,7 +428,7 @@ export class App {
     const s = this.state;
     const canvas = this.canvas;
 
-    if (this._panning) {
+    if (this.input.isPanning()) {
       canvas.style.cursor = 'grabbing';
       return;
     }
@@ -564,8 +470,44 @@ export class App {
       ? `${hover.col}, ${hover.row}` : '-, -';
     document.getElementById('statusSize').textContent = `${s.cols} x ${s.rows}`;
     const toolText = s.tool.charAt(0).toUpperCase() + s.tool.slice(1);
-    document.getElementById('statusTool').textContent = s.floatingContent ? `${toolText} [FLOATING]` : toolText;
+    let toolStatus = s.floatingContent ? `${toolText} [FLOATING]` : toolText;
+    if (s.penPressureBrush !== null) {
+      toolStatus += ` | Pen ${s.penPressureBrush}x${s.penPressureBrush}`;
+    }
+    document.getElementById('statusTool').textContent = toolStatus;
     document.getElementById('statusZoom').textContent = `${s.zoom}x`;
+  }
+
+  // ── Mobile UI ──
+
+  _setupMobileUI() {
+    const hamburger = document.getElementById('btnHamburger');
+    const toolbar = document.querySelector('.toolbar');
+    const leftSidebar = document.querySelector('.sidebar');
+    const rightSidebar = document.querySelector('.sidebar-right');
+    const backdrop = document.getElementById('sidebarBackdrop');
+
+    hamburger?.addEventListener('click', () => {
+      toolbar.classList.toggle('expanded');
+    });
+
+    document.getElementById('btnToggleLeft')?.addEventListener('click', () => {
+      rightSidebar.classList.remove('open');
+      leftSidebar.classList.toggle('open');
+      backdrop.classList.toggle('active', leftSidebar.classList.contains('open'));
+    });
+
+    document.getElementById('btnToggleRight')?.addEventListener('click', () => {
+      leftSidebar.classList.remove('open');
+      rightSidebar.classList.toggle('open');
+      backdrop.classList.toggle('active', rightSidebar.classList.contains('open'));
+    });
+
+    backdrop?.addEventListener('click', () => {
+      leftSidebar.classList.remove('open');
+      rightSidebar.classList.remove('open');
+      backdrop.classList.remove('active');
+    });
   }
 
   _setStatus(msg) {

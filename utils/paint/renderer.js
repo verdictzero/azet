@@ -233,7 +233,7 @@ export class Renderer {
     if (this.state.floatingContent) return; // Floating content has its own visual
     const { cellW, cellH, state } = this;
     const tool = state.tool;
-    const size = state.brushSize;
+    const size = state.penPressureBrush ?? state.brushSize;
 
     ctx.strokeStyle = '#55FF55aa';
     ctx.lineWidth = 1.5;

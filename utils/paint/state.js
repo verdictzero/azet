@@ -129,6 +129,11 @@ export class State {
     // Brush size (affects pencil and eraser)
     this.brushSize = 1; // 1, 3, 5, 7
 
+    // Pen / stylus state (S Pen support)
+    this.penPressureBrush = null;  // overrides brushSize when pen is active
+    this.penTilt = null;           // {x, y} or null
+    this.inputType = 'mouse';     // 'mouse' | 'touch' | 'pen'
+
     // Floating content (follows cursor for GIMP-like placement)
     this.floatingContent = null;   // {w, h, cells: 2D} or null
     this.floatingPos = null;       // {col, row} — follows cursor
