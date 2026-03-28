@@ -6,6 +6,7 @@ export class PaletteUI {
   constructor(state) {
     this.state = state;
     this._activeCharTab = 'Common';
+    this._gridCursorIndex = 0;
     this._buildColorPalettes();
     this._buildCharPalette();
     this._buildQuickSelect();
@@ -130,18 +131,22 @@ export class PaletteUI {
     gridContainer.innerHTML = '';
     const chars = CHAR_CATEGORIES[this._activeCharTab] || '';
 
+    let i = 0;
     for (const ch of chars) {
       const cell = document.createElement('div');
-      cell.className = 'char-cell' + (ch === this.state.currentChar ? ' active' : '');
+      let cls = 'char-cell';
+      if (ch === this.state.currentChar) cls += ' active';
+      if (i === this._gridCursorIndex) cls += ' char-cursor';
+      cell.className = cls;
       cell.textContent = ch;
       cell.title = `${ch} (U+${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')})`;
-      cell.addEventListener('click', () => {
-        this.state.currentChar = ch;
-        this._renderCharGrid(); // re-render to update active
-        this._updatePreview();
-      });
       gridContainer.appendChild(cell);
+      i++;
     }
+
+    // Scroll cursor into view
+    const cursorCell = gridContainer.querySelector('.char-cursor');
+    if (cursorCell) cursorCell.scrollIntoView({ block: 'nearest' });
   }
 
   _setupCustomCharInput() {
@@ -252,8 +257,66 @@ export class PaletteUI {
     this._syncQuickSelect();
   }
 
+  moveCursor(direction) {
+    const chars = CHAR_CATEGORIES[this._activeCharTab] || '';
+    if (chars.length === 0) return;
+
+    const container = document.getElementById('charGrid');
+    const colCount = Math.max(1, Math.floor(container.clientWidth / 30));
+    const rowCount = Math.ceil(chars.length / colCount);
+
+    let col = this._gridCursorIndex % colCount;
+    let row = Math.floor(this._gridCursorIndex / colCount);
+
+    switch (direction) {
+      case 'left':  col = (col - 1 + colCount) % colCount; break;
+      case 'right': col = (col + 1) % colCount; break;
+      case 'up':    row = (row - 1 + rowCount) % rowCount; break;
+      case 'down':  row = (row + 1) % rowCount; break;
+    }
+
+    let idx = row * colCount + col;
+    if (idx >= chars.length) idx = chars.length - 1;
+    this._gridCursorIndex = Math.max(0, idx);
+    this._renderCharGrid();
+  }
+
+  confirmCursor() {
+    const chars = CHAR_CATEGORIES[this._activeCharTab] || '';
+    if (chars.length === 0) return;
+    const idx = Math.min(this._gridCursorIndex, chars.length - 1);
+    this.state.currentChar = chars[idx];
+    this.state.emit('pick');
+    this.state.emit('change');
+    this._renderCharGrid();
+    this._updatePreview();
+    this._syncQuickSelect();
+  }
+
+  cycleCategory(delta) {
+    const categories = Object.keys(CHAR_CATEGORIES);
+    const curIdx = categories.indexOf(this._activeCharTab);
+    const newIdx = (curIdx + delta + categories.length) % categories.length;
+    this._activeCharTab = categories[newIdx];
+    this._gridCursorIndex = 0;
+    this._renderCharGrid();
+
+    // Update tab active states
+    const tabContainer = document.getElementById('charTabs');
+    for (const t of tabContainer.children) {
+      t.classList.toggle('active', t.textContent === this._activeCharTab);
+    }
+  }
+
+  syncCursorToCurrentChar() {
+    const chars = CHAR_CATEGORIES[this._activeCharTab] || '';
+    const idx = [...chars].indexOf(this.state.currentChar);
+    if (idx >= 0) this._gridCursorIndex = idx;
+  }
+
   // Allow external refresh (e.g. after load)
   refresh() {
+    this.syncCursorToCurrentChar();
     this._syncColorSelection();
     this._renderCharGrid();
     this._updatePreview();

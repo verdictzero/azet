@@ -323,7 +323,7 @@ export class App {
       // Tool hotkeys (single letter, not in text mode)
       if (!ctrl && e.key.length === 1) {
         const hotkeys = {
-          'p': 'pencil', 'e': 'eraser', 'f': 'fill', 'l': 'line',
+          'p': 'pencil', 'e': 'eraser', 'f': 'fill',
           'r': 'rect', 'o': 'ellipse', 't': 'text', 'i': 'pick', 's': 'select',
         };
         const tool = hotkeys[e.key.toLowerCase()];
@@ -337,6 +337,33 @@ export class App {
           this.renderer.markDirty();
           return;
         }
+
+        // Character grid navigation (hjkl)
+        const dirMap = { h: 'left', j: 'down', k: 'up', l: 'right' };
+        const dir = dirMap[e.key.toLowerCase()];
+        if (dir) {
+          this.palette.moveCursor(dir);
+          return;
+        }
+
+        // Category tab cycling (q/w)
+        if (e.key.toLowerCase() === 'q') {
+          this.palette.cycleCategory(-1);
+          this._setStatus(`Category: ${this.palette._activeCharTab}`);
+          return;
+        }
+        if (e.key.toLowerCase() === 'w') {
+          this.palette.cycleCategory(+1);
+          this._setStatus(`Category: ${this.palette._activeCharTab}`);
+          return;
+        }
+      }
+
+      // Confirm character grid selection with Enter
+      if (e.key === 'Enter' && !this.state.textCursor) {
+        this.palette.confirmCursor();
+        this._setStatus(`Selected: ${this.state.currentChar}`);
+        return;
       }
 
       // Delete selection
@@ -358,6 +385,7 @@ export class App {
           this.state.currentChar = allChars[newIdx];
           this.state.emit('pick');
           this.state.emit('change');
+          this.palette.syncCursorToCurrentChar();
           this.palette.refresh();
         }
       }
