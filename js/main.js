@@ -885,6 +885,11 @@ class Game {
       () => {
         this._loadingStep = { current: 3, total: 10, label: 'Mapping the cylinder sections...' };
         this.debugMode = !!(this.charGenState && this.charGenState.debugMode);
+        if (this.debugMode) {
+          this.debug.invincible = true;
+          this.debug.infiniteMana = true;
+          this.debug.noEncounters = true;
+        }
         this.sectionManager = new SectionManager(this.seed, { debugMode: this.debugMode });
         this.overworld = new ChunkManager(this.seed, this.sectionManager);
         // Wire historical map scars into terrain generation
