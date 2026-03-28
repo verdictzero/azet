@@ -173,6 +173,9 @@ class Game {
       Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / initDensity)
     );
     this.locationCamera = null;
+    this.playerFacingDir = { dx: 1, dy: 0 }; // default facing right
+    this._engLightMap = null; // cached directional light map for engineering spaces
+    this._engLightMapKey = ''; // cache key: "px,py,fdx,fdy"
     this.ui = new UIManager(this.renderer);
     this.music = new MusicManager();
     this._loadVersion();
@@ -1834,6 +1837,7 @@ class Game {
 
     this.player.position.x = nx;
     this.player.position.y = ny;
+    this.playerFacingDir = { dx, dy };
 
     // Check if player stepped on a door tile or is adjacent to interactive
     if (t.engineeringDoor) {
@@ -1933,6 +1937,105 @@ class Game {
     this.ui.addMessage('═══════════════════════', '#44CCCC');
   }
 
+  /**
+   * Compute directional raycasting light map for engineering spaces.
+   * Casts Bresenham rays from player, blocked by walls, with directional cone weighting.
+   */
+  _computeEngineeringLightMap(tiles, px, py, facingDir, lightsOn) {
+    const w = tiles[0].length;
+    const h = tiles.length;
+    const radius = lightsOn ? 24 : 10;
+    const ambient = lightsOn ? 0.25 : 0.08;
+    const bright = new Float32Array(w * h);
+
+    // Normalize facing direction for angle computation
+    const fLen = Math.sqrt(facingDir.dx * facingDir.dx + facingDir.dy * facingDir.dy) || 1;
+    const fdx = facingDir.dx / fLen;
+    const fdy = facingDir.dy / fLen;
+
+    // Cast rays to perimeter of bounding square (more efficient than circle for wide corridors)
+    const rad = Math.ceil(radius);
+    const targets = new Set();
+    for (let d = -rad; d <= rad; d++) {
+      targets.add((px + d) + ',' + (py - rad));
+      targets.add((px + d) + ',' + (py + rad));
+      targets.add((px - rad) + ',' + (py + d));
+      targets.add((px + rad) + ',' + (py + d));
+    }
+
+    for (const key of targets) {
+      const [tx, ty] = key.split(',').map(Number);
+
+      // Bresenham ray from player to target
+      let x = px, y = py;
+      let ddx = Math.abs(tx - px), ddy = Math.abs(ty - py);
+      let sx = px < tx ? 1 : -1, sy = py < ty ? 1 : -1;
+      let err = ddx - ddy;
+
+      while (true) {
+        if (x >= 0 && x < w && y >= 0 && y < h) {
+          const dist = Math.sqrt((x - px) * (x - px) + (y - py) * (y - py));
+          if (dist > radius) break;
+
+          // Distance falloff
+          const falloff = Math.max(0, 1 - dist / radius);
+          let lightVal = falloff * falloff;
+
+          // Directional weighting
+          if (dist > 0.5) {
+            const dirX = (x - px) / dist;
+            const dirY = (y - py) / dist;
+            const dot = dirX * fdx + dirY * fdy; // -1 to 1
+            // Smooth cone: forward=1.0, side=0.5, behind=0.18
+            const dirMult = 0.18 + 0.82 * Math.max(0, (dot + 1) / 2) ** 1.2;
+            lightVal *= dirMult;
+          }
+
+          const idx = y * w + x;
+          if (lightVal > bright[idx]) bright[idx] = lightVal;
+
+          // Walls block light but are themselves illuminated
+          if ((x !== px || y !== py) && !tiles[y][x].walkable) break;
+        } else {
+          break;
+        }
+
+        if (x === tx && y === ty) break;
+        const e2 = 2 * err;
+        if (e2 > -ddy) { err -= ddy; x += sx; }
+        if (e2 < ddx) { err += ddx; y += sy; }
+      }
+    }
+
+    // Apply light sources on tiles (omnidirectional boost)
+    for (let ty = Math.max(0, py - rad); ty < Math.min(h, py + rad + 1); ty++) {
+      for (let tx = Math.max(0, px - rad); tx < Math.min(w, px + rad + 1); tx++) {
+        if (tiles[ty][tx].lightSource) {
+          const lRad = 5;
+          for (let ly = Math.max(0, ty - lRad); ly < Math.min(h, ty + lRad + 1); ly++) {
+            for (let lx = Math.max(0, tx - lRad); lx < Math.min(w, tx + lRad + 1); lx++) {
+              const ld = Math.sqrt((lx - tx) * (lx - tx) + (ly - ty) * (ly - ty));
+              if (ld <= lRad) {
+                const lf = Math.max(0, 1 - ld / lRad);
+                const lv = lf * lf * 0.4;
+                const idx = ly * w + lx;
+                bright[idx] = Math.min(1, bright[idx] + lv);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Apply ambient minimum
+    const size = w * h;
+    for (let i = 0; i < size; i++) {
+      if (bright[i] < ambient) bright[i] = ambient;
+    }
+
+    return { bright, w, h };
+  }
+
   renderEngineeringSpace() {
     if (!this.currentEngineeringSpace) return;
 
@@ -1951,6 +2054,18 @@ class Game {
 
     const r = this.renderer;
     const startRow = LAYOUT.VIEWPORT_TOP;
+
+    // Compute directional light map (cached until player moves or turns)
+    const px = this.player.position.x;
+    const py = this.player.position.y;
+    const fd = this.playerFacingDir;
+    const lightsOn = this.currentEngineeringSpace.lightsOn !== false;
+    const cacheKey = `${px},${py},${fd.dx},${fd.dy},${lightsOn ? 1 : 0}`;
+    if (this._engLightMapKey !== cacheKey) {
+      this._engLightMap = this._computeEngineeringLightMap(tiles, px, py, fd, lightsOn);
+      this._engLightMapKey = cacheKey;
+    }
+    const lightMap = this._engLightMap;
 
     for (let vy = 0; vy < viewH; vy++) {
       for (let vx = 0; vx < viewW; vx++) {
@@ -1972,14 +2087,8 @@ class Game {
 
         const t = tiles[wy][wx];
 
-        // Calculate basic distance-based lighting from player
-        const dist = Math.abs(wx - this.player.position.x) + Math.abs(wy - this.player.position.y);
-        const lightsOn = this.currentEngineeringSpace.lightsOn !== false;
-        const maxLight = lightsOn ? 22 : 8;
-        let brightness = Math.max(lightsOn ? 0.25 : 0.08, 1.0 - dist / maxLight);
-
-        // Light sources boost brightness
-        if (t.lightSource) brightness = Math.min(1.0, brightness + 0.4);
+        // Look up raycasted brightness
+        const brightness = lightMap.bright[wy * lightMap.w + wx];
 
         // Dim the colors
         const dimFg = this._dimColor(t.fg, brightness);
@@ -2003,11 +2112,11 @@ class Game {
     }
 
     // Draw player
-    const px = this.player.position.x - camX;
-    const py = this.player.position.y - camY;
-    if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
-      const sx = 1 + px * density + Math.floor(density / 2);
-      const sy = startRow + py * density + Math.floor(density / 2);
+    const ppx = this.player.position.x - camX;
+    const ppy = this.player.position.y - camY;
+    if (ppx >= 0 && ppx < viewW && ppy >= 0 && ppy < viewH) {
+      const sx = 1 + ppx * density + Math.floor(density / 2);
+      const sy = startRow + ppy * density + Math.floor(density / 2);
       r.drawChar(sx, sy, '@', '#FFFFFF', null);
     }
   }
@@ -5160,6 +5269,7 @@ class Game {
 
     this.player.position.x = nx;
     this.player.position.y = ny;
+    this.playerFacingDir = { dx, dy };
     this.turnCount++;
 
     // Check for items on ground
@@ -6085,16 +6195,12 @@ class Game {
       case 'DUNGEON':
         this.renderDungeon();
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
-        this.ui.drawMinimap(this.renderer, this.currentDungeon, this.player, this.enemies);
         this._renderQuestNavIndicator();
         break;
 
       case 'ENGINEERING_SPACE':
         this.renderEngineeringSpace();
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
-        if (this.currentEngineeringSpace) {
-          this.ui.drawMinimap(this.renderer, this.currentEngineeringSpace, this.player, []);
-        }
         break;
 
       case 'DIALOGUE':
