@@ -5243,65 +5243,93 @@ export class CorridorGenerator {
   }
 
   _generateUmbilical(width, height, centerY) {
+    // Clamp centerY so 13-tile structure fits within grid
+    centerY = Math.max(6, Math.min(height - 7, centerY));
+
     const tiles = makeTileGrid(width, height, () =>
       tile('WALL', '#', '#334455', '#0A0A12', false)
     );
 
-    // Wider tube passage (7 tiles tall) to match corridor walkway proportions
-    const halfPassage = 3;
+    // 7 viewport windows evenly spaced (each 2 tiles wide)
+    const viewportStarts = [3, 8, 13, 18, 23, 28, 33];
+
+    // Layer definitions: [dy offset, row type]
+    const layers = [
+      [-6, 'hull'], [-5, 'rail'], [-4, 'rail'], [-3, 'rail'],
+      [-2, 'frame'],
+      [-1, 'walk'], [0, 'walk'], [1, 'walk'],
+      [2, 'frame'],
+      [3, 'rail'], [4, 'rail'], [5, 'rail'], [6, 'hull']
+    ];
+
     for (let x = 0; x < width; x++) {
-      for (let dy = -halfPassage; dy <= halfPassage; dy++) {
+      const isBulkhead = x < 3 || x >= width - 3;
+      const isViewportCol = viewportStarts.some(vs => x === vs || x === vs + 1);
+      const isRib = x % 8 === 0 && !isBulkhead;
+
+      for (const [dy, rowType] of layers) {
         const y = centerY + dy;
-        if (y >= 0 && y < height) {
-          // Structural ribs every 8 tiles on center row
-          if (dy === 0 && x % 8 === 0 && x > 2 && x < width - 3) {
-            tiles[y][x] = tile('UMBILICAL_RIB', '┼', '#3A5A6A', '#050A10', true,
-              { biome: 'engineering' });
-          } else {
-            tiles[y][x] = tile('UMBILICAL_FLOOR', '·', '#2A4A5A', '#050A10', true,
-              { biome: 'engineering' });
-          }
-        }
-      }
+        if (y < 0 || y >= height) continue;
 
-      // Transparent tube walls (top and bottom of passage) — void visible
-      const topY = centerY - halfPassage - 1;
-      const botY = centerY + halfPassage + 1;
-      const wallYs = [];
-      if (topY >= 0) wallYs.push(topY);
-      if (botY < height) wallYs.push(botY);
-
-      for (const wallY of wallYs) {
-        const hash = ((x * 73856093) ^ (wallY * 19349663)) >>> 0;
-        const starChance = (hash % 100) / 100;
-        if (x >= 3 && x < width - 3) {
-          const isViewport = (x % 10 >= 3 && x % 10 <= 6);
-          if (isViewport) {
-            let ch, fg;
-            if (starChance < 0.15) { ch = '·'; fg = '#8899BB'; }
-            else if (starChance < 0.18) { ch = '*'; fg = '#AABBDD'; }
-            else { ch = ' '; fg = '#0A1020'; }
-            tiles[wallY][x] = tile('UMBILICAL_VIEWPORT', ch, fg, '#010204', false,
-              { biome: 'engineering' });
-          } else {
-            let ch, fg;
-            if (starChance < 0.12) { ch = '·'; fg = '#8899BB'; }
-            else if (starChance < 0.15) { ch = '*'; fg = '#BBCCEE'; }
-            else { ch = '░'; fg = '#1A2A3A'; }
-            tiles[wallY][x] = tile('UMBILICAL_WALL', ch, fg, '#020408', false,
-              { biome: 'engineering' });
-          }
-        } else {
-          tiles[wallY][x] = tile('WALL', '▓', '#445566', '#0A0A12', false,
+        if (isBulkhead) {
+          tiles[y][x] = tile('WALL', '▓', '#445566', '#0A0A12', false,
             { biome: 'engineering' });
+          continue;
         }
-      }
 
-      // Structural rib markers on walls too (every 8 tiles)
-      if (x % 8 === 0 && x > 2 && x < width - 3) {
-        for (const wallY of wallYs) {
-          tiles[wallY][x] = tile('UMBILICAL_WALL', '║', '#3A5A6A', '#020408', false,
-            { biome: 'engineering' });
+        const absDy = Math.abs(dy);
+
+        switch (rowType) {
+          case 'hull': {
+            if (isRib) {
+              tiles[y][x] = tile('UMBILICAL_OUTER_HULL', '║', '#2A3A50', '#060810', false,
+                { biome: 'engineering' });
+            } else {
+              tiles[y][x] = tile('UMBILICAL_OUTER_HULL', '▓', '#1A2540', '#060810', false,
+                { biome: 'engineering' });
+            }
+            break;
+          }
+          case 'rail': {
+            if (isRib) {
+              tiles[y][x] = tile('UMBILICAL_RAIL', '╬', '#3A4A5A', '#080C14', false,
+                { biome: 'engineering' });
+            } else if (absDy === 4) {
+              tiles[y][x] = tile('UMBILICAL_RAIL', '═', '#2A3A4A', '#080C14', false,
+                { biome: 'engineering' });
+            } else {
+              tiles[y][x] = tile('UMBILICAL_RAIL', '─', '#222E3A', '#080C14', false,
+                { biome: 'engineering' });
+            }
+            break;
+          }
+          case 'frame': {
+            if (isViewportCol) {
+              tiles[y][x] = tile('UMBILICAL_VIEWPORT_GLASS', '█', '#CCDDFF', '#8899BB', false,
+                { biome: 'engineering' });
+            } else if (isRib) {
+              tiles[y][x] = tile('UMBILICAL_FRAME', '║', '#5A6A7A', '#0A0E18', false,
+                { biome: 'engineering' });
+            } else {
+              tiles[y][x] = tile('UMBILICAL_FRAME', '▒', '#4A5A6A', '#0A0E18', false,
+                { biome: 'engineering' });
+            }
+            break;
+          }
+          case 'walk': {
+            if (dy === 0 && isRib) {
+              tiles[y][x] = tile('UMBILICAL_RIB', '┼', '#3A5A6A', '#050A10', true,
+                { biome: 'engineering' });
+            } else if (dy === 0 && isViewportCol) {
+              // Subtle light spill from viewport above
+              tiles[y][x] = tile('UMBILICAL_FLOOR', '·', '#3A5A6A', '#0A1018', true,
+                { biome: 'engineering' });
+            } else {
+              tiles[y][x] = tile('UMBILICAL_FLOOR', '·', '#2A4A5A', '#050A10', true,
+                { biome: 'engineering' });
+            }
+            break;
+          }
         }
       }
     }
