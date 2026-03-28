@@ -1067,7 +1067,8 @@ class Game {
   enterLocation(location) {
     const locId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
     const locRng = new SeededRNG(this.seed + locId * 1000);
-    this.currentSettlement = this.settlementGen.generate(locRng, location.type, location.population || 10, 'grassland');
+    const isStarterTown = location.name === 'Broken Arm';
+    this.currentSettlement = this.settlementGen.generate(locRng, location.type, location.population || 10, 'grassland', { placeMechanicalArm: isStarterTown });
     this.currentSettlement.name = location.name;
     this.currentSettlement.locationData = location;
 
