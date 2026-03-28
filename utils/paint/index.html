@@ -35,8 +35,17 @@
       <button class="tool-btn" data-tool="text" title="Text (T)">T Text</button>
       <button class="tool-btn" data-tool="pick" title="Eyedropper (I)">&#9738; Pick</button>
       <button class="tool-btn" data-tool="select" title="Select (S)">&#9634; Sel</button>
+      <button class="tool-btn" data-tool="move" title="Move (M)">&#10021; Move</button>
     </div>
     <div class="toolbar-group">
+      <label class="toolbar-label">Brush:
+        <select id="selBrushSize">
+          <option value="1">1x1</option>
+          <option value="3">3x3</option>
+          <option value="5">5x5</option>
+          <option value="7">7x7</option>
+        </select>
+      </label>
       <label class="toolbar-label">Fill mode:
         <input type="checkbox" id="chkFilled">
       </label>

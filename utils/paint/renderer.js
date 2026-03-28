@@ -101,6 +101,9 @@ export class Renderer {
     // Selection overlay
     this._drawSelection(ctx);
 
+    // Floating content overlay
+    this._drawFloatingContent(ctx);
+
     // Hover cursor
     this._drawCursor(ctx);
 
@@ -152,24 +155,86 @@ export class Renderer {
     const w = sel.w * cellW;
     const h = sel.h * cellH;
 
-    ctx.strokeStyle = '#55FF55';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 4]);
-    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-    ctx.setLineDash([]);
-
     // Light fill
     ctx.fillStyle = '#55FF5515';
     ctx.fillRect(x, y, w, h);
+
+    // Marching ants: animate dash offset
+    const offset = Math.floor(Date.now() / 100) % 8;
+    ctx.strokeStyle = '#55FF55';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.lineDashOffset = -offset;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+
+    this._dirty = true; // Keep animating
+  }
+
+  _drawFloatingContent(ctx) {
+    const { state, cellW, cellH } = this;
+    if (!state.floatingContent || !state.floatingPos) return;
+
+    const { w, h, cells } = state.floatingContent;
+    const { col, row } = state.floatingPos;
+    const fontSize = this.baseFontSize * state.zoom;
+
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.font = `${fontSize}px ${this.fontFamily}`;
+    ctx.textBaseline = 'top';
+
+    for (let r = 0; r < h; r++) {
+      for (let c = 0; c < w; c++) {
+        const cell = cells[r][c];
+        const x = (col + c) * cellW;
+        const y = (row + r) * cellH;
+
+        ctx.fillStyle = cell.bg;
+        ctx.fillRect(x, y, cellW, cellH);
+
+        if (cell.char && cell.char !== ' ') {
+          ctx.fillStyle = cell.fg;
+          ctx.fillText(cell.char, x, y + 1);
+        }
+      }
+    }
+
+    // Yellow dashed border around floating content
+    ctx.globalAlpha = 1.0;
+    ctx.strokeStyle = '#FFFF55';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect(col * cellW, row * cellH, w * cellW, h * cellH);
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    this._dirty = true; // Keep redrawing while floating for smooth tracking
   }
 
   _drawCursor(ctx) {
     const hover = this.state.hoverCell;
     if (!hover) return;
-    const { cellW, cellH } = this;
+    if (this.state.floatingContent) return; // Floating content has its own visual
+    const { cellW, cellH, state } = this;
+    const tool = state.tool;
+    const size = state.brushSize;
+
     ctx.strokeStyle = '#55FF55aa';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(hover.col * cellW + 0.5, hover.row * cellH + 0.5, cellW - 1, cellH - 1);
+
+    if ((tool === 'pencil' || tool === 'eraser') && size > 1) {
+      const half = Math.floor(size / 2);
+      ctx.strokeRect(
+        (hover.col - half) * cellW + 0.5,
+        (hover.row - half) * cellH + 0.5,
+        size * cellW - 1,
+        size * cellH - 1
+      );
+    } else {
+      ctx.strokeRect(hover.col * cellW + 0.5, hover.row * cellH + 0.5, cellW - 1, cellH - 1);
+    }
   }
 
   _drawTextCursor(ctx) {

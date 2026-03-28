@@ -1,8 +1,9 @@
 // clipboard-ui.js — Clipboard history sidebar UI
 
 export class ClipboardHistoryUI {
-  constructor(state) {
+  constructor(state, tools) {
     this.state = state;
+    this.tools = tools;
     this.fontFamily = "'Noto Sans Mono', 'DejaVu Sans Mono', 'Courier New', Courier, monospace";
     this.container = document.getElementById('clipboardItems');
 
@@ -31,12 +32,14 @@ export class ClipboardHistoryUI {
       const idx = i;
       el.addEventListener('click', () => {
         s.activeClipboardIndex = idx;
-        // Set as active clipboard for paste
-        s.clipboard = {
+        const content = {
           w: item.w,
           h: item.h,
           cells: item.cells.map(row => row.map(c => ({ ...c }))),
         };
+        s.clipboard = content;
+        // Enter floating mode — content follows cursor for placement
+        this.tools.enterFloatingMode(content);
         this._render();
       });
 

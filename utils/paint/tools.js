@@ -9,8 +9,69 @@ export class ToolManager {
     this._paintedThisStroke = new Set();
   }
 
+  // ── Floating content (GIMP-like paste placement) ──
+
+  enterFloatingMode(content, origin = null) {
+    const s = this.state;
+    s.floatingContent = {
+      w: content.w,
+      h: content.h,
+      cells: content.cells.map(row => row.map(c => ({ ...c }))),
+    };
+    s.floatingOrigin = origin;
+    s.floatingPos = s.hoverCell ? { col: s.hoverCell.col, row: s.hoverCell.row } : { col: 0, row: 0 };
+    s.emit('change');
+  }
+
+  placeFloatingContent() {
+    const s = this.state;
+    if (!s.floatingContent || !s.floatingPos) return;
+    const { w, h, cells } = s.floatingContent;
+    const { col, row } = s.floatingPos;
+    for (let r = 0; r < h; r++) {
+      for (let c = 0; c < w; c++) {
+        const cell = cells[r][c];
+        s.setCell(col + c, row + r, cell.char, cell.fg, cell.bg);
+      }
+    }
+    s.selection = { x: col, y: row, w, h };
+    s.floatingContent = null;
+    s.floatingPos = null;
+    s.floatingOrigin = null;
+    s.pushHistory();
+    s.emit('change');
+  }
+
+  cancelFloating() {
+    const s = this.state;
+    if (!s.floatingContent) return;
+    s.floatingContent = null;
+    s.floatingPos = null;
+    s.floatingOrigin = null;
+    s.emit('change');
+  }
+
+  nudgeFloating(dx, dy) {
+    const s = this.state;
+    if (!s.floatingContent || !s.floatingPos) return;
+    s.floatingPos.col += dx;
+    s.floatingPos.row += dy;
+    s.emit('change');
+  }
+
   onMouseDown(col, row, button) {
     const s = this.state;
+
+    // Floating content: left-click places, right-click cancels
+    if (s.floatingContent) {
+      if (button === 0) {
+        this.placeFloatingContent();
+      } else {
+        this.cancelFloating();
+      }
+      return;
+    }
+
     s.mouseDown = true;
     s.mouseButton = button;
     s.dragStart = { col, row };
@@ -22,22 +83,9 @@ export class ToolManager {
         if (button === 0) this._paint(col, row);
         else if (button === 2) this._erase(col, row);
         break;
-      case 'eraser': {
-        const cell = this.state.getCell(col, row);
-        if (cell && cell.char !== ' ') {
-          // Pick up the character and switch to pencil mode
-          this.state.currentChar = cell.char;
-          this.state.fgColor = cell.fg;
-          this.state.bgColor = cell.bg;
-          this.state.tool = 'pencil';
-          this.state.emit('pick');
-          this.state.emit('toolchange');
-          this.state.emit('change');
-        } else {
-          this._erase(col, row);
-        }
+      case 'eraser':
+        this._erase(col, row);
         break;
-      }
       case 'fill':
         if (button === 0) this._floodFill(col, row);
         break;
@@ -50,6 +98,31 @@ export class ToolManager {
       case 'select':
         s.selection = null;
         break;
+      case 'move':
+        if (button === 0 && s.selection) {
+          const sel = s.selection;
+          // Check if click is inside selection
+          if (col >= sel.x && col < sel.x + sel.w && row >= sel.y && row < sel.y + sel.h) {
+            // Lift selection into floating mode
+            const cells = [];
+            for (let r = 0; r < sel.h; r++) {
+              cells[r] = [];
+              for (let c = 0; c < sel.w; c++) {
+                const cell = s.getCell(sel.x + c, sel.y + r);
+                cells[r][c] = cell ? { ...cell } : { char: ' ', fg: '#f8f0ff', bg: '#000000' };
+              }
+            }
+            // Clear the original area
+            for (let r = 0; r < sel.h; r++) {
+              for (let c = 0; c < sel.w; c++) {
+                s.setCell(sel.x + c, sel.y + r, ' ', s.bgColor, s.bgColor);
+              }
+            }
+            s.selection = null;
+            this.enterFloatingMode({ w: sel.w, h: sel.h, cells }, { col: sel.x, row: sel.y });
+          }
+        }
+        break;
       // line, rect, ellipse: handled on mouseUp via dragStart/dragEnd
     }
   }
@@ -57,6 +130,14 @@ export class ToolManager {
   onMouseMove(col, row) {
     const s = this.state;
     s.hoverCell = { col, row };
+
+    // Update floating content position
+    if (s.floatingContent) {
+      s.floatingPos = { col, row };
+      s.emit('change');
+      if (!s.mouseDown) return;
+    }
+
     if (!s.mouseDown) return;
 
     s.dragEnd = { col, row };
@@ -146,19 +227,36 @@ export class ToolManager {
 
   // ── Private ──
 
+  _getBrushCells(col, row) {
+    const size = this.state.brushSize;
+    if (size <= 1) return [[col, row]];
+    const half = Math.floor(size / 2);
+    const cells = [];
+    for (let dr = -half; dr <= half; dr++) {
+      for (let dc = -half; dc <= half; dc++) {
+        cells.push([col + dc, row + dr]);
+      }
+    }
+    return cells;
+  }
+
   _paint(col, row) {
-    const key = `${col},${row}`;
-    if (this._paintedThisStroke.has(key)) return;
-    this._paintedThisStroke.add(key);
-    this.state.setCell(col, row, this.state.currentChar, this.state.fgColor, this.state.bgColor);
+    for (const [c, r] of this._getBrushCells(col, row)) {
+      const key = `${c},${r}`;
+      if (this._paintedThisStroke.has(key)) continue;
+      this._paintedThisStroke.add(key);
+      this.state.setCell(c, r, this.state.currentChar, this.state.fgColor, this.state.bgColor);
+    }
     this.state.emit('change');
   }
 
   _erase(col, row) {
-    const key = `${col},${row}`;
-    if (this._paintedThisStroke.has(key)) return;
-    this._paintedThisStroke.add(key);
-    this.state.setCell(col, row, ' ', this.state.fgColor, this.state.bgColor);
+    for (const [c, r] of this._getBrushCells(col, row)) {
+      const key = `${c},${r}`;
+      if (this._paintedThisStroke.has(key)) continue;
+      this._paintedThisStroke.add(key);
+      this.state.setCell(c, r, ' ', this.state.fgColor, this.state.bgColor);
+    }
     this.state.emit('change');
   }
 
