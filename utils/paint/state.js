@@ -126,6 +126,14 @@ export class State {
     this.clipboardHistory = []; // Array of {w, h, cells, timestamp}
     this.activeClipboardIndex = 0;
 
+    // Brush size (affects pencil and eraser)
+    this.brushSize = 1; // 1, 3, 5, 7
+
+    // Floating content (follows cursor for GIMP-like placement)
+    this.floatingContent = null;   // {w, h, cells: 2D} or null
+    this.floatingPos = null;       // {col, row} — follows cursor
+    this.floatingOrigin = null;    // {col, row} — where cut from (null for copy)
+
     // Quick-select palette (keys 1-9, 0)
     this.quickSlots = [
       { char: '@', fg: CGA.BRIGHT_GREEN, bg: CGA.BLACK },

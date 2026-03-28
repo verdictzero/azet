@@ -13,7 +13,7 @@ export class App {
     this.renderer = new Renderer(this.canvas, this.state);
     this.tools = new ToolManager(this.state);
     this.palette = new PaletteUI(this.state);
-    this.clipboardUI = new ClipboardHistoryUI(this.state);
+    this.clipboardUI = new ClipboardHistoryUI(this.state, this.tools);
 
     // Panning state
     this._panning = false;
@@ -158,6 +158,12 @@ export class App {
       this.renderer.markDirty();
     });
 
+    // Brush size
+    document.getElementById('selBrushSize').addEventListener('change', e => {
+      this.state.brushSize = parseInt(e.target.value);
+      this._setStatus(`Brush size: ${this.state.brushSize}x${this.state.brushSize}`);
+    });
+
     // Filled toggle
     document.getElementById('chkFilled').addEventListener('change', e => {
       this.state.filled = e.target.checked;
@@ -240,18 +246,24 @@ export class App {
             return;
           case 'x':
             e.preventDefault();
-            this.tools.cutSelection();
-            this._setStatus('Cut selection');
-            this.renderer.markDirty();
+            if (this.state.selection) {
+              this.tools.copySelection();
+              const content = {
+                w: this.state.clipboard.w,
+                h: this.state.clipboard.h,
+                cells: this.state.clipboard.cells.map(row => row.map(c => ({ ...c }))),
+              };
+              this.tools.deleteSelection();
+              this.tools.enterFloatingMode(content);
+              this._setStatus('Cut — click to place, Escape to cancel');
+              this.renderer.markDirty();
+            }
             return;
           case 'v':
             e.preventDefault();
             if (this.state.clipboard) {
-              // Paste at selection origin or (0,0)
-              const x = this.state.selection?.x ?? 0;
-              const y = this.state.selection?.y ?? 0;
-              this.tools.pasteAt(x, y);
-              this._setStatus('Pasted');
+              this.tools.enterFloatingMode(this.state.clipboard);
+              this._setStatus('Floating paste — click to place, Escape to cancel');
               this.renderer.markDirty();
             }
             return;
@@ -274,6 +286,40 @@ export class App {
             this._newFile();
             return;
         }
+        return;
+      }
+
+      // Floating content controls
+      if (this.state.floatingContent) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.tools.cancelFloating();
+          this._setStatus('Paste cancelled');
+          this.renderer.markDirty();
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.tools.placeFloatingContent();
+          this._setStatus('Placed');
+          this.renderer.markDirty();
+          return;
+        }
+        const nudgeMap = { ArrowLeft: [-1,0], ArrowRight: [1,0], ArrowUp: [0,-1], ArrowDown: [0,1] };
+        if (nudgeMap[e.key]) {
+          e.preventDefault();
+          this.tools.nudgeFloating(...nudgeMap[e.key]);
+          this.renderer.markDirty();
+          return;
+        }
+      }
+
+      // Escape to deselect
+      if (e.key === 'Escape' && this.state.selection && !this.state.floatingContent) {
+        e.preventDefault();
+        this.state.selection = null;
+        this.renderer.markDirty();
+        this._setStatus('Deselected');
         return;
       }
 
@@ -324,7 +370,7 @@ export class App {
       if (!ctrl && e.key.length === 1) {
         const hotkeys = {
           'p': 'pencil', 'e': 'eraser', 'f': 'fill', 'l': 'line',
-          'r': 'rect', 'o': 'ellipse', 't': 'text', 'i': 'pick', 's': 'select',
+          'r': 'rect', 'o': 'ellipse', 't': 'text', 'i': 'pick', 's': 'select', 'm': 'move',
         };
         const tool = hotkeys[e.key.toLowerCase()];
         if (tool) {
@@ -476,7 +522,8 @@ export class App {
     document.getElementById('statusPos').textContent = hover
       ? `${hover.col}, ${hover.row}` : '-, -';
     document.getElementById('statusSize').textContent = `${s.cols} x ${s.rows}`;
-    document.getElementById('statusTool').textContent = s.tool.charAt(0).toUpperCase() + s.tool.slice(1);
+    const toolText = s.tool.charAt(0).toUpperCase() + s.tool.slice(1);
+    document.getElementById('statusTool').textContent = s.floatingContent ? `${toolText} [FLOATING]` : toolText;
     document.getElementById('statusZoom').textContent = `${s.zoom}x`;
   }
 
