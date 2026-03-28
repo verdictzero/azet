@@ -10,6 +10,7 @@ h2 { color: #55FFFF; font-size: 11px; margin-bottom: 6px; font-family: monospace
 .toolbar {
   background: #111; border-bottom: 2px solid #333; padding: 6px 10px;
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap; min-height: 42px;
+  flex-shrink: 0;
 }
 .toolbar-title { color: #55FF55; font-family: monospace; font-size: 14px; font-weight: bold; }
 .toolbar-group { display: flex; gap: 4px; align-items: center; }
@@ -19,19 +20,25 @@ h2 { color: #55FFFF; font-size: 11px; margin-bottom: 6px; font-family: monospace
 .sidebar {
   width: 220px; min-width: 220px; background: #111; border-right: 2px solid #333;
   padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  flex-shrink: 0;
 }
-.canvas-area { flex: 1; overflow: auto; background: #0a0a0a; position: relative; }
+.canvas-area {
+  flex: 1; overflow: auto; background: #0a0a0a; position: relative;
+  contain: layout size style; min-width: 0; min-height: 0;
+}
 .canvas-container { display: inline-block; padding: 20px; min-width: 100%; min-height: 100%; }
 #paintCanvas { display: block; cursor: crosshair; image-rendering: pixelated; }
 .statusbar {
   background: #111; border-top: 2px solid #333; padding: 4px 12px;
   display: flex; gap: 20px; font-family: monospace; font-size: 11px; color: #888;
+  flex-shrink: 0;
 }
 
 /* Right Sidebar: Clipboard History */
 .sidebar-right {
   width: 200px; min-width: 200px; background: #111; border-left: 2px solid #333;
   padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  flex-shrink: 0;
 }
 .clipboard-items { display: flex; flex-direction: column; gap: 6px; }
 .clipboard-item {
@@ -106,6 +113,7 @@ button.active, .tool-btn.active { background: #55FF5533; border-color: #55FF55; 
   background: #111; border-top: 2px solid #333; padding: 6px 8px;
   display: flex; flex-direction: column; gap: 4px;
   max-height: 180px; min-height: 80px;
+  flex-shrink: 0;
 }
 .char-panel-header {
   display: flex; align-items: center; gap: 8px; flex-shrink: 0;

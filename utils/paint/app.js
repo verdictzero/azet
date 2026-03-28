@@ -126,6 +126,11 @@ export class App {
       this.renderer.markDirty();
       this._updateStatus();
     }, { passive: false });
+
+    // Prevent browser-level zoom (Ctrl+wheel / pinch) from scaling the entire page
+    document.addEventListener('wheel', e => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
   }
 
   _eventToCell(e) {
