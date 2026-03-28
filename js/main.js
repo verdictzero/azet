@@ -2054,6 +2054,18 @@ class Game {
             const swChars = [['╔','═','╗'],['║','◘','║'],['╚','═','╝']];
             chars[dy][dx] = swChars[dy][dx];
           }
+        } else if (t.type === 'CORRIDOR_PIPE') {
+          chars[dy][dx] = t.char;
+        } else if (t.type === 'CORRIDOR_WALL') {
+          chars[dy][dx] = '█';
+        } else if (t.type === 'CORRIDOR_DARK_SHADE') {
+          chars[dy][dx] = '▓';
+        } else if (t.type === 'CORRIDOR_MED_SHADE') {
+          chars[dy][dx] = '▒';
+        } else if (t.type === 'CORRIDOR_PANEL') {
+          chars[dy][dx] = '◘';
+        } else if (t.type === 'CORRIDOR_WALKWAY') {
+          chars[dy][dx] = '◙';
         } else if (t.type === 'UMBILICAL_OUTER_HULL') {
           chars[dy][dx] = '▓';
         } else if (t.type === 'UMBILICAL_RAIL') {

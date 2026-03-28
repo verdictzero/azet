@@ -700,6 +700,14 @@ const TYPE_PATTERNS = {
   HULL_CIRCUIT:        { 2: MECH_2x2, 3: MECH_3x3 },
   TRANSIT_PLATFORM:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
 
+  // Corridor interior tiles (CorridorGenerator layered cross-section)
+  CORRIDOR_PIPE:       { 2: MECH_2x2, 3: MECH_3x3 },
+  CORRIDOR_WALL:       { 2: WALL_2x2, 3: WALL_3x3 },
+  CORRIDOR_DARK_SHADE: { 2: WALL_2x2, 3: WALL_3x3 },
+  CORRIDOR_MED_SHADE:  { 2: WALL_2x2, 3: WALL_3x3 },
+  CORRIDOR_PANEL:      { 2: WALL_2x2, 3: WALL_3x3 },
+  CORRIDOR_WALKWAY:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+
   // Facility tiles (C2 / ENG)
   FACILITY_WALL:       { 2: WALL_2x2, 3: WALL_3x3 },
   FACILITY_PANEL:      { 2: WALL_2x2, 3: WALL_3x3 },
