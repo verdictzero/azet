@@ -2368,7 +2368,7 @@ export class SettlementGenerator {
         if (existing.type !== 'GRASSLAND' && existing.type !== 'TREE' &&
             existing.type !== 'TREE_CANOPY' && existing.type !== 'TREE_TRUNK' &&
             existing.type !== 'FOREST' && existing.type !== 'DEEP_FOREST') continue;
-        tiles[ty][tx] = tile(cell.type, cell.char, cell.fg, cell.bg, false, { structure: true });
+        tiles[ty][tx] = tile(cell.type, cell.char, cell.fg, cell.bg, false, { structure: true, solid: true });
       }
     }
   }
