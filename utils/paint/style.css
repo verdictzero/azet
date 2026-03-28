@@ -28,6 +28,23 @@ h2 { color: #55FFFF; font-size: 11px; margin-bottom: 6px; font-family: monospace
   display: flex; gap: 20px; font-family: monospace; font-size: 11px; color: #888;
 }
 
+/* Right Sidebar: Clipboard History */
+.sidebar-right {
+  width: 200px; min-width: 200px; background: #111; border-left: 2px solid #333;
+  padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+}
+.clipboard-items { display: flex; flex-direction: column; gap: 6px; }
+.clipboard-item {
+  background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 3px;
+  padding: 4px; cursor: pointer; transition: border-color 0.1s;
+}
+.clipboard-item:hover { border-color: #55FF55; }
+.clipboard-item.active { border-color: #55FF55; box-shadow: 0 0 4px #55FF5544; }
+.clipboard-item canvas { width: 100%; display: block; image-rendering: pixelated; }
+.clipboard-item-info {
+  font-size: 9px; font-family: monospace; color: #666; margin-top: 2px;
+}
+
 /* Buttons */
 button {
   background: #222; color: #55FF55; border: 1px solid #444; padding: 4px 10px;
@@ -42,10 +59,24 @@ button.active, .tool-btn.active { background: #55FF5533; border-color: #55FF55; 
 /* Sections */
 .section { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 3px; padding: 8px; }
 
-/* Color Palette */
+/* Color Palette — grouped */
 .palette-grid {
-  display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px;
+  display: flex; flex-direction: column; gap: 2px;
+  max-height: 280px; overflow-y: auto;
 }
+.palette-group { margin-bottom: 1px; }
+.palette-group-header {
+  color: #888; font-size: 9px; font-family: monospace; cursor: pointer;
+  padding: 2px 0; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.palette-group-header:hover { color: #55FF55; }
+.palette-group-header.collapsed::before { content: '+ '; }
+.palette-group-header:not(.collapsed)::before { content: '- '; }
+.palette-group-grid {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px;
+}
+.palette-group-grid.collapsed { display: none; }
+
 .palette-swatch {
   width: 100%; aspect-ratio: 1; border: 2px solid #333; border-radius: 2px;
   cursor: pointer; transition: border-color 0.1s;

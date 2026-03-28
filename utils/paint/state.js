@@ -22,6 +22,50 @@ export const CGA = Object.freeze({
 export const CGA_NAMES = Object.keys(CGA);
 export const CGA_VALUES = Object.values(CGA);
 
+export const EXTENDED_PALETTE = [
+  { name: 'Grays', colors: [
+    '#000000', '#141414', '#282828', '#3c3c3c', '#505050', '#646464',
+    '#787878', '#8c8c8c', '#a0a0a0', '#b4b4b4', '#c8c8c8', '#dcdcdc', '#f0f0f0', '#ffffff',
+  ]},
+  { name: 'Reds', colors: [
+    '#1a0000', '#330000', '#4d0000', '#660000', '#800000', '#990000',
+    '#b30000', '#cc0000', '#e60000', '#ff0000', '#ff3333', '#ff6666', '#ff9999', '#ffcccc',
+  ]},
+  { name: 'Oranges', colors: [
+    '#1a0d00', '#331a00', '#4d2600', '#663300', '#804000', '#994d00',
+    '#b35900', '#cc6600', '#e67300', '#ff8000', '#ff9933', '#ffb366', '#ffcc99', '#ffe6cc',
+  ]},
+  { name: 'Yellows', colors: [
+    '#1a1a00', '#333300', '#4d4d00', '#666600', '#808000', '#999900',
+    '#b3b300', '#cccc00', '#e6e600', '#ffff00', '#ffff33', '#ffff66', '#ffff99', '#ffffcc',
+  ]},
+  { name: 'Greens', colors: [
+    '#001a00', '#003300', '#004d00', '#006600', '#008000', '#009900',
+    '#00b300', '#00cc00', '#00e600', '#00ff00', '#33ff33', '#66ff66', '#99ff99', '#ccffcc',
+  ]},
+  { name: 'Teals', colors: [
+    '#001a1a', '#003333', '#004d4d', '#006666', '#008080', '#009999',
+    '#00b3b3', '#00cccc', '#00e6e6', '#00ffff', '#33ffff', '#66ffff', '#99ffff', '#ccffff',
+  ]},
+  { name: 'Blues', colors: [
+    '#00001a', '#000033', '#00004d', '#000066', '#000080', '#000099',
+    '#0000b3', '#0000cc', '#0000e6', '#0000ff', '#3333ff', '#6666ff', '#9999ff', '#ccccff',
+  ]},
+  { name: 'Purples', colors: [
+    '#1a001a', '#330033', '#4d004d', '#660066', '#800080', '#990099',
+    '#b300b3', '#cc00cc', '#e600e6', '#ff00ff', '#ff33ff', '#ff66ff', '#ff99ff', '#ffccff',
+  ]},
+  { name: 'Browns', colors: [
+    '#1a0f00', '#332000', '#4d3000', '#664000', '#805020', '#996633',
+    '#b38040', '#cc9966', '#d4a76a', '#dfb880', '#eacc99', '#f5e0b3',
+  ]},
+  { name: 'Pastels', colors: [
+    '#ffb3b3', '#ffc9a3', '#ffe0a3', '#ffffb3', '#b3ffb3', '#b3ffe0',
+    '#b3ffff', '#b3d9ff', '#b3b3ff', '#d9b3ff', '#ffb3ff', '#ffb3d9',
+  ]},
+  { name: 'CGA Classic', colors: CGA_VALUES },
+];
+
 export const CHAR_CATEGORIES = {
   'Common':   ' @#$%&*+-=~^.,:;\'"!?/\\|_<>(){}[]0123456789',
   'Blocks':   '█▓▒░▀▄▌▐■▪▫▬▮▯',
@@ -59,6 +103,8 @@ export class State {
     // Selection
     this.selection = null; // {x, y, w, h}
     this.clipboard = null; // {w, h, cells: 2D}
+    this.clipboardHistory = []; // Array of {w, h, cells, timestamp}
+    this.activeClipboardIndex = 0;
 
     // Text tool cursor
     this.textCursor = null; // {col, row}
