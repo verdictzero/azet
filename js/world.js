@@ -5119,7 +5119,7 @@ export class CorridorGenerator {
     const corridorB = this.generate(rngB, adjSectionId, 0, adjIsWestWall, adjIsSpecialAccess);
 
     // Generate umbilical
-    const umbilicalWidth = 40;
+    const umbilicalWidth = 140;
     const umbilicalHeight = corridorA.height; // same height for stitching
 
     // Determine connection Y positions
@@ -5246,12 +5246,19 @@ export class CorridorGenerator {
     // Clamp centerY so 13-tile structure fits within grid
     centerY = Math.max(6, Math.min(height - 7, centerY));
 
+    // Fill with void — the umbilical floats in empty space
     const tiles = makeTileGrid(width, height, () =>
-      tile('WALL', '#', '#334455', '#0A0A12', false)
+      tile('UMBILICAL_VOID', ' ', '#0A0A18', '#000000', false,
+        { biome: 'engineering' })
     );
 
-    // 7 viewport windows evenly spaced (each 2 tiles wide)
-    const viewportStarts = [3, 8, 13, 18, 23, 28, 33];
+    // Distribute viewport windows evenly across the umbilical length
+    // Each viewport is 2 tiles wide, with ~7 tile spacing between them
+    const viewportStarts = [];
+    const vpSpacing = Math.floor((width - 6) / Math.floor(width / 8));
+    for (let vx = 3; vx + 1 < width - 3; vx += vpSpacing) {
+      viewportStarts.push(vx);
+    }
 
     // Layer definitions: [dy offset, row type]
     const layers = [

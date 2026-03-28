@@ -114,6 +114,50 @@ function getCircuitryCell(wx, wy) {
   return _circuitResult;
 }
 
+// ─── Umbilical Void Noise Background ───
+// Subtle noise field for the empty space surrounding the umbilical tube.
+// Very dark palette with sparse characters and slow animated drift.
+
+const _noiseChars = [' ', ' ', ' ', ' ', ' ', ' ', '·', '·', '░', '▒'];
+const _noiseResult = { char: ' ', fg: '#000000', bg: '#000000' };
+
+function _noiseHash(x, y) {
+  let h = Math.imul(x, 2654435761) + Math.imul(y, 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967296;
+}
+
+function getNoiseBackgroundCell(wx, wy) {
+  const h = _noiseHash(wx, wy);
+
+  // Sparse — most cells are empty black
+  if (h > 0.12) {
+    _noiseResult.char = ' ';
+    _noiseResult.fg = '#000000';
+    _noiseResult.bg = '#000000';
+    return _noiseResult;
+  }
+
+  // Slow drifting animation
+  const t = Date.now() / 4000;
+  const drift = Math.sin(wx * 0.08 + wy * 0.06 + t) * 0.5 + 0.5;
+  const drift2 = Math.sin(wx * 0.05 - wy * 0.09 - t * 0.6) * 0.5 + 0.5;
+  const intensity = drift * 0.6 + drift2 * 0.4;
+
+  // Pick character based on hash
+  const ci = Math.floor(h * _noiseChars.length * 10) % _noiseChars.length;
+  _noiseResult.char = _noiseChars[ci];
+
+  // Very dark purple/blue/gray palette
+  const r = Math.floor(4 + intensity * 12);    // 4..16
+  const g = Math.floor(3 + intensity * 8);     // 3..11
+  const b = Math.floor(8 + intensity * 24);    // 8..32
+  _noiseResult.fg = `rgb(${r},${g},${b})`;
+  _noiseResult.bg = '#000000';
+  return _noiseResult;
+}
+
 // ═══════════════════════════════════════════
 //  GAME - Main controller
 // ═══════════════════════════════════════════
@@ -7093,6 +7137,28 @@ class Game {
 
         if (wy >= 0 && wy < dh && wx >= 0 && wx < dw) {
           const tile = this.currentDungeon.tiles[wy][wx];
+
+          // Umbilical void — draw noise background instead of circuitry
+          if (tile.type === 'UMBILICAL_VOID') {
+            const noise = getNoiseBackgroundCell(wx, wy);
+            if (density === 1) {
+              r.drawChar(viewLeft + wx_off, viewTop + wy_off, noise.char, noise.fg, noise.bg);
+            } else {
+              for (let dy = 0; dy < density; dy++) {
+                for (let dx = 0; dx < density; dx++) {
+                  const screenX = viewLeft + wx_off * density + dx;
+                  const screenY = viewTop + wy_off * density + dy;
+                  if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                    // Use per-sub-cell noise for denser fill at higher zoom
+                    const subNoise = getNoiseBackgroundCell(wx * density + dx, wy * density + dy);
+                    r.drawChar(screenX, screenY, subNoise.char, subNoise.fg, subNoise.bg);
+                  }
+                }
+              }
+            }
+            continue;
+          }
+
           let isVisible, brightness;
 
           if (!this.debug.disableLighting) {

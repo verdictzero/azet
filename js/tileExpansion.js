@@ -246,6 +246,82 @@ const ENG_LIGHT_SWITCH_3x3 = [
   [['╔','═','╗'],['║','◘','║'],['╚','═','╝']],
 ];
 
+// ── Faithful engineering corridor expansion patterns ──────────────
+// At 3x these reproduce the characters from eng_corridor_example.txt;
+// 2x is an appropriate simplification, 1x renders the tile char as-is.
+
+const CORRIDOR_WALL_2x2 = [
+  [['\u2588','\u2588'],['\u2588','\u2588']],                         // ██ / ██
+];
+const CORRIDOR_WALL_3x3 = [
+  [['\u2588','\u2588','\u2588'],['\u2588','\u2588','\u2588'],['\u2588','\u2588','\u2588']],  // solid █
+];
+
+const CORRIDOR_DARK_SHADE_2x2 = [
+  [['\u2593','\u2593'],['\u2593','\u2593']],                         // ▓▓ / ▓▓
+];
+const CORRIDOR_DARK_SHADE_3x3 = [
+  [['\u2593','\u2593','\u2593'],['\u2593','\u2593','\u2593'],['\u2593','\u2593','\u2593']],
+];
+
+const CORRIDOR_MED_SHADE_2x2 = [
+  [['\u2592','\u2592'],['\u2592','\u2592']],                         // ▒▒ / ▒▒
+];
+const CORRIDOR_MED_SHADE_3x3 = [
+  [['\u2592','\u2592','\u2592'],['\u2592','\u2592','\u2592'],['\u2592','\u2592','\u2592']],
+];
+
+const CORRIDOR_PANEL_2x2 = [
+  [['\u25D8','\u25D8'],['\u25D8','\u25D8']],                         // ◘◘ / ◘◘
+  [['\u25D8','\u25D9'],['\u25D9','\u25D8']],                         // ◘◙ / ◙◘
+];
+const CORRIDOR_PANEL_3x3 = [
+  [['\u25D8','\u25D8','\u25D8'],['\u25D8','\u25D8','\u25D8'],['\u25D8','\u25D8','\u25D8']],
+  [['\u25D8','\u25D9','\u25D8'],['\u25D9','\u25D8','\u25D9'],['\u25D8','\u25D9','\u25D8']],
+];
+
+const CORRIDOR_WALKWAY_2x2 = [
+  [['\u25D9','\u25D9'],['\u25D9','\u25D9']],                         // ◙◙ / ◙◙
+  [['\u25D9','\u00b7'],['\u00b7','\u25D9']],                         // ◙· / ·◙
+];
+const CORRIDOR_WALKWAY_3x3 = [
+  [['\u25D9','\u25D9','\u25D9'],['\u25D9','\u25D9','\u25D9'],['\u25D9','\u25D9','\u25D9']],
+  [['\u25D9','\u25D9','\u25D9'],['\u25D9','\u00b7','\u25D9'],['\u25D9','\u25D9','\u25D9']],
+];
+
+// Character-aware pipe expansion maps for CORRIDOR_PIPE tiles
+// Preserves the ═║╝╔╗╚ pipe aesthetic at higher zoom levels
+const CORRIDOR_PIPE_CHAR_2x2 = {
+  '\u2550': [['\u2550','\u2550'],['\u2550','\u2550']],               // ═ → double horizontal
+  '\u2551': [['\u2551','\u2551'],['\u2551','\u2551']],               // ║ → double vertical
+  '\u255D': [['\u2550','\u2551'],[' ','\u255D']],                    // ╝ → bottom-right
+  '\u2554': [['\u2554',' '],['\u2551','\u2550']],                    // ╔ → top-left
+  '\u2557': [[' ','\u2557'],['\u2550','\u2551']],                    // ╗ → top-right
+  '\u255A': [['\u2551','\u2550'],['\u255A',' ']],                    // ╚ → bottom-left
+  '\u256C': [['\u2551','\u2550'],['\u2550','\u2551']],               // ╬ → cross
+};
+const CORRIDOR_PIPE_CHAR_3x3 = {
+  '\u2550': [['\u2550','\u2551','\u2551'],['\u2550','\u2550','\u2550'],['\u2550','\u2551','\u2551']],   // ═ with ║ junction pairs
+  '\u2551': [['\u2551',' ','\u2551'],['\u2551',' ','\u2551'],['\u2551',' ','\u2551']],                   // ║ vertical pair
+  '\u255D': [['\u2550','\u2551',' '],[' ','\u255D','\u2551'],[' ',' ','\u2551']],                        // ╝
+  '\u2554': [['\u2551',' ',' '],['\u2551','\u2554',' '],[' ','\u2551','\u2550']],                        // ╔
+  '\u2557': [[' ',' ','\u2551'],[' ','\u2557','\u2551'],['\u2550','\u2551',' ']],                        // ╗
+  '\u255A': [[' ',' ','\u2551'],[' ','\u255A','\u2550'],['\u2551',' ',' ']],                             // ╚
+  '\u256C': [['\u2551','\u2550','\u2551'],['\u2550','\u256C','\u2550'],['\u2551','\u2550','\u2551']],    // ╬
+};
+
+// Umbilical void — sparse noise fill for the space outside the tube
+const UMBILICAL_VOID_2x2 = [
+  [[' ',' '],[' ',' ']],
+  [[' ','\u2591'],[' ',' ']],
+  [[' ',' '],['\u2591',' ']],
+];
+const UMBILICAL_VOID_3x3 = [
+  [[' ',' ',' '],[' ',' ',' '],[' ',' ',' ']],
+  [[' ',' ','\u2591'],[' ',' ',' '],['\u2591',' ',' ']],
+  [[' ','\u2591',' '],[' ',' ',' '],[' ',' ','\u2591']],
+];
+
 // Umbilical tube walls — semi-transparent with star hints
 const UMBILICAL_WALL_2x2 = [
   [['░','░'],['░','░']],
@@ -672,6 +748,7 @@ const TYPE_PATTERNS = {
   UMBILICAL_RAIL:           { 2: UMBILICAL_RAIL_2x2, 3: UMBILICAL_RAIL_3x3 },
   UMBILICAL_FRAME:          { 2: UMBILICAL_FRAME_2x2, 3: UMBILICAL_FRAME_3x3 },
   UMBILICAL_VIEWPORT_GLASS: { 2: UMBILICAL_VIEWPORT_GLASS_2x2, 3: UMBILICAL_VIEWPORT_GLASS_3x3 },
+  UMBILICAL_VOID:      { 2: UMBILICAL_VOID_2x2, 3: UMBILICAL_VOID_3x3 },
 
   // Mechanical arm landmark (near settlements)
   MECH_ARM:            { 2: MECH_2x2, 3: MECH_3x3 },
@@ -701,12 +778,12 @@ const TYPE_PATTERNS = {
   TRANSIT_PLATFORM:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
 
   // Corridor interior tiles (CorridorGenerator layered cross-section)
-  CORRIDOR_PIPE:       { 2: MECH_2x2, 3: MECH_3x3 },
-  CORRIDOR_WALL:       { 2: WALL_2x2, 3: WALL_3x3 },
-  CORRIDOR_DARK_SHADE: { 2: WALL_2x2, 3: WALL_3x3 },
-  CORRIDOR_MED_SHADE:  { 2: WALL_2x2, 3: WALL_3x3 },
-  CORRIDOR_PANEL:      { 2: WALL_2x2, 3: WALL_3x3 },
-  CORRIDOR_WALKWAY:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
+  // CORRIDOR_PIPE uses character-aware expansion (handled in _expandTileInner)
+  CORRIDOR_WALL:       { 2: CORRIDOR_WALL_2x2, 3: CORRIDOR_WALL_3x3 },
+  CORRIDOR_DARK_SHADE: { 2: CORRIDOR_DARK_SHADE_2x2, 3: CORRIDOR_DARK_SHADE_3x3 },
+  CORRIDOR_MED_SHADE:  { 2: CORRIDOR_MED_SHADE_2x2, 3: CORRIDOR_MED_SHADE_3x3 },
+  CORRIDOR_PANEL:      { 2: CORRIDOR_PANEL_2x2, 3: CORRIDOR_PANEL_3x3 },
+  CORRIDOR_WALKWAY:    { 2: CORRIDOR_WALKWAY_2x2, 3: CORRIDOR_WALKWAY_3x3 },
 
   // Facility tiles (C2 / ENG)
   FACILITY_WALL:       { 2: WALL_2x2, 3: WALL_3x3 },
@@ -816,6 +893,34 @@ function _expandTileInner(tile, density, wx, wy) {
       fgs: [[tile.fg]],
       bgs: [[tile.bg || '#000000']],
     };
+  }
+
+  // CORRIDOR_PIPE tiles use character-aware expansion to preserve ═║╝╔╗╚ pipe layout
+  if (tile.type === 'CORRIDOR_PIPE') {
+    const charMap = density === 2 ? CORRIDOR_PIPE_CHAR_2x2 : CORRIDOR_PIPE_CHAR_3x3;
+    const pattern = charMap[tile.char];
+    if (pattern) {
+      const chars = [];
+      const fgs = [];
+      const bgs = [];
+      const bg = tile.bg || '#000000';
+      for (let dy = 0; dy < density; dy++) {
+        const charRow = [];
+        const fgRow = [];
+        const bgRow = [];
+        for (let dx = 0; dx < density; dx++) {
+          const ch = pattern[dy][dx];
+          charRow.push(ch);
+          fgRow.push(tile.fg);
+          bgRow.push(ch === ' ' ? '#000000' : bg);
+        }
+        chars.push(charRow);
+        fgs.push(fgRow);
+        bgs.push(bgRow);
+      }
+      return { chars, fgs, bgs };
+    }
+    return _fillUniform(tile, density);
   }
 
   // MECH_ARM tiles use character-aware expansion to preserve the arm's shape
