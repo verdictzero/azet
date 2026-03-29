@@ -2228,6 +2228,36 @@ export class UIManager {
           r.drawChar(psx + 1, psy + 1, '\u2518', reticleColor);
         }
       }
+
+      // MECH_ARM overlay — draw on top of all entities
+      for (let wy_off = 0; wy_off < worldH; wy_off++) {
+        for (let wx_off = 0; wx_off < worldW; wx_off++) {
+          const wx = camX + wx_off;
+          const wy = camY + wy_off;
+          if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
+          const tile = settlement.tiles[wy][wx];
+          if (!tile || tile.type !== 'MECH_ARM') continue;
+
+          if (density === 1) {
+            const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+            const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
+            r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, tile.bg || COLORS.BLACK);
+          } else {
+            const expanded = expandTile(tile, density, wx, wy);
+            for (let dy = 0; dy < density; dy++) {
+              for (let dx = 0; dx < density; dx++) {
+                const screenX = viewLeft + wx_off * density + dx;
+                const screenY = viewTop + wy_off * density + dy;
+                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                  const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx, wy);
+                  const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(expanded.fgs[dy][dx], tile.type, wx, wy) : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                  r.drawChar(screenX, screenY, ch, fg, expanded.bgs[dy][dx]);
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 
