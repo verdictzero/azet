@@ -555,6 +555,22 @@ export class Renderer {
    * @param {string} color - CSS color (e.g. 'rgba(0,0,50,0.3)')
    * @param {number} alpha - opacity 0-1
    */
+  /**
+   * Desaturate the entire canvas to greyscale.
+   * Uses an offscreen canvas + ctx.filter for a single-pass conversion.
+   */
+  applyGreyscale() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (w === 0 || h === 0) return;
+    ctx.save();
+    ctx.filter = 'grayscale(1)';
+    ctx.drawImage(this.canvas, 0, 0);
+    ctx.filter = 'none';
+    ctx.restore();
+  }
+
   tintOverlay(color, alpha) {
     if (alpha <= 0) return;
     const ctx = this.ctx;
