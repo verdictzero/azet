@@ -1343,6 +1343,11 @@ export class Camera {
     this.targetY = 0;
 
     this.lerpSpeed = 0.2;
+
+    this.shakeOffsetX = 0;
+    this.shakeOffsetY = 0;
+    this.shakeIntensity = 0;
+    this.shakeDecay = 0.8;
   }
 
   /**
@@ -1357,6 +1362,14 @@ export class Camera {
   }
 
   /**
+   * Trigger a camera shake effect.
+   * @param {number} intensity - shake strength (1.0 = subtle, 2.0+ = strong)
+   */
+  shake(intensity) {
+    this.shakeIntensity = intensity;
+  }
+
+  /**
    * Smoothly interpolate toward the target position.
    */
   update() {
@@ -1366,7 +1379,24 @@ export class Camera {
     // Snap when very close to avoid sub-pixel jitter
     if (Math.abs(this.targetX - this.x) < 0.01) this.x = this.targetX;
     if (Math.abs(this.targetY - this.y) < 0.01) this.y = this.targetY;
+
+    // Compute and decay shake offsets
+    if (this.shakeIntensity > 0.05) {
+      this.shakeOffsetX = (Math.random() - 0.5) * this.shakeIntensity * 2;
+      this.shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity;
+      this.shakeIntensity *= this.shakeDecay;
+    } else {
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+      this.shakeIntensity = 0;
+    }
   }
+
+  /** Camera X position including shake offset. */
+  getRenderX() { return this.x + this.shakeOffsetX; }
+
+  /** Camera Y position including shake offset. */
+  getRenderY() { return this.y + this.shakeOffsetY; }
 
   /**
    * Convert world coordinates to screen column/row.
