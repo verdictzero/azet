@@ -173,6 +173,7 @@ class Game {
       Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / initDensity)
     );
     this.locationCamera = null;
+    this._bumpState = { dx: 0, dy: 0, count: 0, lastTime: 0 };
     this.playerFacingDir = { dx: 1, dy: 0 }; // default facing right
     this.ui = new UIManager(this.renderer);
     this.music = new MusicManager();
@@ -4137,6 +4138,29 @@ class Game {
     return dirs[key] || null;
   }
 
+  _registerBump(dx, dy) {
+    const now = performance.now();
+    if (this._bumpState.dx === dx && this._bumpState.dy === dy
+        && (now - this._bumpState.lastTime) < 800) {
+      this._bumpState.count++;
+    } else {
+      this._bumpState.dx = dx;
+      this._bumpState.dy = dy;
+      this._bumpState.count = 1;
+    }
+    this._bumpState.lastTime = now;
+    if (this._bumpState.count >= 3) {
+      this._triggerBumpEffect();
+    }
+  }
+
+  _triggerBumpEffect() {
+    const extra = Math.min(this._bumpState.count - 3, 4);
+    const intensity = 1.0 + extra * 0.3;
+    this.camera.shake(intensity);
+    this.renderer.flash('#FF4400', 0.12 + extra * 0.03);
+  }
+
   movePlayer(dx, dy) {
     if (!this.overworld) return;
 
@@ -4176,6 +4200,7 @@ class Game {
       } else {
         this.ui.addMessage('A massive hull wall stretches endlessly. This is the outer hull of the ship.', COLORS.BRIGHT_WHITE);
       }
+      this._registerBump(dx, dy);
       return;
     }
 
@@ -4191,6 +4216,7 @@ class Game {
 
     if (!tile.walkable) {
       this.ui.addMessage('You can\'t go that way.', COLORS.BRIGHT_BLACK);
+      this._registerBump(dx, dy);
       return;
     }
 
@@ -4223,6 +4249,7 @@ class Game {
 
     this.player.position.x = nx;
     this.player.position.y = ny;
+    this._bumpState.count = 0;
     this.turnCount++;
 
     // Track current section
@@ -4461,15 +4488,15 @@ class Game {
       }
     }
 
-    if (ny < 0 || ny >= this.currentSettlement.tiles.length) return;
-    if (nx < 0 || nx >= this.currentSettlement.tiles[0].length) return;
+    if (ny < 0 || ny >= this.currentSettlement.tiles.length) { this._registerBump(dx, dy); return; }
+    if (nx < 0 || nx >= this.currentSettlement.tiles[0].length) { this._registerBump(dx, dy); return; }
 
     const tile = this.currentSettlement.tiles[ny][nx];
-    if (tile.solid) return;
+    if (tile.solid) { this._registerBump(dx, dy); return; }
 
     // NPCs block movement — player must press interact to talk
     const npcAt = this.npcs.find(n => n.position.x === nx && n.position.y === ny);
-    if (npcAt) return;
+    if (npcAt) { this._registerBump(dx, dy); return; }
 
     // Bridge-specific: enemy collision triggers combat
     if (this.currentSettlement.isBridge) {
@@ -4482,6 +4509,7 @@ class Game {
 
     this.player.position.x = nx;
     this.player.position.y = ny;
+    this._bumpState.count = 0;
     this.turnCount++;
 
     // Update NPC schedules — move NPCs based on time of day
@@ -4526,11 +4554,11 @@ class Game {
     const nx = this.player.position.x + dx;
     const ny = this.player.position.y + dy;
 
-    if (ny < 0 || ny >= this.currentDungeon.tiles.length) return;
-    if (nx < 0 || nx >= this.currentDungeon.tiles[0].length) return;
+    if (ny < 0 || ny >= this.currentDungeon.tiles.length) { this._registerBump(dx, dy); return; }
+    if (nx < 0 || nx >= this.currentDungeon.tiles[0].length) { this._registerBump(dx, dy); return; }
 
     const tile = this.currentDungeon.tiles[ny][nx];
-    if (!tile.walkable) return;
+    if (!tile.walkable) { this._registerBump(dx, dy); return; }
 
     // Check enemy collision -> combat
     const enemyAt = this.enemies.find(e => e.position.x === nx && e.position.y === ny);
@@ -4541,6 +4569,7 @@ class Game {
 
     this.player.position.x = nx;
     this.player.position.y = ny;
+    this._bumpState.count = 0;
     this.playerFacingDir = { dx, dy };
     this.turnCount++;
 
@@ -5706,8 +5735,8 @@ class Game {
         const hasShadows = sBuf.some(v => v > 0);
         if (hasShadows && this.renderer._godRayNoise) {
           this._godRayFrame++;
-          const camX = Math.floor(this.camera.x);
-          const camY = Math.floor(this.camera.y);
+          const camX = Math.floor(this.camera.getRenderX());
+          const camY = Math.floor(this.camera.getRenderY());
           const cameraMoved = camX !== this._godRayCacheCamX || camY !== this._godRayCacheCamY;
           if (!this._godRayCachedCells || this._godRayFrame % 3 === 0 || cameraMoved) {
             // Recompute god rays
@@ -5787,8 +5816,8 @@ class Game {
       if (!this.timeSystem.isDaytime()) {
         const lightInfo = this.player?.hasLightSource();
         if (lightInfo?.hasLight && this.state === 'OVERWORLD') {
-          const camX = Math.floor(this.camera.x);
-          const camY = Math.floor(this.camera.y);
+          const camX = Math.floor(this.camera.getRenderX());
+          const camY = Math.floor(this.camera.getRenderY());
           const dLevel = this.renderer.densityLevel;
           const plx = this.player.position.x - camX;
           const ply = this.player.position.y - camY;
@@ -5943,8 +5972,8 @@ class Game {
     }
 
     const density = r.densityLevel;
-    const camX = Math.floor(this.camera.x);
-    const camY = Math.floor(this.camera.y);
+    const camX = Math.floor(this.camera.getRenderX());
+    const camY = Math.floor(this.camera.getRenderY());
     const worldW = Math.ceil(viewW / density);
     const worldH = Math.ceil(viewH / density);
     // Center offset for entities within their expanded tile (0 for d=1, 0 for d=2, 1 for d=3)
