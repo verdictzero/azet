@@ -4157,7 +4157,10 @@ class Game {
   _triggerBumpEffect() {
     const extra = Math.min(this._bumpState.count - 3, 4);
     const intensity = 1.0 + extra * 0.3;
-    this.camera.shake(intensity);
+    // Shake whichever camera is active for the current state
+    const cam = (this.state === 'LOCATION' && this.locationCamera)
+      ? this.locationCamera : this.camera;
+    cam.shake(intensity);
     this.renderer.flash('#FF4400', 0.12 + extra * 0.03);
   }
 
@@ -6397,6 +6400,8 @@ class Game {
 
   renderDungeon() {
     if (!this.currentDungeon || !this.currentDungeon.tiles) return;
+    // Tick camera shake decay (dungeon doesn't use camera for rendering but needs shake)
+    this.camera.update();
 
     const r = this.renderer;
     const viewLeft = 1;
@@ -6409,9 +6414,11 @@ class Game {
     const worldH = Math.ceil(viewH / density);
     const entityOff = Math.floor(density / 2);
 
-    // Center on player (in world tiles)
-    const offsetX = this.player.position.x - Math.floor(worldW / 2);
-    const offsetY = this.player.position.y - Math.floor(worldH / 2);
+    // Center on player (in world tiles), include camera shake offset
+    const shakeX = this.camera.shakeOffsetX || 0;
+    const shakeY = this.camera.shakeOffsetY || 0;
+    const offsetX = this.player.position.x - Math.floor(worldW / 2) + Math.round(shakeX);
+    const offsetY = this.player.position.y - Math.floor(worldH / 2) + Math.round(shakeY);
 
     const dw = this.currentDungeon.tiles[0]?.length || 0;
     const dh = this.currentDungeon.tiles.length;

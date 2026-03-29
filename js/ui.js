@@ -1880,8 +1880,8 @@ export class UIManager {
       const worldH = Math.ceil(viewH / density);
       const entityOff = Math.floor(density / 2);
 
-      const camX = camera ? Math.floor(camera.x) : Math.max(0, Math.floor((settlement.tiles[0].length - worldW) / 2));
-      const camY = camera ? Math.floor(camera.y) : Math.max(0, Math.floor((settlement.tiles.length - worldH) / 2));
+      const camX = camera ? Math.floor(camera.getRenderX()) : Math.max(0, Math.floor((settlement.tiles[0].length - worldW) / 2));
+      const camY = camera ? Math.floor(camera.getRenderY()) : Math.max(0, Math.floor((settlement.tiles.length - worldH) / 2));
 
       // Collect infinitely linear shadows (in screen coords) — works for both sun and moon
       const shadowCells = new Map();
