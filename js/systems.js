@@ -2613,3 +2613,224 @@ export class CloudSystem {
     return Math.min(1, density);
   }
 }
+
+// ============================================================================
+// CauseEffectSystem — Processes authored trigger/effect chains at runtime
+// ============================================================================
+
+export class CauseEffectSystem {
+  constructor() {
+    this._chains = [];        // loaded chain definitions
+    this._flags = new Map();  // global flags set by effects
+    this._firedTriggers = new Set(); // prevent re-firing one-shot triggers
+  }
+
+  /**
+   * Load authored cause/effect chains.
+   * @param {Array} chains - Chain definitions from game-content.json
+   */
+  loadChains(chains) {
+    this._chains = chains || [];
+  }
+
+  /** Get all global flags. */
+  getFlags() { return this._flags; }
+
+  /** Get a specific flag value. */
+  getFlag(flag) { return this._flags.get(flag); }
+
+  /** Set a flag directly (used by other systems). */
+  setFlag(flag, value) { this._flags.set(flag, value === undefined ? 'true' : String(value)); }
+
+  /**
+   * Fire a trigger event and process any matching chains.
+   * Returns an array of effect actions to execute.
+   *
+   * @param {string} eventType - e.g., 'quest_complete', 'npc_killed', 'flag_set'
+   * @param {Object} eventParams - e.g., { questChainId: 'chain_001', stage: 2 }
+   * @param {Object} gameContext - current game state for condition checking
+   * @returns {Array<Object>} effects to execute
+   */
+  processEvent(eventType, eventParams, gameContext) {
+    const effects = [];
+
+    for (const chain of this._chains) {
+      for (const node of chain.nodes) {
+        if (node.type !== 'trigger') continue;
+        if (node.event !== eventType) continue;
+
+        // Check if trigger params match
+        if (!this._paramsMatch(node.params, eventParams)) continue;
+
+        // Check if already fired (one-shot)
+        const triggerKey = `${chain.id}:${node.id}`;
+        if (this._firedTriggers.has(triggerKey)) continue;
+        this._firedTriggers.add(triggerKey);
+
+        // Collect all connected effects
+        const connectedEffects = this._collectEffects(chain, node);
+        effects.push(...connectedEffects);
+      }
+    }
+
+    return effects;
+  }
+
+  /**
+   * Execute an array of effects. Returns messages to display.
+   * @param {Array} effects - Effect objects from processEvent
+   * @param {Object} game - Game instance for executing actions
+   * @returns {Array<string>} messages
+   */
+  executeEffects(effects, game) {
+    const messages = [];
+
+    for (const effect of effects) {
+      switch (effect.action) {
+        case 'set_flag':
+          this.setFlag(effect.params.flag, effect.params.value);
+          break;
+
+        case 'show_message':
+          if (effect.params.text) messages.push(effect.params.text);
+          break;
+
+        case 'change_faction_rep':
+          if (game.factionSystem && effect.params.faction) {
+            const amount = parseInt(effect.params.amount, 10) || 0;
+            game.factionSystem.changeReputation(effect.params.faction, amount);
+            messages.push(`Reputation with ${effect.params.faction} changed by ${amount}.`);
+          }
+          break;
+
+        case 'give_item':
+          if (game.player && effect.params.itemId && game.authoredContent) {
+            const item = game.authoredContent.items.find(i => i.id === effect.params.itemId);
+            if (item) {
+              game.player.inventory.push({ ...item });
+              messages.push(`Received ${item.name}.`);
+            }
+          }
+          break;
+
+        case 'start_quest':
+          if (game.questSystem && effect.params.questChainId) {
+            game.questSystem.startChain(effect.params.questChainId);
+            messages.push('New quest available.');
+          }
+          break;
+
+        case 'spawn_npc':
+          // Store for settlement/world system to pick up
+          if (!game._pendingNpcSpawns) game._pendingNpcSpawns = [];
+          game._pendingNpcSpawns.push({
+            npcId: effect.params.npcId,
+            location: effect.params.location,
+          });
+          break;
+
+        case 'remove_npc':
+          if (!game._pendingNpcRemovals) game._pendingNpcRemovals = [];
+          game._pendingNpcRemovals.push(effect.params.npcId);
+          break;
+
+        case 'spawn_creature':
+          if (!game._pendingCreatureSpawns) game._pendingCreatureSpawns = [];
+          game._pendingCreatureSpawns.push({
+            creatureId: effect.params.creatureId,
+            location: effect.params.location,
+          });
+          break;
+
+        case 'unlock_area':
+          if (game.player && effect.params.areaId) {
+            game.player.unlockedSections.add(effect.params.areaId);
+            messages.push(`New area unlocked: ${effect.params.areaId}`);
+          }
+          break;
+
+        case 'lock_area':
+          if (game.player && effect.params.areaId) {
+            game.player.unlockedSections.delete(effect.params.areaId);
+            messages.push(`Area locked: ${effect.params.areaId}`);
+          }
+          break;
+
+        case 'change_npc_dialogue':
+          // Store for dialogue system to pick up
+          if (!game._pendingDialogueChanges) game._pendingDialogueChanges = [];
+          game._pendingDialogueChanges.push({
+            npcId: effect.params.npcId,
+            dialogueTreeId: effect.params.dialogueTreeId,
+          });
+          break;
+
+        default:
+          break;
+      }
+
+      // After each effect, check if it triggers more chains
+      if (effect.action === 'set_flag') {
+        const cascaded = this.processEvent('flag_set', {
+          flag: effect.params.flag,
+          value: effect.params.value,
+        });
+        if (cascaded.length > 0) {
+          const cascadeMessages = this.executeEffects(cascaded, game);
+          messages.push(...cascadeMessages);
+        }
+      }
+    }
+
+    return messages;
+  }
+
+  // ── Private helpers ──
+
+  _paramsMatch(nodeParams, eventParams) {
+    if (!nodeParams) return true;
+    for (const [key, val] of Object.entries(nodeParams)) {
+      if (val === '' || val === null || val === undefined) continue;
+      const eventVal = eventParams[key];
+      if (eventVal === undefined) continue;
+      if (String(val) !== String(eventVal)) return false;
+    }
+    return true;
+  }
+
+  _collectEffects(chain, triggerNode) {
+    const effects = [];
+    if (!triggerNode.outputs) return effects;
+
+    for (const outputId of triggerNode.outputs) {
+      const node = chain.nodes.find(n => n.id === outputId);
+      if (!node || node.type !== 'effect') continue;
+
+      effects.push({
+        action: node.action || node.event,
+        params: node.params || {},
+        chainId: chain.id,
+        nodeId: node.id,
+      });
+
+      // Recursively follow effect -> trigger chains
+      if (node.outputs && node.outputs.length > 0) {
+        for (const nextId of node.outputs) {
+          const nextNode = chain.nodes.find(n => n.id === nextId);
+          if (nextNode && nextNode.type === 'trigger') {
+            // This is a chained trigger — will be activated by event matching
+          } else if (nextNode && nextNode.type === 'effect') {
+            effects.push({
+              action: nextNode.action || nextNode.event,
+              params: nextNode.params || {},
+              chainId: chain.id,
+              nodeId: nextNode.id,
+            });
+          }
+        }
+      }
+    }
+
+    return effects;
+  }
+}
