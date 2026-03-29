@@ -20,12 +20,21 @@ export class App {
     this._panStart = { x: 0, y: 0 };
     this._panScrollStart = { left: 0, top: 0 };
 
+    // Touch / pinch state
+    this._singleTouchId = undefined;
+    this._pinchStartDist = 0;
+    this._pinchStartZoom = 1;
+    this._pinchStartMid = { x: 0, y: 0 };
+    this._pinchStartScroll = { left: 0, top: 0 };
+
     this.renderer.resize();
 
     this._setupCanvasEvents();
+    this._setupTouchEvents();
     this._setupToolbar();
     this._setupKeyboard();
     this._setupStatusBar();
+    this._setupMobileToggles();
 
     this.state.on('change', () => {
       this.renderer.markDirty();
@@ -143,6 +152,157 @@ export class App {
     const px = (e.clientX - rect.left) * scaleX;
     const py = (e.clientY - rect.top) * scaleY;
     return this.renderer.pixelToCell(px, py);
+  }
+
+  // ── Touch events (mobile drawing + pinch-to-zoom) ──
+
+  _setupTouchEvents() {
+    const canvas = this.canvas;
+    const canvasArea = canvas.closest('.canvas-area');
+
+    canvas.addEventListener('touchstart', e => {
+      if (e.touches.length === 1) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const { col, row } = this._eventToCell(touch);
+        if (col < 0 || col >= this.state.cols || row < 0 || row >= this.state.rows) return;
+        this._singleTouchId = touch.identifier;
+        this.tools.onMouseDown(col, row, 0);
+        this.renderer.markDirty();
+      } else if (e.touches.length === 2) {
+        e.preventDefault();
+        // Cancel in-progress drawing if a second finger arrives
+        if (this.state.mouseDown) {
+          this.state.mouseDown = false;
+        }
+        this._singleTouchId = undefined;
+        this._startPinch(e.touches, canvasArea);
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (e.touches.length === 2) {
+        this._updatePinch(e.touches, canvasArea);
+        return;
+      }
+      if (e.touches.length === 1 && this._singleTouchId !== undefined) {
+        const touch = [...e.touches].find(t => t.identifier === this._singleTouchId);
+        if (!touch) return;
+        const { col, row } = this._eventToCell(touch);
+        this.state.hoverCell = (col >= 0 && col < this.state.cols && row >= 0 && row < this.state.rows)
+          ? { col, row } : null;
+        if (this.state.mouseDown || this.state.floatingContent) {
+          const cCol = Math.max(0, Math.min(this.state.cols - 1, col));
+          const cRow = Math.max(0, Math.min(this.state.rows - 1, row));
+          this.tools.onMouseMove(cCol, cRow);
+        }
+        this.renderer.markDirty();
+        this._updateStatus();
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', e => {
+      if (e.touches.length < 2) {
+        this._endPinch();
+      }
+      if (e.touches.length === 0 && this._singleTouchId !== undefined) {
+        const touch = e.changedTouches[0];
+        const { col, row } = this._eventToCell(touch);
+        const cCol = Math.max(0, Math.min(this.state.cols - 1, col));
+        const cRow = Math.max(0, Math.min(this.state.rows - 1, row));
+        this.tools.onMouseUp(cCol, cRow);
+        this.state.hoverCell = null;
+        this.renderer.markDirty();
+        this._singleTouchId = undefined;
+      }
+    });
+
+    canvas.addEventListener('touchcancel', () => {
+      this._singleTouchId = undefined;
+      this._endPinch();
+      this.state.hoverCell = null;
+      this.state.mouseDown = false;
+      this.renderer.markDirty();
+    });
+  }
+
+  _startPinch(touches, canvasArea) {
+    const t0 = touches[0], t1 = touches[1];
+    this._pinchStartDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+    this._pinchStartZoom = this.state.zoom;
+    this._pinchStartMid = {
+      x: (t0.clientX + t1.clientX) / 2,
+      y: (t0.clientY + t1.clientY) / 2,
+    };
+    this._pinchStartScroll = {
+      left: canvasArea.scrollLeft,
+      top: canvasArea.scrollTop,
+    };
+  }
+
+  _updatePinch(touches, canvasArea) {
+    if (this._pinchStartDist === 0) return;
+    const t0 = touches[0], t1 = touches[1];
+    const currentDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+    const ratio = currentDist / this._pinchStartDist;
+    const rawZoom = this._pinchStartZoom * ratio;
+    const newZoom = Math.max(0.5, Math.min(4, Math.round(rawZoom * 4) / 4));
+    if (newZoom !== this.state.zoom) {
+      this.state.zoom = newZoom;
+      this.renderer.resize();
+      this.renderer.markDirty();
+      this._updateStatus();
+    }
+    // Two-finger pan
+    const midX = (t0.clientX + t1.clientX) / 2;
+    const midY = (t0.clientY + t1.clientY) / 2;
+    canvasArea.scrollLeft = this._pinchStartScroll.left - (midX - this._pinchStartMid.x);
+    canvasArea.scrollTop = this._pinchStartScroll.top - (midY - this._pinchStartMid.y);
+  }
+
+  _endPinch() {
+    this._pinchStartDist = 0;
+  }
+
+  // ── Mobile sidebar toggles ──
+
+  _setupMobileToggles() {
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarRight = document.getElementById('clipboardSidebar');
+    const btnPalette = document.getElementById('btnTogglePalette');
+    const btnClipboard = document.getElementById('btnToggleClipboard');
+
+    // Create backdrop overlay
+    const backdrop = document.createElement('div');
+    backdrop.className = 'sidebar-backdrop';
+    document.body.appendChild(backdrop);
+
+    const closeAll = () => {
+      sidebar.classList.remove('open');
+      sidebarRight.classList.remove('open');
+      backdrop.classList.remove('visible');
+    };
+
+    btnPalette.addEventListener('click', () => {
+      const opening = !sidebar.classList.contains('open');
+      closeAll();
+      if (opening) {
+        sidebar.classList.add('open');
+        backdrop.classList.add('visible');
+      }
+    });
+
+    btnClipboard.addEventListener('click', () => {
+      const opening = !sidebarRight.classList.contains('open');
+      closeAll();
+      if (opening) {
+        sidebarRight.classList.add('open');
+        backdrop.classList.add('visible');
+      }
+    });
+
+    backdrop.addEventListener('click', closeAll);
   }
 
   // ── Toolbar ──
