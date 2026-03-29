@@ -1,7 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   background: #0a0a0a; color: #ccc; font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 13px; height: 100vh; overflow: hidden; user-select: none;
+  font-size: 13px; height: 100vh; overflow: hidden; user-select: none; touch-action: manipulation;
 }
 h2 { color: #55FFFF; font-size: 11px; margin-bottom: 6px; font-family: monospace; text-transform: uppercase; }
 
@@ -24,10 +24,10 @@ h2 { color: #55FFFF; font-size: 11px; margin-bottom: 6px; font-family: monospace
 }
 .canvas-area {
   flex: 1; overflow: auto; background: #0a0a0a; position: relative;
-  contain: layout size style; min-width: 0; min-height: 0;
+  contain: layout size style; min-width: 0; min-height: 0; touch-action: none;
 }
 .canvas-container { display: inline-block; padding: 20px; min-width: 100%; min-height: 100%; }
-#paintCanvas { display: block; cursor: crosshair; image-rendering: pixelated; }
+#paintCanvas { display: block; cursor: crosshair; image-rendering: pixelated; touch-action: none; }
 .statusbar {
   background: #111; border-top: 2px solid #333; padding: 4px 12px;
   display: flex; gap: 20px; font-family: monospace; font-size: 11px; color: #888;
@@ -187,3 +187,49 @@ select {
 ::-webkit-scrollbar-track { background: #111; }
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* Mobile toggle buttons — hidden on desktop */
+.mobile-toggles { display: none; }
+
+/* Sidebar overlay backdrop */
+.sidebar-backdrop {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99;
+}
+.sidebar-backdrop.visible { display: block; }
+
+/* ── Mobile / Portrait responsive ── */
+@media (max-width: 768px) {
+  .mobile-toggles { display: flex; }
+
+  .toolbar {
+    padding: 4px 6px; gap: 4px; min-height: 36px;
+  }
+  .toolbar-group + .toolbar-group { padding-left: 6px; }
+  .toolbar-title { font-size: 12px; }
+  button { padding: 3px 6px; font-size: 11px; }
+  .tool-btn { padding: 2px 5px; font-size: 10px; }
+
+  /* Sidebars become fixed overlays */
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
+    width: 260px; min-width: 0;
+    transform: translateX(-100%); transition: transform 0.2s ease;
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-right {
+    position: fixed; right: 0; top: 0; bottom: 0; z-index: 100;
+    width: 240px; min-width: 0;
+    transform: translateX(100%); transition: transform 0.2s ease;
+  }
+  .sidebar-right.open { transform: translateX(0); }
+
+  /* Char panel compact */
+  .char-panel { max-height: 130px; min-height: 60px; padding: 4px 6px; }
+  .char-cell { width: 24px; height: 24px; font-size: 12px; }
+  .quick-slot { width: 26px; height: 26px; font-size: 13px; }
+  .char-panel-header { flex-wrap: wrap; gap: 4px; }
+
+  /* Status bar compact */
+  .statusbar { gap: 8px; font-size: 10px; padding: 3px 8px; }
+}
