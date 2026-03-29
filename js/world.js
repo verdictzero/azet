@@ -133,12 +133,6 @@
 //     world coords). If cache is global and not cleared, expansion patterns
 //     from dungeon coords could bleed into overworld at matching positions.
 //     clearTileCache() in _clearRenderCaches() should handle this.
-//
-// [F] ENTRANCE ALIGNMENT (replaced old hash system)
-//     Habitat walls now use 3 fixed entrances at 1/4, 1/2, 3/4 of wrap height.
-//     Inner hull corridor openings match these positions by checking the
-//     adjacent habitat section's entrance positions via _getEntranceAtY().
-//
 // [G] locationCamera NOT NULLED ON DUNGEON EXIT — line 2142
 //     On dungeon exit, currentSettlement is set to null but locationCamera
 //     is not explicitly cleared. If render dispatch checks locationCamera
@@ -499,43 +493,8 @@ const FACILITY_WIDTH_CHUNKS = 64;   // ~2048 tiles E-W for C2/ENG
 const FACILITY_WRAP_CHUNKS = 96;    // ~3072 tiles N-S for facilities
 const INNER_HULL_WIDTH_CHUNKS = 8;  // ~256 tiles E-W engineering corridors
 
-// Entrance parameters — 3 fixed entrances per habitat wall (top/middle/bottom)
-const ENTRANCE_COUNT = 3;           // entrances per wall side
-const ENTRANCE_HALF_HEIGHT = 2;     // entrance is 5 tiles tall (2 frame + 3 walkable)
-
 // Wall thickness & gradient — solid hull plating with fading block gradient
 const WALL_THICKNESS = 7;           // tiles thick at each edge of the section
-
-// Get the 3 entrance Y positions for a given section (evenly spaced at 1/4, 1/2, 3/4 of wrap height)
-function _getEntrancePositions(section) {
-  const wrapHeight = section.wrapChunks * CHUNK_SIZE;
-  return [
-    Math.floor(wrapHeight / 4),       // entrance 0 — top
-    Math.floor(wrapHeight / 2),       // entrance 1 — middle
-    Math.floor(3 * wrapHeight / 4),   // entrance 2 — bottom
-  ];
-}
-
-// Check if a Y coordinate is at an entrance position for the given section
-// Returns { entranceIndex, phase } or null if not at an entrance
-function _getEntranceAtY(wy, section) {
-  const wrapHeight = section.wrapChunks * CHUNK_SIZE;
-  const wrappedY = ((wy % wrapHeight) + wrapHeight) % wrapHeight;
-  const positions = _getEntrancePositions(section);
-
-  // Special cases: H1 west gets only entrance 1, H7 east gets only entrance 1
-  // (handled by caller based on isWest flag)
-
-  for (let i = 0; i < positions.length; i++) {
-    const centerY = positions[i];
-    const dy = wrappedY - centerY;
-    // Entrance spans from -ENTRANCE_HALF_HEIGHT to +ENTRANCE_HALF_HEIGHT (5 tiles total)
-    if (dy >= -ENTRANCE_HALF_HEIGHT && dy <= ENTRANCE_HALF_HEIGHT) {
-      return { entranceIndex: i, phase: dy + ENTRANCE_HALF_HEIGHT }; // phase 0-4 (0 and 4 are frames)
-    }
-  }
-  return null;
-}
 
 // Wall gradient: index 0 = outermost (hull exterior), index 6 = innermost (habitat side)
 const WALL_GRADIENT = [
@@ -933,98 +892,6 @@ export class ChunkManager {
       else if (localTileX >= sectionWidth - WALL_THICKNESS) wallDist = sectionWidth - 1 - localTileX;
 
       if (wallDist >= 0) {
-        const isWest = localTileX < WALL_THICKNESS;
-
-        // Check for entrance at this Y position (3 fixed entrances per wall)
-        if (section.type === 'habitat') {
-          const entranceInfo = _getEntranceAtY(wy, section);
-
-          // Determine if this wall side should have entrances
-          // H1 west wall: single special entrance (index 1 only) → C2 access
-          // H7 east wall: single special entrance (index 1 only) → ENG access
-          // All other habitat walls: 3 entrances
-          let hasEntrance = false;
-          let isSpecialAccess = false;
-          if (entranceInfo) {
-            if (section.id === 'H1' && isWest) {
-              hasEntrance = entranceInfo.entranceIndex === 1;
-              isSpecialAccess = true;
-            } else if (section.id === 'H7' && !isWest) {
-              hasEntrance = entranceInfo.entranceIndex === 1;
-              isSpecialAccess = true;
-            } else {
-              hasEntrance = true;
-            }
-          }
-
-          if (hasEntrance && entranceInfo) {
-            const { entranceIndex, phase } = entranceInfo;
-            const isCenterRow = phase === ENTRANCE_HALF_HEIGHT;
-
-            // Frame rows — top and bottom of entrance (phase 0 and phase 4)
-            if (phase === 0 || phase === ENTRANCE_HALF_HEIGHT * 2) {
-              const isTop = phase === 0;
-              // Gold paneling for wallDist 5-6 frames
-              if (wallDist >= 5) {
-                const frameFg = isSpecialAccess ? '#DD4444' : '#DDAA22';
-                let ch;
-                if (wallDist === 6) ch = isTop ? (isWest ? '╗' : '╔') : (isWest ? '╝' : '╚');
-                else ch = '═';
-                return tile('ENTRANCE_PANEL', ch, frameFg, '#221100', false,
-                  { biome: 'hull', entranceFrame: true });
-              }
-              let ch;
-              if (wallDist === 0) ch = isTop ? (isWest ? '╔' : '╗') : (isWest ? '╚' : '╝');
-              else ch = '─';
-              return tile('ENTRANCE_FRAME', ch, isSpecialAccess ? '#DD4444' : '#CC9900', '#0D0800', false,
-                { biome: 'hull', entranceFrame: true });
-            }
-
-            // Passage rows (3 walkable rows between frames)
-            // Clean gradient: arrow → light shade → medium shade → open → panel → door
-            // wallDist 0: Outer hull entrance — directional arrow
-            if (wallDist === 0) {
-              const ch = isWest ? '►' : '◄';
-              return tile('ENTRANCE_PASSAGE', ch, '#FFAA00', '#1A1100', true,
-                { biome: 'hull', entrance: true });
-            }
-            // wallDist 1-2: Blast corridor — light shade blending with wall
-            if (wallDist === 1 || wallDist === 2) {
-              return tile('ENTRANCE_PASSAGE', '░', '#CC9900', '#0D0800', true,
-                { biome: 'hull', entrance: true });
-            }
-            // wallDist 3: Inner blast door — medium shade continuing gradient
-            if (wallDist === 3) {
-              return tile('ENTRANCE_PASSAGE', '▒', '#AA7700', '#0D0800', true,
-                { biome: 'hull', entrance: true });
-            }
-            // wallDist 4: Interstitial junction — open passage
-            if (wallDist === 4) {
-              return tile('ENTRANCE_PASSAGE', '·', '#FFCC44', '#1A1100', true,
-                { biome: 'hull', entrance: true });
-            }
-            // wallDist 5: Gold paneling transition
-            if (wallDist === 5) {
-              return tile('ENTRANCE_PANEL', '▓', isSpecialAccess ? '#AA3333' : '#CCAA33', '#1A1100', false,
-                { biome: 'hull', entrance: true, entranceFrame: true });
-            }
-            // wallDist 6: ENTRANCE DOOR — the habitat-side door the player interacts with
-            // Non-walkable: player must press E/Enter to interact and enter engineering space
-            if (isCenterRow) {
-              const doorChar = isSpecialAccess ? '⊠' : (isWest ? '◄' : '►');
-              const doorFg = isSpecialAccess ? '#FF4444' : '#FFDD44';
-              const dirSuffix = isWest ? '_W' : '_E';
-              const doorType = isSpecialAccess ? 'SPECIAL_ACCESS_DOOR' + dirSuffix : 'ENTRANCE_DOOR' + dirSuffix;
-              return tile(doorType, doorChar, doorFg, '#221100', false,
-                { biome: 'hull', entranceDoor: true, entrance: true, isWestWall: isWest,
-                  sectionId: section.id, entranceIndex, isSpecialAccess });
-            }
-            // Non-center rows at habitat edge: gold paneling pillars
-            return tile('ENTRANCE_PANEL', '▓', isSpecialAccess ? '#AA3333' : '#DDAA22', '#221100', false,
-              { biome: 'hull', entranceFrame: true });
-          }
-        }
-
         // Solid gradient wall — no noise variation, clean fading block characters
         const grad = WALL_GRADIENT[wallDist];
         return tile('SECTION_WALL', grad.char, grad.fg, grad.bg, false,
@@ -1298,41 +1165,6 @@ export class ChunkManager {
   _generateInnerHullTile(wx, wy, section) {
     const localX = wx - section.startChunkX * CHUNK_SIZE;
     const totalWidth = section.widthChunks * CHUNK_SIZE; // ~256 tiles
-
-    // ── Entrance openings — match the 3 entrance positions from adjacent habitat walls ──
-    const isWestEdge = localX < 2;
-    const isEastEdge = localX >= totalWidth - 2;
-    if (isWestEdge || isEastEdge) {
-      const adjSectionId = isWestEdge ? section.leftSection : section.rightSection;
-      const adjSection = adjSectionId ? this.sectionManager.getSection(adjSectionId) : null;
-
-      if (adjSection && adjSection.type === 'habitat') {
-        const entranceInfo = _getEntranceAtY(wy, adjSection);
-        if (entranceInfo) {
-          let hasEntrance = true;
-          if (adjSection.id === 'H1' && !isWestEdge) {
-            hasEntrance = entranceInfo.entranceIndex === 1;
-          } else if (adjSection.id === 'H7' && isWestEdge) {
-            hasEntrance = entranceInfo.entranceIndex === 1;
-          }
-          if (hasEntrance) {
-            const isPassageY = entranceInfo.phase > 0 && entranceInfo.phase < ENTRANCE_HALF_HEIGHT * 2;
-            const isFrameY = entranceInfo.phase === 0 || entranceInfo.phase === ENTRANCE_HALF_HEIGHT * 2;
-            if (isPassageY) {
-              const isCenterRow = entranceInfo.phase === ENTRANCE_HALF_HEIGHT;
-              const ch = isCenterRow ? '❖' : (isWestEdge ? '╣' : '╠');
-              const fg = isCenterRow ? '#FFCC44' : '#CC9900';
-              const bg = isCenterRow ? '#1A1100' : '#0D0800';
-              return tile('ENTRANCE_PASSAGE', ch, fg, bg, true, { biome: 'inner_hull', entrance: true });
-            }
-            if (isFrameY) {
-              const ch = isWestEdge ? (entranceInfo.phase === 0 ? '╗' : '╝') : (entranceInfo.phase === 0 ? '╚' : '╔');
-              return tile('ENTRANCE_FRAME', ch, '#AA8800', '#0D0800', false, { biome: 'inner_hull', entranceFrame: true });
-            }
-          }
-        }
-      }
-    }
 
     // ── Symmetrical layer zones — distance from nearest edge ──
     const distFromWest = localX;
