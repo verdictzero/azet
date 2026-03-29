@@ -1900,7 +1900,7 @@ export class ChunkManager {
     // Draw bridge structure across the water (vertically)
     for (let by = startY; by <= endY; by++) {
       if (by >= 0 && by < CHUNK_SIZE) {
-        tiles[by][lx] = tile('BRIDGE', '=', '#887766', '#222211', false,
+        tiles[by][lx] = tile('BRIDGE', '=', '#887766', '#222211', bridgeState !== 3,
           { biome: 'bridge', locationId: id });
       }
     }
@@ -4316,6 +4316,19 @@ export class BridgeDungeonGenerator {
     const leftRail = bridgeX - halfW - 1;
     const rightRail = bridgeX + halfW + 1;
 
+    // Pre-scan: record water/shore boundaries before deck overwrites them
+    let waterNorthEdge = -1;
+    let waterSouthEdge = -1;
+    for (let y = 0; y < height; y++) {
+      const baseTile = tiles[y][bridgeX];
+      const isWaterOrShore = baseTile.type === 'OUTER_SHORE' || baseTile.type === 'INNER_SHORE' ||
+        (baseTile.waterDepth != null && baseTile.waterDepth >= 0);
+      if (isWaterOrShore) {
+        if (waterNorthEdge === -1) waterNorthEdge = y;
+        waterSouthEdge = y;
+      }
+    }
+
     for (let y = 0; y < height; y++) {
       const baseTile = tiles[y][bridgeX];
       const isWater = baseTile.waterDepth != null && baseTile.waterDepth >= 0;
@@ -4349,25 +4362,8 @@ export class BridgeDungeonGenerator {
     }
 
     // ── Gate archways at north and south ends ──
-    // Find where water/shore starts from top and bottom
-    let northGateY = 0;
-    let southGateY = height - 1;
-    for (let y = 0; y < height; y++) {
-      const t = tiles[y][bridgeX];
-      if (t.type === 'OUTER_SHORE' || t.type === 'INNER_SHORE' ||
-          (t.waterDepth != null && t.waterDepth >= 0 && t.type !== 'BRIDGE_FLOOR')) {
-        northGateY = y - 1;
-        break;
-      }
-    }
-    for (let y = height - 1; y >= 0; y--) {
-      const t = tiles[y][bridgeX];
-      if (t.type === 'OUTER_SHORE' || t.type === 'INNER_SHORE' ||
-          (t.waterDepth != null && t.waterDepth >= 0 && t.type !== 'BRIDGE_FLOOR')) {
-        southGateY = y + 1;
-        break;
-      }
-    }
+    let northGateY = waterNorthEdge > 0 ? waterNorthEdge - 1 : 0;
+    let southGateY = waterSouthEdge >= 0 && waterSouthEdge < height - 1 ? waterSouthEdge + 1 : height - 1;
 
     // North gate archway
     if (northGateY >= 0 && northGateY < height) {
