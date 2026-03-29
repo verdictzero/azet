@@ -6203,6 +6203,40 @@ class Game {
       }
     }
 
+    // MECH_ARM overlay — draw on top of all entities
+    for (let wy_off = 0; wy_off < worldH; wy_off++) {
+      for (let wx_off = 0; wx_off < worldW; wx_off++) {
+        const wx = camX + wx_off;
+        const wy = camY + wy_off;
+        const tile = this.overworld.getTile(wx, wy);
+        if (tile.type !== 'MECH_ARM') continue;
+
+        const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
+        const isFogged = isNight && dist > viewRange;
+
+        if (density === 1) {
+          const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type);
+          const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
+          r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, bg);
+        } else {
+          const expanded = expandTile(tile, density, wx, wy);
+          for (let dy = 0; dy < density; dy++) {
+            for (let dx = 0; dx < density; dx++) {
+              const screenX = viewLeft + wx_off * density + dx;
+              const screenY = viewTop + wy_off * density + dy;
+              if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx + dx / density, wy + dy / density);
+                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
+                r.drawChar(screenX, screenY, ch, fg, bg);
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Render structure light glow on overworld at night
     if (isNight && this.overworld.chunkManager) {
       const cm = this.overworld.chunkManager;
@@ -6649,6 +6683,49 @@ class Game {
       r.drawChar(playerScreenX + 1, playerScreenY - 1, '\u2510', reticleColor);
       r.drawChar(playerScreenX - 1, playerScreenY + 1, '\u2514', reticleColor);
       r.drawChar(playerScreenX + 1, playerScreenY + 1, '\u2518', reticleColor);
+    }
+
+    // MECH_ARM overlay — draw on top of all entities
+    for (let wy_off = 0; wy_off < worldH; wy_off++) {
+      for (let wx_off = 0; wx_off < worldW; wx_off++) {
+        const wx = offsetX + wx_off;
+        const wy = offsetY + wy_off;
+        if (wy < 0 || wy >= dh || wx < 0 || wx >= dw) continue;
+        const tile = this.currentDungeon.tiles[wy][wx];
+        if (tile.type !== 'MECH_ARM') continue;
+
+        let brightness;
+        if (!this.debug.disableLighting) {
+          const light = this.lighting.getLight(wx, wy);
+          brightness = light.brightness;
+          if (brightness <= 0.02) continue;
+        } else {
+          if (!visible.has(`${wx},${wy}`)) continue;
+          brightness = 1.0;
+        }
+
+        const animFg = r.getAnimatedColor(tile.fg, tile.type);
+
+        if (density === 1) {
+          const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
+          const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
+          r.drawChar(viewLeft + wx_off, viewTop + wy_off, tile.char, dimFg, dimBg);
+        } else {
+          const expanded = expandTile(tile, density, wx, wy);
+          for (let dy = 0; dy < density; dy++) {
+            for (let dx = 0; dx < density; dx++) {
+              const screenX = viewLeft + wx_off * density + dx;
+              const screenY = viewTop + wy_off * density + dy;
+              if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
+                const eFg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                const dimFg = this._dimColor(eFg, Math.max(0.15, brightness));
+                const dimBg = this._dimColor(expanded.bgs[dy][dx], brightness);
+                r.drawChar(screenX, screenY, expanded.chars[dy][dx], dimFg, dimBg);
+              }
+            }
+          }
+        }
+      }
     }
 
     // Render particles in dungeon
