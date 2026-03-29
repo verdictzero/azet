@@ -5600,6 +5600,8 @@ class Game {
         }
         // Draw HUD over the gameplay render
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
+        // Greyscale the play area so the menu stands out
+        this.renderer.applyGreyscale();
         // Overlay the FF-style menu
         this.ui.drawGamepadMenu(this.renderer, this.player, this.GAMEPAD_MENU_ITEMS, this.gamepadMenuCursor);
         break;
@@ -5617,6 +5619,8 @@ class Game {
           this.renderDungeon();
         }
         this.ui.drawHUD(this.player, this.timeSystem, this.gameContext, this.statusEffects, this.weatherSystem);
+        // Greyscale the play area so the menu stands out
+        this.renderer.applyGreyscale();
         this.ui.drawRestItemSelect(this.renderer, this.restItemSelectList, this.restItemSelectCursor);
         break;
       }
