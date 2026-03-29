@@ -175,47 +175,6 @@ const DOOR_3x3 = [
   [['\u2588','\u2593','\u2588'],['\u2593','+','\u2593'],[' ',' ',' ']],
 ];
 
-// ── Gold paneling for habitat entrance doors ──
-const ENTRANCE_PANEL_2x2 = [
-  [['▓','▓'],['▓','▓']],
-];
-const ENTRANCE_PANEL_3x3 = [
-  [['▓','▓','▓'],['▓','▓','▓'],['▓','▓','▓']],
-];
-
-// ── Directional door patterns (entrance/airlock doors with direction indicators) ──
-
-// Entrance doors — framed portal with directional arrow showing exit direction
-// West-facing (door on west edge, arrow points left ◄)
-const ENTRANCE_DOOR_W_2x2 = [
-  [['╔','▌'],['╚','▌']],
-];
-const ENTRANCE_DOOR_W_3x3 = [
-  [['╔','═','▌'],['◄',null,'▌'],['╚','═','▌']],
-];
-
-// East-facing (door on east edge, arrow points right ►)
-const ENTRANCE_DOOR_E_2x2 = [
-  [['▐','╗'],['▐','╝']],
-];
-const ENTRANCE_DOOR_E_3x3 = [
-  [['▐','═','╗'],['▐',null,'►'],['▐','═','╝']],
-];
-
-// Special access doors — heavier frame, restricted feel
-const SPECIAL_DOOR_W_2x2 = [
-  [['╠','▌'],['╠','▌']],
-];
-const SPECIAL_DOOR_W_3x3 = [
-  [['╔','▓','▌'],['╠',null,'▌'],['╚','▓','▌']],
-];
-const SPECIAL_DOOR_E_2x2 = [
-  [['▐','╣'],['▐','╣']],
-];
-const SPECIAL_DOOR_E_3x3 = [
-  [['▐','▓','╗'],['▐',null,'╣'],['▐','▓','╝']],
-];
-
 // Engineering entrance doors — industrial portal, cleaner frame
 const ENG_ENTRANCE_W_2x2 = [
   [['◄','║'],['░','║']],
@@ -719,16 +678,6 @@ const TYPE_PATTERNS = {
   SECTION_WALL:        { 2: WALL_2x2, 3: WALL_3x3 },
   SECTION_WALL_DETAIL: { 2: WALL_2x2, 3: WALL_3x3 },
   SECTION_WALL_RIVET:  { 2: WALL_2x2, 3: WALL_3x3 },
-
-  // Entrance frames, passages, doors, and gates (inter-habitat connections)
-  ENTRANCE_FRAME:      { 2: WALL_2x2, 3: WALL_3x3 },
-  ENTRANCE_PANEL:      { 2: ENTRANCE_PANEL_2x2, 3: ENTRANCE_PANEL_3x3 },
-  ENTRANCE_PASSAGE:    { 2: FLOOR_2x2, 3: FLOOR_3x3 },
-  ENTRANCE_DOOR_W:     { 2: ENTRANCE_DOOR_W_2x2, 3: ENTRANCE_DOOR_W_3x3 },
-  ENTRANCE_DOOR_E:     { 2: ENTRANCE_DOOR_E_2x2, 3: ENTRANCE_DOOR_E_3x3 },
-  ENTRANCE_GATE:       { 2: WALL_2x2, 3: WALL_3x3 },
-  SPECIAL_ACCESS_DOOR_W: { 2: SPECIAL_DOOR_W_2x2, 3: SPECIAL_DOOR_W_3x3 },
-  SPECIAL_ACCESS_DOOR_E: { 2: SPECIAL_DOOR_E_2x2, 3: SPECIAL_DOOR_E_3x3 },
 
   // Engineering space tiles (directional entrance + airlock doors)
   ENGINEERING_ENTRANCE_W: { 2: ENG_ENTRANCE_W_2x2, 3: ENG_ENTRANCE_W_3x3 },
