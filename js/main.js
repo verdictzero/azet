@@ -1148,12 +1148,12 @@ class Game {
   }
 
   enterTestMaze() {
-    const CHUNK = 37;
+    const CHUNK = 43;
     this.testArea = { type: 'maze', chunks: new Map(), seed: this.seed, chunkSize: CHUNK };
 
-    // Generate initial chunks in a 7x7 area around origin
-    for (let cy = -3; cy <= 3; cy++) {
-      for (let cx = -3; cx <= 3; cx++) {
+    // Generate initial chunks in a 5x5 area around origin
+    for (let cy = -2; cy <= 2; cy++) {
+      for (let cx = -2; cx <= 2; cx++) {
         this._generateMazeChunk(cx, cy);
       }
     }
@@ -1164,7 +1164,7 @@ class Game {
     // Place player at the first walkable cell near world origin
     const originChunk = this.testArea.chunks.get('0,0');
     if (originChunk) {
-      // Place at top-left of first 5x5 passage block
+      // Place at top-left of first 3x3 passage block
       this.player.position.x = -this.testArea.worldOffsetX + 1;
       this.player.position.y = -this.testArea.worldOffsetY + 1;
     }
@@ -1191,8 +1191,9 @@ class Game {
     if (this.testArea.chunks.has(key)) return;
 
     const CHUNK = this.testArea.chunkSize;
-    const CW = 5;        // corridor width (5 cells wide)
-    const STEP = CW + 1; // distance between passage block origins (1-cell wall)
+    const CW = 3;         // corridor width (3 cells wide)
+    const GAP = 10;       // wall space between passage blocks
+    const STEP = CW + GAP; // distance between passage block origins (13)
     // Deterministic seed per chunk using large primes
     const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
     const rng = new SeededRNG(Math.abs(chunkSeed));
@@ -1236,16 +1237,16 @@ class Game {
 
         if (canGoNorth && canGoWest) {
           if (dirSeed < 50) {
-            // Carve north: 1-row-tall, CW-wide strip connecting to block above
-            carve(y - 1, x, 1, CW);
+            // Carve north: full GAP-tall corridor connecting to block above
+            carve(y - GAP, x, GAP, CW);
           } else {
-            // Carve west: CW-tall, 1-column-wide strip connecting to block left
-            carve(y, x - 1, CW, 1);
+            // Carve west: full GAP-wide corridor connecting to block left
+            carve(y, x - GAP, CW, GAP);
           }
         } else if (canGoNorth) {
-          carve(y - 1, x, 1, CW);
+          carve(y - GAP, x, GAP, CW);
         } else if (canGoWest) {
-          carve(y, x - 1, CW, 1);
+          carve(y, x - GAP, CW, GAP);
         }
         // Corner block (1,1): no north or west within chunk - handle cross-chunk below
       }
@@ -1257,7 +1258,7 @@ class Game {
       const worldX = cx * CHUNK + x;
       const worldY = cy * CHUNK;
       const borderSeed = Math.abs(worldX * 31337 + worldY * 97531 + this.testArea.seed) % 100;
-      if (borderSeed < 60) {
+      if (borderSeed < 40) {
         carve(0, x, 1, CW); // open CW-wide top border at this passage column
       }
     }
@@ -1266,7 +1267,7 @@ class Game {
       const worldX = cx * CHUNK;
       const worldY = cy * CHUNK + y;
       const borderSeed = Math.abs(worldX * 31337 + worldY * 97531 + this.testArea.seed) % 100;
-      if (borderSeed < 60) {
+      if (borderSeed < 40) {
         carve(y, 0, CW, 1); // open CW-tall left border at this passage row
       }
     }
@@ -1321,9 +1322,9 @@ class Game {
         const isPassage = chunk ? chunk[ly][lx] : false;
 
         if (isPassage) {
-          tiles[y][x] = { type: 'FLOOR', char: '\u2591', fg: '#338833', bg: '#111111', walkable: true };
+          tiles[y][x] = { type: 'FLOOR', char: '\u2591', fg: '#338833', bg: '#000000', walkable: true };
         } else {
-          tiles[y][x] = { type: 'WALL', char: '\u2588', fg: '#444444', bg: '#111111', walkable: false };
+          tiles[y][x] = { type: 'WALL', char: ' ', fg: '#000000', bg: '#000000', walkable: false };
         }
       }
     }
