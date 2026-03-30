@@ -1148,7 +1148,7 @@ class Game {
   }
 
   enterTestMaze() {
-    const CHUNK = 78;
+    const CHUNK = 80;
     this.testArea = { type: 'maze', chunks: new Map(), seed: this.seed, chunkSize: CHUNK };
 
     // Generate initial chunks in a 5x5 area around origin
@@ -1193,8 +1193,8 @@ class Game {
 
     const CHUNK = this.testArea.chunkSize;
     const CW = 5;         // corridor width (5 cells wide)
-    const GAP = 1;        // wall thickness (1 solid wall block)
-    const STEP = CW + GAP; // distance between passage block origins (6)
+    const GAP = 5;        // wall thickness (5 solid wall blocks)
+    const STEP = CW + GAP; // distance between passage block origins (10)
     // Deterministic seed per chunk using large primes
     const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
     const rng = new SeededRNG(Math.abs(chunkSeed));
@@ -1318,7 +1318,7 @@ class Game {
         if (isPassage) {
           tiles[y][x] = { type: 'FLOOR', char: '\u2591', fg: '#338833', bg: '#000000', walkable: true };
         } else {
-          tiles[y][x] = { type: 'WALL', char: ' ', fg: '#000000', bg: '#000000', walkable: false };
+          tiles[y][x] = { type: 'WALL', char: '\u2588', fg: '#111111', bg: '#000000', walkable: false };
         }
       }
     }
