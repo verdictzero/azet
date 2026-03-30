@@ -1139,13 +1139,16 @@ class Game {
     this.testArea = null;
     this._debugAdvMode = true;
 
-    // Go directly into the maze
+    // Open debug menu on Test Areas tab
     this._debugReturnState = 'MENU';
-    this.enterTestMaze();
+    this.ui.debugTab = 4;
+    this.ui.debugCursor = 0;
+    this.ui.debugScroll = 0;
+    this.setState('DEBUG_MENU');
   }
 
   enterTestMaze() {
-    const CHUNK = 43;
+    const CHUNK = 80;
     this.testArea = { type: 'maze', chunks: new Map(), seed: this.seed, chunkSize: CHUNK };
 
     // Generate initial chunks in a 5x5 area around origin
@@ -1176,6 +1179,7 @@ class Game {
     this.npcs = [];
     this.currentDungeonLocation = null;
     this.currentFloor = 0;
+    this._mazeSlowTurns = 0;
     this.gameContext.currentLocationName = 'Test: Infinite Maze';
 
     this.setState('DUNGEON');
@@ -1188,9 +1192,9 @@ class Game {
     if (this.testArea.chunks.has(key)) return;
 
     const CHUNK = this.testArea.chunkSize;
-    const CW = 3;         // corridor width (3 cells wide)
-    const GAP = 10;       // wall space between passage blocks
-    const STEP = CW + GAP; // distance between passage block origins (13)
+    const CW = 5;         // corridor width (5 cells wide)
+    const GAP = 1;        // wall thickness (1 solid wall block)
+    const STEP = CW + GAP; // distance between passage block origins (6)
     // Deterministic seed per chunk using large primes
     const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
     const rng = new SeededRNG(Math.abs(chunkSeed));
@@ -1233,11 +1237,11 @@ class Game {
         const canGoWest = x > 1;  // can carve west within chunk
 
         if (canGoNorth && canGoWest) {
-          if (dirSeed < 50) {
-            // Carve north: full GAP-tall corridor connecting to block above
+          if (dirSeed < 70) {
+            // Carve north: long straight runs (70% bias)
             carve(y - GAP, x, GAP, CW);
           } else {
-            // Carve west: full GAP-wide corridor connecting to block left
+            // Carve west: T-intersections (30%)
             carve(y, x - GAP, CW, GAP);
           }
         } else if (canGoNorth) {
@@ -1246,6 +1250,23 @@ class Game {
           carve(y, x - GAP, CW, GAP);
         }
         // Corner block (1,1): no north or west within chunk - handle cross-chunk below
+      }
+    }
+
+    // Random rooms (2x2 to 4x4 passage-block spans) scattered in the maze
+    for (let y = 1; y + CW - 1 < CHUNK; y += STEP) {
+      for (let x = 1; x + CW - 1 < CHUNK; x += STEP) {
+        const worldX = cx * CHUNK + x;
+        const worldY = cy * CHUNK + y;
+        const roomSeed = Math.abs(worldX * 61403 + worldY * 84299 + this.testArea.seed) % 100;
+        if (roomSeed < 12) {
+          const bw = 2 + (roomSeed % 3);       // 2-4 blocks wide
+          const bh = 2 + ((roomSeed >> 2) % 3); // 2-4 blocks tall
+          // Room spans bw*STEP - GAP cells wide, bh*STEP - GAP cells tall
+          const rw = bw * STEP - GAP;
+          const rh = bh * STEP - GAP;
+          carve(y, x, rh, rw);
+        }
       }
     }
 
@@ -4863,10 +4884,23 @@ class Game {
     if (nx < 0 || nx >= this.currentDungeon.tiles[0].length) { this._registerBump(dx, dy); return; }
 
     const tile = this.currentDungeon.tiles[ny][nx];
-    if (!tile.walkable) { this._registerBump(dx, dy); return; }
+    if (!tile.walkable) {
+      this._registerBump(dx, dy);
+      // Maze wall collision: apply speed reduction
+      if (this.testArea) {
+        this._mazeSlowTurns = 3;
+        this.ui.addMessage('Wall impact! Speed reduced.', '#FF6644');
+      }
+      return;
+    }
 
     // Test areas: skip combat, items, story, status, AI
     if (this.testArea) {
+      // Wall collision slowdown: skip every other move input
+      if (this._mazeSlowTurns > 0) {
+        this._mazeSlowTurns--;
+        if (this.turnCount % 2 === 1) return; // skip odd turns while slowed
+      }
       this.player.position.x = nx;
       this.player.position.y = ny;
       this._bumpState.count = 0;
