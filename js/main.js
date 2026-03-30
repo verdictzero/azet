@@ -1148,7 +1148,7 @@ class Game {
   }
 
   enterTestMaze() {
-    const CHUNK = 43;
+    const CHUNK = 78;
     this.testArea = { type: 'maze', chunks: new Map(), seed: this.seed, chunkSize: CHUNK };
 
     // Generate initial chunks in a 5x5 area around origin
@@ -1164,9 +1164,9 @@ class Game {
     // Place player at the first walkable cell near world origin
     const originChunk = this.testArea.chunks.get('0,0');
     if (originChunk) {
-      // Place at top-left of first 3x3 passage block
-      this.player.position.x = -this.testArea.worldOffsetX + 1;
-      this.player.position.y = -this.testArea.worldOffsetY + 1;
+      // Place at top-left of first passage block (blocks start at 0)
+      this.player.position.x = -this.testArea.worldOffsetX;
+      this.player.position.y = -this.testArea.worldOffsetY;
     }
 
     // Lock zoom to density 1 (closest)
@@ -1179,6 +1179,7 @@ class Game {
     this.npcs = [];
     this.currentDungeonLocation = null;
     this.currentFloor = 0;
+    this._mazeSlowTurns = 0;
     this.gameContext.currentLocationName = 'Test: Infinite Maze';
 
     this.setState('DUNGEON');
@@ -1191,9 +1192,9 @@ class Game {
     if (this.testArea.chunks.has(key)) return;
 
     const CHUNK = this.testArea.chunkSize;
-    const CW = 3;         // corridor width (3 cells wide)
-    const GAP = 10;       // wall space between passage blocks
-    const STEP = CW + GAP; // distance between passage block origins (13)
+    const CW = 5;         // corridor width (5 cells wide)
+    const GAP = 1;        // wall thickness (1 solid wall block)
+    const STEP = CW + GAP; // distance between passage block origins (6)
     // Deterministic seed per chunk using large primes
     const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
     const rng = new SeededRNG(Math.abs(chunkSeed));
@@ -1220,66 +1221,59 @@ class Game {
     };
 
     // Maze using binary tree algorithm with CW-wide passage blocks
-    // Passage blocks start at (1,1) and repeat every STEP cells
-    for (let y = 1; y + CW - 1 < CHUNK; y += STEP) {
-      for (let x = 1; x + CW - 1 < CHUNK; x += STEP) {
-        // Carve CW x CW passage block
+    // Passage blocks start at (0,0) and repeat every STEP cells
+    for (let y = 0; y < CHUNK; y += STEP) {
+      for (let x = 0; x < CHUNK; x += STEP) {
         carve(y, x, CW, CW);
 
         const worldX = cx * CHUNK + x;
         const worldY = cy * CHUNK + y;
-
-        // Deterministic direction choice based on world position
         const dirSeed = Math.abs(worldX * 48611 + worldY * 22769 + this.testArea.seed) % 100;
 
-        const canGoNorth = y > 1; // can carve north within chunk
-        const canGoWest = x > 1;  // can carve west within chunk
-
-        if (canGoNorth && canGoWest) {
-          if (dirSeed < 50) {
-            // Carve north: full GAP-tall corridor connecting to block above
-            carve(y - GAP, x, GAP, CW);
-          } else {
-            // Carve west: full GAP-wide corridor connecting to block left
-            carve(y, x - GAP, CW, GAP);
-          }
-        } else if (canGoNorth) {
-          carve(y - GAP, x, GAP, CW);
-        } else if (canGoWest) {
-          carve(y, x - GAP, CW, GAP);
+        if (dirSeed < 70) {
+          // Connect north: long straight runs (70% bias)
+          if (y > 0) carve(y - GAP, x, GAP, CW);
+        } else {
+          // Connect west: T-intersections (30%)
+          if (x > 0) carve(y, x - GAP, CW, GAP);
         }
-        // Corner block (1,1): no north or west within chunk - handle cross-chunk below
       }
     }
 
-    // Cross-chunk connectivity: open border passages (CW-wide openings)
-    // Top border: connect passage columns at y=0 to chunk above
-    for (let x = 1; x + CW - 1 < CHUNK; x += STEP) {
+    // Random rooms (2x2 to 4x4 passage-block spans)
+    for (let y = 0; y < CHUNK; y += STEP) {
+      for (let x = 0; x < CHUNK; x += STEP) {
+        const worldX = cx * CHUNK + x;
+        const worldY = cy * CHUNK + y;
+        const roomSeed = Math.abs(worldX * 61403 + worldY * 84299 + this.testArea.seed) % 100;
+        if (roomSeed < 12) {
+          const bw = 2 + (roomSeed % 3);       // 2-4 blocks wide
+          const bh = 2 + ((roomSeed >> 2) % 3); // 2-4 blocks tall
+          const rw = bw * STEP - GAP;
+          const rh = bh * STEP - GAP;
+          carve(y, x, rh, rw);
+        }
+      }
+    }
+
+    // Cross-chunk border connections: compute what adjacent chunks' border
+    // blocks would decide and open this chunk's borders accordingly
+    const seed = this.testArea.seed;
+
+    // Blocks at y=0 in chunk below that connect north → open bottom border
+    for (let x = 0; x < CHUNK; x += STEP) {
       const worldX = cx * CHUNK + x;
-      const worldY = cy * CHUNK;
-      const borderSeed = Math.abs(worldX * 31337 + worldY * 97531 + this.testArea.seed) % 100;
-      if (borderSeed < 40) {
-        carve(0, x, 1, CW); // open CW-wide top border at this passage column
-      }
-    }
-    // Left border: connect passage rows at x=0 to chunk to the left
-    for (let y = 1; y + CW - 1 < CHUNK; y += STEP) {
-      const worldX = cx * CHUNK;
-      const worldY = cy * CHUNK + y;
-      const borderSeed = Math.abs(worldX * 31337 + worldY * 97531 + this.testArea.seed) % 100;
-      if (borderSeed < 40) {
-        carve(y, 0, CW, 1); // open CW-tall left border at this passage row
-      }
+      const worldY = (cy + 1) * CHUNK;
+      const dirSeed = Math.abs(worldX * 48611 + worldY * 22769 + seed) % 100;
+      if (dirSeed < 70) carve(CHUNK - GAP, x, GAP, CW);
     }
 
-    // Ensure the (1,1) corner block that couldn't connect N or W within chunk
-    // gets at least one cross-chunk connection
-    const hasTopConn = grid[0] && grid[0][1];
-    const hasLeftConn = grid[1] && grid[1][0];
-    if (!hasTopConn && !hasLeftConn) {
-      const cornerSeed = Math.abs(cx * 55711 + cy * 33377 + this.testArea.seed) % 2;
-      if (cornerSeed === 0) carve(0, 1, 1, CW);
-      else carve(1, 0, CW, 1);
+    // Blocks at x=0 in chunk to the right that connect west → open right border
+    for (let y = 0; y < CHUNK; y += STEP) {
+      const worldX = (cx + 1) * CHUNK;
+      const worldY = cy * CHUNK + y;
+      const dirSeed = Math.abs(worldX * 48611 + worldY * 22769 + seed) % 100;
+      if (dirSeed >= 70) carve(y, CHUNK - GAP, CW, GAP);
     }
 
     this.testArea.chunks.set(key, grid);
@@ -4866,10 +4860,23 @@ class Game {
     if (nx < 0 || nx >= this.currentDungeon.tiles[0].length) { this._registerBump(dx, dy); return; }
 
     const tile = this.currentDungeon.tiles[ny][nx];
-    if (!tile.walkable) { this._registerBump(dx, dy); return; }
+    if (!tile.walkable) {
+      this._registerBump(dx, dy);
+      // Maze wall collision: apply speed reduction
+      if (this.testArea) {
+        this._mazeSlowTurns = 3;
+        this.ui.addMessage('Wall impact! Speed reduced.', '#FF6644');
+      }
+      return;
+    }
 
     // Test areas: skip combat, items, story, status, AI
     if (this.testArea) {
+      // Wall collision slowdown: skip every other move input
+      if (this._mazeSlowTurns > 0) {
+        this._mazeSlowTurns--;
+        if (this.turnCount % 2 === 1) return; // skip odd turns while slowed
+      }
       this.player.position.x = nx;
       this.player.position.y = ny;
       this._bumpState.count = 0;
