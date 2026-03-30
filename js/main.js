@@ -1139,12 +1139,9 @@ class Game {
     this.testArea = null;
     this._debugAdvMode = true;
 
-    // Open debug menu on Test Areas tab
+    // Go directly into the maze
     this._debugReturnState = 'MENU';
-    this.ui.debugTab = 4;
-    this.ui.debugCursor = 0;
-    this.ui.debugScroll = 0;
-    this.setState('DEBUG_MENU');
+    this.enterTestMaze();
   }
 
   enterTestMaze() {
