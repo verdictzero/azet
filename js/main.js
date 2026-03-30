@@ -329,6 +329,8 @@ class Game {
     this.enemies = [];
     this.items = [];
     this.player = null;
+    this.testArea = null;
+    this._debugAdvMode = false;
 
     // Active world events with consequences
     this.activeEffects = {
@@ -1107,6 +1109,261 @@ class Game {
     setTimeout(() => runStep(0), 50);
   }
 
+  // ─── DEBUG ADVENTURE MODE ───
+
+  startDebugAdventure() {
+    // Create a minimal debug player without world generation
+    this.seed = Date.now();
+    this.rng = new SeededRNG(this.seed);
+    this.player = new Player('Debug', 'human', 'engineer');
+    this.player.position = { x: 0, y: 0 };
+
+    // Enable all debug flags
+    this.debug.invincible = true;
+    this.debug.noEncounters = true;
+    this.debug.noClip = false;
+    this.debug.infiniteAttack = true;
+    this.debug.infiniteMana = true;
+    this.debug.disableLighting = true;
+    this.debug.disableShadows = true;
+    this.debug.disableClouds = true;
+
+    // Clear world state
+    this.overworld = null;
+    this.currentSettlement = null;
+    this.currentDungeon = null;
+    this.currentTower = null;
+    this.enemies = [];
+    this.items = [];
+    this.npcs = [];
+    this.testArea = null;
+    this._debugAdvMode = true;
+
+    // Open debug menu on Test Areas tab
+    this._debugReturnState = 'MENU';
+    this.ui.debugTab = 4;
+    this.ui.debugCursor = 0;
+    this.ui.debugScroll = 0;
+    this.setState('DEBUG_MENU');
+  }
+
+  enterTestMaze() {
+    const CHUNK = 16;
+    this.testArea = { type: 'maze', chunks: new Map(), seed: this.seed, chunkSize: CHUNK };
+
+    // Generate initial chunks in a 7x7 area around origin
+    for (let cy = -3; cy <= 3; cy++) {
+      for (let cx = -3; cx <= 3; cx++) {
+        this._generateMazeChunk(cx, cy);
+      }
+    }
+
+    // Build tile array from chunks
+    this._rebuildTestAreaTiles();
+
+    // Place player at the first walkable cell near world origin
+    const originChunk = this.testArea.chunks.get('0,0');
+    if (originChunk) {
+      // Find a walkable cell (odd,odd coordinates are passages in the maze)
+      this.player.position.x = -this.testArea.worldOffsetX + 1;
+      this.player.position.y = -this.testArea.worldOffsetY + 1;
+    }
+
+    // Lock zoom to density 1 (closest)
+    this.renderer.setZoom(1);
+    this._preLocationZoom = 1;
+
+    // Clear entities
+    this.enemies = [];
+    this.items = [];
+    this.npcs = [];
+    this.currentDungeonLocation = null;
+    this.currentFloor = 0;
+    this.gameContext.currentLocationName = 'Test: Infinite Maze';
+
+    this.setState('DUNGEON');
+    this.ui.addMessage('[DEBUG] Entered Infinite Maze test area.', COLORS.BRIGHT_GREEN);
+    this.ui.addMessage('Use arrow keys to explore. Esc to return.', COLORS.BRIGHT_CYAN);
+  }
+
+  _generateMazeChunk(cx, cy) {
+    const key = `${cx},${cy}`;
+    if (this.testArea.chunks.has(key)) return;
+
+    const CHUNK = this.testArea.chunkSize;
+    // Deterministic seed per chunk using large primes
+    const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
+    const rng = new SeededRNG(Math.abs(chunkSeed));
+
+    // Create chunk grid filled with walls
+    const grid = [];
+    for (let y = 0; y < CHUNK; y++) {
+      grid[y] = [];
+      for (let x = 0; x < CHUNK; x++) {
+        grid[y][x] = false; // false = wall
+      }
+    }
+
+    // Maze using binary tree algorithm on odd-coordinate cells
+    // Each odd,odd cell is a passage; connect either north or west
+    for (let y = 1; y < CHUNK; y += 2) {
+      for (let x = 1; x < CHUNK; x += 2) {
+        grid[y][x] = true; // passage cell
+
+        const worldX = cx * CHUNK + x;
+        const worldY = cy * CHUNK + y;
+
+        // Deterministic direction choice based on world position
+        const dirSeed = Math.abs(worldX * 48611 + worldY * 22769 + this.testArea.seed) % 100;
+
+        const canGoNorth = y > 1; // can carve north within chunk
+        const canGoWest = x > 1;  // can carve west within chunk
+
+        if (canGoNorth && canGoWest) {
+          if (dirSeed < 50) {
+            grid[y - 1][x] = true; // carve north
+          } else {
+            grid[y][x - 1] = true; // carve west
+          }
+        } else if (canGoNorth) {
+          grid[y - 1][x] = true;
+        } else if (canGoWest) {
+          grid[y][x - 1] = true;
+        }
+        // Corner cell (1,1): no north or west within chunk - handle cross-chunk below
+      }
+    }
+
+    // Cross-chunk connectivity: open border passages
+    // For cells at chunk edges (y=0 or x=0), deterministically open connections
+    // to neighbor chunks based on world-coordinate hashing
+    // Top border: connect passage cells at y=0 to chunk above
+    for (let x = 1; x < CHUNK; x += 2) {
+      const worldX = cx * CHUNK + x;
+      const worldY = cy * CHUNK;
+      const borderSeed = Math.abs(worldX * 31337 + worldY * 97531 + this.testArea.seed) % 100;
+      if (borderSeed < 60) {
+        grid[0][x] = true; // open top border at this passage column
+      }
+    }
+    // Left border: connect passage cells at x=0 to chunk to the left
+    for (let y = 1; y < CHUNK; y += 2) {
+      const worldX = cx * CHUNK;
+      const worldY = cy * CHUNK + y;
+      const borderSeed = Math.abs(worldX * 31337 + worldY * 97531 + this.testArea.seed) % 100;
+      if (borderSeed < 60) {
+        grid[y][0] = true; // open left border at this passage row
+      }
+    }
+
+    // Also ensure the (1,1) corner cell that couldn't connect N or W within chunk
+    // gets at least one cross-chunk connection
+    if (!grid[0][1] && !grid[1][0]) {
+      // Force open one border connection
+      const cornerSeed = Math.abs(cx * 55711 + cy * 33377 + this.testArea.seed) % 2;
+      if (cornerSeed === 0) grid[0][1] = true;
+      else grid[1][0] = true;
+    }
+
+    this.testArea.chunks.set(key, grid);
+  }
+
+  _rebuildTestAreaTiles() {
+    if (!this.testArea) return;
+    const CHUNK = this.testArea.chunkSize;
+
+    // Find bounding box of all generated chunks
+    let minCX = Infinity, maxCX = -Infinity, minCY = Infinity, maxCY = -Infinity;
+    for (const key of this.testArea.chunks.keys()) {
+      const [cx, cy] = key.split(',').map(Number);
+      if (cx < minCX) minCX = cx;
+      if (cx > maxCX) maxCX = cx;
+      if (cy < minCY) minCY = cy;
+      if (cy > maxCY) maxCY = cy;
+    }
+
+    const tilesW = (maxCX - minCX + 1) * CHUNK;
+    const tilesH = (maxCY - minCY + 1) * CHUNK;
+
+    // Store the world offset so we can convert world coords to tile indices
+    this.testArea.worldOffsetX = minCX * CHUNK;
+    this.testArea.worldOffsetY = minCY * CHUNK;
+
+    // Build tile array
+    const tiles = [];
+    for (let y = 0; y < tilesH; y++) {
+      tiles[y] = [];
+      for (let x = 0; x < tilesW; x++) {
+        const worldX = x + this.testArea.worldOffsetX;
+        const worldY = y + this.testArea.worldOffsetY;
+        const cx = Math.floor(worldX / CHUNK);
+        const cy = Math.floor(worldY / CHUNK);
+        const lx = ((worldX % CHUNK) + CHUNK) % CHUNK;
+        const ly = ((worldY % CHUNK) + CHUNK) % CHUNK;
+
+        const chunk = this.testArea.chunks.get(`${cx},${cy}`);
+        const isPassage = chunk ? chunk[ly][lx] : false;
+
+        if (isPassage) {
+          tiles[y][x] = { type: 'FLOOR', char: '\u2591', fg: '#338833', bg: '#111111', walkable: true };
+        } else {
+          tiles[y][x] = { type: 'WALL', char: '\u2588', fg: '#444444', bg: '#111111', walkable: false };
+        }
+      }
+    }
+
+    this.currentDungeon = {
+      tiles,
+      width: tilesW,
+      height: tilesH,
+      rooms: [],
+      corridors: [],
+      entitySpots: [],
+      depth: 1,
+    };
+
+    // Adjust player position from world coords to tile array coords
+    if (this.player) {
+      this.player.position.x = this.player.position.x - this.testArea.worldOffsetX;
+      this.player.position.y = this.player.position.y - this.testArea.worldOffsetY;
+    }
+  }
+
+  _expandTestAreaIfNeeded() {
+    if (!this.testArea) return;
+    const CHUNK = this.testArea.chunkSize;
+
+    // Convert player tile-array position back to world coords
+    const worldX = this.player.position.x + this.testArea.worldOffsetX;
+    const worldY = this.player.position.y + this.testArea.worldOffsetY;
+    const pcx = Math.floor(worldX / CHUNK);
+    const pcy = Math.floor(worldY / CHUNK);
+
+    // Check if we need new chunks (generate 3 chunks ahead in each direction)
+    let needsRebuild = false;
+    for (let cy = pcy - 3; cy <= pcy + 3; cy++) {
+      for (let cx = pcx - 3; cx <= pcx + 3; cx++) {
+        const key = `${cx},${cy}`;
+        if (!this.testArea.chunks.has(key)) {
+          this._generateMazeChunk(cx, cy);
+          needsRebuild = true;
+        }
+      }
+    }
+
+    if (needsRebuild) {
+      // Save world-space position before rebuild
+      const savedWorldX = worldX;
+      const savedWorldY = worldY;
+
+      // Temporarily set player to world coords for rebuild
+      this.player.position.x = savedWorldX;
+      this.player.position.y = savedWorldY;
+      this._rebuildTestAreaTiles();
+      // _rebuildTestAreaTiles converts from world to tile coords
+    }
+  }
+
   enterLocation(location) {
     const locId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
     const locRng = new SeededRNG(this.seed + locId * 1000);
@@ -1701,7 +1958,7 @@ class Game {
   }
 
   handleMenuInput(key) {
-    const result = this.ui.handleHorizontalMenuInput(key, 7);
+    const result = this.ui.handleHorizontalMenuInput(key, 8);
     if (result === 'select') {
       switch (this.ui.selectedIndex) {
         case 0: // New Game
@@ -1742,6 +1999,9 @@ class Game {
           break;
         case 6: // Help
           this.setState('HELP');
+          break;
+        case 7: // Debug Adv — skip world gen, go to test area selector
+          this.startDebugAdventure();
           break;
       }
     }
@@ -2027,6 +2287,30 @@ class Game {
   }
 
   handleDungeonInput(key) {
+    // Test area: simplified input handling
+    if (this.testArea) {
+      if (key === 'Escape') {
+        this.currentDungeon = null;
+        this.testArea = null;
+        this.enemies = [];
+        this.items = [];
+        this._debugReturnState = this._debugAdvMode ? 'MENU' : 'OVERWORLD';
+        this.ui.debugTab = 4;
+        this.ui.debugCursor = 0;
+        this.ui.debugScroll = 0;
+        this.setState('DEBUG_MENU');
+        this.ui.addMessage('[DEBUG] Returned to test area selector.', COLORS.BRIGHT_GREEN);
+        return;
+      }
+      if (key === '?') { this.setState('HELP'); return; }
+      // No zoom controls in test areas (locked to density 1)
+      const dir = this.getDirection(key);
+      if (dir) {
+        this.movePlayerInDungeon(dir.dx, dir.dy);
+      }
+      return;
+    }
+
     if (key === 'i' || key === 'I') { this.setState('INVENTORY'); return; }
     if (key === 'g' || key === 'G') { this.openEquipmentMenu(); return; }
     if (key === 'c' || key === 'C') { this.setState('CHARACTER'); return; }
@@ -3826,20 +4110,20 @@ class Game {
     }
 
     // Tab switching
-    if (key >= '1' && key <= '4') {
+    if (key >= '1' && key <= '5') {
       ui.debugTab = parseInt(key) - 1;
       ui.debugCursor = 0;
       ui.debugScroll = 0;
       return;
     }
     if (key === 'ArrowRight' || key === 'Tab') {
-      ui.debugTab = (tab + 1) % 4;
+      ui.debugTab = (tab + 1) % 5;
       ui.debugCursor = 0;
       ui.debugScroll = 0;
       return;
     }
     if (key === 'ArrowLeft') {
-      ui.debugTab = (tab - 1 + 4) % 4;
+      ui.debugTab = (tab - 1 + 5) % 5;
       ui.debugCursor = 0;
       ui.debugScroll = 0;
       return;
@@ -3977,6 +4261,10 @@ class Game {
             this.camera.follow(this.player);
             this.ui.addMessage('[DEBUG] Teleported to 50,30', COLORS.BRIGHT_CYAN);
           }
+          break;
+        // Test Areas
+        case 'testMaze':
+          this.enterTestMaze();
           break;
       }
     } else if (entry.type === 'slider') {
@@ -4562,6 +4850,17 @@ class Game {
 
     const tile = this.currentDungeon.tiles[ny][nx];
     if (!tile.walkable) { this._registerBump(dx, dy); return; }
+
+    // Test areas: skip combat, items, story, status, AI
+    if (this.testArea) {
+      this.player.position.x = nx;
+      this.player.position.y = ny;
+      this._bumpState.count = 0;
+      this.playerFacingDir = { dx, dy };
+      this.turnCount++;
+      this._expandTestAreaIfNeeded();
+      return;
+    }
 
     // Check enemy collision -> combat
     const enemyAt = this.enemies.find(e => e.position.x === nx && e.position.y === ny);
@@ -6438,6 +6737,13 @@ class Game {
 
   renderDungeon() {
     if (!this.currentDungeon || !this.currentDungeon.tiles) return;
+
+    // Test area: simplified rendering — no lighting, no FOV, full brightness
+    if (this.testArea) {
+      this._renderTestArea();
+      return;
+    }
+
     // Tick camera shake decay (dungeon doesn't use camera for rendering but needs shake)
     this.camera.update();
 
@@ -6771,6 +7077,53 @@ class Game {
     // Render particles in dungeon
     this.particles.update();
     this.particles.render(r, offsetX, offsetY);
+  }
+
+  _renderTestArea() {
+    const r = this.renderer;
+    const viewLeft = 1;
+    const viewTop = LAYOUT.VIEWPORT_TOP;
+    const viewW = r.cols - 2;
+    const viewH = r.rows - LAYOUT.HUD_TOTAL;
+
+    // Always density 1 for test areas
+    const worldW = viewW;
+    const worldH = viewH;
+
+    const offsetX = this.player.position.x - Math.floor(worldW / 2);
+    const offsetY = this.player.position.y - Math.floor(worldH / 2);
+
+    const dw = this.currentDungeon.tiles[0]?.length || 0;
+    const dh = this.currentDungeon.tiles.length;
+
+    // Render tiles at full brightness, no FOV
+    for (let wy_off = 0; wy_off < worldH; wy_off++) {
+      for (let wx_off = 0; wx_off < worldW; wx_off++) {
+        const wx = offsetX + wx_off;
+        const wy = offsetY + wy_off;
+
+        if (wy >= 0 && wy < dh && wx >= 0 && wx < dw) {
+          const tile = this.currentDungeon.tiles[wy][wx];
+          r.drawChar(viewLeft + wx_off, viewTop + wy_off, tile.char, tile.fg, tile.bg);
+        } else {
+          // Out of bounds — dark
+          r.drawChar(viewLeft + wx_off, viewTop + wy_off, ' ', '#000000', '#000000');
+        }
+      }
+    }
+
+    // Draw player
+    const playerScreenX = viewLeft + Math.floor(worldW / 2);
+    const playerScreenY = viewTop + Math.floor(worldH / 2);
+    r.drawChar(playerScreenX, playerScreenY, '@', COLORS.BRIGHT_YELLOW);
+
+    // Player reticle
+    const t = Date.now() % 1000;
+    const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
+    r.drawChar(playerScreenX - 1, playerScreenY - 1, '\u250C', reticleColor);
+    r.drawChar(playerScreenX + 1, playerScreenY - 1, '\u2510', reticleColor);
+    r.drawChar(playerScreenX - 1, playerScreenY + 1, '\u2514', reticleColor);
+    r.drawChar(playerScreenX + 1, playerScreenY + 1, '\u2518', reticleColor);
   }
 
   renderBattleResults() {

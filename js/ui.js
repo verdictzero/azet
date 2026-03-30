@@ -646,7 +646,7 @@ export class UIManager {
     }
 
     // Horizontal linear menu below title
-    const menuItems = ['New Game', 'Quick Start', 'Debug Start', 'Continue', 'Import Save', 'Settings', 'Help'];
+    const menuItems = ['New Game', 'Quick Start', 'Debug Start', 'Continue', 'Import Save', 'Settings', 'Help', 'Debug Adv'];
     const menuY = titleBlockEnd + 2;
     const sep = '   ';
     const sepLen = sep.length;
@@ -3317,7 +3317,7 @@ export class UIManager {
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Debug Menu ');
 
     // Tab bar
-    const tabs = ['Cheats', 'World', 'Visual', 'Info'];
+    const tabs = ['Cheats', 'World', 'Visual', 'Info', 'Test Areas'];
     const tab = this.debugTab || 0;
     const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
     const totalTabLen = tabLabels.reduce((s, l) => s + l.length, 0) + tabLabels.length - 1;
@@ -3422,8 +3422,13 @@ export class UIManager {
       }
       // Footer
       r.drawString(px + 2, py + panelH - 2,
-        'L:Console Log  1-4:Tab  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
+        'L:Console Log  1-5:Tab  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
       return;
+    } else if (tab === 4) {
+      // Test Areas tab
+      entries = [
+        { type: 'action', label: 'Infinite Maze', key: 'testMaze' },
+      ];
     }
 
     // Auto-scroll: find the row index in the full entries array for the current cursor
@@ -3496,7 +3501,7 @@ export class UIManager {
 
     // Footer
     r.drawString(px + 2, py + panelH - 2,
-      'L:Console Log  1-4:Tab  Enter:Toggle  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
+      'L:Console Log  1-5:Tab  Enter:Toggle  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
   }
 
   /**
@@ -3548,6 +3553,10 @@ export class UIManager {
         { type: 'toggle', key: 'disableLighting' },
         { type: 'toggle', key: 'disableClouds' },
         { type: 'toggle', key: 'crtEffects' },
+      ];
+    } else if (tab === 4) {
+      return [
+        { type: 'action', key: 'testMaze' },
       ];
     }
     return [];
