@@ -1148,7 +1148,7 @@ class Game {
   }
 
   enterTestMaze() {
-    const CHUNK = 16;
+    const CHUNK = 37;
     this.testArea = { type: 'maze', chunks: new Map(), seed: this.seed, chunkSize: CHUNK };
 
     // Generate initial chunks in a 7x7 area around origin
@@ -1164,7 +1164,7 @@ class Game {
     // Place player at the first walkable cell near world origin
     const originChunk = this.testArea.chunks.get('0,0');
     if (originChunk) {
-      // Find a walkable cell (odd,odd coordinates are passages in the maze)
+      // Place at top-left of first 5x5 passage block
       this.player.position.x = -this.testArea.worldOffsetX + 1;
       this.player.position.y = -this.testArea.worldOffsetY + 1;
     }
@@ -1191,6 +1191,8 @@ class Game {
     if (this.testArea.chunks.has(key)) return;
 
     const CHUNK = this.testArea.chunkSize;
+    const CW = 5;        // corridor width (5 cells wide)
+    const STEP = CW + 1; // distance between passage block origins (1-cell wall)
     // Deterministic seed per chunk using large primes
     const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
     const rng = new SeededRNG(Math.abs(chunkSeed));
@@ -1204,11 +1206,24 @@ class Game {
       }
     }
 
-    // Maze using binary tree algorithm on odd-coordinate cells
-    // Each odd,odd cell is a passage; connect either north or west
-    for (let y = 1; y < CHUNK; y += 2) {
-      for (let x = 1; x < CHUNK; x += 2) {
-        grid[y][x] = true; // passage cell
+    // Helper to carve a rectangular block of passages
+    const carve = (gy, gx, h, w) => {
+      for (let dy = 0; dy < h; dy++) {
+        for (let dx = 0; dx < w; dx++) {
+          const py = gy + dy, px = gx + dx;
+          if (py >= 0 && py < CHUNK && px >= 0 && px < CHUNK) {
+            grid[py][px] = true;
+          }
+        }
+      }
+    };
+
+    // Maze using binary tree algorithm with CW-wide passage blocks
+    // Passage blocks start at (1,1) and repeat every STEP cells
+    for (let y = 1; y + CW - 1 < CHUNK; y += STEP) {
+      for (let x = 1; x + CW - 1 < CHUNK; x += STEP) {
+        // Carve CW x CW passage block
+        carve(y, x, CW, CW);
 
         const worldX = cx * CHUNK + x;
         const worldY = cy * CHUNK + y;
@@ -1221,48 +1236,49 @@ class Game {
 
         if (canGoNorth && canGoWest) {
           if (dirSeed < 50) {
-            grid[y - 1][x] = true; // carve north
+            // Carve north: 1-row-tall, CW-wide strip connecting to block above
+            carve(y - 1, x, 1, CW);
           } else {
-            grid[y][x - 1] = true; // carve west
+            // Carve west: CW-tall, 1-column-wide strip connecting to block left
+            carve(y, x - 1, CW, 1);
           }
         } else if (canGoNorth) {
-          grid[y - 1][x] = true;
+          carve(y - 1, x, 1, CW);
         } else if (canGoWest) {
-          grid[y][x - 1] = true;
+          carve(y, x - 1, CW, 1);
         }
-        // Corner cell (1,1): no north or west within chunk - handle cross-chunk below
+        // Corner block (1,1): no north or west within chunk - handle cross-chunk below
       }
     }
 
-    // Cross-chunk connectivity: open border passages
-    // For cells at chunk edges (y=0 or x=0), deterministically open connections
-    // to neighbor chunks based on world-coordinate hashing
-    // Top border: connect passage cells at y=0 to chunk above
-    for (let x = 1; x < CHUNK; x += 2) {
+    // Cross-chunk connectivity: open border passages (CW-wide openings)
+    // Top border: connect passage columns at y=0 to chunk above
+    for (let x = 1; x + CW - 1 < CHUNK; x += STEP) {
       const worldX = cx * CHUNK + x;
       const worldY = cy * CHUNK;
       const borderSeed = Math.abs(worldX * 31337 + worldY * 97531 + this.testArea.seed) % 100;
       if (borderSeed < 60) {
-        grid[0][x] = true; // open top border at this passage column
+        carve(0, x, 1, CW); // open CW-wide top border at this passage column
       }
     }
-    // Left border: connect passage cells at x=0 to chunk to the left
-    for (let y = 1; y < CHUNK; y += 2) {
+    // Left border: connect passage rows at x=0 to chunk to the left
+    for (let y = 1; y + CW - 1 < CHUNK; y += STEP) {
       const worldX = cx * CHUNK;
       const worldY = cy * CHUNK + y;
       const borderSeed = Math.abs(worldX * 31337 + worldY * 97531 + this.testArea.seed) % 100;
       if (borderSeed < 60) {
-        grid[y][0] = true; // open left border at this passage row
+        carve(y, 0, CW, 1); // open CW-tall left border at this passage row
       }
     }
 
-    // Also ensure the (1,1) corner cell that couldn't connect N or W within chunk
+    // Ensure the (1,1) corner block that couldn't connect N or W within chunk
     // gets at least one cross-chunk connection
-    if (!grid[0][1] && !grid[1][0]) {
-      // Force open one border connection
+    const hasTopConn = grid[0] && grid[0][1];
+    const hasLeftConn = grid[1] && grid[1][0];
+    if (!hasTopConn && !hasLeftConn) {
       const cornerSeed = Math.abs(cx * 55711 + cy * 33377 + this.testArea.seed) % 2;
-      if (cornerSeed === 0) grid[0][1] = true;
-      else grid[1][0] = true;
+      if (cornerSeed === 0) carve(0, 1, 1, CW);
+      else carve(1, 0, CW, 1);
     }
 
     this.testArea.chunks.set(key, grid);
