@@ -1187,119 +1187,127 @@ class Game {
     this.ui.addMessage('Use arrow keys to explore. Esc to return.', COLORS.BRIGHT_CYAN);
   }
 
+  _getMazeTemplates() {
+    if (this._mazeTemplates) return this._mazeTemplates;
+
+    const CW = 5, GAP = 15, STEP = CW + GAP; // 20x20 tile
+
+    // Pre-compute 4 tile templates based on S/E corridor presence.
+    // Index: (hasS ? 1 : 0) | (hasE ? 2 : 0)
+    // N/W corridors live in the adjacent tile above/left, not in this tile.
+    //
+    // The 16 NSEW tile types map to these 4 templates:
+    //   VOID(0)→0  DEAD_N(1)→0  DEAD_S(2)→1  STRAIGHT_V(3)→1
+    //   DEAD_E(4)→2  CORNER_NE(5)→2  CORNER_SE(6)→3  T_EAST(7)→3
+    //   DEAD_W(8)→0  CORNER_NW(9)→0  CORNER_SW(10)→1  T_WEST(11)→1
+    //   STRAIGHT_H(12)→2  T_NORTH(13)→2  T_SOUTH(14)→3  CROSS(15)→3
+    this._mazeTemplates = [];
+
+    for (let idx = 0; idx < 4; idx++) {
+      const hasS = !!(idx & 1);
+      const hasE = !!(idx & 2);
+
+      // Build floor grid
+      const grid = [];
+      for (let y = 0; y < STEP; y++) {
+        grid[y] = [];
+        for (let x = 0; x < STEP; x++) {
+          grid[y][x] = false;
+        }
+      }
+
+      // Passage block (always present)
+      for (let y = 0; y < CW; y++)
+        for (let x = 0; x < CW; x++)
+          grid[y][x] = true;
+
+      // South corridor
+      if (hasS)
+        for (let y = CW; y < STEP; y++)
+          for (let x = 0; x < CW; x++)
+            grid[y][x] = true;
+
+      // East corridor
+      if (hasE)
+        for (let y = 0; y < CW; y++)
+          for (let x = CW; x < STEP; x++)
+            grid[y][x] = true;
+
+      // BFS distance field (Chebyshev, max 3 layers)
+      const dist = [];
+      const queue = [];
+      for (let y = 0; y < STEP; y++) {
+        dist[y] = [];
+        for (let x = 0; x < STEP; x++) {
+          if (grid[y][x]) { dist[y][x] = 0; queue.push(y, x); }
+          else dist[y][x] = 255;
+        }
+      }
+      let qi = 0;
+      while (qi < queue.length) {
+        const by = queue[qi++], bx = queue[qi++];
+        const d = dist[by][bx];
+        if (d >= 3) continue;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const ny = by + dy, nx = bx + dx;
+            if (ny >= 0 && ny < STEP && nx >= 0 && nx < STEP && dist[ny][nx] > d + 1) {
+              dist[ny][nx] = d + 1;
+              queue.push(ny, nx);
+            }
+          }
+        }
+      }
+
+      this._mazeTemplates[idx] = dist;
+    }
+
+    return this._mazeTemplates;
+  }
+
   _generateMazeChunk(cx, cy) {
     const key = `${cx},${cy}`;
     if (this.testArea.chunks.has(key)) return;
 
     const CHUNK = this.testArea.chunkSize;
-    const CW = 5;         // corridor width (5 cells wide)
-    const GAP = 15;       // wall region between passage blocks
-    const STEP = CW + GAP; // 20 cells per grid unit
-    const GRID = CHUNK / STEP; // 4 tiles per chunk axis
+    const CW = 5, GAP = 15, STEP = CW + GAP;
+    const GRID = CHUNK / STEP; // 4 tiles per axis
     const seed = this.testArea.seed;
-
-    // Connection flags for tile types
-    // Mask bits: N=1 S=2 E=4 W=8
-    // 16 tile types: 0=VOID 3=STRAIGHT_V 5=CORNER_NE 6=CORNER_SE 9=CORNER_NW
-    // 10=CORNER_SW 12=STRAIGHT_H 7=T_EAST 11=T_WEST 13=T_NORTH 14=T_SOUTH 15=CROSS
-    const T_N = 1, T_S = 2, T_E = 4, T_W = 8;
+    const templates = this._getMazeTemplates();
 
     // Deterministic per-cell direction choice (binary tree: north 70% / west 30%)
     const choosesNorth = (wx, wy) =>
       Math.abs(wx * 48611 + wy * 22769 + seed) % 100 < 70;
 
-    // Create chunk grid filled with walls
-    const grid = [];
-    for (let y = 0; y < CHUNK; y++) {
-      grid[y] = [];
-      for (let x = 0; x < CHUNK; x++) {
-        grid[y][x] = false;
-      }
-    }
-
-    const carve = (gy, gx, h, w) => {
-      for (let dy = 0; dy < h; dy++) {
-        for (let dx = 0; dx < w; dx++) {
-          const py = gy + dy, px = gx + dx;
-          if (py >= 0 && py < CHUNK && px >= 0 && px < CHUNK) {
-            grid[py][px] = true;
-          }
-        }
-      }
-    };
-
-    // Phase 1: Stamp pre-defined tile types
-    // Each grid cell gets a connection mask derived from binary tree choices,
-    // then we carve the passage block + corridors for all open directions.
-    // Cross-chunk borders are handled naturally: S/E corridors of border cells
-    // reach into the gap that the adjacent chunk's N/W carves would cover.
-    for (let gy = 0; gy < GRID; gy++) {
-      for (let gx = 0; gx < GRID; gx++) {
-        const wx = cx * CHUNK + gx * STEP;
-        const wy = cy * CHUNK + gy * STEP;
-        const y = gy * STEP;
-        const x = gx * STEP;
-
-        // Build connection mask from this cell's choice + neighbors' choices
-        let mask = 0;
-        if (choosesNorth(wx, wy)) mask |= T_N; else mask |= T_W;
-        if (choosesNorth(wx, wy + STEP)) mask |= T_S;    // cell below connects up
-        if (!choosesNorth(wx + STEP, wy)) mask |= T_E;   // cell right connects left
-
-        // Carve passage block (always present)
-        carve(y, x, CW, CW);
-
-        // Carve corridors based on tile connection mask
-        if (mask & T_N) carve(y - GAP, x, GAP, CW);      // north corridor
-        if (mask & T_S) carve(y + CW, x, GAP, CW);       // south corridor
-        if (mask & T_E) carve(y, x + CW, CW, GAP);       // east corridor
-        if (mask & T_W) carve(y, x - GAP, CW, GAP);      // west corridor
-      }
-    }
-
-    // Phase 2: Random rooms (2x2 to 4x4 passage-block spans)
-    for (let gy = 0; gy < GRID; gy++) {
-      for (let gx = 0; gx < GRID; gx++) {
-        const wx = cx * CHUNK + gx * STEP;
-        const wy = cy * CHUNK + gy * STEP;
-        const roomSeed = Math.abs(wx * 61403 + wy * 84299 + seed) % 100;
-        if (roomSeed < 12) {
-          const bw = 2 + (roomSeed % 3);       // 2-4 blocks wide
-          const bh = 2 + ((roomSeed >> 2) % 3); // 2-4 blocks tall
-          const rw = bw * STEP - GAP;
-          const rh = bh * STEP - GAP;
-          carve(gy * STEP, gx * STEP, rh, rw);
-        }
-      }
-    }
-
-    // Phase 3: Compute distance field via BFS (Chebyshev distance from nearest passage)
-    // 0 = floor, 1-3 = wall gradient layers, 255 = deep wall (black void)
+    // Allocate chunk distance array filled with void
     const dist = [];
-    const queue = [];
     for (let y = 0; y < CHUNK; y++) {
-      dist[y] = [];
-      for (let x = 0; x < CHUNK; x++) {
-        if (grid[y][x]) {
-          dist[y][x] = 0;
-          queue.push(y, x);
-        } else {
-          dist[y][x] = 255;
-        }
-      }
+      dist[y] = new Array(CHUNK).fill(255);
     }
-    let qi = 0;
-    while (qi < queue.length) {
-      const by = queue[qi++], bx = queue[qi++];
-      const d = dist[by][bx];
-      if (d >= 3) continue;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const ny = by + dy, nx = bx + dx;
-          if (ny >= 0 && ny < CHUNK && nx >= 0 && nx < CHUNK && dist[ny][nx] > d + 1) {
-            dist[ny][nx] = d + 1;
-            queue.push(ny, nx);
+
+    // Stamp pre-defined tile templates
+    // Binary tree tile types produced:
+    //   Chose N → DEAD_N(1), STRAIGHT_V(3), CORNER_NE(5), T_EAST(7)
+    //   Chose W → DEAD_W(8), CORNER_SW(10), STRAIGHT_H(12), T_SOUTH(14)
+    for (let gy = 0; gy < GRID; gy++) {
+      for (let gx = 0; gx < GRID; gx++) {
+        const wx = cx * CHUNK + gx * STEP;
+        const wy = cy * CHUNK + gy * STEP;
+
+        // S: cell below connects up to us
+        const hasS = choosesNorth(wx, wy + STEP);
+        // E: cell to right connects left to us
+        const hasE = !choosesNorth(wx + STEP, wy);
+
+        const tpl = templates[(hasS ? 1 : 0) | (hasE ? 2 : 0)];
+
+        // Copy 20x20 template into chunk
+        const baseY = gy * STEP;
+        const baseX = gx * STEP;
+        for (let ty = 0; ty < STEP; ty++) {
+          for (let tx = 0; tx < STEP; tx++) {
+            dist[baseY + ty][baseX + tx] = tpl[ty][tx];
           }
         }
       }
