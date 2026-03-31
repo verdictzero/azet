@@ -1197,25 +1197,26 @@ class Game {
     const STEP = CW + GAP; // 20 cells per grid unit
     const GRID = CHUNK / STEP; // 4 tiles per axis
     const seed = this.testArea.seed;
+    const PAD = CW;       // padding for adjacent tiles' border gradients
 
     // Deterministic per-cell direction choice (binary tree: north 70% / west 30%)
     const choosesNorth = (wx, wy) =>
       Math.abs(wx * 48611 + wy * 22769 + seed) % 100 < 70;
 
-    // Create chunk grid filled with walls
+    // Padded grid for BFS — includes one ring of adjacent tiles so border
+    // gradients are computed correctly across chunk boundaries
+    const BFSW = CHUNK + 2 * PAD;
     const grid = [];
-    for (let y = 0; y < CHUNK; y++) {
-      grid[y] = [];
-      for (let x = 0; x < CHUNK; x++) {
-        grid[y][x] = false;
-      }
+    for (let y = 0; y < BFSW; y++) {
+      grid[y] = new Array(BFSW).fill(false);
     }
 
+    // Carve helper — coordinates are chunk-relative, offset by PAD internally
     const carve = (gy, gx, h, w) => {
       for (let dy = 0; dy < h; dy++) {
         for (let dx = 0; dx < w; dx++) {
-          const py = gy + dy, px = gx + dx;
-          if (py >= 0 && py < CHUNK && px >= 0 && px < CHUNK) {
+          const py = PAD + gy + dy, px = PAD + gx + dx;
+          if (py >= 0 && py < BFSW && px >= 0 && px < BFSW) {
             grid[py][px] = true;
           }
         }
@@ -1230,59 +1231,62 @@ class Game {
     // Binary tree produces 8 types:
     //   Chose N → DEAD_N(1), STRAIGHT_V(3), CORNER_NE(5), T_EAST(7)
     //   Chose W → DEAD_W(8), CORNER_SW(10), STRAIGHT_H(12), T_SOUTH(14)
-    for (let gy = 0; gy < GRID; gy++) {
-      for (let gx = 0; gx < GRID; gx++) {
+    //
+    // Loop covers a 6x6 ring (-1..GRID) to include one layer of adjacent
+    // tiles from neighboring chunks. The carve() function clips to the
+    // padded grid bounds, so only border-adjacent portions are included.
+    for (let gy = -1; gy <= GRID; gy++) {
+      for (let gx = -1; gx <= GRID; gx++) {
         const wx = cx * CHUNK + gx * STEP;
         const wy = cy * CHUNK + gy * STEP;
         const y = gy * STEP;
         const x = gx * STEP;
 
-        // S: cell below connects up to us
-        const hasS = choosesNorth(wx, wy + STEP);
-        // E: cell to right connects left to us
-        const hasE = !choosesNorth(wx + STEP, wy);
-
         // Carve passage block (always present in every tile type)
         carve(y, x, CW, CW);
 
-        // Carve south corridor (covers cross-chunk bottom border naturally)
-        if (hasS) carve(y + CW, x, GAP, CW);
+        // Carve south corridor
+        if (choosesNorth(wx, wy + STEP)) carve(y + CW, x, GAP, CW);
 
-        // Carve east corridor (covers cross-chunk right border naturally)
-        if (hasE) carve(y, x + CW, CW, GAP);
+        // Carve east corridor
+        if (!choosesNorth(wx + STEP, wy)) carve(y, x + CW, CW, GAP);
       }
     }
 
-    // BFS distance field on full 80x80 chunk (Chebyshev, 3 wall layers)
-    // Produces correct gradients on all sides of every corridor and passage
+    // BFS distance field on padded grid (Chebyshev, 3 wall layers)
     // 0 = floor, 1-3 = wall gradient (▒▓█), 255 = deep void
-    const dist = [];
+    const bfs = [];
     const queue = [];
-    for (let y = 0; y < CHUNK; y++) {
-      dist[y] = [];
-      for (let x = 0; x < CHUNK; x++) {
-        if (grid[y][x]) {
-          dist[y][x] = 0;
-          queue.push(y, x);
-        } else {
-          dist[y][x] = 255;
-        }
+    for (let y = 0; y < BFSW; y++) {
+      bfs[y] = [];
+      for (let x = 0; x < BFSW; x++) {
+        if (grid[y][x]) { bfs[y][x] = 0; queue.push(y, x); }
+        else bfs[y][x] = 255;
       }
     }
     let qi = 0;
     while (qi < queue.length) {
       const by = queue[qi++], bx = queue[qi++];
-      const d = dist[by][bx];
+      const d = bfs[by][bx];
       if (d >= 3) continue;
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
           const ny = by + dy, nx = bx + dx;
-          if (ny >= 0 && ny < CHUNK && nx >= 0 && nx < CHUNK && dist[ny][nx] > d + 1) {
-            dist[ny][nx] = d + 1;
+          if (ny >= 0 && ny < BFSW && nx >= 0 && nx < BFSW && bfs[ny][nx] > d + 1) {
+            bfs[ny][nx] = d + 1;
             queue.push(ny, nx);
           }
         }
+      }
+    }
+
+    // Extract center CHUNK x CHUNK from the padded BFS result
+    const dist = [];
+    for (let y = 0; y < CHUNK; y++) {
+      dist[y] = [];
+      for (let x = 0; x < CHUNK; x++) {
+        dist[y][x] = bfs[PAD + y][PAD + x];
       }
     }
 
