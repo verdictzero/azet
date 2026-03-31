@@ -1277,7 +1277,7 @@ class Game {
     }
 
     // Compute distance field via BFS (Chebyshev distance from nearest passage)
-    // 0 = floor, 1-4 = wall gradient layers, 255 = deep wall (black void)
+    // 0 = floor, 1-3 = wall gradient layers, 255 = deep wall (black void)
     const dist = [];
     const queue = [];
     for (let y = 0; y < CHUNK; y++) {
@@ -1295,7 +1295,7 @@ class Game {
     while (qi < queue.length) {
       const cy = queue[qi++], cx = queue[qi++];
       const d = dist[cy][cx];
-      if (d >= 4) continue;
+      if (d >= 3) continue;
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
@@ -1353,7 +1353,7 @@ class Game {
           tiles[y][x] = { type: 'WALL', char: '\u2592', fg: '#226622', bg: '#000000', walkable: false };
         } else if (d === 2) {
           tiles[y][x] = { type: 'WALL', char: '\u2593', fg: '#1a4d1a', bg: '#000000', walkable: false };
-        } else if (d === 3 || d === 4) {
+        } else if (d === 3) {
           tiles[y][x] = { type: 'WALL', char: '\u2588', fg: '#113311', bg: '#000000', walkable: false };
         } else {
           // Check for cap characters where walls meet void
@@ -1369,9 +1369,9 @@ class Game {
           };
           const dBelow = y < tilesH - 1 ? getDist(x, y + 1) : 255;
           const dAbove = y > 0 ? getDist(x, y - 1) : 255;
-          if (dBelow <= 4) {
+          if (dBelow <= 3) {
             tiles[y][x] = { type: 'WALL', char: '\u2584', fg: '#113311', bg: '#000000', walkable: false };
-          } else if (dAbove <= 4) {
+          } else if (dAbove <= 3) {
             tiles[y][x] = { type: 'WALL', char: '\u2580', fg: '#113311', bg: '#000000', walkable: false };
           } else {
             tiles[y][x] = { type: 'WALL', char: ' ', fg: '#000000', bg: '#000000', walkable: false };
