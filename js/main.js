@@ -9,6 +9,7 @@ import { getMonsterArt } from './monsterart.js';
 import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 import { AsciiCutscenePlayer } from './ascii-cutscene.js';
+import { CutsceneLoader } from './cutscene-loader.js';
 
 // ─── Save Export/Import Cipher ───
 const SAVE_CIPHER_KEY = 'AETHEON-ASCIIQUEST-2024';
@@ -4324,6 +4325,9 @@ class Game {
         case 'cutsceneNoise':
           this._startCutsceneDemo(entry.key.replace('cutscene', '').toLowerCase());
           break;
+        case 'cutsceneVideo':
+          this._promptVideoCutscene();
+          break;
       }
     } else if (entry.type === 'slider') {
       if (entry.key === 'hour' && this.timeSystem) {
@@ -4374,6 +4378,45 @@ class Game {
     this.cutscenePlayer.start(name);
     this._cutsceneReturnState = 'DEBUG_MENU';
     this.setState('ASCII_CUTSCENE');
+  }
+
+  /**
+   * Load and play a pre-rendered ASCII video cutscene (.azcut file).
+   * @param {string} cutsceneId - Filename without extension in data/cutscenes/
+   * @param {string} [returnState] - State to return to after playback
+   * @param {boolean} [loop] - Whether to loop the cutscene
+   */
+  async _startVideoCutscene(cutsceneId, returnState, loop = false) {
+    try {
+      const data = await CutsceneLoader.load(`data/cutscenes/${cutsceneId}.azcut`);
+      if (!this.cutscenePlayer) {
+        this.cutscenePlayer = new AsciiCutscenePlayer();
+      }
+      // Save current font size, switch to half for 2x density
+      this._cutsceneOrigFontSize = this.renderer.fontSize;
+      this._cutsceneOrigUserFont = this.renderer._userFontSize;
+      this.renderer.setFontSize(Math.max(7, Math.floor(this.renderer.fontSize / 2)));
+      this.cutscenePlayer.startFrames(data, {
+        onComplete: () => this.handleCutsceneInput('Escape'),
+        loop,
+      });
+      this._cutsceneReturnState = returnState || this.state;
+      this.setState('ASCII_CUTSCENE');
+    } catch (e) {
+      console.error(`Failed to load cutscene "${cutsceneId}":`, e);
+      this.ui.addMessage(`Cutscene "${cutsceneId}" not found.`, '#ff6060');
+    }
+  }
+
+  /**
+   * Prompt for a cutscene filename via the browser prompt dialog,
+   * then attempt to load and play it from data/cutscenes/.
+   */
+  _promptVideoCutscene() {
+    const id = prompt('Enter cutscene filename (without .azcut extension):');
+    if (id && id.trim()) {
+      this._startVideoCutscene(id.trim(), 'DEBUG_MENU');
+    }
   }
 
   handleCutsceneInput(key) {

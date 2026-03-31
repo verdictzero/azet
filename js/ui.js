@@ -3435,6 +3435,8 @@ export class UIManager {
         { type: 'action', label: 'Plasma Demo', key: 'cutscenePlasma' },
         { type: 'action', label: 'Matrix Rain', key: 'cutsceneMatrix' },
         { type: 'action', label: 'Noise Storm', key: 'cutsceneNoise' },
+        { type: 'separator' },
+        { type: 'action', label: '\u25B6 Play Video Cutscene...', key: 'cutsceneVideo' },
       ];
     }
 
@@ -3570,6 +3572,7 @@ export class UIManager {
         { type: 'action', key: 'cutscenePlasma' },
         { type: 'action', key: 'cutsceneMatrix' },
         { type: 'action', key: 'cutsceneNoise' },
+        { type: 'action', key: 'cutsceneVideo' },
       ];
     }
     return [];

@@ -176,6 +176,7 @@
       <button onclick="snapshotPNG()">🖼 Snapshot PNG</button>
       <button onclick="copyTextFrame()">📋 Copy Text</button>
       <button id="recordBtn" onclick="toggleRecording()">⏺ Record WebM</button>
+      <button id="exportCutBtn" onclick="exportCutscene()">🎬 Export .azcut</button>
       <span class="status" id="previewInfo"></span>
     </div>
     <div class="preview-container" id="previewContainer">
@@ -685,6 +686,122 @@ function copyTextFrame() {
   navigator.clipboard.writeText(lines.join('\n')).then(() => {
     document.getElementById('status').textContent = 'Frame text copied to clipboard!';
   });
+}
+
+// ============================================================
+// Export: Cutscene (.azcut frame sequence)
+// ============================================================
+let isExportingCutscene = false;
+
+async function exportCutscene() {
+  if (!videoEl.src || videoEl.readyState < 2) {
+    alert('Load a video first!');
+    return;
+  }
+  if (isExportingCutscene) return;
+  isExportingCutscene = true;
+
+  const btn = document.getElementById('exportCutBtn');
+  const statusEl = document.getElementById('status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Exporting...';
+
+  // Pause current playback
+  if (isPlaying) togglePlay();
+
+  const cols = parseInt(document.getElementById('cols').value) || 160;
+  const rows = parseInt(document.getElementById('rows').value) || 90;
+  const fps = 30;
+  const frameDuration = 1 / fps;
+  const duration = videoEl.duration;
+  const totalFrames = Math.floor(duration * fps);
+
+  const paletteMap = {};   // hex -> index
+  const paletteArr = [];   // index -> hex
+  const capturedFrames = [];
+
+  function getPaletteIndex(hex) {
+    if (hex in paletteMap) return paletteMap[hex];
+    const idx = paletteArr.length;
+    paletteMap[hex] = idx;
+    paletteArr.push(hex);
+    return idx;
+  }
+
+  // Step through video frame-by-frame using seeking
+  for (let f = 0; f < totalFrames; f++) {
+    const targetTime = f * frameDuration;
+
+    // Seek to target time
+    videoEl.currentTime = targetTime;
+    await new Promise(resolve => {
+      videoEl.addEventListener('seeked', resolve, { once: true });
+    });
+
+    // Render the frame (populates global `grid`)
+    processAndRenderFrame();
+
+    // Pack the frame
+    const cellCount = cols * rows;
+    let chars = '';
+    const fgIndices = new Array(cellCount);
+    const bgIndices = new Array(cellCount);
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const cell = grid[y][x];
+        const idx = y * cols + x;
+        chars += cell.char;
+        fgIndices[idx] = getPaletteIndex(cell.fg);
+        bgIndices[idx] = getPaletteIndex(cell.bg);
+      }
+    }
+
+    capturedFrames.push({
+      chars,
+      fg: fgIndices,
+      bg: bgIndices,
+    });
+
+    // Update progress
+    if (f % 10 === 0 || f === totalFrames - 1) {
+      const pct = Math.round((f + 1) / totalFrames * 100);
+      statusEl.textContent = `Exporting: ${pct}% (${f + 1}/${totalFrames} frames)`;
+      // Yield to UI thread
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  // Build .azcut file
+  const colorMode = document.querySelector('input[name="colorMode"]:checked').value;
+  const azcut = {
+    version: 1,
+    meta: {
+      title: videoEl.src.split('/').pop().replace(/\.[^.]+$/, '') || 'untitled',
+      width: cols,
+      height: rows,
+      fps,
+      frameCount: capturedFrames.length,
+      duration: capturedFrames.length / fps,
+      colorMode,
+    },
+    palette: paletteArr,
+    frames: capturedFrames,
+  };
+
+  // Download
+  const json = JSON.stringify(azcut);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${azcut.meta.title}.azcut`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  statusEl.textContent = `Exported ${capturedFrames.length} frames (${paletteArr.length} colors, ${(blob.size / 1024 / 1024).toFixed(1)} MB)`;
+  btn.disabled = false;
+  btn.textContent = '🎬 Export .azcut';
+  isExportingCutscene = false;
 }
 
 // ============================================================
