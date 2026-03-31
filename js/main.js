@@ -1148,7 +1148,7 @@ class Game {
   }
 
   enterTestMaze() {
-    const CHUNK = 78;
+    const CHUNK = 80;
     this.testArea = { type: 'maze', chunks: new Map(), seed: this.seed, chunkSize: CHUNK };
 
     // Generate initial chunks in a 5x5 area around origin
@@ -1193,8 +1193,8 @@ class Game {
 
     const CHUNK = this.testArea.chunkSize;
     const CW = 5;         // corridor width (5 cells wide)
-    const GAP = 1;        // wall thickness (1 solid wall block)
-    const STEP = CW + GAP; // distance between passage block origins (6)
+    const GAP = 15;       // wall thickness (wide negative space between corridors)
+    const STEP = CW + GAP; // distance between passage block origins (20)
     // Deterministic seed per chunk using large primes
     const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
     const rng = new SeededRNG(Math.abs(chunkSeed));
@@ -1276,7 +1276,39 @@ class Game {
       if (dirSeed >= 70) carve(y, CHUNK - GAP, CW, GAP);
     }
 
-    this.testArea.chunks.set(key, grid);
+    // Compute distance field via BFS (Chebyshev distance from nearest passage)
+    // 0 = floor, 1-4 = wall gradient layers, 255 = deep wall (black void)
+    const dist = [];
+    const queue = [];
+    for (let y = 0; y < CHUNK; y++) {
+      dist[y] = [];
+      for (let x = 0; x < CHUNK; x++) {
+        if (grid[y][x]) {
+          dist[y][x] = 0;
+          queue.push(y, x);
+        } else {
+          dist[y][x] = 255;
+        }
+      }
+    }
+    let qi = 0;
+    while (qi < queue.length) {
+      const cy = queue[qi++], cx = queue[qi++];
+      const d = dist[cy][cx];
+      if (d >= 4) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const ny = cy + dy, nx = cx + dx;
+          if (ny >= 0 && ny < CHUNK && nx >= 0 && nx < CHUNK && dist[ny][nx] > d + 1) {
+            dist[ny][nx] = d + 1;
+            queue.push(ny, nx);
+          }
+        }
+      }
+    }
+
+    this.testArea.chunks.set(key, dist);
   }
 
   _rebuildTestAreaTiles() {
@@ -1313,10 +1345,18 @@ class Game {
         const ly = ((worldY % CHUNK) + CHUNK) % CHUNK;
 
         const chunk = this.testArea.chunks.get(`${cx},${cy}`);
-        const isPassage = chunk ? chunk[ly][lx] : false;
+        const d = chunk ? chunk[ly][lx] : 255;
 
-        if (isPassage) {
-          tiles[y][x] = { type: 'FLOOR', char: '\u2591', fg: '#338833', bg: '#000000', walkable: true };
+        if (d === 0) {
+          tiles[y][x] = { type: 'FLOOR', char: '\u25D9', fg: '#338833', bg: '#000000', walkable: true };
+        } else if (d === 1) {
+          tiles[y][x] = { type: 'WALL', char: '\u25D8', fg: '#226622', bg: '#000000', walkable: false };
+        } else if (d === 2) {
+          tiles[y][x] = { type: 'WALL', char: '\u2592', fg: '#1a4d1a', bg: '#000000', walkable: false };
+        } else if (d === 3) {
+          tiles[y][x] = { type: 'WALL', char: '\u2593', fg: '#113311', bg: '#000000', walkable: false };
+        } else if (d === 4) {
+          tiles[y][x] = { type: 'WALL', char: '\u2588', fg: '#0a1f0a', bg: '#000000', walkable: false };
         } else {
           tiles[y][x] = { type: 'WALL', char: ' ', fg: '#000000', bg: '#000000', walkable: false };
         }
