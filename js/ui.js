@@ -3317,7 +3317,7 @@ export class UIManager {
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Debug Menu ');
 
     // Tab bar
-    const tabs = ['Cheats', 'World', 'Visual', 'Info', 'Test Areas'];
+    const tabs = ['Cheats', 'World', 'Visual', 'Info', 'Test Areas', 'Hi-Res'];
     const tab = this.debugTab || 0;
     const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
     const totalTabLen = tabLabels.reduce((s, l) => s + l.length, 0) + tabLabels.length - 1;
@@ -3422,12 +3422,19 @@ export class UIManager {
       }
       // Footer
       r.drawString(px + 2, py + panelH - 2,
-        'L:Console Log  1-5:Tab  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
+        'L:Console Log  1-6:Tab  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
       return;
     } else if (tab === 4) {
       // Test Areas tab
       entries = [
         { type: 'action', label: 'Infinite Maze', key: 'testMaze' },
+      ];
+    } else if (tab === 5) {
+      // Hi-Res ASCII cutscene demos
+      entries = [
+        { type: 'action', label: 'Plasma Demo', key: 'cutscenePlasma' },
+        { type: 'action', label: 'Matrix Rain', key: 'cutsceneMatrix' },
+        { type: 'action', label: 'Noise Storm', key: 'cutsceneNoise' },
       ];
     }
 
@@ -3501,7 +3508,7 @@ export class UIManager {
 
     // Footer
     r.drawString(px + 2, py + panelH - 2,
-      'L:Console Log  1-5:Tab  Enter:Toggle  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
+      'L:Console Log  1-6:Tab  Enter:Toggle  Esc:Close', COLORS.BRIGHT_BLACK, bg, w);
   }
 
   /**
@@ -3557,6 +3564,12 @@ export class UIManager {
     } else if (tab === 4) {
       return [
         { type: 'action', key: 'testMaze' },
+      ];
+    } else if (tab === 5) {
+      return [
+        { type: 'action', key: 'cutscenePlasma' },
+        { type: 'action', key: 'cutsceneMatrix' },
+        { type: 'action', key: 'cutsceneNoise' },
       ];
     }
     return [];

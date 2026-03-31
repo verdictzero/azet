@@ -8,6 +8,7 @@ import { UIManager } from './ui.js';
 import { getMonsterArt } from './monsterart.js';
 import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
+import { AsciiCutscenePlayer } from './ascii-cutscene.js';
 
 // ─── Save Export/Import Cipher ───
 const SAVE_CIPHER_KEY = 'AETHEON-ASCIIQUEST-2024';
@@ -1952,6 +1953,7 @@ class Game {
       case 'QUEST_COMPASS': return this.handleQuestCompassInput(key);
       case 'TRANSIT_MAP': return this.handleTransitMapInput(key);
       case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
+      case 'ASCII_CUTSCENE': return this.handleCutsceneInput(key);
       case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
       case 'ALMANAC': return this.handleAlmanacInput(key);
       case 'GAMEPAD_MENU': return this.handleGamepadMenuInput(key);
@@ -4121,20 +4123,20 @@ class Game {
     }
 
     // Tab switching
-    if (key >= '1' && key <= '5') {
+    if (key >= '1' && key <= '6') {
       ui.debugTab = parseInt(key) - 1;
       ui.debugCursor = 0;
       ui.debugScroll = 0;
       return;
     }
     if (key === 'ArrowRight' || key === 'Tab') {
-      ui.debugTab = (tab + 1) % 5;
+      ui.debugTab = (tab + 1) % 6;
       ui.debugCursor = 0;
       ui.debugScroll = 0;
       return;
     }
     if (key === 'ArrowLeft') {
-      ui.debugTab = (tab - 1 + 5) % 5;
+      ui.debugTab = (tab - 1 + 6) % 6;
       ui.debugCursor = 0;
       ui.debugScroll = 0;
       return;
@@ -4277,6 +4279,12 @@ class Game {
         case 'testMaze':
           this.enterTestMaze();
           break;
+        // Hi-Res cutscene demos
+        case 'cutscenePlasma':
+        case 'cutsceneMatrix':
+        case 'cutsceneNoise':
+          this._startCutsceneDemo(entry.key.replace('cutscene', '').toLowerCase());
+          break;
       }
     } else if (entry.type === 'slider') {
       if (entry.key === 'hour' && this.timeSystem) {
@@ -4314,6 +4322,22 @@ class Game {
     item.subtype = subtypeKey;
     item.char = st.char;
     this.player.addItem(item);
+  }
+
+  _startCutsceneDemo(name) {
+    if (!this.cutscenePlayer) {
+      this.cutscenePlayer = new AsciiCutscenePlayer();
+    }
+    this.cutscenePlayer.start(name);
+    this._cutsceneReturnState = 'DEBUG_MENU';
+    this.setState('ASCII_CUTSCENE');
+  }
+
+  handleCutsceneInput(key) {
+    if (key === 'Escape') {
+      if (this.cutscenePlayer) this.cutscenePlayer.stop();
+      this.setState(this._cutsceneReturnState || 'DEBUG_MENU');
+    }
   }
 
   handleConsoleLogInput(key) {
@@ -5905,6 +5929,13 @@ class Game {
         this.ui.drawDebugMenu(this.debug, this.player, this.timeSystem, this.weatherSystem, this._debugReturnState || 'MENU', this.turnCount);
         break;
 
+      case 'ASCII_CUTSCENE':
+        if (this.cutscenePlayer) {
+          this.cutscenePlayer.update(performance.now());
+          this.cutscenePlayer.render(this.renderer);
+        }
+        break;
+
       case 'CONSOLE_LOG':
         this.ui.drawConsoleLog();
         break;
@@ -5963,7 +5994,7 @@ class Game {
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
     const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'GAMEPAD_MENU'].includes(this.state);
-    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS';
+    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS' || this.state === 'ASCII_CUTSCENE';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
       || hasTimeTint
