@@ -1353,7 +1353,7 @@ class Game {
           tiles[y][x] = { type: 'WALL', char: '\u2592', fg: '#226622', bg: '#000000', walkable: false };
         } else if (d === 2) {
           tiles[y][x] = { type: 'WALL', char: '\u2593', fg: '#1a4d1a', bg: '#000000', walkable: false };
-        } else if (d === 3) {
+        } else if (d === 3 || d === 4) {
           tiles[y][x] = { type: 'WALL', char: '\u2588', fg: '#113311', bg: '#000000', walkable: false };
         } else {
           // Check for cap characters where walls meet void
@@ -1369,9 +1369,9 @@ class Game {
           };
           const dBelow = y < tilesH - 1 ? getDist(x, y + 1) : 255;
           const dAbove = y > 0 ? getDist(x, y - 1) : 255;
-          if (dBelow <= 3) {
+          if (dBelow <= 4) {
             tiles[y][x] = { type: 'WALL', char: '\u2584', fg: '#113311', bg: '#000000', walkable: false };
-          } else if (dAbove <= 3) {
+          } else if (dAbove <= 4) {
             tiles[y][x] = { type: 'WALL', char: '\u2580', fg: '#113311', bg: '#000000', walkable: false };
           } else {
             tiles[y][x] = { type: 'WALL', char: ' ', fg: '#000000', bg: '#000000', walkable: false };
