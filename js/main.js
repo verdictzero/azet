@@ -1193,22 +1193,30 @@ class Game {
 
     const CHUNK = this.testArea.chunkSize;
     const CW = 5;         // corridor width (5 cells wide)
-    const GAP = 15;       // wall thickness (wide negative space between corridors)
-    const STEP = CW + GAP; // distance between passage block origins (20)
-    // Deterministic seed per chunk using large primes
-    const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
-    const rng = new SeededRNG(Math.abs(chunkSeed));
+    const GAP = 15;       // wall region between passage blocks
+    const STEP = CW + GAP; // 20 cells per grid unit
+    const GRID = CHUNK / STEP; // 4 tiles per chunk axis
+    const seed = this.testArea.seed;
+
+    // Connection flags for tile types
+    // Mask bits: N=1 S=2 E=4 W=8
+    // 16 tile types: 0=VOID 3=STRAIGHT_V 5=CORNER_NE 6=CORNER_SE 9=CORNER_NW
+    // 10=CORNER_SW 12=STRAIGHT_H 7=T_EAST 11=T_WEST 13=T_NORTH 14=T_SOUTH 15=CROSS
+    const T_N = 1, T_S = 2, T_E = 4, T_W = 8;
+
+    // Deterministic per-cell direction choice (binary tree: north 70% / west 30%)
+    const choosesNorth = (wx, wy) =>
+      Math.abs(wx * 48611 + wy * 22769 + seed) % 100 < 70;
 
     // Create chunk grid filled with walls
     const grid = [];
     for (let y = 0; y < CHUNK; y++) {
       grid[y] = [];
       for (let x = 0; x < CHUNK; x++) {
-        grid[y][x] = false; // false = wall
+        grid[y][x] = false;
       }
     }
 
-    // Helper to carve a rectangular block of passages
     const carve = (gy, gx, h, w) => {
       for (let dy = 0; dy < h; dy++) {
         for (let dx = 0; dx < w; dx++) {
@@ -1220,64 +1228,53 @@ class Game {
       }
     };
 
-    // Maze using binary tree algorithm with CW-wide passage blocks
-    // Passage blocks start at (0,0) and repeat every STEP cells
-    for (let y = 0; y < CHUNK; y += STEP) {
-      for (let x = 0; x < CHUNK; x += STEP) {
+    // Phase 1: Stamp pre-defined tile types
+    // Each grid cell gets a connection mask derived from binary tree choices,
+    // then we carve the passage block + corridors for all open directions.
+    // Cross-chunk borders are handled naturally: S/E corridors of border cells
+    // reach into the gap that the adjacent chunk's N/W carves would cover.
+    for (let gy = 0; gy < GRID; gy++) {
+      for (let gx = 0; gx < GRID; gx++) {
+        const wx = cx * CHUNK + gx * STEP;
+        const wy = cy * CHUNK + gy * STEP;
+        const y = gy * STEP;
+        const x = gx * STEP;
+
+        // Build connection mask from this cell's choice + neighbors' choices
+        let mask = 0;
+        if (choosesNorth(wx, wy)) mask |= T_N; else mask |= T_W;
+        if (choosesNorth(wx, wy + STEP)) mask |= T_S;    // cell below connects up
+        if (!choosesNorth(wx + STEP, wy)) mask |= T_E;   // cell right connects left
+
+        // Carve passage block (always present)
         carve(y, x, CW, CW);
 
-        const worldX = cx * CHUNK + x;
-        const worldY = cy * CHUNK + y;
-        const dirSeed = Math.abs(worldX * 48611 + worldY * 22769 + this.testArea.seed) % 100;
-
-        if (dirSeed < 70) {
-          // Connect north: long straight runs (70% bias)
-          if (y > 0) carve(y - GAP, x, GAP, CW);
-        } else {
-          // Connect west: T-intersections (30%)
-          if (x > 0) carve(y, x - GAP, CW, GAP);
-        }
+        // Carve corridors based on tile connection mask
+        if (mask & T_N) carve(y - GAP, x, GAP, CW);      // north corridor
+        if (mask & T_S) carve(y + CW, x, GAP, CW);       // south corridor
+        if (mask & T_E) carve(y, x + CW, CW, GAP);       // east corridor
+        if (mask & T_W) carve(y, x - GAP, CW, GAP);      // west corridor
       }
     }
 
-    // Random rooms (2x2 to 4x4 passage-block spans)
-    for (let y = 0; y < CHUNK; y += STEP) {
-      for (let x = 0; x < CHUNK; x += STEP) {
-        const worldX = cx * CHUNK + x;
-        const worldY = cy * CHUNK + y;
-        const roomSeed = Math.abs(worldX * 61403 + worldY * 84299 + this.testArea.seed) % 100;
+    // Phase 2: Random rooms (2x2 to 4x4 passage-block spans)
+    for (let gy = 0; gy < GRID; gy++) {
+      for (let gx = 0; gx < GRID; gx++) {
+        const wx = cx * CHUNK + gx * STEP;
+        const wy = cy * CHUNK + gy * STEP;
+        const roomSeed = Math.abs(wx * 61403 + wy * 84299 + seed) % 100;
         if (roomSeed < 12) {
           const bw = 2 + (roomSeed % 3);       // 2-4 blocks wide
           const bh = 2 + ((roomSeed >> 2) % 3); // 2-4 blocks tall
           const rw = bw * STEP - GAP;
           const rh = bh * STEP - GAP;
-          carve(y, x, rh, rw);
+          carve(gy * STEP, gx * STEP, rh, rw);
         }
       }
     }
 
-    // Cross-chunk border connections: compute what adjacent chunks' border
-    // blocks would decide and open this chunk's borders accordingly
-    const seed = this.testArea.seed;
-
-    // Blocks at y=0 in chunk below that connect north → open bottom border
-    for (let x = 0; x < CHUNK; x += STEP) {
-      const worldX = cx * CHUNK + x;
-      const worldY = (cy + 1) * CHUNK;
-      const dirSeed = Math.abs(worldX * 48611 + worldY * 22769 + seed) % 100;
-      if (dirSeed < 70) carve(CHUNK - GAP, x, GAP, CW);
-    }
-
-    // Blocks at x=0 in chunk to the right that connect west → open right border
-    for (let y = 0; y < CHUNK; y += STEP) {
-      const worldX = (cx + 1) * CHUNK;
-      const worldY = cy * CHUNK + y;
-      const dirSeed = Math.abs(worldX * 48611 + worldY * 22769 + seed) % 100;
-      if (dirSeed >= 70) carve(y, CHUNK - GAP, CW, GAP);
-    }
-
-    // Compute distance field via BFS (Chebyshev distance from nearest passage)
-    // 0 = floor, 1-4 = wall gradient layers, 255 = deep wall (black void)
+    // Phase 3: Compute distance field via BFS (Chebyshev distance from nearest passage)
+    // 0 = floor, 1-3 = wall gradient layers, 255 = deep wall (black void)
     const dist = [];
     const queue = [];
     for (let y = 0; y < CHUNK; y++) {
@@ -1293,13 +1290,13 @@ class Game {
     }
     let qi = 0;
     while (qi < queue.length) {
-      const cy = queue[qi++], cx = queue[qi++];
-      const d = dist[cy][cx];
-      if (d >= 4) continue;
+      const by = queue[qi++], bx = queue[qi++];
+      const d = dist[by][bx];
+      if (d >= 3) continue;
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
-          const ny = cy + dy, nx = cx + dx;
+          const ny = by + dy, nx = bx + dx;
           if (ny >= 0 && ny < CHUNK && nx >= 0 && nx < CHUNK && dist[ny][nx] > d + 1) {
             dist[ny][nx] = d + 1;
             queue.push(ny, nx);
@@ -1353,7 +1350,7 @@ class Game {
           tiles[y][x] = { type: 'WALL', char: '\u2592', fg: '#226622', bg: '#000000', walkable: false };
         } else if (d === 2) {
           tiles[y][x] = { type: 'WALL', char: '\u2593', fg: '#1a4d1a', bg: '#000000', walkable: false };
-        } else if (d === 3 || d === 4) {
+        } else if (d === 3) {
           tiles[y][x] = { type: 'WALL', char: '\u2588', fg: '#113311', bg: '#000000', walkable: false };
         } else {
           // Check for cap characters where walls meet void
@@ -1369,9 +1366,9 @@ class Game {
           };
           const dBelow = y < tilesH - 1 ? getDist(x, y + 1) : 255;
           const dAbove = y > 0 ? getDist(x, y - 1) : 255;
-          if (dBelow <= 4) {
+          if (dBelow <= 3) {
             tiles[y][x] = { type: 'WALL', char: '\u2584', fg: '#113311', bg: '#000000', walkable: false };
-          } else if (dAbove <= 4) {
+          } else if (dAbove <= 3) {
             tiles[y][x] = { type: 'WALL', char: '\u2580', fg: '#113311', bg: '#000000', walkable: false };
           } else {
             tiles[y][x] = { type: 'WALL', char: ' ', fg: '#000000', bg: '#000000', walkable: false };
