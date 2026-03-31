@@ -4328,6 +4328,10 @@ class Game {
     if (!this.cutscenePlayer) {
       this.cutscenePlayer = new AsciiCutscenePlayer();
     }
+    // Save current font size, switch to half for 2x density
+    this._cutsceneOrigFontSize = this.renderer.fontSize;
+    this._cutsceneOrigUserFont = this.renderer._userFontSize;
+    this.renderer.setFontSize(Math.max(7, Math.floor(this.renderer.fontSize / 2)));
     this.cutscenePlayer.start(name);
     this._cutsceneReturnState = 'DEBUG_MENU';
     this.setState('ASCII_CUTSCENE');
@@ -4336,6 +4340,11 @@ class Game {
   handleCutsceneInput(key) {
     if (key === 'Escape') {
       if (this.cutscenePlayer) this.cutscenePlayer.stop();
+      // Restore original font size
+      if (this._cutsceneOrigFontSize) {
+        this.renderer.setFontSize(this._cutsceneOrigFontSize);
+        this.renderer._userFontSize = this._cutsceneOrigUserFont || false;
+      }
       this.setState(this._cutsceneReturnState || 'DEBUG_MENU');
     }
   }
