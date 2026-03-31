@@ -1193,8 +1193,8 @@ class Game {
 
     const CHUNK = this.testArea.chunkSize;
     const CW = 5;         // corridor width (5 cells wide)
-    const GAP = 5;        // wall thickness (5 solid wall blocks)
-    const STEP = CW + GAP; // distance between passage block origins (10)
+    const GAP = 15;       // wall thickness (wide negative space between corridors)
+    const STEP = CW + GAP; // distance between passage block origins (20)
     // Deterministic seed per chunk using large primes
     const chunkSeed = this.testArea.seed + cx * 73856093 + cy * 19349663;
     const rng = new SeededRNG(Math.abs(chunkSeed));
