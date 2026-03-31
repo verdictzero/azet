@@ -1187,127 +1187,100 @@ class Game {
     this.ui.addMessage('Use arrow keys to explore. Esc to return.', COLORS.BRIGHT_CYAN);
   }
 
-  _getMazeTemplates() {
-    if (this._mazeTemplates) return this._mazeTemplates;
-
-    const CW = 5, GAP = 15, STEP = CW + GAP; // 20x20 tile
-
-    // Pre-compute 4 tile templates based on S/E corridor presence.
-    // Index: (hasS ? 1 : 0) | (hasE ? 2 : 0)
-    // N/W corridors live in the adjacent tile above/left, not in this tile.
-    //
-    // The 16 NSEW tile types map to these 4 templates:
-    //   VOID(0)→0  DEAD_N(1)→0  DEAD_S(2)→1  STRAIGHT_V(3)→1
-    //   DEAD_E(4)→2  CORNER_NE(5)→2  CORNER_SE(6)→3  T_EAST(7)→3
-    //   DEAD_W(8)→0  CORNER_NW(9)→0  CORNER_SW(10)→1  T_WEST(11)→1
-    //   STRAIGHT_H(12)→2  T_NORTH(13)→2  T_SOUTH(14)→3  CROSS(15)→3
-    this._mazeTemplates = [];
-
-    for (let idx = 0; idx < 4; idx++) {
-      const hasS = !!(idx & 1);
-      const hasE = !!(idx & 2);
-
-      // Build floor grid
-      const grid = [];
-      for (let y = 0; y < STEP; y++) {
-        grid[y] = [];
-        for (let x = 0; x < STEP; x++) {
-          grid[y][x] = false;
-        }
-      }
-
-      // Passage block (always present)
-      for (let y = 0; y < CW; y++)
-        for (let x = 0; x < CW; x++)
-          grid[y][x] = true;
-
-      // South corridor
-      if (hasS)
-        for (let y = CW; y < STEP; y++)
-          for (let x = 0; x < CW; x++)
-            grid[y][x] = true;
-
-      // East corridor
-      if (hasE)
-        for (let y = 0; y < CW; y++)
-          for (let x = CW; x < STEP; x++)
-            grid[y][x] = true;
-
-      // BFS distance field (Chebyshev, max 3 layers)
-      const dist = [];
-      const queue = [];
-      for (let y = 0; y < STEP; y++) {
-        dist[y] = [];
-        for (let x = 0; x < STEP; x++) {
-          if (grid[y][x]) { dist[y][x] = 0; queue.push(y, x); }
-          else dist[y][x] = 255;
-        }
-      }
-      let qi = 0;
-      while (qi < queue.length) {
-        const by = queue[qi++], bx = queue[qi++];
-        const d = dist[by][bx];
-        if (d >= 3) continue;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const ny = by + dy, nx = bx + dx;
-            if (ny >= 0 && ny < STEP && nx >= 0 && nx < STEP && dist[ny][nx] > d + 1) {
-              dist[ny][nx] = d + 1;
-              queue.push(ny, nx);
-            }
-          }
-        }
-      }
-
-      this._mazeTemplates[idx] = dist;
-    }
-
-    return this._mazeTemplates;
-  }
-
   _generateMazeChunk(cx, cy) {
     const key = `${cx},${cy}`;
     if (this.testArea.chunks.has(key)) return;
 
     const CHUNK = this.testArea.chunkSize;
-    const CW = 5, GAP = 15, STEP = CW + GAP;
+    const CW = 5;         // corridor width (5 cells wide)
+    const GAP = 15;       // wall region between passage blocks
+    const STEP = CW + GAP; // 20 cells per grid unit
     const GRID = CHUNK / STEP; // 4 tiles per axis
     const seed = this.testArea.seed;
-    const templates = this._getMazeTemplates();
 
     // Deterministic per-cell direction choice (binary tree: north 70% / west 30%)
     const choosesNorth = (wx, wy) =>
       Math.abs(wx * 48611 + wy * 22769 + seed) % 100 < 70;
 
-    // Allocate chunk distance array filled with void
-    const dist = [];
+    // Create chunk grid filled with walls
+    const grid = [];
     for (let y = 0; y < CHUNK; y++) {
-      dist[y] = new Array(CHUNK).fill(255);
+      grid[y] = [];
+      for (let x = 0; x < CHUNK; x++) {
+        grid[y][x] = false;
+      }
     }
 
-    // Stamp pre-defined tile templates
-    // Binary tree tile types produced:
+    const carve = (gy, gx, h, w) => {
+      for (let dy = 0; dy < h; dy++) {
+        for (let dx = 0; dx < w; dx++) {
+          const py = gy + dy, px = gx + dx;
+          if (py >= 0 && py < CHUNK && px >= 0 && px < CHUNK) {
+            grid[py][px] = true;
+          }
+        }
+      }
+    };
+
+    // Stamp pre-defined tile types into the floor grid.
+    // 16 tile types from 4-bit NSEW mask:
+    //   0=VOID  1=DEAD_N  2=DEAD_S  3=STRAIGHT_V  4=DEAD_E  5=CORNER_NE
+    //   6=CORNER_SE  7=T_EAST  8=DEAD_W  9=CORNER_NW  10=CORNER_SW
+    //   11=T_WEST  12=STRAIGHT_H  13=T_NORTH  14=T_SOUTH  15=CROSS
+    // Binary tree produces 8 types:
     //   Chose N → DEAD_N(1), STRAIGHT_V(3), CORNER_NE(5), T_EAST(7)
     //   Chose W → DEAD_W(8), CORNER_SW(10), STRAIGHT_H(12), T_SOUTH(14)
     for (let gy = 0; gy < GRID; gy++) {
       for (let gx = 0; gx < GRID; gx++) {
         const wx = cx * CHUNK + gx * STEP;
         const wy = cy * CHUNK + gy * STEP;
+        const y = gy * STEP;
+        const x = gx * STEP;
 
         // S: cell below connects up to us
         const hasS = choosesNorth(wx, wy + STEP);
         // E: cell to right connects left to us
         const hasE = !choosesNorth(wx + STEP, wy);
 
-        const tpl = templates[(hasS ? 1 : 0) | (hasE ? 2 : 0)];
+        // Carve passage block (always present in every tile type)
+        carve(y, x, CW, CW);
 
-        // Copy 20x20 template into chunk
-        const baseY = gy * STEP;
-        const baseX = gx * STEP;
-        for (let ty = 0; ty < STEP; ty++) {
-          for (let tx = 0; tx < STEP; tx++) {
-            dist[baseY + ty][baseX + tx] = tpl[ty][tx];
+        // Carve south corridor (covers cross-chunk bottom border naturally)
+        if (hasS) carve(y + CW, x, GAP, CW);
+
+        // Carve east corridor (covers cross-chunk right border naturally)
+        if (hasE) carve(y, x + CW, CW, GAP);
+      }
+    }
+
+    // BFS distance field on full 80x80 chunk (Chebyshev, 3 wall layers)
+    // Produces correct gradients on all sides of every corridor and passage
+    // 0 = floor, 1-3 = wall gradient (▒▓█), 255 = deep void
+    const dist = [];
+    const queue = [];
+    for (let y = 0; y < CHUNK; y++) {
+      dist[y] = [];
+      for (let x = 0; x < CHUNK; x++) {
+        if (grid[y][x]) {
+          dist[y][x] = 0;
+          queue.push(y, x);
+        } else {
+          dist[y][x] = 255;
+        }
+      }
+    }
+    let qi = 0;
+    while (qi < queue.length) {
+      const by = queue[qi++], bx = queue[qi++];
+      const d = dist[by][bx];
+      if (d >= 3) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const ny = by + dy, nx = bx + dx;
+          if (ny >= 0 && ny < CHUNK && nx >= 0 && nx < CHUNK && dist[ny][nx] > d + 1) {
+            dist[ny][nx] = d + 1;
+            queue.push(ny, nx);
           }
         }
       }
