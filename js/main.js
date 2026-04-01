@@ -1310,6 +1310,31 @@ class Game {
         if (hasBlock(wx + STEP, wy) && hasHCorridor(wx, wy)) {
           carve(y, x + CW, CW, GAP);
         }
+
+        // Prevent dangling isolated blocks: check if this cell has ANY connection
+        // (including north/west from neighbors carving toward us)
+        const hasNorth = hasBlock(wx, wy - STEP) && hasVCorridor(wx, wy - STEP);
+        const hasSouth = hasBlock(wx, wy + STEP) && hasVCorridor(wx, wy);
+        const hasWest  = hasBlock(wx - STEP, wy) && hasHCorridor(wx - STEP, wy);
+        const hasEast  = hasBlock(wx + STEP, wy) && hasHCorridor(wx, wy);
+
+        if (!hasNorth && !hasSouth && !hasWest && !hasEast) {
+          // Force one connection — pick first non-void neighbor, rotated by hash
+          const dirs = [
+            [0, -STEP, y - GAP, x, GAP, CW],   // north
+            [0,  STEP, y + CW,  x, GAP, CW],   // south
+            [-STEP, 0, y, x - GAP, CW, GAP],   // west
+            [ STEP, 0, y, x + CW,  CW, GAP],   // east
+          ];
+          const start = hash(wx, wy, seed + 700) % 4;
+          for (let i = 0; i < 4; i++) {
+            const d = dirs[(start + i) % 4];
+            if (hasBlock(wx + d[0], wy + d[1])) {
+              carve(d[2], d[3], d[4], d[5]);
+              break;
+            }
+          }
+        }
       }
     }
 
