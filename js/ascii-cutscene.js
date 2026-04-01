@@ -10,11 +10,37 @@ export class AsciiCutscenePlayer {
     this.startTime = 0;
     // Matrix rain state
     this._drops = null;
+    // Pre-rendered frame playback state
+    this._frameData = null;
+    this._frameIndex = 0;
+    this._frameDuration = 0;
+    this._onComplete = null;
+    this._loop = false;
   }
 
   start(name) {
     this.active = true;
     this.mode = name;
+    this.startTime = performance.now();
+    this._drops = null;
+    this._frameData = null;
+  }
+
+  /**
+   * Start playback of pre-rendered ASCII frame data.
+   * @param {CutsceneData} cutsceneData - Output from CutsceneLoader.load()
+   * @param {Object} [opts]
+   * @param {Function} [opts.onComplete] - Called when playback finishes
+   * @param {boolean} [opts.loop] - Loop playback (default false)
+   */
+  startFrames(cutsceneData, { onComplete, loop = false } = {}) {
+    this.active = true;
+    this.mode = 'frames';
+    this._frameData = cutsceneData;
+    this._frameIndex = 0;
+    this._frameDuration = 1000 / cutsceneData.meta.fps;
+    this._onComplete = onComplete || null;
+    this._loop = loop;
     this.startTime = performance.now();
     this._drops = null;
   }
@@ -23,6 +49,8 @@ export class AsciiCutscenePlayer {
     this.active = false;
     this.mode = null;
     this._drops = null;
+    this._frameData = null;
+    this._onComplete = null;
   }
 
   update(timestamp) {
@@ -36,6 +64,7 @@ export class AsciiCutscenePlayer {
       case 'plasma': this._renderPlasma(renderer, t); break;
       case 'matrix': this._renderMatrix(renderer, t); break;
       case 'noise':  this._renderNoise(renderer, t); break;
+      case 'frames': this._renderFrames(renderer); break;
     }
     // Draw exit hint
     const hint = ' [ESC] Exit ';
@@ -233,6 +262,86 @@ export class AsciiCutscenePlayer {
     const title = ' \u2588 NOISE STORM \u2588 ';
     const tx = Math.floor((cols - title.length) / 2);
     r.drawString(tx, 1, title, '#60d0e8', '#101040');
+  }
+
+  // ─── Pre-rendered Frame Playback ─────────────────────
+  _renderFrames(r) {
+    const data = this._frameData;
+    if (!data) return;
+
+    const { meta, frames } = data;
+    const elapsed = performance.now() - this.startTime;
+    let frameIdx = Math.floor(elapsed / this._frameDuration);
+
+    // Handle end of playback
+    if (frameIdx >= meta.frameCount) {
+      if (this._loop) {
+        // Wrap around
+        this.startTime = performance.now();
+        frameIdx = 0;
+      } else {
+        // Show last frame, fire completion callback
+        frameIdx = meta.frameCount - 1;
+        if (this._onComplete) {
+          const cb = this._onComplete;
+          this._onComplete = null; // fire only once
+          cb();
+          return;
+        }
+      }
+    }
+
+    const frame = frames[frameIdx];
+    if (!frame) return;
+
+    const screenCols = r.cols;
+    const screenRows = r.rows;
+    const fw = meta.width;
+    const fh = meta.height;
+
+    // Center the frame on screen (letterbox if needed)
+    const offsetX = Math.max(0, Math.floor((screenCols - fw) / 2));
+    const offsetY = Math.max(0, Math.floor((screenRows - fh) / 2));
+
+    // Clear letterbox borders to black
+    if (offsetX > 0 || offsetY > 0) {
+      for (let y = 0; y < screenRows; y++) {
+        for (let x = 0; x < screenCols; x++) {
+          if (x < offsetX || x >= offsetX + fw || y < offsetY || y >= offsetY + fh) {
+            r.drawChar(x, y, ' ', '#000000', '#000000');
+          }
+        }
+      }
+    }
+
+    // Render the frame cell by cell
+    const chars = frame.chars;
+    const fg = frame.fg;
+    const bg = frame.bg;
+
+    for (let fy = 0; fy < fh; fy++) {
+      const screenY = offsetY + fy;
+      if (screenY >= screenRows) break;
+      const rowStart = fy * fw;
+      for (let fx = 0; fx < fw; fx++) {
+        const screenX = offsetX + fx;
+        if (screenX >= screenCols) break;
+        const idx = rowStart + fx;
+        r.drawChar(screenX, screenY, chars[idx], fg[idx], bg[idx]);
+      }
+    }
+
+    // Progress bar at bottom
+    const progress = elapsed / (meta.frameCount * this._frameDuration);
+    const barW = Math.min(fw, screenCols - 2);
+    const barX = Math.max(0, Math.floor((screenCols - barW) / 2));
+    const barY = screenRows - 2;
+    const filled = Math.floor(progress * barW);
+    for (let i = 0; i < barW; i++) {
+      const ch = i < filled ? '\u2588' : '\u2500'; // █ or ─
+      const color = i < filled ? '#406080' : '#202030';
+      r.drawChar(barX + i, barY, ch, color, '#000000');
+    }
   }
 }
 

@@ -36,6 +36,19 @@ html, body {
   max-height: 100%;
 }
 
+#cutscene-video {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  z-index: 5;
+  border-radius: 6px;
+}
+
 /* ── Virtual Gamepad ── */
 #touch-controls {
   position: fixed;
