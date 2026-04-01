@@ -3427,7 +3427,8 @@ export class UIManager {
     } else if (tab === 4) {
       // Test Areas tab
       entries = [
-        { type: 'action', label: 'Infinite Maze', key: 'testMaze' },
+        { type: 'action', label: 'Infinite Maze A', key: 'testMaze' },
+        { type: 'action', label: 'Infinite Maze B', key: 'testMazeB' },
       ];
     } else if (tab === 5) {
       // Cutscene test panel
@@ -3569,6 +3570,7 @@ export class UIManager {
     } else if (tab === 4) {
       return [
         { type: 'action', key: 'testMaze' },
+        { type: 'action', key: 'testMazeB' },
       ];
     } else if (tab === 5) {
       return [
