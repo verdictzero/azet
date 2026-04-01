@@ -1251,22 +1251,17 @@ class Game {
     };
     const rand = (a, b, c) => (hash(a, b, c) % 10000) / 10000;
 
-    // Large-scale density field — smoothly varies across world regions.
-    // Coarse grid (every 6 cells) creates zones of dense/sparse corridors.
-    const regionDensity = (wx, wy) => {
-      const rx = Math.floor(wx / (STEP * 6));
-      const ry = Math.floor(wy / (STEP * 6));
-      return 0.20 + 0.55 * rand(rx, ry, seed + 300); // range 0.20 to 0.75
-    };
+    // Per-row horizontal density — each world row has its own corridor probability
+    // so some rows are near-solid runs, others have occasional breaks
+    const rowHDensity = (wy) => 0.75 + 0.20 * rand(0, wy, seed + 300); // 0.75–0.95
 
-    // Independent edge decisions — each edge between two cells is decided once.
-    // Vertical corridor between cell (wx,wy) and its south neighbor
-    const hasVCorridor = (wx, wy) => rand(wx, wy, seed + 400) < regionDensity(wx, wy);
-    // Horizontal corridor between cell (wx,wy) and its east neighbor
-    const hasHCorridor = (wx, wy) => rand(wx, wy, seed + 500) < regionDensity(wx, wy);
+    // Vertical connection density — varies by column region for variety
+    const colVDensity = (wx) => 0.25 + 0.20 * rand(wx, 0, seed + 301); // 0.25–0.45
 
-    // Void cells — ~8% of cells have no passage block at all
-    const hasBlock = (wx, wy) => rand(wx, wy, seed + 600) < 0.92;
+    // Horizontal corridors: high probability, creating long meandering runs
+    const hasHCorridor = (wx, wy) => rand(wx, wy, seed + 500) < rowHDensity(wy);
+    // Vertical corridors: lower probability, linking horizontal lanes
+    const hasVCorridor = (wx, wy) => rand(wx, wy, seed + 400) < colVDensity(wx);
 
     // Padded grid for BFS
     const BFSW = CHUNK + 2 * PAD;
@@ -1295,45 +1290,28 @@ class Game {
         const y = gy * STEP;
         const x = gx * STEP;
 
-        // Skip void cells
-        if (!hasBlock(wx, wy)) continue;
-
-        // Carve passage block (same 5x5 as Maze A)
+        // Every cell gets a passage block — no voids
         carve(y, x, CW, CW);
 
-        // Carve south corridor — if south neighbor exists and edge is open
-        if (hasBlock(wx, wy + STEP) && hasVCorridor(wx, wy)) {
-          carve(y + CW, x, GAP, CW);
-        }
-
-        // Carve east corridor — if east neighbor exists and edge is open
-        if (hasBlock(wx + STEP, wy) && hasHCorridor(wx, wy)) {
+        // Carve east corridor (horizontal runs)
+        if (hasHCorridor(wx, wy)) {
           carve(y, x + CW, CW, GAP);
         }
 
-        // Prevent dangling isolated blocks: check if this cell has ANY connection
-        // (including north/west from neighbors carving toward us)
-        const hasNorth = hasBlock(wx, wy - STEP) && hasVCorridor(wx, wy - STEP);
-        const hasSouth = hasBlock(wx, wy + STEP) && hasVCorridor(wx, wy);
-        const hasWest  = hasBlock(wx - STEP, wy) && hasHCorridor(wx - STEP, wy);
-        const hasEast  = hasBlock(wx + STEP, wy) && hasHCorridor(wx, wy);
+        // Carve south corridor (vertical connections)
+        if (hasVCorridor(wx, wy)) {
+          carve(y + CW, x, GAP, CW);
+        }
+
+        // Prevent isolated blocks: check full NSEW connectivity
+        const hasNorth = hasVCorridor(wx, wy - STEP);
+        const hasSouth = hasVCorridor(wx, wy);
+        const hasWest  = hasHCorridor(wx - STEP, wy);
+        const hasEast  = hasHCorridor(wx, wy);
 
         if (!hasNorth && !hasSouth && !hasWest && !hasEast) {
-          // Force one connection — pick first non-void neighbor, rotated by hash
-          const dirs = [
-            [0, -STEP, y - GAP, x, GAP, CW],   // north
-            [0,  STEP, y + CW,  x, GAP, CW],   // south
-            [-STEP, 0, y, x - GAP, CW, GAP],   // west
-            [ STEP, 0, y, x + CW,  CW, GAP],   // east
-          ];
-          const start = hash(wx, wy, seed + 700) % 4;
-          for (let i = 0; i < 4; i++) {
-            const d = dirs[(start + i) % 4];
-            if (hasBlock(wx + d[0], wy + d[1])) {
-              carve(d[2], d[3], d[4], d[5]);
-              break;
-            }
-          }
+          // Force east connection (prefer extending horizontal runs)
+          carve(y, x + CW, CW, GAP);
         }
       }
     }
