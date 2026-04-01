@@ -10,6 +10,7 @@ import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 import { AsciiCutscenePlayer } from './ascii-cutscene.js';
 import { CutsceneLoader } from './cutscene-loader.js';
+import { VideoCutscenePlayer } from './video-cutscene.js';
 
 // ─── Save Export/Import Cipher ───
 const SAVE_CIPHER_KEY = 'AETHEON-ASCIIQUEST-2024';
@@ -179,6 +180,7 @@ class Game {
     this.playerFacingDir = { dx: 1, dy: 0 }; // default facing right
     this.ui = new UIManager(this.renderer);
     this.music = new MusicManager();
+    this.videoCutscene = new VideoCutscenePlayer(document.getElementById('cutscene-video'));
     this._loadVersion();
 
     // Auto-refresh: version polling
@@ -188,7 +190,7 @@ class Game {
     this._startVersionPolling();
 
     // Game state
-    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU, REST_ITEM_SELECT, TRANSIT_MAP
+    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU, REST_ITEM_SELECT, TRANSIT_MAP, VIDEO_CUTSCENE
 
     // ── FF-style Gamepad Menu ──
     this.gamepadMenuCursor = 0;
@@ -1994,6 +1996,7 @@ class Game {
       case 'TRANSIT_MAP': return this.handleTransitMapInput(key);
       case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
       case 'ASCII_CUTSCENE': return this.handleCutsceneInput(key);
+      case 'VIDEO_CUTSCENE': return this.handleVideoCutsceneInput(key);
       case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
       case 'ALMANAC': return this.handleAlmanacInput(key);
       case 'GAMEPAD_MENU': return this.handleGamepadMenuInput(key);
@@ -4328,6 +4331,16 @@ class Game {
         case 'cutsceneVideo':
           this._promptVideoCutscene();
           break;
+        case 'playVideoFile':
+          this._pickAndPlayVideoCutscene();
+          break;
+        case 'playVideoUrl': {
+          const name = prompt('Enter video filename in data/cutscenes/ (e.g. intro.webm):');
+          if (name && name.trim()) {
+            this._playVideoCutscene(`data/cutscenes/${name.trim()}`, 'DEBUG_MENU');
+          }
+          break;
+        }
       }
     } else if (entry.type === 'slider') {
       if (entry.key === 'hour' && this.timeSystem) {
@@ -4428,6 +4441,44 @@ class Game {
         this.renderer._userFontSize = this._cutsceneOrigUserFont || false;
       }
       this.setState(this._cutsceneReturnState || 'DEBUG_MENU');
+    }
+  }
+
+  // ─── Video Cutscene (WebM/MP4 playback) ────────────────
+
+  /**
+   * Play a pre-rendered ASCII video cutscene file.
+   * @param {string} url - Full path or object URL of the video file
+   * @param {string} [returnState] - State to return to after playback
+   * @param {boolean} [loop] - Loop playback
+   */
+  async _playVideoCutscene(url, returnState, loop = false) {
+    this._cutsceneReturnState = returnState || this.state;
+    this.setState('VIDEO_CUTSCENE');
+    await this.videoCutscene.play(url, {
+      onComplete: () => this._endVideoCutscene(),
+      loop,
+    });
+  }
+
+  _endVideoCutscene() {
+    this.videoCutscene.stop();
+    this.setState(this._cutsceneReturnState || 'DEBUG_MENU');
+  }
+
+  handleVideoCutsceneInput(key) {
+    if (key === 'Escape') {
+      this._endVideoCutscene();
+    }
+  }
+
+  /**
+   * Open a file picker to select and play a local video file as a cutscene.
+   */
+  async _pickAndPlayVideoCutscene() {
+    const url = await this.videoCutscene.pickLocalFile();
+    if (url) {
+      this._playVideoCutscene(url, 'DEBUG_MENU');
     }
   }
 
@@ -6027,6 +6078,14 @@ class Game {
         }
         break;
 
+      case 'VIDEO_CUTSCENE':
+        // Video element handles display — just draw ESC hint on canvas
+        this.renderer.drawString(
+          this.renderer.cols - 13, this.renderer.rows - 1,
+          ' [ESC] Exit ', '#586078', '#000000'
+        );
+        break;
+
       case 'CONSOLE_LOG':
         this.ui.drawConsoleLog();
         break;
@@ -6085,7 +6144,7 @@ class Game {
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
     const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'GAMEPAD_MENU'].includes(this.state);
-    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS' || this.state === 'ASCII_CUTSCENE';
+    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS' || this.state === 'ASCII_CUTSCENE' || this.state === 'VIDEO_CUTSCENE';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
       || hasTimeTint

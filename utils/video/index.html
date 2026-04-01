@@ -94,12 +94,13 @@
 
     <!-- Grid Size -->
     <div class="section">
-      <h2>▸ Output Grid</h2>
+      <h2>▸ Output Grid (16:9)</h2>
       <div class="grid-presets">
         <button onclick="setGrid(80,45)">80×45</button>
-        <button onclick="setGrid(120,67)">120×67</button>
+        <button onclick="setGrid(128,72)">128×72</button>
         <button onclick="setGrid(160,90)">160×90</button>
-        <button onclick="setGrid(240,135)">240×135</button>
+        <button onclick="setGrid(192,108)">192×108</button>
+        <button onclick="setGrid(256,144)">256×144</button>
         <button onclick="setGrid(320,180)">320×180</button>
       </div>
       <div class="row">
@@ -176,7 +177,6 @@
       <button onclick="snapshotPNG()">🖼 Snapshot PNG</button>
       <button onclick="copyTextFrame()">📋 Copy Text</button>
       <button id="recordBtn" onclick="toggleRecording()">⏺ Record WebM</button>
-      <button id="exportCutBtn" onclick="exportCutscene()">🎬 Export .azcut</button>
       <span class="status" id="previewInfo"></span>
     </div>
     <div class="preview-container" id="previewContainer">
@@ -639,9 +639,11 @@ function startRecording() {
 
   mediaRecorder.onstop = () => {
     const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const cols = document.getElementById('cols').value;
+    const rows = document.getElementById('rows').value;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'ascii-video.webm';
+    a.download = `ascii-${cols}x${rows}.webm`;
     a.click();
     URL.revokeObjectURL(a.href);
     document.getElementById('status').textContent = 'Recording saved!';
