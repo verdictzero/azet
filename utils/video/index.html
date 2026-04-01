@@ -94,7 +94,8 @@
 
     <!-- Grid Size -->
     <div class="section">
-      <h2>▸ Output Grid (16:9)</h2>
+      <h2>▸ Output Grid</h2>
+      <label style="font-size:11px; opacity:0.6">16:9</label>
       <div class="grid-presets">
         <button onclick="setGrid(80,45)">80×45</button>
         <button onclick="setGrid(128,72)">128×72</button>
@@ -102,6 +103,14 @@
         <button onclick="setGrid(192,108)">192×108</button>
         <button onclick="setGrid(256,144)">256×144</button>
         <button onclick="setGrid(320,180)">320×180</button>
+      </div>
+      <label style="font-size:11px; opacity:0.6">4:3</label>
+      <div class="grid-presets">
+        <button onclick="setGrid(80,60)">80×60</button>
+        <button onclick="setGrid(120,90)">120×90</button>
+        <button onclick="setGrid(160,120)">160×120</button>
+        <button onclick="setGrid(200,150)">200×150</button>
+        <button onclick="setGrid(240,180)">240×180</button>
       </div>
       <div class="row">
         <div><label>Columns</label><input type="number" id="cols" value="160" min="20" max="400"></div>
@@ -158,14 +167,26 @@
     <!-- Playback -->
     <div class="section">
       <h2>▸ Playback</h2>
-      <label>Speed</label>
-      <select id="playbackSpeed">
-        <option value="0.25">0.25×</option>
-        <option value="0.5">0.5×</option>
-        <option value="1" selected>1×</option>
-        <option value="1.5">1.5×</option>
-        <option value="2">2×</option>
-      </select>
+      <div class="row">
+        <div>
+          <label>Speed</label>
+          <select id="playbackSpeed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+          </select>
+        </div>
+        <div>
+          <label>Record FPS</label>
+          <select id="recordFps">
+            <option value="24">24 fps</option>
+            <option value="30" selected>30 fps</option>
+            <option value="60">60 fps</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div class="status" id="status">Ready — load a video to begin</div>
@@ -174,9 +195,10 @@
   <!-- Preview Area -->
   <div class="preview-area">
     <div class="preview-toolbar">
-      <button onclick="snapshotPNG()">🖼 Snapshot PNG</button>
+      <button id="generateBtn" onclick="generateMovie()">🎬 Generate Movie</button>
+      <button id="recordBtn" onclick="toggleRecording()">⏺ Manual Record</button>
+      <button onclick="snapshotPNG()">🖼 Snapshot</button>
       <button onclick="copyTextFrame()">📋 Copy Text</button>
-      <button id="recordBtn" onclick="toggleRecording()">⏺ Record WebM</button>
       <span class="status" id="previewInfo"></span>
     </div>
     <div class="preview-container" id="previewContainer">
@@ -385,9 +407,10 @@ function stepForward() {
   if (!videoEl.src) return;
   videoEl.pause();
   isPlaying = false;
-  document.getElementById('playBtn').textContent = '▶';
+  document.getElementById('playBtn').textContent = '\u25B6';
   stopRenderLoop();
-  videoEl.currentTime = Math.min(videoEl.currentTime + 1 / 30, videoEl.duration);
+  const frameDur = 1 / getRecordFps();
+  videoEl.currentTime = Math.min(videoEl.currentTime + frameDur, videoEl.duration);
   videoEl.addEventListener('seeked', () => processAndRenderFrame(), { once: true });
 }
 
@@ -395,9 +418,10 @@ function stepBackward() {
   if (!videoEl.src) return;
   videoEl.pause();
   isPlaying = false;
-  document.getElementById('playBtn').textContent = '▶';
+  document.getElementById('playBtn').textContent = '\u25B6';
   stopRenderLoop();
-  videoEl.currentTime = Math.max(videoEl.currentTime - 1 / 30, 0);
+  const frameDur = 1 / getRecordFps();
+  videoEl.currentTime = Math.max(videoEl.currentTime - frameDur, 0);
   videoEl.addEventListener('seeked', () => processAndRenderFrame(), { once: true });
 }
 
@@ -599,13 +623,63 @@ function renderGrid(cols, rows, canvasBgHex, fontSize) {
   }
 
   // Update preview info
+  const fps = document.getElementById('recordFps').value;
   document.getElementById('previewInfo').textContent =
-    `${cols}×${rows} | ${fontSize}px | ${asciiCanvas.width}×${asciiCanvas.height}px`;
+    `Text: ${cols}\u00d7${rows} | Video: ${asciiCanvas.width}\u00d7${asciiCanvas.height}px | ${fontSize}px | ${fps}fps`;
 }
 
 // ============================================================
 // Recording (WebM via MediaRecorder)
 // ============================================================
+
+function getRecordFps() {
+  return parseInt(document.getElementById('recordFps').value) || 30;
+}
+
+function getRecordFilename() {
+  const cols = document.getElementById('cols').value;
+  const rows = document.getElementById('rows').value;
+  const fps = getRecordFps();
+  return `ascii-${cols}x${rows}-${asciiCanvas.width}x${asciiCanvas.height}-${fps}fps.webm`;
+}
+
+function createRecorder(fps) {
+  const stream = asciiCanvas.captureStream(fps);
+  recordedChunks = [];
+
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm;codecs=vp9',
+      videoBitsPerSecond: 8000000
+    });
+  } catch (e) {
+    recorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm',
+      videoBitsPerSecond: 8000000
+    });
+  }
+
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  recorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = getRecordFilename();
+    a.click();
+    URL.revokeObjectURL(a.href);
+    const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
+    document.getElementById('status').textContent = `Saved ${getRecordFilename()} (${sizeMB} MB)`;
+  };
+
+  return recorder;
+}
+
+// ── Manual Record (start/stop during playback) ──
+
 function toggleRecording() {
   if (isRecording) {
     stopRecording();
@@ -617,46 +691,14 @@ function toggleRecording() {
 function startRecording() {
   if (!videoEl.src) { alert('Load a video first!'); return; }
 
-  const stream = asciiCanvas.captureStream(30);
-  recordedChunks = [];
-
-  try {
-    mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm;codecs=vp9',
-      videoBitsPerSecond: 8000000
-    });
-  } catch (e) {
-    // Fallback if vp9 not supported
-    mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm',
-      videoBitsPerSecond: 8000000
-    });
-  }
-
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) recordedChunks.push(e.data);
-  };
-
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-    const cols = document.getElementById('cols').value;
-    const rows = document.getElementById('rows').value;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `ascii-${cols}x${rows}.webm`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    document.getElementById('status').textContent = 'Recording saved!';
-  };
-
-  mediaRecorder.start(100); // collect data every 100ms
+  mediaRecorder = createRecorder(getRecordFps());
+  mediaRecorder.start(100);
   isRecording = true;
   const btn = document.getElementById('recordBtn');
-  btn.textContent = '⏹ Stop Recording';
+  btn.textContent = '\u23F9 Stop';
   btn.classList.add('recording');
   document.getElementById('status').textContent = 'Recording...';
 
-  // Auto-start playback if paused
   if (videoEl.paused) togglePlay();
 }
 
@@ -666,8 +708,102 @@ function stopRecording() {
   }
   isRecording = false;
   const btn = document.getElementById('recordBtn');
-  btn.textContent = '⏺ Record WebM';
+  btn.textContent = '\u23FA Manual Record';
   btn.classList.remove('recording');
+}
+
+// ── Generate Movie (auto start → play → stop → download) ──
+
+let isGenerating = false;
+let _genTimeUpdate = null;
+let _genEnded = null;
+
+function generateMovie() {
+  if (!videoEl.src || videoEl.readyState < 2) { alert('Load a video first!'); return; }
+  if (isGenerating) { cancelGeneration(); return; }
+  isGenerating = true;
+
+  const fps = getRecordFps();
+  const genBtn = document.getElementById('generateBtn');
+  genBtn.textContent = '\u23F9 Cancel';
+  genBtn.classList.add('recording');
+  document.getElementById('status').textContent = 'Rewinding...';
+
+  // Stop any current playback/recording
+  if (isPlaying) { videoEl.pause(); isPlaying = false; stopRenderLoop(); }
+  if (isRecording) stopRecording();
+
+  // Rewind to start
+  videoEl.currentTime = 0;
+  videoEl.addEventListener('seeked', function onSeek() {
+    videoEl.removeEventListener('seeked', onSeek);
+    if (!isGenerating) return; // cancelled during rewind
+
+    // Render first frame so canvas has content before recording starts
+    processAndRenderFrame();
+
+    // Start recording
+    mediaRecorder = createRecorder(fps);
+
+    // Progress tracking
+    _genTimeUpdate = () => {
+      if (!isGenerating) return;
+      const pct = Math.round((videoEl.currentTime / videoEl.duration) * 100);
+      document.getElementById('status').textContent = `Generating... ${pct}%`;
+    };
+    videoEl.addEventListener('timeupdate', _genTimeUpdate);
+
+    // Auto-stop on video end
+    _genEnded = () => {
+      videoEl.removeEventListener('timeupdate', _genTimeUpdate);
+      videoEl.removeEventListener('ended', _genEnded);
+      _genTimeUpdate = null;
+      _genEnded = null;
+
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop(); // triggers onstop → download
+      }
+      isPlaying = false;
+      isGenerating = false;
+      isRecording = false;
+      genBtn.textContent = '\uD83C\uDFAC Generate Movie';
+      genBtn.classList.remove('recording');
+      document.getElementById('playBtn').textContent = '\u25B6';
+      stopRenderLoop();
+    };
+    videoEl.addEventListener('ended', _genEnded, { once: true });
+
+    // Start playback at 1× speed
+    mediaRecorder.start(100);
+    isRecording = true;
+    videoEl.playbackRate = 1;
+    videoEl.play();
+    isPlaying = true;
+    document.getElementById('playBtn').textContent = '\u23F8';
+    startRenderLoop();
+    document.getElementById('status').textContent = 'Generating... 0%';
+  }, { once: true });
+}
+
+function cancelGeneration() {
+  // Clean up event listeners
+  if (_genTimeUpdate) { videoEl.removeEventListener('timeupdate', _genTimeUpdate); _genTimeUpdate = null; }
+  if (_genEnded) { videoEl.removeEventListener('ended', _genEnded); _genEnded = null; }
+
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    // Prevent the onstop from downloading by replacing handler
+    mediaRecorder.onstop = () => {};
+    mediaRecorder.stop();
+  }
+  videoEl.pause();
+  isPlaying = false;
+  isRecording = false;
+  isGenerating = false;
+  stopRenderLoop();
+  document.getElementById('generateBtn').textContent = '\uD83C\uDFAC Generate Movie';
+  document.getElementById('generateBtn').classList.remove('recording');
+  document.getElementById('playBtn').textContent = '\u25B6';
+  document.getElementById('status').textContent = 'Generation cancelled';
 }
 
 // ============================================================
@@ -823,6 +959,21 @@ function setGrid(cols, rows) {
   if (videoEl.src && videoEl.readyState >= 2) {
     processAndRenderFrame();
   }
+  updateResolutionDisplay();
+}
+
+function updateResolutionDisplay() {
+  const cols = parseInt(document.getElementById('cols').value) || 160;
+  const rows = parseInt(document.getElementById('rows').value) || 90;
+  const fontSize = parseInt(document.getElementById('fontSize').value) || 8;
+  ctx.font = `${fontSize}px monospace`;
+  const charW = ctx.measureText('M').width;
+  const charH = fontSize * 1.2;
+  const pxW = Math.ceil(cols * charW);
+  const pxH = Math.ceil(rows * charH);
+  const fps = document.getElementById('recordFps').value;
+  document.getElementById('previewInfo').textContent =
+    `Text: ${cols}\u00d7${rows} | Video: ${pxW}\u00d7${pxH}px | ${fontSize}px | ${fps}fps`;
 }
 
 function setRamp(ramp) {
@@ -838,6 +989,7 @@ document.getElementById('fontSize').addEventListener('input', (e) => {
   if (videoEl.src && videoEl.readyState >= 2 && !isPlaying) {
     processAndRenderFrame();
   }
+  updateResolutionDisplay();
 });
 
 // Re-render on setting changes when paused
@@ -848,8 +1000,14 @@ document.getElementById('fontSize').addEventListener('input', (e) => {
       if (videoEl.src && videoEl.readyState >= 2 && !isPlaying) {
         processAndRenderFrame();
       }
+      if (id === 'cols' || id === 'rows') updateResolutionDisplay();
     });
   }
+});
+
+// FPS selector updates display
+document.getElementById('recordFps').addEventListener('change', () => {
+  updateResolutionDisplay();
 });
 document.querySelectorAll('input[name="colorMode"]').forEach(radio => {
   radio.addEventListener('change', () => {
@@ -866,6 +1024,9 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'ArrowRight') { e.preventDefault(); stepForward(); }
   if (e.code === 'ArrowLeft') { e.preventDefault(); stepBackward(); }
 });
+
+// Show initial resolution on load
+updateResolutionDisplay();
 </script>
 </body>
 </html>
