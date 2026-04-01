@@ -548,6 +548,78 @@ export class Renderer {
     }
   }
 
+  // ── Pixel art rendering ────────────────────
+
+  /**
+   * Draw a pixel art image (Image or Canvas) at cell coordinates.
+   * Rendered with nearest-neighbor scaling for crisp pixels.
+   * Call AFTER endFrame() but BEFORE postProcess().
+   * @param {Image|HTMLCanvasElement} img
+   * @param {number} col - left edge in cell units
+   * @param {number} row - top edge in cell units
+   * @param {number} widthCells - width in cell units
+   * @param {number} heightCells - height in cell units
+   */
+  drawPixelArt(img, col, row, widthCells, heightCells) {
+    if (!img) return;
+    const px = Math.round(col * this.cellWidth);
+    const py = Math.round(row * this.cellHeight);
+    const pw = Math.round(widthCells * this.cellWidth);
+    const ph = Math.round(heightCells * this.cellHeight);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, px, py, pw, ph);
+    ctx.restore();
+  }
+
+  /**
+   * Draw a pixel art image inside a bordered "window" frame.
+   * Outer border: bright grey stroke. Inner border: dark stroke.
+   * @param {Image|HTMLCanvasElement} img
+   * @param {number} col - left edge in cell units (of the image, not border)
+   * @param {number} row - top edge in cell units (of the image, not border)
+   * @param {number} widthCells - image width in cell units
+   * @param {number} heightCells - image height in cell units
+   * @param {string} [outerColor='#b0b0b8'] - bright grey outer border
+   * @param {string} [innerColor='#1a1a2a'] - dark inner border
+   */
+  drawPixelArtWindow(img, col, row, widthCells, heightCells, outerColor = '#b0b0b8', innerColor = '#1a1a2a') {
+    if (!img) return;
+    const cw = this.cellWidth;
+    const ch = this.cellHeight;
+    const px = Math.round(col * cw);
+    const py = Math.round(row * ch);
+    const pw = Math.round(widthCells * cw);
+    const ph = Math.round(heightCells * ch);
+    const ctx = this.ctx;
+
+    // Border thicknesses scale with cell size for consistency across resolutions
+    const outerPx = Math.max(2, Math.round(cw * 0.3));
+    const innerPx = Math.max(1, Math.round(cw * 0.2));
+    const totalBorder = outerPx + innerPx;
+
+    // Outer stroke (bright grey)
+    ctx.fillStyle = outerColor;
+    ctx.fillRect(
+      px - totalBorder, py - totalBorder,
+      pw + totalBorder * 2, ph + totalBorder * 2
+    );
+
+    // Inner stroke (dark)
+    ctx.fillStyle = innerColor;
+    ctx.fillRect(
+      px - innerPx, py - innerPx,
+      pw + innerPx * 2, ph + innerPx * 2
+    );
+
+    // Sprite image — crisp nearest-neighbor scaling
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, px, py, pw, ph);
+    ctx.restore();
+  }
+
   // ── Day/night tint overlay ─────────────────
 
   /**

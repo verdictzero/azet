@@ -9,6 +9,7 @@ import { getMonsterArt } from './monsterart.js';
 import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 import { AsciiCutscenePlayer } from './ascii-cutscene.js';
+import { SpriteManager } from './sprites.js';
 import { CutsceneLoader } from './cutscene-loader.js';
 import { VideoCutscenePlayer } from './video-cutscene.js';
 
@@ -178,7 +179,8 @@ class Game {
     this.locationCamera = null;
     this._bumpState = { dx: 0, dy: 0, count: 0, lastTime: 0 };
     this.playerFacingDir = { dx: 1, dy: 0 }; // default facing right
-    this.ui = new UIManager(this.renderer);
+    this.spriteManager = new SpriteManager();
+    this.ui = new UIManager(this.renderer, this.spriteManager);
     this.music = new MusicManager();
     this.videoCutscene = new VideoCutscenePlayer(document.getElementById('cutscene-video'));
     this._loadVersion();
@@ -771,6 +773,8 @@ class Game {
 
   startNewGame() {
     this.setState('LOADING');
+    // Kick off non-blocking sprite preload (PNG files; missing files silently fallback)
+    this.spriteManager.preloadAll();
     this._loadLog = [];
     this._loadStep = 0;
     this._loadingStep = null; // {current, total, label} for post-history loading modal
@@ -5546,7 +5550,8 @@ class Game {
       npcName: npc.name.full || npc.name.first || npc.title || 'NPC',
       reputation: npc.playerReputation || 0,
       text: schedulePrefix + greeting.text + memoryNote,
-      options: options
+      options: options,
+      portrait: this.spriteManager.getPortrait(npc),
     };
     this.ui.resetSelection();
     this.setState('DIALOGUE');
@@ -5969,6 +5974,8 @@ class Game {
 
   loadGame(slot = 1) {
     try {
+      // Ensure sprites are loading
+      this.spriteManager.preloadAll();
       // Try slot-based first, then fallback to legacy key
       let data = localStorage.getItem(`asciiquest_save_${slot}`);
       if (!data) data = localStorage.getItem('asciiquest_save');
@@ -6316,13 +6323,44 @@ class Game {
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
     const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'GAMEPAD_MENU'].includes(this.state);
-    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS' || this.state === 'ASCII_CUTSCENE' || this.state === 'VIDEO_CUTSCENE';
+    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS' || this.state === 'ASCII_CUTSCENE' || this.state === 'VIDEO_CUTSCENE' || this.state === 'DIALOGUE';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
       || hasTimeTint
       || isAnimatedScreen
       || (this.renderer._flashAlpha && this.renderer._flashAlpha > 0);
     this.renderer.endFrame(needsFullRedraw);
+
+    // ── Pixel art overlays (rendered after character grid, before CRT) ──
+    if (this.state === 'DIALOGUE' && this.ui.dialogueState && this.ui.dialogueState.portrait) {
+      this.ui.drawPortraitOverlay(this.ui.dialogueState);
+    }
+    if (this.state === 'COMBAT' && this.ui._enemySpriteOverlay) {
+      const eso = this.ui._enemySpriteOverlay;
+      const ctx = this.renderer.ctx;
+      const cw = this.renderer.cellWidth;
+      const ch = this.renderer.cellHeight;
+      const px = Math.round(eso.col * cw);
+      const py = Math.round(eso.row * ch);
+      const pw = Math.round(eso.w * cw);
+      const ph = Math.round(eso.h * ch);
+
+      // Draw sprite
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(eso.img, px, py, pw, ph);
+
+      // Hit flash: re-draw sprite with lighter compositing to tint white
+      if (eso.flash) {
+        ctx.globalAlpha = 0.7;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(eso.img, px, py, pw, ph);
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+      this.ui._enemySpriteOverlay = null;
+    }
+
     this.renderer.postProcess();
 
     // Day/night tint — viewport only (not HUD)
@@ -8099,11 +8137,6 @@ class Game {
     this.renderFireBackground(r, cols, battleH, shakeX, shakeY);
 
     // ── Centered Monster Art ──
-    const art = getMonsterArt(enemy);
-    const artLines = art.lines;
-    const artH = artLines.length;
-    const artW = Math.max(...artLines.map(l => l.length));
-
     // Hit recoil offset
     let recoilX = 0;
     if (cs.hitRecoil > 0) {
@@ -8111,41 +8144,87 @@ class Game {
       cs.hitRecoil--;
     }
 
-    const artX = Math.floor(cols / 2 - artW / 2) + shakeX + recoilX;
-    const artY = Math.floor(battleH / 2 - artH / 2) - 1 + shakeY;
+    // Check for pixel art sprite first, fall back to ASCII art
+    const enemySprite = this.spriteManager.getEnemySprite(enemy);
+    const usePixelSprite = !!enemySprite;
 
-    // Determine monster draw color (flash white on hit)
-    let drawColor = art.color;
-    if (cs.hitTimer > 0) {
-      drawColor = '#FFFFFF';
-      cs.hitTimer--;
-    }
+    // ASCII art (used for layout metrics even when pixel sprite exists)
+    const art = getMonsterArt(enemy);
+    const artLines = art.lines;
+    const artH = artLines.length;
+    const artW = Math.max(...artLines.map(l => l.length));
 
-    // Draw monster art - internal spaces filled, external spaces show fire bg
-    const monsterBg = '#0a0500';
-    for (let row = 0; row < artH; row++) {
-      const line = artLines[row];
-      // Find internal bounds (leftmost and rightmost non-space)
-      let firstNonSpace = -1, lastNonSpace = -1;
-      for (let col = 0; col < line.length; col++) {
-        if (line[col] !== ' ') {
-          if (firstNonSpace === -1) firstNonSpace = col;
-          lastNonSpace = col;
-        }
+    let artX, artY, layoutW, layoutH;
+
+    if (usePixelSprite) {
+      // Pixel sprite: size in cells, centered in battle area
+      const spriteCells = Math.min(Math.floor(battleH * 0.7), Math.floor(cols * 0.35), 18);
+      const spriteCol = Math.floor(cols / 2 - spriteCells / 2) + shakeX + recoilX;
+      const spriteRow = Math.floor(battleH / 2 - spriteCells / 2) - 1 + shakeY;
+
+      // Queue for overlay rendering after endFrame (drawn directly as pixels)
+      this.ui._enemySpriteOverlay = {
+        img: enemySprite,
+        col: spriteCol,
+        row: spriteRow,
+        w: spriteCells,
+        h: spriteCells,
+      };
+
+      // Use sprite center for name plate / HP bar positioning
+      artX = spriteCol;
+      artY = spriteRow;
+      // Override artW/artH for layout
+      layoutW = spriteCells;
+      layoutH = spriteCells;
+
+      // Hit flash: apply a white tint overlay via canvas compositing
+      // (handled in the overlay pass — store flash state)
+      if (cs.hitTimer > 0) {
+        this.ui._enemySpriteOverlay.flash = true;
+        cs.hitTimer--;
       }
-      for (let col = 0; col < line.length; col++) {
-        const ch = line[col];
-        const dx = artX + col;
-        const dy = artY + row;
-        if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
-        if (ch === ' ') {
-          // Internal space: fill with monster bg so fire doesn't bleed through
-          if (col > firstNonSpace && col < lastNonSpace) {
-            r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
+    } else {
+      // ASCII art path (original)
+      this.ui._enemySpriteOverlay = null;
+      artX = Math.floor(cols / 2 - artW / 2) + shakeX + recoilX;
+      artY = Math.floor(battleH / 2 - artH / 2) - 1 + shakeY;
+      layoutW = artW;
+      layoutH = artH;
+
+      // Determine monster draw color (flash white on hit)
+      let drawColor = art.color;
+      if (cs.hitTimer > 0) {
+        drawColor = '#FFFFFF';
+        cs.hitTimer--;
+      }
+
+      // Draw monster art - internal spaces filled, external spaces show fire bg
+      const monsterBg = '#0a0500';
+      for (let row = 0; row < artH; row++) {
+        const line = artLines[row];
+        // Find internal bounds (leftmost and rightmost non-space)
+        let firstNonSpace = -1, lastNonSpace = -1;
+        for (let col = 0; col < line.length; col++) {
+          if (line[col] !== ' ') {
+            if (firstNonSpace === -1) firstNonSpace = col;
+            lastNonSpace = col;
           }
-          continue; // External space: fire bg shows through
         }
-        r.drawChar(dx, dy, ch, drawColor, monsterBg, true);
+        for (let col = 0; col < line.length; col++) {
+          const ch = line[col];
+          const dx = artX + col;
+          const dy = artY + row;
+          if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
+          if (ch === ' ') {
+            // Internal space: fill with monster bg so fire doesn't bleed through
+            if (col > firstNonSpace && col < lastNonSpace) {
+              r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
+            }
+            continue; // External space: fire bg shows through
+          }
+          r.drawChar(dx, dy, ch, drawColor, monsterBg, true);
+        }
       }
     }
 
@@ -8163,9 +8242,9 @@ class Game {
     }
 
     // Monster HP bar centered below art
-    const eHpW = Math.min(20, artW + 4);
+    const eHpW = Math.min(20, layoutW + 4);
     const eHpX = Math.floor(cols / 2 - eHpW / 2) + shakeX;
-    const eHpY = artY + artH + 1;
+    const eHpY = artY + layoutH + 1;
     if (eHpY < battleH) {
       const eHpFrac = Math.max(0, enemy.stats.hp / enemy.stats.maxHp);
       const eHpFilled = Math.round(eHpFrac * eHpW);
