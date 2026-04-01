@@ -3317,7 +3317,7 @@ export class UIManager {
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Debug Menu ');
 
     // Tab bar
-    const tabs = ['Cheats', 'World', 'Visual', 'Info', 'Test Areas', 'Hi-Res'];
+    const tabs = ['Cheats', 'World', 'Visual', 'Info', 'Test Areas', 'Cutscenes'];
     const tab = this.debugTab || 0;
     const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
     const totalTabLen = tabLabels.reduce((s, l) => s + l.length, 0) + tabLabels.length - 1;
@@ -3430,13 +3430,16 @@ export class UIManager {
         { type: 'action', label: 'Infinite Maze', key: 'testMaze' },
       ];
     } else if (tab === 5) {
-      // Hi-Res ASCII cutscene demos
+      // Cutscene test panel
       entries = [
         { type: 'action', label: 'Plasma Demo', key: 'cutscenePlasma' },
         { type: 'action', label: 'Matrix Rain', key: 'cutsceneMatrix' },
         { type: 'action', label: 'Noise Storm', key: 'cutsceneNoise' },
-        { type: 'separator' },
-        { type: 'action', label: '\u25B6 Play Video Cutscene...', key: 'cutsceneVideo' },
+        { type: 'sep' },
+        { type: 'action', label: '\u25B6 Play Video (local file)', key: 'playVideoFile' },
+        { type: 'action', label: '\u25B6 Play Video (data/cutscenes/)', key: 'playVideoUrl' },
+        { type: 'sep' },
+        { type: 'action', label: '\u25B6 Play .azcut File...', key: 'cutsceneVideo' },
       ];
     }
 
@@ -3572,6 +3575,8 @@ export class UIManager {
         { type: 'action', key: 'cutscenePlasma' },
         { type: 'action', key: 'cutsceneMatrix' },
         { type: 'action', key: 'cutsceneNoise' },
+        { type: 'action', key: 'playVideoFile' },
+        { type: 'action', key: 'playVideoUrl' },
         { type: 'action', key: 'cutsceneVideo' },
       ];
     }
