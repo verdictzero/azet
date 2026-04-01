@@ -1235,10 +1235,12 @@ class Game {
     if (this.testArea.chunks.has(key)) return;
 
     const CHUNK = this.testArea.chunkSize;
-    const STEP = 18;
+    const CW = 5;         // corridor width — same as Maze A
+    const GAP = 15;       // wall region — same as Maze A
+    const STEP = CW + GAP; // 20 cells per grid unit — same as Maze A
+    const GRID = CHUNK / STEP; // 4 tiles per axis
     const seed = this.testArea.seed;
-    const PAD = 8;
-    const BFSW = CHUNK + 2 * PAD;
+    const PAD = CW;       // padding for adjacent tiles' border gradients
 
     // Deterministic hash for any coordinate tuple
     const hash = (a, b, c) => {
@@ -1247,33 +1249,37 @@ class Game {
       h = Math.imul(h ^ (h >>> 13), 3266489917);
       return (h ^ (h >>> 16)) >>> 0;
     };
-    const rand = (a, b, c) => hash(a, b, c) / 4294967296;
+    const rand = (a, b, c) => (hash(a, b, c) % 10000) / 10000;
 
-    // Per-cell corridor width (3-7)
-    const cwFor = (gx, gy) => 3 + hash(gx, gy, seed + 10) % 5;
-
-    // Cell type: binary(30%), wander(25%), room(20%), cave(15%), deadend(10%)
-    const cellType = (gx, gy) => {
-      const r = rand(gx, gy, seed + 50);
-      if (r < 0.30) return 'binary';
-      if (r < 0.55) return 'wander';
-      if (r < 0.75) return 'room';
-      if (r < 0.90) return 'cave';
-      return 'deadend';
+    // Large-scale density field — smoothly varies across world regions.
+    // Coarse grid (every 6 cells) creates zones of dense/sparse corridors.
+    const regionDensity = (wx, wy) => {
+      const rx = Math.floor(wx / (STEP * 6));
+      const ry = Math.floor(wy / (STEP * 6));
+      return 0.20 + 0.55 * rand(rx, ry, seed + 300); // range 0.20 to 0.75
     };
 
-    // Direction choice for binary tree cells
-    const choosesNorth = (gx, gy) => rand(gx, gy, seed + 60) < 0.5;
+    // Independent edge decisions — each edge between two cells is decided once.
+    // Vertical corridor between cell (wx,wy) and its south neighbor
+    const hasVCorridor = (wx, wy) => rand(wx, wy, seed + 400) < regionDensity(wx, wy);
+    // Horizontal corridor between cell (wx,wy) and its east neighbor
+    const hasHCorridor = (wx, wy) => rand(wx, wy, seed + 500) < regionDensity(wx, wy);
 
-    // Initialize padded boolean grid (false = wall)
+    // Void cells — ~8% of cells have no passage block at all
+    const hasBlock = (wx, wy) => rand(wx, wy, seed + 600) < 0.92;
+
+    // Padded grid for BFS
+    const BFSW = CHUNK + 2 * PAD;
     const grid = [];
-    for (let y = 0; y < BFSW; y++) grid[y] = new Array(BFSW).fill(false);
+    for (let y = 0; y < BFSW; y++) {
+      grid[y] = new Array(BFSW).fill(false);
+    }
 
-    // Carve helper — local chunk coords, offset by PAD internally
-    const carve = (ly, lx, h, w) => {
+    // Carve helper — same as Maze A
+    const carve = (gy, gx, h, w) => {
       for (let dy = 0; dy < h; dy++) {
         for (let dx = 0; dx < w; dx++) {
-          const py = PAD + ly + dy, px = PAD + lx + dx;
+          const py = PAD + gy + dy, px = PAD + gx + dx;
           if (py >= 0 && py < BFSW && px >= 0 && px < BFSW) {
             grid[py][px] = true;
           }
@@ -1281,194 +1287,34 @@ class Game {
       }
     };
 
-    // Carve a single cell at position
-    const carveCell = (ly, lx) => {
-      const py = PAD + ly, px = PAD + lx;
-      if (py >= 0 && py < BFSW && px >= 0 && px < BFSW) {
-        grid[py][px] = true;
-      }
-    };
+    // Same 6x6 ring (-1..GRID) as Maze A for seamless chunk borders
+    for (let gy = -1; gy <= GRID; gy++) {
+      for (let gx = -1; gx <= GRID; gx++) {
+        const wx = cx * CHUNK + gx * STEP;
+        const wy = cy * CHUNK + gy * STEP;
+        const y = gy * STEP;
+        const x = gx * STEP;
 
-    // World-space grid cell origin for a given grid index
-    const GRID_RANGE = Math.ceil(CHUNK / STEP) + 2;
-    const gridOriginX = cx * CHUNK;
-    const gridOriginY = cy * CHUNK;
+        // Skip void cells
+        if (!hasBlock(wx, wy)) continue;
 
-    // Convert grid cell to local chunk coords
-    const toLocal = (gx, gy) => ({
-      lx: gx * STEP - gridOriginX,
-      ly: gy * STEP - gridOriginY
-    });
+        // Carve passage block (same 5x5 as Maze A)
+        carve(y, x, CW, CW);
 
-    // Carve wandering corridor between two points
-    const carveWander = (y1, x1, y2, x2, cw, gx, gy, dir) => {
-      const isVert = (y1 !== y2);
-      if (isVert) {
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-        let curX = x1;
-        for (let y = minY; y <= maxY; y++) {
-          // Wander left/right
-          const wobble = hash(gx * 100 + y, gy, seed + 70) % 5;
-          if (wobble === 0 && curX > x1 - 3) curX--;
-          else if (wobble === 1 && curX < x1 + 3) curX++;
-          carve(y, curX, 1, Math.min(cw, 3));
-        }
-      } else {
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        let curY = y1;
-        for (let x = minX; x <= maxX; x++) {
-          const wobble = hash(gx, gy * 100 + x, seed + 71) % 5;
-          if (wobble === 0 && curY > y1 - 3) curY--;
-          else if (wobble === 1 && curY < y1 + 3) curY++;
-          carve(curY, x, Math.min(cw, 3), 1);
-        }
-      }
-    };
-
-    // Cellular automata cave for a region
-    const carveCave = (ly, lx, size) => {
-      const S = size;
-      // Init random fill
-      const cave = [];
-      for (let y = 0; y < S; y++) {
-        cave[y] = [];
-        for (let x = 0; x < S; x++) {
-          cave[y][x] = rand(lx + x, ly + y, seed + 200) < 0.55;
-        }
-      }
-      // Two iterations of B5678/S45678
-      for (let iter = 0; iter < 2; iter++) {
-        const next = [];
-        for (let y = 0; y < S; y++) {
-          next[y] = [];
-          for (let x = 0; x < S; x++) {
-            let neighbors = 0;
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                if (dy === 0 && dx === 0) continue;
-                const ny = y + dy, nx = x + dx;
-                if (ny < 0 || ny >= S || nx < 0 || nx >= S) { neighbors++; continue; }
-                if (cave[ny][nx]) neighbors++;
-              }
-            }
-            if (cave[y][x]) {
-              next[y][x] = neighbors >= 4;  // survive with 4+ neighbors
-            } else {
-              next[y][x] = neighbors >= 5;  // born with 5+ neighbors
-            }
-          }
-        }
-        for (let y = 0; y < S; y++) {
-          for (let x = 0; x < S; x++) cave[y][x] = next[y][x];
-        }
-      }
-      // Carve open cells
-      for (let y = 0; y < S; y++) {
-        for (let x = 0; x < S; x++) {
-          if (!cave[y][x]) carveCell(ly + y, lx + x);
-        }
-      }
-    };
-
-    // Process grid cells covering chunk area + 1-cell border ring
-    const startG = -1;
-    const endG = GRID_RANGE;
-
-    for (let gy = startG; gy <= endG; gy++) {
-      for (let gx = startG; gx <= endG; gx++) {
-        const wx = gridOriginX + gx * STEP;
-        const wy = gridOriginY + gy * STEP;
-        const { lx, ly } = toLocal(gx, gy);
-        const cw = cwFor(wx, wy);
-        const gap = STEP - cw;
-        const type = cellType(wx, wy);
-
-        // Always carve the passage block
-        carve(ly, lx, cw, cw);
-
-        if (type === 'deadend') {
-          // Check if all neighbors are also dead ends — force a north connection
-          const nType = cellType(wx, wy - STEP);
-          const sType = cellType(wx, wy + STEP);
-          const eType = cellType(wx + STEP, wy);
-          const wType = cellType(wx - STEP, wy);
-          if (nType === 'deadend' && sType === 'deadend' && eType === 'deadend' && wType === 'deadend') {
-            carve(ly - gap, lx, gap, Math.min(cw, 3));
-          }
-          continue;
+        // Carve south corridor — if south neighbor exists and edge is open
+        if (hasBlock(wx, wy + STEP) && hasVCorridor(wx, wy)) {
+          carve(y + CW, x, GAP, CW);
         }
 
-        if (type === 'room') {
-          // Enlarged room that extends into the gap area
-          const roomW = cw + hash(wx, wy, seed + 30) % (Math.floor(gap / 2) + 1);
-          const roomH = cw + hash(wx + 1, wy, seed + 31) % (Math.floor(gap / 2) + 1);
-          carve(ly, lx, roomH, roomW);
-        }
-
-        if (type === 'cave') {
-          // Cellular automata mini-cave in the cell region
-          const caveSize = cw + Math.floor(gap * 0.6);
-          carveCave(ly, lx, caveSize);
-          // Force a 2-wide corridor to the north neighbor to ensure connectivity
-          const ncw = cwFor(wx, wy - STEP);
-          carve(ly - gap, lx, gap + 1, Math.min(ncw, 2));
-        }
-
-        // Carve connections based on cell type
-        if (type === 'binary') {
-          // Binary tree: connect north or west
-          if (choosesNorth(wx, wy)) {
-            carve(ly - gap, lx, gap, Math.min(cw, cwFor(wx, wy - STEP)));
-          } else {
-            carve(ly, lx - gap, cw, gap);
-          }
-        } else if (type === 'wander') {
-          // Wandering corridors — connect both north and east with wobbly paths
-          const ncw = cwFor(wx, wy - STEP);
-          carveWander(ly - gap, lx, ly, lx, Math.min(cw, ncw), wx, wy, 'v');
-          const ecw = cwFor(wx + STEP, wy);
-          carveWander(ly, lx + cw, ly, lx + cw + gap - 1, Math.min(cw, ecw), wx, wy, 'h');
-        } else if (type === 'room' || type === 'cave') {
-          // Rooms and caves: connect in 1-2 random directions
-          const dirs = [];
-          if (rand(wx, wy, seed + 80) < 0.7) dirs.push('n');
-          if (rand(wx, wy, seed + 81) < 0.7) dirs.push('e');
-          if (rand(wx, wy, seed + 82) < 0.5) dirs.push('s');
-          if (rand(wx, wy, seed + 83) < 0.5) dirs.push('w');
-          // Ensure at least one connection
-          if (dirs.length === 0) dirs.push('n');
-          for (const d of dirs) {
-            const connW = 2 + hash(wx, wy, seed + 84 + d.charCodeAt(0)) % 3;
-            if (d === 'n') carve(ly - gap, lx, gap, connW);
-            else if (d === 's') carve(ly + cw, lx, gap, connW);
-            else if (d === 'e') carve(ly, lx + cw, connW, gap);
-            else if (d === 'w') carve(ly, lx - gap, connW, gap);
-          }
-        }
-      }
-    }
-
-    // Loop injection: punch extra corridors between ~20% of adjacent pairs
-    for (let gy = startG; gy <= endG; gy++) {
-      for (let gx = startG; gx <= endG; gx++) {
-        const wx = gridOriginX + gx * STEP;
-        const wy = gridOriginY + gy * STEP;
-        const { lx, ly } = toLocal(gx, gy);
-        const cw = cwFor(wx, wy);
-        // East neighbor loop
-        if (rand(wx * 3 + 1, wy * 7, seed + 99) < 0.20) {
-          carve(ly, lx + cw, 2, STEP - cw);
-        }
-        // South neighbor loop
-        if (rand(wx * 7, wy * 3 + 1, seed + 98) < 0.20) {
-          carve(ly + cw, lx, STEP - cw, 2);
+        // Carve east corridor — if east neighbor exists and edge is open
+        if (hasBlock(wx + STEP, wy) && hasHCorridor(wx, wy)) {
+          carve(y, x + CW, CW, GAP);
         }
       }
     }
 
     // BFS distance field on padded grid (Chebyshev, 3 wall layers)
+    // Identical to Maze A
     const bfs = [];
     const queue = [];
     for (let y = 0; y < BFSW; y++) {
@@ -1495,7 +1341,7 @@ class Game {
       }
     }
 
-    // Extract center CHUNK x CHUNK from padded BFS result
+    // Extract center CHUNK x CHUNK from the padded BFS result
     const dist = [];
     for (let y = 0; y < CHUNK; y++) {
       dist[y] = [];
