@@ -8049,19 +8049,30 @@ class Game {
     let artX, artY, layoutW, layoutH;
 
     if (usePixelSprite) {
-      // Pixel sprite: fit within cell budget while preserving native aspect ratio
-      const maxCells = Math.min(Math.floor(battleH * 0.7), Math.floor(cols * 0.35), 18);
+      // Pixel sprite: fit within cell budget while preserving native aspect ratio.
+      // Cells are not square (cellHeight > cellWidth for monospace fonts), so we
+      // must convert between pixel-space aspect ratio and cell-space dimensions.
+      const cw = this.renderer.cellWidth;
+      const ch = this.renderer.cellHeight;
+      const maxW = Math.min(Math.floor(cols * 0.35), 18);
+      const maxH = Math.min(Math.floor(battleH * 0.7), 18);
       const imgW = enemySprite.naturalWidth || enemySprite.width;
       const imgH = enemySprite.naturalHeight || enemySprite.height;
-      const aspect = (imgW && imgH) ? imgW / imgH : 1;
-      let spriteW, spriteH;
-      if (aspect >= 1) {
-        spriteW = maxCells;
-        spriteH = Math.max(1, Math.round(maxCells / aspect));
-      } else {
-        spriteH = maxCells;
-        spriteW = Math.max(1, Math.round(maxCells * aspect));
+      // Pixel-space aspect ratio of the image
+      const imgAspect = (imgW && imgH) ? imgW / imgH : 1;
+      // For a sprite spanning spriteW cols × spriteH rows, pixel size is
+      // (spriteW*cw) × (spriteH*ch). To preserve aspect ratio:
+      //   spriteW*cw / (spriteH*ch) = imgAspect
+      //   spriteW = spriteH * ch/cw * imgAspect
+      // Fit within both maxW and maxH:
+      let spriteW = maxW;
+      let spriteH = Math.round(spriteW * cw / (ch * imgAspect));
+      if (spriteH > maxH) {
+        spriteH = maxH;
+        spriteW = Math.round(spriteH * ch * imgAspect / cw);
       }
+      spriteW = Math.max(1, spriteW);
+      spriteH = Math.max(1, spriteH);
       const spriteCol = Math.floor(cols / 2 - spriteW / 2) + shakeX + recoilX;
       const spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1 + shakeY;
 

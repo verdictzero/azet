@@ -882,22 +882,29 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
 
-    // Portrait sizing — adaptive to screen size, preserving native aspect ratio
+    // Portrait sizing — adaptive to screen size, preserving native aspect ratio.
+    // Cells are non-square (cellHeight > cellWidth for monospace fonts), so we
+    // compensate to keep the rendered pixel rectangle at the correct ratio.
     const hasPortrait = !!dialogueState.portrait;
     let portraitW = 0, portraitH = 0;
     if (hasPortrait) {
-      const maxCells = Math.min(Math.floor(rows * 0.4), Math.floor(cols * 0.2), 14);
+      const cw = r.cellWidth;
+      const ch = r.cellHeight;
+      const maxW = Math.min(Math.floor(cols * 0.2), 14);
+      const maxH = Math.min(Math.floor(rows * 0.4), 14);
       const img = dialogueState.portrait;
       const imgW = img.naturalWidth || img.width;
       const imgH = img.naturalHeight || img.height;
-      const aspect = (imgW && imgH) ? imgW / imgH : 1;
-      if (aspect >= 1) {
-        portraitW = maxCells;
-        portraitH = Math.max(1, Math.round(maxCells / aspect));
-      } else {
-        portraitH = maxCells;
-        portraitW = Math.max(1, Math.round(maxCells * aspect));
+      const imgAspect = (imgW && imgH) ? imgW / imgH : 1;
+      // spriteW*cw / (spriteH*ch) = imgAspect  →  spriteH = spriteW*cw / (ch*imgAspect)
+      portraitW = maxW;
+      portraitH = Math.round(portraitW * cw / (ch * imgAspect));
+      if (portraitH > maxH) {
+        portraitH = maxH;
+        portraitW = Math.round(portraitH * ch * imgAspect / cw);
       }
+      portraitW = Math.max(1, portraitW);
+      portraitH = Math.max(1, portraitH);
     }
     const portraitGap = hasPortrait ? 2 : 0; // gap between portrait and text panels
 
