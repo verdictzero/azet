@@ -6232,10 +6232,12 @@ class Game {
       const ctx = this.renderer.ctx;
       const cw = this.renderer.cellWidth;
       const ch = this.renderer.cellHeight;
-      const px = Math.round(eso.col * cw);
-      const py = Math.round(eso.row * ch);
-      const pw = Math.round(eso.w * cw);
-      const ph = Math.round(eso.h * ch);
+      // Use exact integer-scaled pixel dims when available for crisp pixel art
+      const pw = eso.pxW || Math.round(eso.w * cw);
+      const ph = eso.pxH || Math.round(eso.h * ch);
+      // Center the pixel-precise size within the cell region
+      const px = Math.round(eso.col * cw + (eso.w * cw - pw) / 2);
+      const py = Math.round(eso.row * ch + (eso.h * ch - ph) / 2);
 
       // Draw sprite
       ctx.save();
@@ -8049,30 +8051,24 @@ class Game {
     let artX, artY, layoutW, layoutH;
 
     if (usePixelSprite) {
-      // Pixel sprite: fit within cell budget while preserving native aspect ratio.
-      // Cells are not square (cellHeight > cellWidth for monospace fonts), so we
-      // must convert between pixel-space aspect ratio and cell-space dimensions.
+      // Pixel sprite: integer nearest-neighbor scaling for crisp pixel art.
+      // Compute the largest integer scale factor that fits the battle area,
+      // with a minimum of 3x so sprites are always prominently sized.
       const cw = this.renderer.cellWidth;
       const ch = this.renderer.cellHeight;
-      const maxW = Math.min(Math.floor(cols * 0.35), 18);
-      const maxH = Math.min(Math.floor(battleH * 0.7), 18);
+      const availPxW = Math.floor(cols * cw * 0.70);
+      const availPxH = Math.floor(battleH * ch * 0.80);
       const imgW = enemySprite.naturalWidth || enemySprite.width;
       const imgH = enemySprite.naturalHeight || enemySprite.height;
-      // Pixel-space aspect ratio of the image
-      const imgAspect = (imgW && imgH) ? imgW / imgH : 1;
-      // For a sprite spanning spriteW cols × spriteH rows, pixel size is
-      // (spriteW*cw) × (spriteH*ch). To preserve aspect ratio:
-      //   spriteW*cw / (spriteH*ch) = imgAspect
-      //   spriteW = spriteH * ch/cw * imgAspect
-      // Fit within both maxW and maxH:
-      let spriteW = maxW;
-      let spriteH = Math.round(spriteW * cw / (ch * imgAspect));
-      if (spriteH > maxH) {
-        spriteH = maxH;
-        spriteW = Math.round(spriteH * ch * imgAspect / cw);
-      }
-      spriteW = Math.max(1, spriteW);
-      spriteH = Math.max(1, spriteH);
+
+      // Integer scale factor: largest N where imgW*N fits, minimum 3
+      const scaleFactor = Math.max(3, Math.floor(Math.min(availPxW / imgW, availPxH / imgH)));
+      const destPxW = imgW * scaleFactor;
+      const destPxH = imgH * scaleFactor;
+
+      // Convert to fractional cell units for centering
+      const spriteW = destPxW / cw;
+      const spriteH = destPxH / ch;
       const spriteCol = Math.floor(cols / 2 - spriteW / 2) + shakeX + recoilX;
       const spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1 + shakeY;
 
@@ -8083,6 +8079,8 @@ class Game {
         row: spriteRow,
         w: spriteW,
         h: spriteH,
+        pxW: destPxW,
+        pxH: destPxH,
       };
 
       // Use sprite center for name plate / HP bar positioning
