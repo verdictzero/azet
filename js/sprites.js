@@ -40,10 +40,24 @@ const ENEMY_MANIFEST = {
   golem:       'sprites/enemies/golem.png',
   ghost:       'sprites/enemies/ghost.png',
   serpent:     'sprites/enemies/serpent.png',
-  drone:       'sprites/enemies/drone.png',
+  drone:       'sprites/enemies/rogue_pizza_delivery_drone.png',
   fungal:      'sprites/enemies/fungal.png',
   default:     'sprites/enemies/default.png',
 };
+
+// ── Actual portrait files on disk ─────────────
+// Keyed by path to match npc.portrait assigned by NPCGenerator
+const PORTRAIT_FILES = [
+  'sprites/portraits/npc_female_1.png',
+  'sprites/portraits/npc_female_2.png',
+  'sprites/portraits/npc_female_3.png',
+  'sprites/portraits/npc_female_4.png',
+  'sprites/portraits/npc_female_5.png',
+  'sprites/portraits/npc_male_1.png',
+  'sprites/portraits/npc_male_2.png',
+  'sprites/portraits/npc_female_child_1.png',
+  'sprites/portraits/npc_male_child_1.png',
+];
 
 // ── Procedural placeholder generator ─────────
 // Generates simple 128x128 pixel art placeholders
@@ -247,8 +261,8 @@ export class SpriteManager {
   // Preload all sprites from manifests. Non-blocking; missing files silently fallback.
   async preloadAll() {
     const promises = [];
-    for (const [name, path] of Object.entries(PORTRAIT_MANIFEST)) {
-      promises.push(this.loadSprite(`portrait_${name}`, path));
+    for (const path of PORTRAIT_FILES) {
+      promises.push(this.loadSprite(path, path));
     }
     for (const [name, path] of Object.entries(ENEMY_MANIFEST)) {
       promises.push(this.loadSprite(`enemy_${name}`, path));
@@ -256,19 +270,18 @@ export class SpriteManager {
     await Promise.all(promises);
   }
 
-  // Get a portrait for an NPC. Tries role-specific, then default, then placeholder.
+  // Get a portrait for an NPC. Uses npc.portrait path assigned by NPCGenerator.
   getPortrait(npc) {
-    const role = (npc.role || '').toLowerCase().replace(/\s+/g, '');
-    // Try exact role match
-    let sprite = this._cache.get(`portrait_${role}`);
-    if (sprite) return sprite;
-    // Try default
-    sprite = this._cache.get('portrait_default');
-    if (sprite) return sprite;
-    // Generate placeholder
-    const key = `placeholder_portrait_${role || 'default'}`;
+    // Try the portrait path assigned by NPCGenerator
+    if (npc.portrait) {
+      const sprite = this._cache.get(npc.portrait);
+      if (sprite) return sprite;
+    }
+    // Generate placeholder based on role
+    const role = (npc.role || 'default').toLowerCase().replace(/\s+/g, '');
+    const key = `placeholder_portrait_${role}`;
     if (!this._placeholders.has(key)) {
-      this._placeholders.set(key, generatePlaceholderPortrait(role || 'default'));
+      this._placeholders.set(key, generatePlaceholderPortrait(role));
     }
     return this._placeholders.get(key);
   }
