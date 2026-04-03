@@ -505,6 +505,23 @@ export function degradeTechTerms(text, loreLevel = 'common') {
   return result;
 }
 
+// Portrait pools keyed by appearance type
+const PORTRAITS_FEMALE = [
+  'sprites/portraits/npc_female_1.png',
+  'sprites/portraits/npc_female_2.png',
+  'sprites/portraits/npc_female_3.png',
+  'sprites/portraits/npc_female_4.png',
+  'sprites/portraits/npc_female_5.png',
+];
+const PORTRAITS_MALE = [
+  'sprites/portraits/npc_male_1.png',
+  'sprites/portraits/npc_male_2.png',
+];
+const PORTRAITS_CHILD = [
+  'sprites/portraits/npc_female_child_1.png',
+  'sprites/portraits/npc_male_child_1.png',
+];
+
 export class NPCGenerator {
   constructor() {
     this.nameGen = new NameGenerator();
@@ -548,6 +565,18 @@ export class NPCGenerator {
     const shuffledSecrets = rng.shuffle(SECRET_TEMPLATES);
     const secretCount = rng.nextInt(1, 2);
     const secrets = shuffledSecrets.slice(0, secretCount);
+
+    // Portrait assignment based on role and deterministic hash
+    let portraitPool;
+    if (role === 'child') {
+      portraitPool = PORTRAITS_CHILD;
+    } else {
+      // Use name hash to deterministically pick male/female appearance
+      const nameHash = (name.full || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+      portraitPool = nameHash % 2 === 0 ? PORTRAITS_FEMALE : PORTRAITS_MALE;
+    }
+    const portraitIdx = Math.abs((name.full || '').split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 0)) % portraitPool.length;
+    const portrait = portraitPool[portraitIdx];
 
     // Position from location context
     const position = locationContext
@@ -632,6 +661,7 @@ export class NPCGenerator {
       title,
       char,
       color,
+      portrait,
       position,
       stats: {
         hp,
@@ -764,34 +794,23 @@ export class DialogueSystem {
   }
 
   generateGreeting(npc, playerRep = 0) {
-    let templates;
-    let tone;
-    if (playerRep > 30) {
-      templates = GREETINGS.friendly;
-      tone = 'friendly';
-    } else if (playerRep < -30) {
-      templates = GREETINGS.hostile;
-      tone = 'hostile';
-    } else {
-      templates = GREETINGS.neutral;
-      tone = 'neutral';
-    }
-
-    const text = templates[Math.floor(Math.random() * templates.length)];
+    const text = "Hi! There isn't any dialogue here yet.";
     const options = this.generateOptions(npc, playerRep);
-
-    return { text, tone, options };
+    return { text, tone: 'neutral', options };
   }
 
   generateOptions(npc, playerRep = 0, gameContext = null) {
-    const category = npc.category || getNpcCategory(npc.role);
-    switch (category) {
-      case 'ambient':   return this._ambientOptions(npc, playerRep);
-      case 'service':   return this._serviceOptions(npc, playerRep);
-      case 'knowledge': return this._knowledgeOptions(npc, playerRep, gameContext);
-      case 'authority': return this._authorityOptions(npc, playerRep, gameContext);
-      default:          return this._ambientOptions(npc, playerRep);
+    const options = [];
+    // Keep shop access for merchant/blacksmith NPCs
+    if (npc.role === 'merchant' || npc.role === 'blacksmith') {
+      options.push({ text: 'Let me see your wares.', action: 'shop', consequence: null });
     }
+    // Keep rest for barkeep/innkeeper NPCs
+    if (npc.role === 'barkeep' || npc.role === 'innkeeper') {
+      options.push({ text: 'I need a room for the night.', action: 'rest', consequence: null });
+    }
+    options.push({ text: 'Goodbye.', action: 'exit', consequence: null });
+    return options;
   }
 
   // ── Ambient NPCs: townspeople, small talk only ──
@@ -2760,313 +2779,45 @@ export class ItemGenerator {
 // CreatureGenerator — Biome-specific enemy generation with abilities
 // ============================================================================
 
+// Pizza drone enemy set — all biomes use the same rogue pizza delivery drones
+const PIZZA_DRONES = [
+  { name: 'Rogue Pizza Drone', char: 'd', color: '#CC4444', behavior: 'patrol', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'MALFUNCTIONING', sprite: 'sprites/enemies/rogue_pizza_delivery_drone.png' },
+  { name: 'Pizza Drone Swarm', char: 'z', color: '#FF6644', behavior: 'aggressive', hp: 8, attack: 5, defense: 1, xpBase: 18, faction: 'MALFUNCTIONING', sprite: 'sprites/enemies/rogue_pizza_delivery_drone.png' },
+  { name: 'Armored Pizza Drone', char: 'D', color: '#AA3333', behavior: 'patrol', hp: 30, attack: 6, defense: 6, xpBase: 35, faction: 'MALFUNCTIONING', sprite: 'sprites/enemies/rogue_pizza_delivery_drone.png' },
+  { name: 'Glitched Pizza Drone', char: 'g', color: '#FF8888', behavior: 'ambush', hp: 16, attack: 7, defense: 2, xpBase: 22, ability: 'empPulse', faction: 'MALFUNCTIONING', sprite: 'sprites/enemies/rogue_pizza_delivery_drone.png' },
+  { name: 'Pizza Drone Overlord', char: 'P', color: '#FF0000', behavior: 'aggressive', hp: 60, attack: 12, defense: 6, xpBase: 100, ability: 'chainLightning', isBoss: true, faction: 'MALFUNCTIONING', sprite: 'sprites/enemies/rogue_pizza_delivery_drone.png' },
+];
+
 const CREATURE_TABLES = {
-  // BIODOME — Overgrown agricultural sectors with rogue agri-bots and mutated crop organisms
-  forest: [
-    { name: 'Patrol Drone', char: 'd', color: '#AAAAAA', behavior: 'patrol', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'MALFUNCTIONING' },
-    { name: 'Creeping Vine-Maw', char: 'V', color: '#44AA44', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Overgrown Harvester', char: 'H', color: '#226622', behavior: 'patrol', hp: 30, attack: 6, defense: 5, xpBase: 40, ability: 'sporeCloud', faction: 'MALFUNCTIONING' },
-    { name: 'Scavenger', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20, faction: 'MUTANT' },
-    { name: 'Feral Livestock', char: 'b', color: '#886644', behavior: 'coward', hp: 14, attack: 4, defense: 3, xpBase: 12, faction: 'MUTANT' },
-    { name: 'Bioluminescent Moth', char: 'f', color: '#44FF44', behavior: 'coward', hp: 6, attack: 2, defense: 1, xpBase: 8, faction: 'MUTANT' },
-    { name: 'Soil Centipede', char: '~', color: '#886644', behavior: 'ambush', hp: 16, attack: 6, defense: 2, xpBase: 22, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Irrigation Turret', char: 'T', color: '#6688AA', behavior: 'patrol', hp: 20, attack: 7, defense: 6, xpBase: 30, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
-    { name: 'Crop Mimic', char: '?', color: '#66AA44', behavior: 'ambush', hp: 14, attack: 8, defense: 1, xpBase: 25, faction: 'MUTANT' },
-  ],
-  // MAINTENANCE TUNNELS — Service corridors with malfunctioning industrial machines
-  underground: [
-    { name: 'Tunnel Sensor', char: 'o', color: '#886688', behavior: 'aggressive', hp: 8, attack: 3, defense: 1, xpBase: 10, faction: 'MALFUNCTIONING' },
-    { name: 'Coolant Gel', char: 's', color: '#44AAAA', behavior: 'patrol', hp: 20, attack: 2, defense: 4, xpBase: 15, ability: 'corrosiveSpit', faction: 'MUTANT' },
-    { name: 'Loader Mech', char: 'L', color: '#668866', behavior: 'aggressive', hp: 35, attack: 8, defense: 4, xpBase: 50, ability: 'selfRepair', faction: 'MALFUNCTIONING' },
-    { name: 'Duct Rat', char: 'r', color: '#AA6644', behavior: 'coward', hp: 8, attack: 3, defense: 2, xpBase: 8, faction: 'MUTANT' },
-    { name: 'Mining Automaton', char: 'M', color: '#888888', behavior: 'patrol', hp: 40, attack: 6, defense: 8, xpBase: 45, faction: 'MALFUNCTIONING' },
-    { name: 'Pipe Worm', char: 'w', color: '#997755', behavior: 'ambush', hp: 18, attack: 5, defense: 3, xpBase: 20, ability: 'corrosiveSpit', faction: 'MUTANT' },
-    { name: 'Echo Bat', char: 'e', color: '#AA88CC', behavior: 'coward', hp: 7, attack: 3, defense: 0, xpBase: 10, ability: 'echoScream', faction: 'MUTANT' },
-    { name: 'Cable Strangler', char: 'C', color: '#556677', behavior: 'ambush', hp: 22, attack: 7, defense: 2, xpBase: 28, ability: 'gravCrush', faction: 'MALFUNCTIONING' },
-  ],
-  // QUARANTINE ZONE — Sealed sectors overrun by nano-fungal assimilation
-  haunted: [
-    { name: 'Assimilated Drone', char: 'd', color: '#CC4444', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'ASSIMILATED' },
-    { name: 'Nano-Wraith', char: 'W', color: '#8888FF', behavior: 'aggressive', hp: 18, attack: 7, defense: 1, xpBase: 35, ability: 'assimilate', faction: 'ASSIMILATED' },
-    { name: 'Shambling Host', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12, faction: 'ASSIMILATED' },
-    { name: 'Hivemind Nexus', char: 'N', color: '#AA00FF', behavior: 'aggressive', hp: 50, attack: 12, defense: 5, xpBase: 100, ability: 'thermalOverload', isBoss: true, faction: 'ASSIMILATED' },
-    { name: 'Phase Stalker', char: 'p', color: '#AAAAFF', behavior: 'ambush', hp: 10, attack: 5, defense: 0, xpBase: 20, ability: 'phaseShift', faction: 'ALIEN' },
-    { name: 'Memory Phantom', char: 'm', color: '#9988BB', behavior: 'aggressive', hp: 14, attack: 6, defense: 1, xpBase: 22, ability: 'memoryLeech', faction: 'ASSIMILATED' },
-    { name: 'Grief Echo', char: 'e', color: '#7766AA', behavior: 'coward', hp: 9, attack: 4, defense: 0, xpBase: 15, ability: 'echoScream', faction: 'ASSIMILATED' },
-  ],
-  // WASTE PROCESSING — Recycling sectors with toxic mutations and broken reclamation bots
-  swamp: [
-    { name: 'Toxic Reclaimer', char: 'R', color: '#448844', behavior: 'ambush', hp: 22, attack: 6, defense: 3, xpBase: 30, ability: 'signalJam', faction: 'MALFUNCTIONING' },
-    { name: 'Sludge Crawler', char: 'C', color: '#446644', behavior: 'ambush', hp: 25, attack: 5, defense: 5, xpBase: 25, faction: 'MUTANT' },
-    { name: 'Mutant Amphibian', char: 't', color: '#66AA44', behavior: 'coward', hp: 8, attack: 2, defense: 2, xpBase: 8, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Vent Gas Wisp', char: '*', color: '#88FFFF', behavior: 'coward', hp: 5, attack: 3, defense: 0, xpBase: 12, faction: 'MUTANT' },
-    { name: 'Acid Jellyfish', char: 'J', color: '#44CCAA', behavior: 'patrol', hp: 15, attack: 5, defense: 1, xpBase: 18, ability: 'corrosiveSpit', faction: 'MUTANT' },
-    { name: 'Sewer Centipede', char: '~', color: '#557744', behavior: 'ambush', hp: 20, attack: 6, defense: 4, xpBase: 25, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Waste Amalgam', char: 'A', color: '#668855', behavior: 'aggressive', hp: 28, attack: 7, defense: 5, xpBase: 35, ability: 'symbioticBurst', faction: 'MUTANT' },
-  ],
-  // EXTERIOR HULL — Exposed outer surface where alien organisms board the colony
-  badlands: [
-    { name: 'Hull Scorpion', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 16, attack: 6, defense: 4, xpBase: 22, ability: 'toxinSpray', faction: 'ALIEN' },
-    { name: 'Void Sentinel', char: 'V', color: '#AAAA88', behavior: 'patrol', hp: 28, attack: 5, defense: 6, xpBase: 35, ability: 'signalJam', faction: 'ASSIMILATED' },
-    { name: 'Hull Borer', char: 'B', color: '#CCAA66', behavior: 'ambush', hp: 40, attack: 10, defense: 3, xpBase: 55, faction: 'ALIEN' },
-    { name: 'Radiation Shade', char: 'h', color: '#CCAA88', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15, faction: 'ALIEN' },
-    { name: 'Rogue Hull Repair Drone', char: 'r', color: '#BB9966', behavior: 'aggressive', hp: 18, attack: 7, defense: 3, xpBase: 25, faction: 'MALFUNCTIONING' },
-    { name: 'Gravity Leech', char: 'g', color: '#8877AA', behavior: 'ambush', hp: 12, attack: 5, defense: 2, xpBase: 20, ability: 'gravCrush', faction: 'ALIEN' },
-    { name: 'Stellar Jellyfish', char: 'J', color: '#AABBDD', behavior: 'patrol', hp: 20, attack: 6, defense: 1, xpBase: 28, ability: 'entropyField', faction: 'ALIEN' },
-  ],
-  // REACTOR/INDUSTRIAL — Power generation and heavy industry sectors
-  mountain: [
-    { name: 'Feral Welder Bot', char: 'w', color: '#CCAA66', behavior: 'aggressive', hp: 18, attack: 6, defense: 3, xpBase: 25, faction: 'MALFUNCTIONING' },
-    { name: 'Conduit Parasite', char: 'c', color: '#AA88CC', behavior: 'aggressive', hp: 14, attack: 5, defense: 2, xpBase: 20, ability: 'empPulse', faction: 'ALIEN' },
-    { name: 'Reactor Guardian', char: 'G', color: '#FF8844', behavior: 'patrol', hp: 50, attack: 10, defense: 8, xpBase: 60, ability: 'overcharge', isBoss: true, faction: 'MALFUNCTIONING' },
-    { name: 'Thermal Creeper', char: 'T', color: '#FF4444', behavior: 'aggressive', hp: 30, attack: 8, defense: 4, xpBase: 45, ability: 'naniteInjection', faction: 'ASSIMILATED' },
-    { name: 'Watcher Node', char: '@', color: '#88AACC', behavior: 'patrol', hp: 16, attack: 4, defense: 5, xpBase: 22, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
-    { name: 'Plasma Jellyfish', char: 'J', color: '#FFAA44', behavior: 'aggressive', hp: 15, attack: 9, defense: 0, xpBase: 28, ability: 'thermalOverload', faction: 'MUTANT' },
-    { name: 'Forge Amalgam', char: 'A', color: '#CC8844', behavior: 'aggressive', hp: 35, attack: 9, defense: 6, xpBase: 50, ability: 'mirrorShield', faction: 'MALFUNCTIONING' },
-  ],
-  // ABANDONED SECTORS — Derelict colony modules with mixed threats
-  ruins: [
-    { name: 'Glitched Colonist', char: 'g', color: '#55AA55', behavior: 'coward', hp: 10, attack: 3, defense: 2, xpBase: 10, faction: 'ASSIMILATED' },
-    { name: 'Derelict Sentry', char: 's', color: '#CCCCCC', behavior: 'aggressive', hp: 12, attack: 4, defense: 2, xpBase: 15, faction: 'MALFUNCTIONING' },
-    { name: 'Duct Rat', char: 'r', color: '#886644', behavior: 'coward', hp: 5, attack: 2, defense: 1, xpBase: 5, faction: 'MUTANT' },
-    { name: 'Spore Spider', char: 'a', color: '#448844', behavior: 'ambush', hp: 10, attack: 5, defense: 1, xpBase: 18, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Scrap Raider', char: 'z', color: '#668866', behavior: 'patrol', hp: 20, attack: 3, defense: 3, xpBase: 12 },
-    { name: 'Raider Captain', char: 'B', color: '#AA8844', behavior: 'aggressive', hp: 15, attack: 5, defense: 3, xpBase: 20 },
-    { name: 'Mimic Cache', char: '!', color: '#FFDD44', behavior: 'ambush', hp: 22, attack: 6, defense: 4, xpBase: 35, faction: 'ALIEN' },
-    { name: 'Corridor Creeper', char: 'c', color: '#776655', behavior: 'ambush', hp: 12, attack: 5, defense: 2, xpBase: 15, faction: 'MUTANT' },
-    { name: 'Broken Watcher', char: '@', color: '#999999', behavior: 'patrol', hp: 10, attack: 3, defense: 3, xpBase: 12, ability: 'signalJam', faction: 'MALFUNCTIONING' },
-    { name: 'Loot Mimic', char: '$', color: '#FFCC44', behavior: 'ambush', hp: 18, attack: 8, defense: 3, xpBase: 30, faction: 'ALIEN' },
-  ],
-  // COLONY COMMONS — Open habitation areas with low-level strays
-  grassland: [
-    { name: 'Stray Service Bot', char: 'd', color: '#AAAAAA', behavior: 'patrol', hp: 8, attack: 3, defense: 2, xpBase: 8, faction: 'MALFUNCTIONING' },
-    { name: 'Rogue Multiped Repair Drone', char: 'r', color: '#AA8866', behavior: 'patrol', hp: 8, attack: 3, defense: 2, xpBase: 8, faction: 'MALFUNCTIONING' },
-    { name: 'Rogue Courier Drone', char: 'q', color: '#8888CC', behavior: 'aggressive', hp: 10, attack: 4, defense: 1, xpBase: 12, faction: 'MALFUNCTIONING' },
-    { name: 'Scavenger', char: 'S', color: '#AA8844', behavior: 'aggressive', hp: 14, attack: 4, defense: 3, xpBase: 15 },
-    { name: 'Rogue Repair Drone Pack', char: 'r', color: '#AA7755', behavior: 'aggressive', hp: 12, attack: 5, defense: 3, xpBase: 14, faction: 'MALFUNCTIONING' },
-    { name: 'Sparking Junction', char: 'j', color: '#AABB44', behavior: 'patrol', hp: 12, attack: 4, defense: 4, xpBase: 15, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
-    { name: 'Lost Child Echo', char: 'e', color: '#8888CC', behavior: 'coward', hp: 5, attack: 1, defense: 0, xpBase: 8, ability: 'memoryLeech', faction: 'ASSIMILATED' },
-  ],
-
-  // HULL BREACH — Exposed outer hull, vacuum-adjacent sectors
-  hull_breach: [
-    { name: 'Void Walker', char: 'W', color: '#6688AA', behavior: 'patrol', hp: 22, attack: 4, defense: 7, xpBase: 28, faction: 'ALIEN' },
-    { name: 'Hull Breach Drone', char: 'd', color: '#8899AA', behavior: 'aggressive', hp: 16, attack: 6, defense: 3, xpBase: 20, faction: 'MALFUNCTIONING' },
-    { name: 'Pressure Wraith', char: 'p', color: '#AABBCC', behavior: 'ambush', hp: 12, attack: 8, defense: 1, xpBase: 30, ability: 'phaseShift', faction: 'ALIEN' },
-    { name: 'Vacuum Leech', char: 'l', color: '#445566', behavior: 'coward', hp: 8, attack: 2, defense: 2, xpBase: 10, faction: 'ALIEN' },
-    { name: 'Vacuum Jellyfish', char: 'J', color: '#6688BB', behavior: 'patrol', hp: 18, attack: 6, defense: 2, xpBase: 25, ability: 'gravCrush', faction: 'ALIEN' },
-    { name: 'Hull Centipede', char: '~', color: '#778899', behavior: 'ambush', hp: 25, attack: 7, defense: 5, xpBase: 32, faction: 'ALIEN' },
-    { name: 'Breach Turret', char: 'T', color: '#8899AA', behavior: 'patrol', hp: 22, attack: 8, defense: 7, xpBase: 35, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
-  ],
-
-  // REACTOR SLAG — Molten areas around failed reactors
-  reactor_slag: [
-    { name: 'Slag Golem', char: 'G', color: '#FF8844', behavior: 'patrol', hp: 55, attack: 8, defense: 10, xpBase: 60, faction: 'MALFUNCTIONING' },
-    { name: 'Plasma Wisp', char: '*', color: '#FFAA22', behavior: 'aggressive', hp: 10, attack: 10, defense: 0, xpBase: 25, ability: 'thermalOverload', faction: 'MUTANT' },
-    { name: 'Meltdown Core', char: 'M', color: '#FF4400', behavior: 'aggressive', hp: 70, attack: 14, defense: 6, xpBase: 120, ability: 'thermalOverload', isBoss: true, faction: 'MALFUNCTIONING' },
-    { name: 'Char Crawler', char: 'c', color: '#CC6622', behavior: 'coward', hp: 8, attack: 4, defense: 2, xpBase: 10, faction: 'MUTANT' },
-    { name: 'Molten Amalgam', char: 'A', color: '#FF6622', behavior: 'aggressive', hp: 40, attack: 10, defense: 7, xpBase: 55, ability: 'symbioticBurst', faction: 'MUTANT' },
-    { name: 'Heat Shimmer', char: '~', color: '#FFCC88', behavior: 'coward', hp: 8, attack: 6, defense: 0, xpBase: 15, ability: 'entropyField', faction: 'MUTANT' },
-  ],
-
-  // FROZEN DECK — Cryogenics failure, frost-covered corridors
-  frozen_deck: [
-    { name: 'Frost Automaton', char: 'A', color: '#88BBDD', behavior: 'patrol', hp: 35, attack: 7, defense: 8, xpBase: 40, faction: 'MALFUNCTIONING' },
-    { name: 'Cryo Specter', char: 'C', color: '#AADDFF', behavior: 'ambush', hp: 18, attack: 6, defense: 2, xpBase: 25, ability: 'empPulse', faction: 'ALIEN' },
-    { name: 'Ice Borer', char: 'B', color: '#6699BB', behavior: 'aggressive', hp: 20, attack: 8, defense: 4, xpBase: 30, faction: 'MUTANT' },
-    { name: 'Frozen Colonist', char: 'z', color: '#88AACC', behavior: 'coward', hp: 12, attack: 3, defense: 3, xpBase: 8, faction: 'ASSIMILATED' },
-    { name: 'Cryo Repair Drone', char: 'r', color: '#88BBDD', behavior: 'aggressive', hp: 22, attack: 7, defense: 4, xpBase: 28, faction: 'MALFUNCTIONING' },
-    { name: 'Temporal Frost', char: '?', color: '#AACCEE', behavior: 'ambush', hp: 14, attack: 5, defense: 3, xpBase: 22, ability: 'timeFracture', faction: 'ALIEN' },
-    { name: 'Frozen Watcher', char: '@', color: '#99BBDD', behavior: 'patrol', hp: 20, attack: 4, defense: 8, xpBase: 25, ability: 'empPulse', faction: 'MALFUNCTIONING' },
-  ],
-
-  // RIVERBANK — Eroded coolant channels with amphibious threats
-  shore: [
-    { name: 'Shore Crawler', char: 'c', color: '#5588AA', behavior: 'ambush', hp: 14, attack: 5, defense: 3, xpBase: 18, faction: 'MUTANT' },
-    { name: 'Rusted Fisher Bot', char: 'F', color: '#8899AA', behavior: 'patrol', hp: 20, attack: 6, defense: 5, xpBase: 25, faction: 'MALFUNCTIONING' },
-    { name: 'Mud Lurker', char: 'L', color: '#667755', behavior: 'ambush', hp: 16, attack: 7, defense: 2, xpBase: 22, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Coolant Eel', char: 'e', color: '#44AACC', behavior: 'aggressive', hp: 10, attack: 6, defense: 1, xpBase: 15, faction: 'MUTANT' },
-    { name: 'Drift Scavenger', char: 'S', color: '#779988', behavior: 'coward', hp: 12, attack: 4, defense: 3, xpBase: 12, faction: 'MUTANT' },
-    { name: 'Bank Turret', char: 'T', color: '#6688AA', behavior: 'patrol', hp: 22, attack: 7, defense: 6, xpBase: 30, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
-    { name: 'Bilge Amalgam', char: 'A', color: '#558877', behavior: 'aggressive', hp: 30, attack: 8, defense: 5, xpBase: 38, ability: 'corrosiveSpit', faction: 'MUTANT' },
-  ],
-
-  // COOLANT RIVER — Flooded corridors with aquatic mutations
-  river: [
-    { name: 'Current Jellyfish', char: 'J', color: '#4488DD', behavior: 'patrol', hp: 12, attack: 5, defense: 1, xpBase: 15, ability: 'chainLightning', faction: 'MUTANT' },
-    { name: 'Pipe Leviathan', char: 'P', color: '#336699', behavior: 'aggressive', hp: 45, attack: 10, defense: 6, xpBase: 60, ability: 'gravCrush', isBoss: true, faction: 'MUTANT' },
-    { name: 'Flooded Sentry', char: 's', color: '#5577AA', behavior: 'aggressive', hp: 18, attack: 6, defense: 4, xpBase: 22, faction: 'MALFUNCTIONING' },
-    { name: 'Depth Worm', char: 'w', color: '#335577', behavior: 'ambush', hp: 16, attack: 7, defense: 2, xpBase: 20, ability: 'corrosiveSpit', faction: 'MUTANT' },
-    { name: 'Aquatic Drone', char: 'd', color: '#6699BB', behavior: 'patrol', hp: 14, attack: 5, defense: 3, xpBase: 16, faction: 'MALFUNCTIONING' },
-    { name: 'Brine Spider', char: 'a', color: '#447788', behavior: 'ambush', hp: 10, attack: 6, defense: 1, xpBase: 14, ability: 'toxinSpray', faction: 'MUTANT' },
-  ],
-
-  // HYDROPONIC JUNGLE — Agri-domes gone wild with rampant growth
-  hydro_jungle: [
-    { name: 'Apex Vine-Maw', char: 'V', color: '#00FF66', behavior: 'aggressive', hp: 28, attack: 10, defense: 3, xpBase: 40, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Pollinator Swarm', char: 's', color: '#FFDD00', behavior: 'patrol', hp: 14, attack: 5, defense: 1, xpBase: 18, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Root Titan', char: 'R', color: '#228844', behavior: 'aggressive', hp: 65, attack: 12, defense: 8, xpBase: 100, ability: 'selfRepair', isBoss: true, faction: 'MUTANT' },
-    { name: 'Bioluminescent Stalker', char: 'b', color: '#44FF88', behavior: 'ambush', hp: 16, attack: 7, defense: 2, xpBase: 22, faction: 'MUTANT' },
-    { name: 'Canopy Jellyfish', char: 'J', color: '#66DDAA', behavior: 'patrol', hp: 12, attack: 4, defense: 1, xpBase: 15, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Symbiotic Cluster', char: '&', color: '#44CC66', behavior: 'aggressive', hp: 24, attack: 8, defense: 3, xpBase: 30, ability: 'symbioticBurst', faction: 'MUTANT' },
-  ],
-
-  // TOXIC SUMP — Waste processing overflow, acid pools
-  toxic_sump: [
-    { name: 'Acid Slime', char: 's', color: '#44FF00', behavior: 'patrol', hp: 25, attack: 6, defense: 5, xpBase: 25, ability: 'corrosiveSpit', faction: 'MUTANT' },
-    { name: 'Waste Processor', char: 'W', color: '#668844', behavior: 'aggressive', hp: 30, attack: 7, defense: 6, xpBase: 35, faction: 'MALFUNCTIONING' },
-    { name: 'Sludge Titan', char: 'T', color: '#33AA00', behavior: 'aggressive', hp: 55, attack: 11, defense: 8, xpBase: 80, ability: 'corrosiveSpit', isBoss: true, faction: 'MUTANT' },
-    { name: 'Dissolving Rat', char: 'r', color: '#88AA44', behavior: 'coward', hp: 6, attack: 3, defense: 1, xpBase: 8, ability: 'toxinSpray', faction: 'MUTANT' },
-    { name: 'Acid Centipede', char: '~', color: '#55CC22', behavior: 'ambush', hp: 22, attack: 7, defense: 4, xpBase: 28, ability: 'corrosiveSpit', faction: 'MUTANT' },
-    { name: 'Toxic Amalgam', char: 'A', color: '#44AA22', behavior: 'aggressive', hp: 38, attack: 9, defense: 7, xpBase: 45, ability: 'entropyField', faction: 'MUTANT' },
-  ],
-
-  // ALIEN CRASH SITE — Embedded xeno-vessel wreckage with xenotech
-  alien_crash: [
-    { name: 'Alien Sentinel', char: 'S', color: '#FF44FF', behavior: 'patrol', hp: 30, attack: 8, defense: 6, xpBase: 40, ability: 'signalJam', faction: 'ALIEN' },
-    { name: 'Xenomorph Scout', char: 'x', color: '#DD22DD', behavior: 'aggressive', hp: 18, attack: 10, defense: 3, xpBase: 35, faction: 'ALIEN' },
-    { name: 'Artifact Guardian', char: 'G', color: '#FF88FF', behavior: 'aggressive', hp: 75, attack: 14, defense: 8, xpBase: 130, ability: 'empPulse', isBoss: true, faction: 'ALIEN' },
-    { name: 'Beacon Drone', char: 'b', color: '#CC66CC', behavior: 'coward', hp: 10, attack: 3, defense: 2, xpBase: 12, ability: 'signalJam', faction: 'ALIEN' },
-    { name: 'Xeno Repair Drone', char: 'r', color: '#DD44DD', behavior: 'aggressive', hp: 24, attack: 9, defense: 4, xpBase: 35, ability: 'voidDrain', faction: 'ALIEN' },
-    { name: 'Beacon Eye', char: '@', color: '#EE66EE', behavior: 'patrol', hp: 20, attack: 6, defense: 5, xpBase: 28, ability: 'psionicLash', faction: 'ALIEN' },
-    { name: 'Temporal Sentry', char: 'T', color: '#CC88DD', behavior: 'patrol', hp: 28, attack: 7, defense: 8, xpBase: 40, ability: 'timeFracture', faction: 'ALIEN' },
-  ],
-
-  // CRYSTALLINE GROWTH — Alien mineral formations, refractive
-  crystal_zone: [
-    { name: 'Crystal Golem', char: 'G', color: '#44FFFF', behavior: 'patrol', hp: 40, attack: 6, defense: 12, xpBase: 45, faction: 'ALIEN' },
-    { name: 'Resonance Phantom', char: 'R', color: '#22DDDD', behavior: 'ambush', hp: 15, attack: 9, defense: 2, xpBase: 30, ability: 'empPulse', faction: 'ALIEN' },
-    { name: 'Shard Swarm', char: 's', color: '#66FFFF', behavior: 'aggressive', hp: 8, attack: 12, defense: 0, xpBase: 20, faction: 'ALIEN' },
-    { name: 'Prism Core', char: 'P', color: '#88FFFF', behavior: 'aggressive', hp: 60, attack: 10, defense: 10, xpBase: 100, ability: 'overcharge', isBoss: true, faction: 'ALIEN' },
-    { name: 'Crystal Repair Drone', char: 'r', color: '#55EEFF', behavior: 'aggressive', hp: 20, attack: 8, defense: 6, xpBase: 28, faction: 'ALIEN' },
-    { name: 'Resonance Eye', char: '@', color: '#44DDEE', behavior: 'patrol', hp: 16, attack: 7, defense: 4, xpBase: 25, ability: 'echoScream', faction: 'ALIEN' },
-    { name: 'Lattice Amalgam', char: 'A', color: '#66EEFF', behavior: 'aggressive', hp: 35, attack: 8, defense: 10, xpBase: 42, ability: 'mirrorShield', faction: 'ALIEN' },
-  ],
-
-  // VOID RIFT — Tears in reality, dimensional anomalies
-  void_rift: [
-    { name: 'Phase Horror', char: 'H', color: '#8844CC', behavior: 'aggressive', hp: 25, attack: 11, defense: 2, xpBase: 40, ability: 'phaseShift', faction: 'ALIEN' },
-    { name: 'Void Tendril', char: 'v', color: '#6622AA', behavior: 'ambush', hp: 18, attack: 8, defense: 3, xpBase: 28, faction: 'ALIEN' },
-    { name: 'Reality Fragment', char: '?', color: '#AA66FF', behavior: 'patrol', hp: 20, attack: 7, defense: 5, xpBase: 25, faction: 'ALIEN' },
-    { name: 'Dimensional Anchor', char: 'D', color: '#CC88FF', behavior: 'aggressive', hp: 80, attack: 15, defense: 7, xpBase: 140, ability: 'phaseShift', isBoss: true, faction: 'ALIEN' },
-    { name: 'Time Loop Entity', char: '8', color: '#BB66EE', behavior: 'aggressive', hp: 22, attack: 9, defense: 3, xpBase: 35, ability: 'timeFracture', faction: 'ALIEN' },
-    { name: 'Gravity Maw', char: 'O', color: '#9944CC', behavior: 'ambush', hp: 30, attack: 10, defense: 4, xpBase: 40, ability: 'gravCrush', faction: 'ALIEN' },
-    { name: 'Void Jellyfish', char: 'J', color: '#AA55DD', behavior: 'patrol', hp: 16, attack: 7, defense: 1, xpBase: 25, ability: 'voidDrain', faction: 'ALIEN' },
-  ],
-
-  // DATA CORRUPTION — Ship systems haywire, glitched reality
-  glitch_zone: [
-    { name: 'Glitch Phantom', char: 'g', color: '#FF0088', behavior: 'aggressive', hp: 16, attack: 9, defense: 1, xpBase: 28, ability: 'phaseShift', faction: 'ASSIMILATED' },
-    { name: 'Corrupted Process', char: 'p', color: '#DD0066', behavior: 'patrol', hp: 20, attack: 6, defense: 4, xpBase: 22, faction: 'ASSIMILATED' },
-    { name: 'Null Entity', char: 'n', color: '#FF44AA', behavior: 'ambush', hp: 14, attack: 8, defense: 2, xpBase: 25, ability: 'empPulse', faction: 'ASSIMILATED' },
-    { name: 'Stack Overflow', char: 'O', color: '#FF66CC', behavior: 'aggressive', hp: 65, attack: 13, defense: 5, xpBase: 110, ability: 'overcharge', isBoss: true, faction: 'ASSIMILATED' },
-    { name: 'Recursive Entity', char: 'R', color: '#EE4499', behavior: 'aggressive', hp: 18, attack: 8, defense: 3, xpBase: 28, ability: 'mirrorShield', faction: 'ASSIMILATED' },
-    { name: 'Memory Overflow', char: 'm', color: '#DD3388', behavior: 'ambush', hp: 20, attack: 7, defense: 2, xpBase: 25, ability: 'memoryLeech', faction: 'ASSIMILATED' },
-    { name: 'Pixel Storm', char: '#', color: '#FF55BB', behavior: 'aggressive', hp: 12, attack: 11, defense: 0, xpBase: 22, ability: 'chainLightning', faction: 'ASSIMILATED' },
-  ],
-
-  // NANO-PLAGUE ZONE — Grey goo dissolving everything
-  nano_plague: [
-    { name: 'Nanite Swarm', char: 's', color: '#999999', behavior: 'aggressive', hp: 8, attack: 5, defense: 0, xpBase: 12, faction: 'ASSIMILATED' },
-    { name: 'Dissolving Hulk', char: 'H', color: '#777777', behavior: 'patrol', hp: 35, attack: 7, defense: 6, xpBase: 35, faction: 'ASSIMILATED' },
-    { name: 'Assembler Node', char: 'A', color: '#AAAAAA', behavior: 'coward', hp: 18, attack: 3, defense: 4, xpBase: 20, ability: 'selfRepair', faction: 'ASSIMILATED' },
-    { name: 'Grey Tide', char: 'T', color: '#BBBBBB', behavior: 'aggressive', hp: 70, attack: 12, defense: 8, xpBase: 120, ability: 'naniteInjection', isBoss: true, faction: 'ASSIMILATED' },
-    { name: 'Grey Centipede', char: '~', color: '#888888', behavior: 'ambush', hp: 20, attack: 6, defense: 4, xpBase: 22, ability: 'naniteInjection', faction: 'ASSIMILATED' },
-    { name: 'Disassembler Eye', char: '@', color: '#999999', behavior: 'patrol', hp: 22, attack: 5, defense: 5, xpBase: 25, ability: 'entropyField', faction: 'ASSIMILATED' },
-    { name: 'Nano Repair Drone', char: 'r', color: '#AAAAAA', behavior: 'aggressive', hp: 16, attack: 8, defense: 2, xpBase: 22, faction: 'ASSIMILATED' },
-  ],
-
-  // ASSIMILATION FRONT — Alien biomass consuming colony structure
-  assimilated: [
-    { name: 'Assimilated Marine', char: 'M', color: '#AA0044', behavior: 'aggressive', hp: 22, attack: 8, defense: 5, xpBase: 30, faction: 'ASSIMILATED' },
-    { name: 'Flesh Wall', char: 'W', color: '#880033', behavior: 'ambush', hp: 40, attack: 6, defense: 10, xpBase: 35, faction: 'ASSIMILATED' },
-    { name: 'Hive Coordinator', char: 'C', color: '#CC2255', behavior: 'patrol', hp: 25, attack: 5, defense: 4, xpBase: 28, ability: 'signalJam', faction: 'ASSIMILATED' },
-    { name: 'Assimilation Engine', char: 'E', color: '#FF0044', behavior: 'aggressive', hp: 80, attack: 14, defense: 7, xpBase: 130, ability: 'assimilate', isBoss: true, faction: 'ASSIMILATED' },
-    { name: 'Bone Amalgam', char: 'A', color: '#CC1144', behavior: 'aggressive', hp: 35, attack: 10, defense: 6, xpBase: 42, ability: 'symbioticBurst', faction: 'ASSIMILATED' },
-    { name: 'Neural Watcher', char: '@', color: '#DD2255', behavior: 'patrol', hp: 28, attack: 6, defense: 7, xpBase: 35, ability: 'psionicLash', faction: 'ASSIMILATED' },
-    { name: 'Assimilated Repair Drone', char: 'r', color: '#BB1144', behavior: 'aggressive', hp: 20, attack: 9, defense: 4, xpBase: 30, ability: 'assimilate', faction: 'ASSIMILATED' },
-  ],
-
-  // ── TEMPERATURE GRADIENT BIOMES ──
-
-  // TUNDRA — Frozen grassland near hull breaches, creeping cold
-  tundra: [
-    { name: 'Frost Stalker', char: 'F', color: '#88CCEE', behavior: 'ambush', hp: 18, attack: 7, defense: 3, xpBase: 22, faction: 'MUTANT' },
-    { name: 'Blizzard Drone', char: 'd', color: '#99BBDD', behavior: 'patrol', hp: 14, attack: 5, defense: 4, xpBase: 18, faction: 'MALFUNCTIONING' },
-    { name: 'Frozen Shambler', char: 'z', color: '#77AABB', behavior: 'patrol', hp: 20, attack: 4, defense: 6, xpBase: 15, faction: 'ASSIMILATED' },
-    { name: 'Ice Mite', char: 'm', color: '#AADDFF', behavior: 'coward', hp: 6, attack: 3, defense: 1, xpBase: 8, faction: 'MUTANT' },
-    { name: 'Tundra Repair Drone', char: 'r', color: '#88AACC', behavior: 'aggressive', hp: 16, attack: 8, defense: 2, xpBase: 20, faction: 'MALFUNCTIONING' },
-    { name: 'Permafrost Sentinel', char: 'S', color: '#6699BB', behavior: 'patrol', hp: 28, attack: 6, defense: 8, xpBase: 30, faction: 'MALFUNCTIONING' },
-    { name: 'Frost Monarch', char: 'K', color: '#AAEEFF', behavior: 'aggressive', hp: 65, attack: 12, defense: 8, xpBase: 100, ability: 'empPulse', isBoss: true, faction: 'ALIEN' },
-  ],
-
-  // PERMAFROST — Deep frozen, cryogenics cascade failure
-  permafrost: [
-    { name: 'Cryo Beetle', char: 'b', color: '#66AADD', behavior: 'patrol', hp: 20, attack: 6, defense: 8, xpBase: 25, faction: 'MUTANT' },
-    { name: 'Glacial Worm', char: '~', color: '#88CCEE', behavior: 'ambush', hp: 24, attack: 8, defense: 4, xpBase: 30, faction: 'MUTANT' },
-    { name: 'Frozen Core', char: 'C', color: '#AADDFF', behavior: 'patrol', hp: 30, attack: 5, defense: 10, xpBase: 32, ability: 'empPulse', faction: 'MALFUNCTIONING' },
-    { name: 'Ice Phantom', char: 'p', color: '#99CCEE', behavior: 'ambush', hp: 14, attack: 9, defense: 1, xpBase: 28, ability: 'phaseShift', faction: 'ALIEN' },
-    { name: 'Absolute Zero', char: 'Z', color: '#BBDDFF', behavior: 'aggressive', hp: 70, attack: 13, defense: 9, xpBase: 110, ability: 'timeFracture', isBoss: true, faction: 'ALIEN' },
-  ],
-
-  // VOID EXPOSURE — Near hull breach edge, can see stars
-  void_exposure: [
-    { name: 'Void Drifter', char: 'V', color: '#4466AA', behavior: 'patrol', hp: 20, attack: 6, defense: 4, xpBase: 25, ability: 'voidDrain', faction: 'ALIEN' },
-    { name: 'Star Phantom', char: 'P', color: '#6688CC', behavior: 'ambush', hp: 16, attack: 10, defense: 1, xpBase: 32, ability: 'phaseShift', faction: 'ALIEN' },
-    { name: 'Vacuum Stalker', char: 's', color: '#5577AA', behavior: 'aggressive', hp: 22, attack: 8, defense: 5, xpBase: 28, faction: 'ALIEN' },
-    { name: 'Null Sentinel', char: 'N', color: '#3355AA', behavior: 'patrol', hp: 30, attack: 7, defense: 9, xpBase: 35, ability: 'signalJam', faction: 'ALIEN' },
-    { name: 'Event Horizon', char: 'O', color: '#2244AA', behavior: 'ambush', hp: 12, attack: 14, defense: 0, xpBase: 38, ability: 'gravCrush', faction: 'ALIEN' },
-    { name: 'Void Sovereign', char: '$', color: '#7799EE', behavior: 'aggressive', hp: 85, attack: 15, defense: 8, xpBase: 150, ability: 'voidDrain', isBoss: true, faction: 'ALIEN' },
-  ],
-
-  // STRUCTURAL GRID — Exposed colony substructure
-  structural_grid: [
-    { name: 'Grid Crawler', char: 'c', color: '#556677', behavior: 'patrol', hp: 14, attack: 5, defense: 4, xpBase: 15, faction: 'MALFUNCTIONING' },
-    { name: 'Conduit Worm', char: '~', color: '#667788', behavior: 'ambush', hp: 18, attack: 7, defense: 3, xpBase: 22, faction: 'MUTANT' },
-    { name: 'Structural Sentinel', char: 'S', color: '#778899', behavior: 'patrol', hp: 25, attack: 6, defense: 8, xpBase: 28, ability: 'empPulse', faction: 'MALFUNCTIONING' },
-    { name: 'Cable Strangler', char: 'C', color: '#5566AA', behavior: 'ambush', hp: 16, attack: 9, defense: 2, xpBase: 25, faction: 'MALFUNCTIONING' },
-    { name: 'Foundation Golem', char: 'G', color: '#889999', behavior: 'patrol', hp: 45, attack: 8, defense: 12, xpBase: 45, faction: 'MALFUNCTIONING' },
-  ],
-
-  // DESERT — Arid heated terrain, synthetic dunes
-  desert: [
-    { name: 'Sand Crawler', char: 'c', color: '#CCAA44', behavior: 'ambush', hp: 16, attack: 6, defense: 3, xpBase: 18, faction: 'MUTANT' },
-    { name: 'Heat Mirage', char: '?', color: '#FFCC66', behavior: 'coward', hp: 10, attack: 8, defense: 0, xpBase: 20, ability: 'phaseShift', faction: 'MUTANT' },
-    { name: 'Dune Scorpion', char: 's', color: '#AA8833', behavior: 'aggressive', hp: 22, attack: 8, defense: 5, xpBase: 25, faction: 'MUTANT' },
-    { name: 'Sun Bleached Sentinel', char: 'S', color: '#DDCC88', behavior: 'patrol', hp: 28, attack: 6, defense: 7, xpBase: 28, ability: 'thermalOverload', faction: 'MALFUNCTIONING' },
-    { name: 'Desert Raider', char: 'R', color: '#BB9944', behavior: 'aggressive', hp: 18, attack: 7, defense: 3, xpBase: 22 },
-    { name: 'Dust Devil', char: '@', color: '#DDBB66', behavior: 'patrol', hp: 12, attack: 5, defense: 2, xpBase: 15, ability: 'entropyField', faction: 'MUTANT' },
-    { name: 'Sand Wurm King', char: 'W', color: '#EEDD88', behavior: 'aggressive', hp: 70, attack: 14, defense: 6, xpBase: 110, ability: 'gravCrush', isBoss: true, faction: 'MUTANT' },
-  ],
-
-  // SCORCHED WASTE — Super-heated, cracked earth
-  scorched_waste: [
-    { name: 'Cinder Repair Drone', char: 'r', color: '#DD6622', behavior: 'aggressive', hp: 20, attack: 8, defense: 3, xpBase: 25, faction: 'MALFUNCTIONING' },
-    { name: 'Scorched Raider', char: 'R', color: '#CC5511', behavior: 'aggressive', hp: 24, attack: 9, defense: 4, xpBase: 30 },
-    { name: 'Ember Swarm', char: 's', color: '#FF8844', behavior: 'patrol', hp: 10, attack: 6, defense: 0, xpBase: 18, faction: 'MUTANT' },
-    { name: 'Heat Warden', char: 'W', color: '#EE7733', behavior: 'patrol', hp: 30, attack: 7, defense: 8, xpBase: 35, ability: 'thermalOverload', faction: 'MALFUNCTIONING' },
-    { name: 'Ash Wraith', char: 'a', color: '#CC6644', behavior: 'ambush', hp: 16, attack: 10, defense: 1, xpBase: 28, ability: 'entropyField', faction: 'MUTANT' },
-  ],
-
-  // MAGMA FIELDS — Pools and streams of molten material
-  magma_fields: [
-    { name: 'Lava Serpent', char: 'S', color: '#FF4400', behavior: 'aggressive', hp: 28, attack: 10, defense: 4, xpBase: 35, faction: 'MUTANT' },
-    { name: 'Magma Beetle', char: 'b', color: '#FF6622', behavior: 'patrol', hp: 24, attack: 7, defense: 10, xpBase: 30, faction: 'MUTANT' },
-    { name: 'Cinder Wraith', char: 'w', color: '#FF8844', behavior: 'ambush', hp: 18, attack: 12, defense: 1, xpBase: 32, ability: 'thermalOverload', faction: 'MUTANT' },
-    { name: 'Molten Sentinel', char: 'M', color: '#FF5522', behavior: 'patrol', hp: 35, attack: 8, defense: 9, xpBase: 38, ability: 'thermalOverload', faction: 'MALFUNCTIONING' },
-    { name: 'Lava Jellyfish', char: 'J', color: '#FFAA22', behavior: 'patrol', hp: 16, attack: 8, defense: 2, xpBase: 25, ability: 'corrosiveSpit', faction: 'MUTANT' },
-    { name: 'Magma Colossus', char: 'C', color: '#FF3300', behavior: 'aggressive', hp: 75, attack: 14, defense: 8, xpBase: 120, ability: 'thermalOverload', isBoss: true, faction: 'MUTANT' },
-  ],
-
-  // INFERNO CORE — Hellish reactor meltdown zone
-  inferno_core: [
-    { name: 'Hellfire Golem', char: 'G', color: '#FF2200', behavior: 'patrol', hp: 50, attack: 12, defense: 10, xpBase: 55, faction: 'MALFUNCTIONING' },
-    { name: 'Inferno Wurm', char: 'W', color: '#FF4400', behavior: 'aggressive', hp: 40, attack: 14, defense: 5, xpBase: 50, ability: 'thermalOverload', faction: 'MUTANT' },
-    { name: 'Flame Phantom', char: 'p', color: '#FF6600', behavior: 'ambush', hp: 20, attack: 15, defense: 1, xpBase: 40, ability: 'phaseShift', faction: 'MUTANT' },
-    { name: 'Core Meltdown', char: 'M', color: '#FF0000', behavior: 'patrol', hp: 35, attack: 10, defense: 8, xpBase: 42, ability: 'chainLightning', faction: 'MALFUNCTIONING' },
-    { name: 'Ember Centipede', char: '~', color: '#FF5500', behavior: 'ambush', hp: 28, attack: 11, defense: 4, xpBase: 38, faction: 'MUTANT' },
-    { name: 'Ash Titan', char: 'T', color: '#FF1100', behavior: 'aggressive', hp: 90, attack: 16, defense: 9, xpBase: 160, ability: 'thermalOverload', isBoss: true, faction: 'MUTANT' },
-  ],
+  forest: PIZZA_DRONES,
+  underground: PIZZA_DRONES,
+  haunted: PIZZA_DRONES,
+  swamp: PIZZA_DRONES,
+  badlands: PIZZA_DRONES,
+  mountain: PIZZA_DRONES,
+  ruins: PIZZA_DRONES,
+  grassland: PIZZA_DRONES,
+  hull_breach: PIZZA_DRONES,
+  reactor_slag: PIZZA_DRONES,
+  frozen_deck: PIZZA_DRONES,
+  shore: PIZZA_DRONES,
+  river: PIZZA_DRONES,
+  hydro_jungle: PIZZA_DRONES,
+  toxic_sump: PIZZA_DRONES,
+  alien_crash: PIZZA_DRONES,
+  crystal_zone: PIZZA_DRONES,
+  void_rift: PIZZA_DRONES,
+  glitch_zone: PIZZA_DRONES,
+  nano_waste: PIZZA_DRONES,
+  assimilated: PIZZA_DRONES,
+  tundra: PIZZA_DRONES,
+  permafrost: PIZZA_DRONES,
+  void_exposure: PIZZA_DRONES,
+  structural_grid: PIZZA_DRONES,
+  desert: PIZZA_DRONES,
+  scorched_waste: PIZZA_DRONES,
+  magma_fields: PIZZA_DRONES,
+  inferno_core: PIZZA_DRONES,
 };
 
 const ABILITY_EFFECTS = {
@@ -3113,6 +2864,7 @@ export class CreatureGenerator {
       name: template.name,
       char: template.char,
       color: template.color,
+      sprite: template.sprite || null,
       position: { x: 0, y: 0 },
       behavior: template.behavior,
       stats: {

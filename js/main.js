@@ -1782,102 +1782,19 @@ class Game {
   }
 
   enterDungeon(location) {
-    const dungId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
-    const dungRng = new SeededRNG(this.seed + dungId * 2000);
-    this.currentFloor = 0;
-    const dungeon = this.dungeonGen.generate(dungRng, 60, 40, 1, 'standard');
-    this.currentDungeon = dungeon;
-
-    // Spawn enemies using CreatureGenerator
-    this.enemies = [];
-    const biome = this.gameContext.currentLocation?.biome || 'ruins';
-    if (dungeon.entitySpots) {
-      for (const spot of dungeon.entitySpots) {
-        if (spot.type === 'enemy') {
-          const creature = this.creatureGen.generate(dungRng, biome, this.currentFloor + 1, this.player.stats.level);
-          creature.position = { x: spot.x, y: spot.y };
-          this.enemies.push(creature);
-        }
-      }
-    }
-
-    // Place items
-    this.items = [];
-    if (dungeon.entitySpots) {
-      for (const spot of dungeon.entitySpots) {
-        if (spot.type === 'item') {
-          const item = this.itemGen.generate(dungRng,
-            dungRng.random(['weapon', 'armor', 'potion']),
-            this.itemGen.rollRarity(dungRng, this.currentFloor + 1),
-            this.currentFloor + 1);
-          item.position = { x: spot.x, y: spot.y };
-          this.items.push(item);
-        }
-      }
-    }
-
-    // Find entrance room for player placement
-    if (dungeon.rooms && dungeon.rooms.length > 0) {
-      const entrance = dungeon.rooms.find(r => r.type === 'entrance') || dungeon.rooms[0];
-      this.player.position.x = entrance.x + Math.floor(entrance.w / 2);
-      this.player.position.y = entrance.y + Math.floor(entrance.h / 2);
-    }
-
-    this.currentDungeonLocation = location;
-    this.gameContext.currentLocationName = (location.name || 'Dungeon') + ` (Floor ${this.currentFloor + 1})`;
-    this.setState('DUNGEON');
-    this.ui.addMessage('You descend into the dark depths...', COLORS.BRIGHT_RED);
-    this._tryLocationQuest(location);
+    this.ui.addMessage('This area is not yet accessible.', COLORS.BRIGHT_YELLOW);
+    return;
   }
 
   enterMechanicalRuin(location) {
-    const id = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
-    const rng = new SeededRNG(this.seed + id * 6000);
-    this.currentFloor = 0;
-    const dungeon = this.dungeonGen.generate(rng, 60, 40, 1, 'mechanical');
-    this.currentDungeon = dungeon;
-
-    // Spawn enemies
-    this.enemies = [];
-    if (dungeon.entitySpots) {
-      for (const spot of dungeon.entitySpots) {
-        if (spot.type === 'enemy') {
-          const creature = this.creatureGen.generate(rng, 'mechanical', this.currentFloor + 1, this.player.stats.level);
-          creature.position = { x: spot.x, y: spot.y };
-          this.enemies.push(creature);
-        }
-      }
-    }
-
-    // Place items
-    this.items = [];
-    if (dungeon.entitySpots) {
-      for (const spot of dungeon.entitySpots) {
-        if (spot.type === 'item') {
-          const item = this.itemGen.generate(rng,
-            rng.random(['weapon', 'armor', 'potion']),
-            this.itemGen.rollRarity(rng, this.currentFloor + 1),
-            this.currentFloor + 1);
-          item.position = { x: spot.x, y: spot.y };
-          this.items.push(item);
-        }
-      }
-    }
-
-    // Place player at entrance
-    if (dungeon.rooms && dungeon.rooms.length > 0) {
-      const entrance = dungeon.rooms.find(r => r.type === 'entrance') || dungeon.rooms[0];
-      this.player.position.x = entrance.x + Math.floor(entrance.w / 2);
-      this.player.position.y = entrance.y + Math.floor(entrance.h / 2);
-    }
-
-    this.gameContext.currentLocationName = (location.name || 'Mechanical Ruin') + ` (Floor ${this.currentFloor + 1})`;
-    this.setState('DUNGEON');
-    this.ui.addMessage('You enter the dormant machinery... gears creak in the darkness.', COLORS.BRIGHT_YELLOW);
-    this._tryLocationQuest(location);
+    this.ui.addMessage('This area is not yet accessible.', COLORS.BRIGHT_YELLOW);
+    return;
   }
 
   enterBridgeDungeon(location) {
+    this.ui.addMessage('This area is not yet accessible.', COLORS.BRIGHT_YELLOW);
+    return;
+    // --- Stubbed out below ---
     const id = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
     const rng = new SeededRNG(this.seed + id * 9000 + 77777);
 
@@ -5486,19 +5403,8 @@ class Game {
 
   // ── Location Quest Trigger — auto-generate quest on dungeon/ruin entry ──
   _tryLocationQuest(location) {
-    if (!location) return;
-    const locInfo = {
-      key: `${location.x || 0},${location.y || 0}`,
-      name: location.name || 'Unknown Location',
-      x: location.x,
-      y: location.y,
-      type: location.type,
-      depth: this.currentFloor || 0,
-    };
-    const quest = this.questSystem.generateLocationQuest(this.rng, locInfo, this.player.stats.level);
-    if (quest) {
-      this.ui.addMessage(`New objective: ${quest.title}`, COLORS.BRIGHT_CYAN);
-    }
+    // Quests are disabled for now
+    return;
   }
 
   startDialogue(npc) {
@@ -5520,20 +5426,6 @@ class Game {
 
     // Schedule-aware greeting modifier
     const schedulePrefix = this.dialogueSys.getScheduleGreeting(npc, this.timeSystem.hour);
-
-    // Check for completable quests to add turn-in option
-    const activeQuests = this.questSystem.getActiveQuests();
-    for (const quest of activeQuests) {
-      if (this.questSystem.checkCompletion(quest.id)) {
-        // Add turn-in option at the top
-        options.unshift({
-          text: `[TURN IN] ${quest.title}`,
-          action: 'turnInQuest',
-          questId: quest.id,
-          hint: 'Quest completed!',
-        });
-      }
-    }
 
     // NPC memory-based greeting
     let memoryNote = '';
