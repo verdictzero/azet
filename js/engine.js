@@ -613,10 +613,23 @@ export class Renderer {
       pw + innerPx * 2, ph + innerPx * 2
     );
 
-    // Sprite image — crisp nearest-neighbor scaling
+    // Sprite image — crisp nearest-neighbor scaling with integer multiplier
+    // Snap drawn size to an integer multiple of the source dimensions so every
+    // source pixel maps to the same NxN block, avoiding sub-pixel smearing.
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, px, py, pw, ph);
+    const srcW = img.naturalWidth || img.width;
+    const srcH = img.naturalHeight || img.height;
+    let drawW = pw, drawH = ph;
+    if (srcW > 0 && srcH > 0) {
+      const scale = Math.max(1, Math.round(Math.min(pw / srcW, ph / srcH)));
+      drawW = srcW * scale;
+      drawH = srcH * scale;
+    }
+    // Center the integer-scaled image within the allocated cell area
+    const ox = px + Math.floor((pw - drawW) / 2);
+    const oy = py + Math.floor((ph - drawH) / 2);
+    ctx.drawImage(img, ox, oy, drawW, drawH);
     ctx.restore();
   }
 
