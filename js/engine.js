@@ -268,9 +268,13 @@ export class Renderer {
     this._frameTime = Date.now();
     this._frameTimeSec = this._frameTime / 1000;
 
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        const cell = this.buffer[r][c];
+    const buf = this.buffer;
+    const rows = Math.min(this.rows, buf.length);
+    for (let r = 0; r < rows; r++) {
+      const bufRow = buf[r];
+      const colsN = Math.min(this.cols, bufRow.length);
+      for (let c = 0; c < colsN; c++) {
+        const cell = bufRow[c];
         cell.char = ' ';
         cell.fg = COLORS.WHITE;
         cell.bg = COLORS.BLACK;
@@ -315,15 +319,20 @@ export class Renderer {
       }
     };
 
+    const bufLen = this.buffer.length;
     for (let r = 0; r < this.rows; r++) {
+      if (r >= bufLen) break;
+      const bufRow = this.buffer[r];
       lastBg = null;
       for (let c = 0; c < this.cols; c++) {
-        const cell = this.buffer[r][c];
+        if (c >= bufRow.length) break;
+        const cell = bufRow[c];
 
         // Skip unchanged cells (only when dirty tracking is valid)
-        if (hasPrev) {
+        if (hasPrev && this.prevBuffer[r]) {
           const prev = this.prevBuffer[r][c];
           if (
+            prev &&
             prev.char === cell.char &&
             prev.fg === cell.fg &&
             prev.bg === cell.bg
@@ -350,12 +359,15 @@ export class Renderer {
     // Draw foreground characters
     let lastFg = null;
     for (let r = 0; r < this.rows; r++) {
+      if (r >= bufLen) break;
+      const bufRow2 = this.buffer[r];
       for (let c = 0; c < this.cols; c++) {
-        const cell = this.buffer[r][c];
+        if (c >= bufRow2.length) break;
+        const cell = bufRow2[c];
 
-        if (hasPrev) {
+        if (hasPrev && this.prevBuffer[r]) {
           const prev = this.prevBuffer[r][c];
-          if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) continue;
+          if (prev && prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) continue;
         }
 
         if (cell.char !== ' ') {
@@ -390,20 +402,25 @@ export class Renderer {
       if (!this.prevBuffer.length) {
         // Allocate prevBuffer once, reuse
         this.prevBuffer = [];
-        for (let r = 0; r < this.rows; r++) {
+        for (let r = 0; r < this.rows && r < this.buffer.length; r++) {
           const row = [];
-          for (let c = 0; c < this.cols; c++) {
-            const s = this.buffer[r][c];
+          const bufR = this.buffer[r];
+          for (let c = 0; c < this.cols && c < bufR.length; c++) {
+            const s = bufR[c];
             row.push({ char: s.char, fg: s.fg, bg: s.bg });
           }
           this.prevBuffer.push(row);
         }
       } else {
         // Reuse existing objects to avoid GC pressure
-        for (let r = 0; r < this.rows; r++) {
-          for (let c = 0; c < this.cols; c++) {
-            const s = this.buffer[r][c];
-            const p = this.prevBuffer[r][c];
+        const snapRows = Math.min(this.rows, this.buffer.length, this.prevBuffer.length);
+        for (let r = 0; r < snapRows; r++) {
+          const bufR = this.buffer[r];
+          const prevR = this.prevBuffer[r];
+          const snapCols = Math.min(this.cols, bufR.length, prevR.length);
+          for (let c = 0; c < snapCols; c++) {
+            const s = bufR[c];
+            const p = prevR[c];
             p.char = s.char;
             p.fg = s.fg;
             p.bg = s.bg;
@@ -429,7 +446,10 @@ export class Renderer {
    */
   drawChar(col, row, char, fg = COLORS.WHITE, bg = COLORS.BLACK, safety = false) {
     if (!(col >= 0 && col < this.cols && row >= 0 && row < this.rows)) return;
-    const cell = this.buffer[row][col];
+    const bufRow = this.buffer[row];
+    if (!bufRow) return;
+    const cell = bufRow[col];
+    if (!cell) return;
     cell.char = char;
     cell.fg = fg;
     cell.bg = bg;
