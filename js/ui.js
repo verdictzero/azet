@@ -882,22 +882,35 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
 
-    // Portrait sizing — square, adaptive to screen size
+    // Portrait sizing — adaptive to screen size, preserving native aspect ratio
     const hasPortrait = !!dialogueState.portrait;
-    // Portrait occupies a square region in cell units, on the left side
-    const portraitCells = hasPortrait ? Math.min(Math.floor(rows * 0.4), Math.floor(cols * 0.2), 14) : 0;
+    let portraitW = 0, portraitH = 0;
+    if (hasPortrait) {
+      const maxCells = Math.min(Math.floor(rows * 0.4), Math.floor(cols * 0.2), 14);
+      const img = dialogueState.portrait;
+      const imgW = img.naturalWidth || img.width;
+      const imgH = img.naturalHeight || img.height;
+      const aspect = (imgW && imgH) ? imgW / imgH : 1;
+      if (aspect >= 1) {
+        portraitW = maxCells;
+        portraitH = Math.max(1, Math.round(maxCells / aspect));
+      } else {
+        portraitH = maxCells;
+        portraitW = Math.max(1, Math.round(maxCells * aspect));
+      }
+    }
     const portraitGap = hasPortrait ? 2 : 0; // gap between portrait and text panels
 
     // FF dialogue: wide centered panel (shifted right for portrait)
     const totalAvailW = cols - 4;
-    const textAreaW = hasPortrait ? totalAvailW - portraitCells - portraitGap : totalAvailW;
+    const textAreaW = hasPortrait ? totalAvailW - portraitW - portraitGap : totalAvailW;
     const panelW = Math.min(textAreaW, 64);
 
     // Left edge of portrait and text area
-    const totalContentW = (hasPortrait ? portraitCells + portraitGap : 0) + panelW;
+    const totalContentW = (hasPortrait ? portraitW + portraitGap : 0) + panelW;
     const contentStartX = Math.floor((cols - totalContentW) / 2);
     const portraitX = contentStartX;
-    const px = contentStartX + (hasPortrait ? portraitCells + portraitGap : 0);
+    const px = contentStartX + (hasPortrait ? portraitW + portraitGap : 0);
 
     // Calculate total height to center vertically
     const textH = 6;
@@ -911,16 +924,17 @@ export class UIManager {
     // Store portrait position for overlay rendering (drawn after endFrame)
     if (hasPortrait) {
       // Center portrait vertically relative to the dialogue panel
-      const portraitY = startY + Math.max(0, Math.floor((nameH + dialogH - portraitCells) / 2));
+      const portraitY = startY + Math.max(0, Math.floor((nameH + dialogH - portraitH) / 2));
       this._portraitOverlay = {
         img: dialogueState.portrait,
         col: portraitX,
         row: portraitY,
-        size: portraitCells,
+        w: portraitW,
+        h: portraitH,
       };
       // Fill the portrait area with dark bg in the character grid so the
       // animated dialogue background doesn't show through the border gap
-      r.fillRect(portraitX, portraitY, portraitCells, portraitCells, ' ', bg, bg);
+      r.fillRect(portraitX, portraitY, portraitW, portraitH, ' ', bg, bg);
     } else {
       this._portraitOverlay = null;
     }
@@ -986,7 +1000,7 @@ export class UIManager {
     const po = this._portraitOverlay;
     if (!po || !po.img) return;
     this.renderer.drawPixelArtWindow(
-      po.img, po.col, po.row, po.size, po.size,
+      po.img, po.col, po.row, po.w, po.h,
       '#c0c0c0', // bright grey outer stroke
       '#1a1a2a'  // dark inner stroke
     );
