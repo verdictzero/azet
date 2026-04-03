@@ -8056,11 +8056,20 @@ class Game {
       // with a minimum of 3x so sprites are always prominently sized.
       const cw = this.renderer.cellWidth;
       const ch = this.renderer.cellHeight;
-      const availPxW = Math.floor(cols * cw * 0.70);
-      const availPxH = Math.floor(battleH * ch * 0.80);
       const imgW = enemySprite.naturalWidth || enemySprite.width;
       const imgH = enemySprite.naturalHeight || enemySprite.height;
 
+      // Guard: fall back to ASCII art if dimensions are invalid (avoids NaN/Infinity)
+      if (!cw || !ch || !imgW || !imgH) {
+        this.ui._enemySpriteOverlay = null;
+        artX = Math.floor(cols / 2 - artW / 2) + shakeX + recoilX;
+        artY = Math.floor(battleH / 2 - artH / 2) - 1 + shakeY;
+        layoutW = artW;
+        layoutH = artH;
+      } else {
+
+      const availPxW = Math.floor(cols * cw * 0.70);
+      const availPxH = Math.floor(battleH * ch * 0.80);
       // Integer scale factor: largest N where imgW*N fits, minimum 3
       const scaleFactor = Math.max(3, Math.floor(Math.min(availPxW / imgW, availPxH / imgH)));
       const destPxW = imgW * scaleFactor;
@@ -8096,6 +8105,7 @@ class Game {
         this.ui._enemySpriteOverlay.flash = true;
         cs.hitTimer--;
       }
+      } // end valid-dimensions else
     } else {
       // ASCII art path (original)
       this.ui._enemySpriteOverlay = null;
