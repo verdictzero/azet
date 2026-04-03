@@ -883,15 +883,14 @@ export class UIManager {
     const bg = COLORS.FF_BLUE_DARK;
 
     // Portrait sizing — adaptive to screen size, preserving native aspect ratio.
-    // Cells are non-square (cellHeight > cellWidth for monospace fonts), so we
-    // compensate to keep the rendered pixel rectangle at the correct ratio.
+    // Portrait is displayed above the text box, right-aligned with its right edge.
     const hasPortrait = !!dialogueState.portrait;
     let portraitW = 0, portraitH = 0;
     if (hasPortrait) {
       const cw = r.cellWidth;
       const ch = r.cellHeight;
-      const maxW = Math.min(Math.floor(cols * 0.2), 14);
-      const maxH = Math.min(Math.floor(rows * 0.4), 14);
+      const maxW = Math.min(Math.floor(cols * 0.3), 20);
+      const maxH = Math.min(Math.floor(rows * 0.45), 20);
       const img = dialogueState.portrait;
       const imgW = img.naturalWidth || img.width;
       const imgH = img.naturalHeight || img.height;
@@ -906,18 +905,14 @@ export class UIManager {
       portraitW = Math.max(1, portraitW);
       portraitH = Math.max(1, portraitH);
     }
-    const portraitGap = hasPortrait ? 2 : 0; // gap between portrait and text panels
+    const portraitGapV = hasPortrait ? 1 : 0; // vertical gap between portrait and text
 
-    // FF dialogue: wide centered panel (shifted right for portrait)
+    // FF dialogue: wide centered panel (portrait above, not beside)
     const totalAvailW = cols - 4;
-    const textAreaW = hasPortrait ? totalAvailW - portraitW - portraitGap : totalAvailW;
-    const panelW = Math.min(textAreaW, 64);
+    const panelW = Math.min(totalAvailW, 64);
 
-    // Left edge of portrait and text area
-    const totalContentW = (hasPortrait ? portraitW + portraitGap : 0) + panelW;
-    const contentStartX = Math.floor((cols - totalContentW) / 2);
-    const portraitX = contentStartX;
-    const px = contentStartX + (hasPortrait ? portraitW + portraitGap : 0);
+    // Center text area horizontally
+    const px = Math.floor((cols - panelW) / 2);
 
     // Calculate total height to center vertically
     const textH = 6;
@@ -925,13 +920,14 @@ export class UIManager {
     const nameH = 3;
     const options = dialogueState.options;
     const optH = options.length > 0 ? options.length + 2 : 0;
-    const totalH = nameH + dialogH + optH;
+    const totalH = (hasPortrait ? portraitH + portraitGapV : 0) + nameH + dialogH + optH;
     const startY = Math.max(1, Math.floor((rows - totalH) / 2));
 
     // Store portrait position for overlay rendering (drawn after endFrame)
+    // Right-aligned: portrait right edge aligns with text box right edge
     if (hasPortrait) {
-      // Center portrait vertically relative to the dialogue panel
-      const portraitY = startY + Math.max(0, Math.floor((nameH + dialogH - portraitH) / 2));
+      const portraitX = px + panelW - portraitW; // right-align with text box
+      const portraitY = startY;
       this._portraitOverlay = {
         img: dialogueState.portrait,
         col: portraitX,
@@ -946,11 +942,14 @@ export class UIManager {
       this._portraitOverlay = null;
     }
 
+    // Text panels start below portrait
+    const textStartY = startY + (hasPortrait ? portraitH + portraitGapV : 0);
+
     // Name plate box (small box above the dialogue)
     const nameStr = dialogueState.npcName;
     const nameBoxW = Math.min(nameStr.length + 4, panelW - 8);
     const nameBoxX = px;
-    const nameBoxY = startY;
+    const nameBoxY = textStartY;
     r.drawBox(nameBoxX, nameBoxY, nameBoxW, nameH, COLORS.FF_BORDER, bg);
     r.drawString(nameBoxX + 2, nameBoxY + 1, nameStr, COLORS.BRIGHT_WHITE, bg, nameBoxW - 4);
 
