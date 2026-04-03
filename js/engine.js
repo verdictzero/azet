@@ -428,7 +428,7 @@ export class Renderer {
    * Set a single cell in the buffer.
    */
   drawChar(col, row, char, fg = COLORS.WHITE, bg = COLORS.BLACK, safety = false) {
-    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
+    if (!(col >= 0 && col < this.cols && row >= 0 && row < this.rows)) return;
     const cell = this.buffer[row][col];
     cell.char = char;
     cell.fg = fg;
