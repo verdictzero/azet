@@ -8049,26 +8049,48 @@ class Game {
     let artX, artY, layoutW, layoutH;
 
     if (usePixelSprite) {
-      // Pixel sprite: size in cells, centered in battle area
-      const spriteCells = Math.min(Math.floor(battleH * 0.7), Math.floor(cols * 0.35), 18);
-      const spriteCol = Math.floor(cols / 2 - spriteCells / 2) + shakeX + recoilX;
-      const spriteRow = Math.floor(battleH / 2 - spriteCells / 2) - 1 + shakeY;
+      // Pixel sprite: fit within cell budget while preserving native aspect ratio.
+      // Cells are not square (cellHeight > cellWidth for monospace fonts), so we
+      // must convert between pixel-space aspect ratio and cell-space dimensions.
+      const cw = this.renderer.cellWidth;
+      const ch = this.renderer.cellHeight;
+      const maxW = Math.min(Math.floor(cols * 0.35), 18);
+      const maxH = Math.min(Math.floor(battleH * 0.7), 18);
+      const imgW = enemySprite.naturalWidth || enemySprite.width;
+      const imgH = enemySprite.naturalHeight || enemySprite.height;
+      // Pixel-space aspect ratio of the image
+      const imgAspect = (imgW && imgH) ? imgW / imgH : 1;
+      // For a sprite spanning spriteW cols × spriteH rows, pixel size is
+      // (spriteW*cw) × (spriteH*ch). To preserve aspect ratio:
+      //   spriteW*cw / (spriteH*ch) = imgAspect
+      //   spriteW = spriteH * ch/cw * imgAspect
+      // Fit within both maxW and maxH:
+      let spriteW = maxW;
+      let spriteH = Math.round(spriteW * cw / (ch * imgAspect));
+      if (spriteH > maxH) {
+        spriteH = maxH;
+        spriteW = Math.round(spriteH * ch * imgAspect / cw);
+      }
+      spriteW = Math.max(1, spriteW);
+      spriteH = Math.max(1, spriteH);
+      const spriteCol = Math.floor(cols / 2 - spriteW / 2) + shakeX + recoilX;
+      const spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1 + shakeY;
 
       // Queue for overlay rendering after endFrame (drawn directly as pixels)
       this.ui._enemySpriteOverlay = {
         img: enemySprite,
         col: spriteCol,
         row: spriteRow,
-        w: spriteCells,
-        h: spriteCells,
+        w: spriteW,
+        h: spriteH,
       };
 
       // Use sprite center for name plate / HP bar positioning
       artX = spriteCol;
       artY = spriteRow;
       // Override artW/artH for layout
-      layoutW = spriteCells;
-      layoutH = spriteCells;
+      layoutW = spriteW;
+      layoutH = spriteH;
 
       // Hit flash: apply a white tint overlay via canvas compositing
       // (handled in the overlay pass — store flash state)

@@ -85,6 +85,7 @@ export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.ctx.imageSmoothingEnabled = false;
 
     this.fontSize = 16;
     this.fontFamily = "'Noto Sans Mono', 'DejaVu Sans Mono', 'Courier New', Courier, monospace";
@@ -195,9 +196,10 @@ export class Renderer {
     this.canvas.width = canvasW;
     this.canvas.height = canvasH;
 
-    // Re-set font after canvas resize (canvas resize clears state)
+    // Re-set context state after canvas resize (canvas resize clears all state)
     this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     this.ctx.textBaseline = 'top';
+    this.ctx.imageSmoothingEnabled = false;
 
     // Allocate buffers
     this._allocateBuffers();
@@ -1026,7 +1028,8 @@ export class Renderer {
       const cw = this._crtCanvas.width;
       const ch = this._crtCanvas.height;
 
-      // Downscale main canvas → CRT canvas
+      // Downscale main canvas → CRT canvas (nearest-neighbor to keep pixel art crisp)
+      crtCtx.imageSmoothingEnabled = false;
       crtCtx.drawImage(this.canvas, 0, 0, cw, ch);
 
       // Expensive effects on smaller canvas
@@ -1072,11 +1075,13 @@ export class Renderer {
     this._glowCanvas.height = sh;
 
     const gCtx = this._glowCanvas.getContext('2d');
+    gCtx.imageSmoothingEnabled = false;
     gCtx.filter = 'blur(3px)';
     gCtx.drawImage(this.canvas, 0, 0, sw, sh);
 
     const ctx = this.ctx;
     ctx.save();
+    ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'screen';
     ctx.globalAlpha = 0.10;
     ctx.drawImage(this._glowCanvas, 0, 0, w, h);
@@ -1124,6 +1129,7 @@ export class Renderer {
       this._aberrationSrc.width = w;
       this._aberrationSrc.height = h;
     }
+    this._aberrationSrcCtx.imageSmoothingEnabled = false;
     this._aberrationSrcCtx.clearRect(0, 0, w, h);
     this._aberrationSrcCtx.drawImage(this.canvas, 0, 0);
 
@@ -1147,6 +1153,7 @@ export class Renderer {
 
     // Red: shift left 1px, multiply with red
     const rCtx = this._chrR.getContext('2d');
+    rCtx.imageSmoothingEnabled = false;
     rCtx.clearRect(0, 0, w, h);
     rCtx.drawImage(src, -1, 0);
     rCtx.globalCompositeOperation = 'multiply';
@@ -1156,6 +1163,7 @@ export class Renderer {
 
     // Green: center, multiply with green
     const gCtx = this._chrG.getContext('2d');
+    gCtx.imageSmoothingEnabled = false;
     gCtx.clearRect(0, 0, w, h);
     gCtx.drawImage(src, 0, 0);
     gCtx.globalCompositeOperation = 'multiply';
@@ -1165,6 +1173,7 @@ export class Renderer {
 
     // Blue: shift right 1px, multiply with blue
     const bCtx = this._chrB.getContext('2d');
+    bCtx.imageSmoothingEnabled = false;
     bCtx.clearRect(0, 0, w, h);
     bCtx.drawImage(src, 1, 0);
     bCtx.globalCompositeOperation = 'multiply';
@@ -1173,6 +1182,7 @@ export class Renderer {
     bCtx.globalCompositeOperation = 'source-over';
 
     // Combine: additive blend all 3 channels
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this._chrR, 0, 0);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -1199,10 +1209,12 @@ export class Renderer {
     this._glowCanvas.height = sh;
 
     const gCtx = this._glowCanvas.getContext('2d');
+    gCtx.imageSmoothingEnabled = false;
     gCtx.filter = 'blur(3px)';
     gCtx.drawImage(this._crtCanvas, 0, 0, sw, sh);
 
     ctx.save();
+    ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'screen';
     ctx.globalAlpha = 0.10;
     ctx.drawImage(this._glowCanvas, 0, 0, w, h);
@@ -1230,6 +1242,7 @@ export class Renderer {
       this._crtAberSrc.width = w;
       this._crtAberSrc.height = h;
     }
+    this._crtAberSrcCtx.imageSmoothingEnabled = false;
     this._crtAberSrcCtx.clearRect(0, 0, w, h);
     this._crtAberSrcCtx.drawImage(ctx.canvas, 0, 0);
 
@@ -1291,9 +1304,11 @@ export class Renderer {
       this._glitchCanvas.width = w;
       this._glitchCanvas.height = this.canvas.height;
     }
+    this._glitchCtx.imageSmoothingEnabled = false;
     this._glitchCtx.drawImage(this.canvas, 0, 0);
 
     const glitchRows = Math.floor(Math.random() * 3) + 1;
+    ctx.imageSmoothingEnabled = false;
     for (let i = 0; i < glitchRows; i++) {
       const row = Math.floor(Math.random() * rows);
       const shift = (Math.random() * 6 - 3) | 0;
