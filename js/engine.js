@@ -622,7 +622,7 @@ export class Renderer {
     const srcH = img.naturalHeight || img.height;
     let drawW = pw, drawH = ph;
     if (srcW > 0 && srcH > 0) {
-      const scale = Math.max(1, Math.round(Math.min(pw / srcW, ph / srcH)));
+      const scale = Math.max(1, Math.floor(Math.min(pw / srcW, ph / srcH)));
       drawW = srcW * scale;
       drawH = srcH * scale;
     }
