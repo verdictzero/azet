@@ -622,9 +622,14 @@ export class Renderer {
     const srcH = img.naturalHeight || img.height;
     let drawW = pw, drawH = ph;
     if (srcW > 0 && srcH > 0) {
-      const scale = Math.max(1, Math.floor(Math.min(pw / srcW, ph / srcH)));
-      drawW = srcW * scale;
-      drawH = srcH * scale;
+      const rawScale = Math.min(pw / srcW, ph / srcH);
+      // For small pixel art (≤64px), snap to integer scale to keep pixels uniform.
+      // For larger images, fill the box — individual pixels aren't visible.
+      const scale = (srcW <= 64 && srcH <= 64)
+        ? Math.max(1, Math.round(rawScale))
+        : rawScale;
+      drawW = Math.round(srcW * scale);
+      drawH = Math.round(srcH * scale);
     }
     // Center the integer-scaled image within the allocated cell area
     const ox = px + Math.floor((pw - drawW) / 2);
