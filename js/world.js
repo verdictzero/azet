@@ -2008,7 +2008,7 @@ export class ChunkManager {
 
 export class SettlementGenerator {
 
-  generate(rng, type, population, biome) {
+  generate(rng, type, population, biome, locationName) {
     const coreSizes = { village: [20, 20], town: [35, 35], city: [50, 40], castle: [40, 40] };
     const [coreW, coreH] = coreSizes[type] || [25, 25];
 
@@ -2050,8 +2050,10 @@ export class SettlementGenerator {
     // Add roads leading from settlement edges outward
     this._generateOutskirtRoads(rng, tiles, pad, coreW, coreH, width, height);
 
-    // Place the fallen mechanical arm to the left of every settlement
-    this._placeMechanicalArm(tiles, pad, coreW, coreH, width, height);
+    // Place the fallen mechanical arm only in the starter town "Broken Arm"
+    if (locationName === 'Broken Arm') {
+      this._placeMechanicalArm(tiles, pad, coreW, coreH, width, height);
+    }
 
     return { tiles, width, height, buildings, npcSlots, coreOffset: { x: pad, y: pad } };
   }
