@@ -6937,6 +6937,8 @@ class Game {
     if (isNight) {
       const NIGHT_GLOW = {
         RIVER_WATER: { hMin: 175, hMax: 210, int: 0.13, spd: 0.9,  rad: 1, pat: 'wave' },
+        SHALLOWS:    { hMin: 180, hMax: 215, int: 0.11, spd: 0.8,  rad: 1, pat: 'wave' },
+        MEDIUM_WATER:{ hMin: 170, hMax: 205, int: 0.15, spd: 1.0,  rad: 1, pat: 'wave' },
         TIDAL_POOL:  { hMin: 175, hMax: 220, int: 0.16, spd: 1.2,  rad: 1, pat: 'wave' },
         RIVER:       { hMin: 180, hMax: 210, int: 0.13, spd: 0.9,  rad: 1, pat: 'wave' },
         STREAM:      { hMin: 180, hMax: 210, int: 0.11, spd: 0.9,  rad: 1, pat: 'wave' },
