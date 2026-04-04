@@ -45,6 +45,15 @@ const ENEMY_MANIFEST = {
   default:     'sprites/enemies/default.png',
 };
 
+export const EXPLOSION_MANIFEST = {
+  large_A:  { frames: 9,  path: 'sprites/explosions/explosion_large_A_' },
+  large_B:  { frames: 9,  path: 'sprites/explosions/explosion_large_B_' },
+  medium_A: { frames: 10, path: 'sprites/explosions/explosion_medium_A_' },
+  medium_B: { frames: 8,  path: 'sprites/explosions/explosion_medium_B_' },
+  small_A:  { frames: 6,  path: 'sprites/explosions/explosion_small_A_' },
+  small_B:  { frames: 6,  path: 'sprites/explosions/explosion_small_B_' },
+};
+
 // ── Actual portrait files on disk ─────────────
 // Keyed by path to match npc.portrait assigned by NPCGenerator
 const PORTRAIT_FILES = [
@@ -59,172 +68,7 @@ const PORTRAIT_FILES = [
   'sprites/portraits/npc_male_child_1.png',
 ];
 
-// ── Procedural placeholder generator ─────────
-// Generates simple 128x128 pixel art placeholders
-// so the system works before hand-crafted art exists.
-
-function generatePlaceholderPortrait(role) {
-  const size = 128;
-  const c = document.createElement('canvas');
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext('2d');
-
-  // Deterministic seed from role string
-  let seed = 0;
-  for (let i = 0; i < role.length; i++) seed = ((seed << 5) - seed + role.charCodeAt(i)) | 0;
-  const rng = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
-
-  // Color palette derived from role
-  const hue = (Math.abs(seed) % 360);
-  const skinHue = 25 + rng(20);
-  const skinSat = 30 + rng(30);
-  const skinLit = 45 + rng(20);
-  const hairHue = rng(360);
-  const hairLit = 20 + rng(30);
-  const eyeHue = hue;
-  const clothHue = (hue + 120) % 360;
-
-  const skin = `hsl(${skinHue}, ${skinSat}%, ${skinLit}%)`;
-  const skinShadow = `hsl(${skinHue}, ${skinSat}%, ${skinLit - 12}%)`;
-  const hair = `hsl(${hairHue}, 40%, ${hairLit}%)`;
-  const hairHi = `hsl(${hairHue}, 35%, ${hairLit + 15}%)`;
-  const eye = `hsl(${eyeHue}, 70%, 55%)`;
-  const cloth = `hsl(${clothHue}, 50%, 35%)`;
-  const clothHi = `hsl(${clothHue}, 45%, 50%)`;
-  const bg = '#0e0e14';
-
-  ctx.imageSmoothingEnabled = false;
-  const px = (x, y, w, h, color) => { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); };
-  const P = 4; // pixel size (128 / 32 = 4px per art-pixel, giving us 32x32 art resolution)
-
-  // Fill background
-  px(0, 0, size, size, bg);
-
-  // Head (oval) — centered, rows 4-18, cols 9-22 (in 32x32 grid)
-  for (let y = 4; y <= 18; y++) {
-    for (let x = 9; x <= 22; x++) {
-      const cx = 15.5, cy = 11;
-      const dx = (x - cx) / 7, dy = (y - cy) / 7.5;
-      if (dx * dx + dy * dy <= 1) {
-        const shade = dy > 0.3 ? skinShadow : skin;
-        px(x * P, y * P, P, P, shade);
-      }
-    }
-  }
-
-  // Hair — top of head
-  const hairStyle = rng(3);
-  for (let y = 2; y <= 8; y++) {
-    for (let x = 8; x <= 23; x++) {
-      const cx = 15.5, cy = 6;
-      const dx = (x - cx) / 8, dy = (y - cy) / 5;
-      if (dx * dx + dy * dy <= 1) {
-        const hi = (x + y) % 3 === 0 ? hairHi : hair;
-        px(x * P, y * P, P, P, hi);
-      }
-      // Side hair
-      if (hairStyle >= 1 && y >= 6 && y <= 14 && (x <= 9 || x >= 22)) {
-        const cx2 = x <= 9 ? 9 : 22;
-        if (Math.abs(x - cx2) <= 1) px(x * P, y * P, P, P, hair);
-      }
-    }
-  }
-
-  // Eyes — row 10-11, symmetric
-  const eyeL = 13, eyeR = 18;
-  px(eyeL * P, 10 * P, P * 2, P * 2, '#ffffff');
-  px(eyeR * P, 10 * P, P * 2, P * 2, '#ffffff');
-  // Pupils
-  px((eyeL + 1) * P, 11 * P, P, P, eye);
-  px((eyeR + 1) * P, 11 * P, P, P, eye);
-  // Eyebrow accents
-  px(eyeL * P, 9 * P, P * 2, P, hair);
-  px(eyeR * P, 9 * P, P * 2, P, hair);
-
-  // Nose — small, centered
-  px(15 * P, 13 * P, P * 2, P, skinShadow);
-
-  // Mouth
-  px(14 * P, 15 * P, P * 4, P, `hsl(${skinHue}, ${skinSat + 10}%, ${skinLit - 8}%)`);
-
-  // Shoulders / clothing — rows 19-28
-  for (let y = 19; y <= 28; y++) {
-    for (let x = 6; x <= 25; x++) {
-      const cx = 15.5;
-      const dx = (x - cx) / 10;
-      const dy = (y - 19) / 10;
-      if (dx * dx + dy * dy * 0.3 <= 1) {
-        const hi = (x + y) % 4 === 0 ? clothHi : cloth;
-        px(x * P, y * P, P, P, hi);
-      }
-    }
-  }
-
-  // Neck
-  for (let y = 17; y <= 19; y++) {
-    px(14 * P, y * P, P * 4, P, skinShadow);
-  }
-
-  return c;
-}
-
-function generatePlaceholderEnemy(archetype) {
-  const size = 128;
-  const c = document.createElement('canvas');
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext('2d');
-
-  let seed = 0;
-  for (let i = 0; i < archetype.length; i++) seed = ((seed << 5) - seed + archetype.charCodeAt(i)) | 0;
-  const rng = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
-
-  const hue = Math.abs(seed) % 360;
-  const mainColor = `hsl(${hue}, 60%, 45%)`;
-  const hiColor = `hsl(${hue}, 55%, 60%)`;
-  const darkColor = `hsl(${hue}, 65%, 25%)`;
-  const eyeColor = `hsl(${(hue + 180) % 360}, 80%, 60%)`;
-
-  ctx.imageSmoothingEnabled = false;
-  const P = 4;
-  const px = (x, y, w, h, color) => { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); };
-
-  // Transparent background (leave as transparent for compositing over fire)
-  ctx.clearRect(0, 0, size, size);
-
-  // Simple creature body — blob shape
-  const cx = 16, cy = 16;
-  const bodyR = 8 + rng(4);
-  for (let y = 0; y < 32; y++) {
-    for (let x = 0; x < 32; x++) {
-      const dx = (x - cx) / bodyR;
-      const dy = (y - cy) / (bodyR * 0.8);
-      const d = dx * dx + dy * dy;
-      if (d <= 1) {
-        const shade = d > 0.6 ? darkColor : (d > 0.3 ? mainColor : hiColor);
-        px(x * P, y * P, P, P, shade);
-      }
-    }
-  }
-
-  // Eyes
-  const eyeSpacing = 3 + rng(2);
-  const eyeY = cy - 2 - rng(2);
-  const eyeSize = 1 + rng(2);
-  // Left eye
-  px((cx - eyeSpacing) * P, eyeY * P, P * eyeSize, P * eyeSize, '#ffffff');
-  px((cx - eyeSpacing + (eyeSize > 1 ? 1 : 0)) * P, (eyeY + (eyeSize > 1 ? 1 : 0)) * P, P, P, eyeColor);
-  // Right eye
-  px((cx + eyeSpacing - eyeSize + 1) * P, eyeY * P, P * eyeSize, P * eyeSize, '#ffffff');
-  px((cx + eyeSpacing) * P, (eyeY + (eyeSize > 1 ? 1 : 0)) * P, P, P, eyeColor);
-
-  // Mouth
-  const mouthW = 2 + rng(4);
-  px((cx - Math.floor(mouthW / 2)) * P, (cy + 2) * P, P * mouthW, P, darkColor);
-
-  return c;
-}
+// (Procedural placeholder generators removed — pixel sprites only)
 
 // ── SpriteManager ────────────────────────────
 
@@ -232,7 +76,6 @@ export class SpriteManager {
   constructor() {
     this._cache = new Map();       // name → Image or Canvas
     this._loading = new Map();     // name → Promise
-    this._placeholders = new Map(); // generated fallbacks
   }
 
   // Load a single sprite PNG. Returns a Promise<Image>.
@@ -248,7 +91,7 @@ export class SpriteManager {
         resolve(img);
       };
       img.onerror = () => {
-        // Silently fail — placeholder will be used
+        // Silently fail — sprite will be null
         this._loading.delete(name);
         resolve(null);
       };
@@ -267,29 +110,41 @@ export class SpriteManager {
     for (const [name, path] of Object.entries(ENEMY_MANIFEST)) {
       promises.push(this.loadSprite(`enemy_${name}`, path));
     }
+    for (const [seqName, seq] of Object.entries(EXPLOSION_MANIFEST)) {
+      for (let i = 1; i <= seq.frames; i++) {
+        const frameStr = String(i).padStart(2, '0');
+        const key = `explosion_${seqName}_${frameStr}`;
+        promises.push(this.loadSprite(key, `${seq.path}${frameStr}.png`));
+      }
+    }
     await Promise.all(promises);
+  }
+
+  // Get an ordered array of Image objects for an explosion animation sequence.
+  getExplosionSequence(seqName) {
+    const seq = EXPLOSION_MANIFEST[seqName];
+    if (!seq) return null;
+    const frames = [];
+    for (let i = 1; i <= seq.frames; i++) {
+      const key = `explosion_${seqName}_${String(i).padStart(2, '0')}`;
+      const img = this._cache.get(key);
+      if (img) frames.push(img);
+    }
+    return frames.length > 0 ? frames : null;
   }
 
   // Get a portrait for an NPC. Uses npc.portrait path assigned by NPCGenerator.
   getPortrait(npc) {
-    // Try the portrait path assigned by NPCGenerator
     if (npc.portrait) {
       const sprite = this._cache.get(npc.portrait);
       if (sprite) return sprite;
     }
-    // Generate placeholder based on role
-    const role = (npc.role || 'default').toLowerCase().replace(/\s+/g, '');
-    const key = `placeholder_portrait_${role}`;
-    if (!this._placeholders.has(key)) {
-      this._placeholders.set(key, generatePlaceholderPortrait(role));
-    }
-    return this._placeholders.get(key);
+    return null;
   }
 
-  // Get a battle sprite for an enemy. Tries archetype keywords, then default, then placeholder.
+  // Get a battle sprite for an enemy. Tries archetype keywords, then default.
   getEnemySprite(creature) {
     const name = (creature.name || '').toLowerCase();
-    // Check each archetype keyword
     for (const archetype of Object.keys(ENEMY_MANIFEST)) {
       if (archetype === 'default') continue;
       if (name.includes(archetype)) {
@@ -297,15 +152,7 @@ export class SpriteManager {
         if (sprite) return sprite;
       }
     }
-    // Try default
-    const def = this._cache.get('enemy_default');
-    if (def) return def;
-    // Generate placeholder
-    const key = `placeholder_enemy_${name || 'unknown'}`;
-    if (!this._placeholders.has(key)) {
-      this._placeholders.set(key, generatePlaceholderEnemy(name || 'unknown'));
-    }
-    return this._placeholders.get(key);
+    return this._cache.get('enemy_default') || null;
   }
 
   // Get any cached sprite by exact name.
