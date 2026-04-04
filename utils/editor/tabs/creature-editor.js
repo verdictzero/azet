@@ -1,4 +1,4 @@
-// creature-editor.js — Creature/Enemy editor tab for the ASCIIQUEST structure editor
+// creature-editor.js — Creature/Enemy editor tab for the Terminal Gradient structure editor
 
 import { CREATURE_TABLES, ABILITY_EFFECTS, BEHAVIORS, CREATURE_FACTIONS, STAT_KEYS } from '../data-constants.js';
 import { createDropdown, createTextInput, createNumberInput, createCheckbox, createColorPicker, createCharInput, createStatBlock, createTextarea } from '../components/form-fields.js';

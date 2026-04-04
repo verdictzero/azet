@@ -1099,7 +1099,7 @@ class Game {
           } else {
             this.setState('OVERWORLD');
           }
-          this.ui.addMessage('Welcome to ASCIIQUEST!', COLORS.BRIGHT_YELLOW);
+          this.ui.addMessage('Welcome to Terminal Gradient!', COLORS.BRIGHT_YELLOW);
           this.ui.addMessage(`${this.player.name} the ${this.player.race} ${this.player.playerClass} sets forth.`, COLORS.BRIGHT_CYAN);
           this.ui.addMessage('Press ? for help. Press J for quest compass.', COLORS.BRIGHT_BLACK);
         }, 400);
@@ -5588,7 +5588,7 @@ class Game {
       .then(r => r.json())
       .then(data => {
         const label = `${data.phase} ${data.version}`;
-        document.title = `ASCIIQUEST [${label}]`;
+        document.title = `Terminal Gradient [${label}]`;
         this.ui.versionString = label;
         this._currentVersion = data.version;
       })
@@ -5749,7 +5749,7 @@ class Game {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `asciiquest_save_${this.player ? this.player.name : 'unknown'}.txt`;
+          a.download = `terminalgradient_save_${this.player ? this.player.name : 'unknown'}.txt`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
@@ -5780,7 +5780,7 @@ class Game {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `asciiquest_save_${this.player ? this.player.name : 'unknown'}.txt`;
+      a.download = `terminalgradient_save_${this.player ? this.player.name : 'unknown'}.txt`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -8173,7 +8173,7 @@ function _drawErrorToCanvas(canvas, err) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.font = '16px monospace';
   ctx.fillStyle = '#ff4444';
-  ctx.fillText('ASCIIQUEST — Fatal Error', 20, 40);
+  ctx.fillText('Terminal Gradient — Fatal Error', 20, 40);
   ctx.fillStyle = '#ffaaaa';
   ctx.font = '14px monospace';
   const msg = String(err && err.stack ? err.stack : err);

@@ -1,5 +1,5 @@
 // ============================================================================
-// entities.js — Entity/NPC system for ASCIIQUEST, a colony salvage roguelike
+// entities.js — Entity/NPC system for Terminal Gradient, a colony salvage roguelike
 // ============================================================================
 
 import { SeededRNG, distance, manhattanDist } from './utils.js';

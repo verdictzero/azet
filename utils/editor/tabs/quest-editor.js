@@ -1,4 +1,4 @@
-// quest-editor.js — Quest Chain editor tab for the ASCIIQUEST structure editor
+// quest-editor.js — Quest Chain editor tab for the Terminal Gradient structure editor
 
 import { QUEST_TYPES, FACTION_IDS } from '../data-constants.js';
 import { createDropdown, createTextInput, createNumberInput, createTextarea, createListEditor } from '../components/form-fields.js';

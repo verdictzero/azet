@@ -1,5 +1,5 @@
 // ============================================================================
-// systems.js — Game systems for ASCIIQUEST, a colony salvage roguelike
+// systems.js — Game systems for Terminal Gradient, a colony salvage roguelike
 // ============================================================================
 
 import { SeededRNG, PerlinNoise, distance } from './utils.js';
