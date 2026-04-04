@@ -5,11 +5,10 @@ import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, Ite
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
-import { getMonsterArt } from './monsterart.js';
 import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 import { AsciiCutscenePlayer } from './ascii-cutscene.js';
-import { SpriteManager } from './sprites.js';
+import { SpriteManager, EXPLOSION_MANIFEST } from './sprites.js';
 import { CutsceneLoader } from './cutscene-loader.js';
 import { VideoCutscenePlayer } from './video-cutscene.js';
 
@@ -6227,7 +6226,7 @@ class Game {
     if (this.state === 'DIALOGUE' && this.ui.dialogueState && this.ui.dialogueState.portrait) {
       this.ui.drawPortraitOverlay(this.ui.dialogueState);
     }
-    if (this.state === 'COMBAT' && this.ui._enemySpriteOverlay) {
+    if ((this.state === 'COMBAT' || this.state === 'ENEMY_DEATH') && this.ui._enemySpriteOverlay) {
       const eso = this.ui._enemySpriteOverlay;
       const ctx = this.renderer.ctx;
       const cw = this.renderer.cellWidth;
@@ -6253,6 +6252,16 @@ class Game {
       }
       ctx.restore();
       this.ui._enemySpriteOverlay = null;
+    }
+    // Draw explosion sprite overlays during death animation
+    if (this.state === 'ENEMY_DEATH' && this._deathExplosionOverlays) {
+      const ctx = this.renderer.ctx;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      for (const exp of this._deathExplosionOverlays) {
+        ctx.drawImage(exp.img, exp.x, exp.y, exp.w, exp.h);
+      }
+      ctx.restore();
     }
 
     this.renderer.postProcess();
@@ -7629,102 +7638,91 @@ class Game {
     }
   }
 
-  // ── Color interpolation utility ──
-  _lerpColor(c1, c2, t) {
-    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
-    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
-    const ri = Math.round(r1 + (r2 - r1) * t), gi = Math.round(g1 + (g2 - g1) * t), bi = Math.round(b1 + (b2 - b1) * t);
-    return '#' + ((1 << 24) + (ri << 16) + (gi << 8) + bi).toString(16).slice(1);
-  }
 
-  // ── Character decay sequence for death animation ──
-  _getDecaySequence(ch) {
-    const heavy = ['\u2588', '\u2593', '\u2592', '\u2591', '\u00B7', ' '];
-    const medium = ['\u2592', '\u2591', '\u00B7', ' '];
-    const light = ['\u00B7', '.', ' '];
-    if ('\u2588\u2593\u2554\u2551\u2557\u255A\u255D\u2560\u2563\u2550\u2500\u2502\u250C\u2510\u2514\u2518\u251C\u2524\u2534\u252C\u253C\u2580\u2584\u258C\u2590\u256C\u256B\u256A'.includes(ch)) return heavy;
-    if ('\u2592\u2591'.includes(ch)) return medium;
-    return light;
-  }
-
-  // ── Start enemy death disintegration animation ──
+  // ── Start enemy death explosion + dither animation ──
   startEnemyDeath() {
     const enemy = this.combatState.enemy;
-    const art = getMonsterArt(enemy);
-    const artLines = art.lines;
-    const artH = artLines.length;
-    const artW = Math.max(...artLines.map(l => l.length));
+    const enemySprite = this.spriteManager.getEnemySprite(enemy);
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
     const battleH = Math.floor(rows * 0.55);
-    const artX = Math.floor(cols / 2 - artW / 2);
-    const artY = Math.floor(battleH / 2 - artH / 2) - 1;
-    const centerX = artX + artW / 2;
-    const centerY = artY + artH / 2;
 
-    // Build debris particles from every non-space character
-    const debris = [];
-    for (let row = 0; row < artH; row++) {
-      const line = artLines[row];
-      for (let col = 0; col < line.length; col++) {
-        const ch = line[col];
-        if (ch === ' ') continue;
-        const px = artX + col;
-        const py = artY + row;
-        // Direction outward from center
-        const dx = px - centerX;
-        const dy = py - centerY;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        const speed = 0.3 + Math.random() * 1.2;
-        debris.push({
-          ch,
-          origCh: ch,
-          x: px,
-          y: py,
-          origX: px,
-          origY: py,
-          vx: nx * speed + (Math.random() - 0.5) * 0.4,
-          vy: ny * speed * 0.6 - 0.3 - Math.random() * 0.4,
-          color: art.color,
-          delay: Math.floor(Math.random() * 10),
-          alpha: 1.0,
-          decayStage: 0,
-          decaySeq: this._getDecaySequence(ch),
-        });
-      }
+    // Compute enemy sprite layout (mirrors renderCombat logic)
+    const cw = r.cellWidth;
+    const ch = r.cellHeight;
+    const imgW = enemySprite ? (enemySprite.naturalWidth || enemySprite.width) : 16;
+    const imgH = enemySprite ? (enemySprite.naturalHeight || enemySprite.height) : 16;
+    const availPxW = Math.floor(cols * cw * 0.70);
+    const availPxH = Math.floor(battleH * ch * 0.80);
+    const scaleFactor = (cw && ch && imgW && imgH)
+      ? Math.max(3, Math.floor(Math.min(availPxW / imgW, availPxH / imgH)))
+      : 3;
+    const destPxW = imgW * scaleFactor;
+    const destPxH = imgH * scaleFactor;
+    const spriteW = destPxW / (cw || 1);
+    const spriteH = destPxH / (ch || 1);
+    const spriteCol = Math.floor(cols / 2 - spriteW / 2);
+    const spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1;
+
+    // Create a mutable canvas copy for dither-fade effect
+    const ditherCanvas = document.createElement('canvas');
+    ditherCanvas.width = imgW;
+    ditherCanvas.height = imgH;
+    const dCtx = ditherCanvas.getContext('2d');
+    if (enemySprite) dCtx.drawImage(enemySprite, 0, 0);
+
+    // Build shuffled pixel index array for random dither-out
+    const pixelCount = imgW * imgH;
+    const pixelOrder = Array.from({ length: pixelCount }, (_, i) => i);
+    for (let i = pixelOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pixelOrder[i], pixelOrder[j]] = [pixelOrder[j], pixelOrder[i]];
     }
 
-    // Generate 2-3 crack seed points within art bounds
-    const crackSeeds = [];
-    const numCracks = 2 + Math.floor(Math.random() * 2);
-    for (let i = 0; i < numCracks; i++) {
-      crackSeeds.push({
-        x: artX + Math.floor(Math.random() * artW),
-        y: artY + Math.floor(Math.random() * artH),
-        branches: [],
+    // Spawn 4-7 explosion sprite animations at random positions around enemy
+    const explosionKeys = Object.keys(EXPLOSION_MANIFEST);
+    const numExplosions = 4 + Math.floor(Math.random() * 4);
+    const explosions = [];
+    for (let i = 0; i < numExplosions; i++) {
+      const seqName = explosionKeys[Math.floor(Math.random() * explosionKeys.length)];
+      const frames = this.spriteManager.getExplosionSequence(seqName);
+      if (!frames || frames.length === 0) continue;
+      const offsetCol = (Math.random() - 0.5) * spriteW * 0.8;
+      const offsetRow = (Math.random() - 0.5) * spriteH * 0.8;
+      const delay = Math.floor(Math.random() * 15);
+      explosions.push({
+        frames,
+        currentFrame: 0,
+        frameTick: 0,
+        delay,
+        col: spriteCol + spriteW / 2 + offsetCol,
+        row: spriteRow + spriteH / 2 + offsetRow,
+        seqName,
+        done: false,
       });
     }
 
     this.enemyDeathState = {
       frame: 0,
-      debris,
-      crackSeeds,
-      crackCells: new Set(),
-      artColor: art.color,
-      artLines,
-      artX, artY, artW, artH,
-      centerX, centerY,
-      defeatedY: centerY,
+      enemySprite,
+      ditherCanvas,
+      ditherCtx: dCtx,
+      pixelOrder,
+      pixelsCleared: 0,
+      scaleFactor,
+      spriteCol, spriteRow, spriteW, spriteH,
+      destPxW, destPxH,
+      imgW, imgH,
+      explosions,
+      defeatedY: spriteRow + spriteH / 2,
       enemyName: enemy.name,
     };
     // Keep combatState alive for HUD rendering
     this.setState('ENEMY_DEATH');
   }
 
-  // ── Enemy death disintegration animation renderer ──
+  // ── Enemy death explosion + dither-fade animation renderer ──
   renderEnemyDeath() {
     const ds = this.enemyDeathState;
     if (!ds) return;
@@ -7733,6 +7731,9 @@ class Game {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
     const frame = ds.frame;
+    const ctx = r.ctx;
+    const cw = r.cellWidth;
+    const ch = r.cellHeight;
 
     r.clear();
 
@@ -7751,222 +7752,103 @@ class Game {
     // Fire background (keeps animating throughout)
     this.renderFireBackground(r, cols, battleH, shakeX, shakeY);
 
-    // ═══ PHASE 1: FREEZE + FLASH (frames 0-7) ═══
-    if (frame < 8) {
-      const strobeColors = ['#FFFFFF', '#FFFFFF', ds.artColor, ds.artColor, '#FFFFFF', '#FFFFFF', '#FF4400', '#FF4400'];
-      const drawColor = strobeColors[frame] || ds.artColor;
-      const monsterBg = '#0a0500';
-      for (let row = 0; row < ds.artH; row++) {
-        const line = ds.artLines[row];
-        let firstNonSpace = -1, lastNonSpace = -1;
-        for (let col = 0; col < line.length; col++) {
-          if (line[col] !== ' ') {
-            if (firstNonSpace === -1) firstNonSpace = col;
-            lastNonSpace = col;
-          }
+    // ── Dither-fade the enemy sprite ──
+    // Clear a batch of random pixels from the dither canvas each frame
+    const ditherStart = 5;   // start dithering at frame 5
+    const ditherEnd = 55;    // fully dissolved by frame 55
+    if (frame >= ditherStart && frame < ditherEnd && ds.ditherCanvas && ds.imgW > 0 && ds.imgH > 0) {
+      const totalPixels = ds.pixelOrder.length;
+      const ditherFrames = ditherEnd - ditherStart;
+      const pixelsPerFrame = Math.ceil(totalPixels / ditherFrames);
+      const imageData = ds.ditherCtx.getImageData(0, 0, ds.imgW, ds.imgH);
+      const data = imageData.data;
+      const end = Math.min(ds.pixelsCleared + pixelsPerFrame, totalPixels);
+      for (let i = ds.pixelsCleared; i < end; i++) {
+        const idx = ds.pixelOrder[i];
+        data[idx * 4 + 3] = 0; // set alpha to 0
+      }
+      ds.pixelsCleared = end;
+      ds.ditherCtx.putImageData(imageData, 0, 0);
+    }
+
+    // ── Queue the dither canvas as enemy sprite overlay ──
+    if (ds.pixelsCleared < ds.pixelOrder.length && ds.ditherCanvas) {
+      // Phase 1 flash: strobe white tint on/off during first 8 frames
+      const flash = frame < 8 && (frame % 2 === 0);
+      this.ui._enemySpriteOverlay = {
+        img: ds.ditherCanvas,
+        col: ds.spriteCol + shakeX,
+        row: ds.spriteRow + shakeY,
+        w: ds.spriteW,
+        h: ds.spriteH,
+        pxW: ds.destPxW,
+        pxH: ds.destPxH,
+        flash,
+      };
+    } else {
+      this.ui._enemySpriteOverlay = null;
+    }
+
+    // ── Queue explosion sprite overlays ──
+    // Store explosion draw commands for the overlay pass (after endFrame)
+    const explosionOverlays = [];
+    for (const exp of ds.explosions) {
+      if (exp.done) continue;
+      if (exp.delay > 0) { exp.delay--; continue; }
+
+      const frameImg = exp.frames[exp.currentFrame];
+      if (frameImg) {
+        // Determine integer scale based on explosion size category
+        const expImgW = frameImg.naturalWidth || frameImg.width;
+        const expImgH = frameImg.naturalHeight || frameImg.height;
+        if (expImgW && expImgH && cw && ch) {
+          // Size target: large ~70% of enemy sprite, medium ~45%, small ~25%
+          let sizeFraction = 0.45;
+          if (exp.seqName.startsWith('large')) sizeFraction = 0.70;
+          else if (exp.seqName.startsWith('small')) sizeFraction = 0.25;
+          const targetPxW = ds.destPxW * sizeFraction;
+          const expScale = Math.max(2, Math.floor(targetPxW / expImgW));
+          const expPxW = expImgW * expScale;
+          const expPxH = expImgH * expScale;
+          const expColPx = Math.round((exp.col + shakeX) * cw - expPxW / 2);
+          const expRowPx = Math.round((exp.row + shakeY) * ch - expPxH / 2);
+          explosionOverlays.push({ img: frameImg, x: expColPx, y: expRowPx, w: expPxW, h: expPxH });
         }
-        for (let col = 0; col < line.length; col++) {
-          const ch = line[col];
-          const dx = ds.artX + col + shakeX;
-          const dy = ds.artY + row + shakeY;
-          if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
-          if (ch === ' ') {
-            if (col > firstNonSpace && col < lastNonSpace) {
-              r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
-            }
-            continue;
-          }
-          r.drawChar(dx, dy, ch, drawColor, monsterBg, true);
+      }
+
+      // Advance explosion frame (play at ~4 game frames per sprite frame)
+      exp.frameTick++;
+      if (exp.frameTick >= 4) {
+        exp.frameTick = 0;
+        exp.currentFrame++;
+        if (exp.currentFrame >= exp.frames.length) {
+          exp.done = true;
         }
       }
     }
+    // Store for overlay pass
+    this._deathExplosionOverlays = explosionOverlays;
 
-    // ═══ PHASE 2: CRACK + SHATTER (frames 8-22) ═══
-    else if (frame < 23) {
-      const phaseFrame = frame - 8;
-      const monsterBg = '#0a0500';
-
-      // Propagate cracks — extend each seed's random walk
-      for (const seed of ds.crackSeeds) {
-        if (seed.branches.length === 0) {
-          seed.branches.push({ x: seed.x, y: seed.y });
-        }
-        // Extend 1-2 branches per frame
-        const extensions = 1 + Math.floor(Math.random() * 2);
-        for (let e = 0; e < extensions; e++) {
-          const tip = seed.branches[seed.branches.length - 1];
-          const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
-          const dir = dirs[Math.floor(Math.random() * dirs.length)];
-          const nx = tip.x + dir[0];
-          const ny = tip.y + dir[1];
-          if (nx >= ds.artX && nx < ds.artX + ds.artW && ny >= ds.artY && ny < ds.artY + ds.artH) {
-            seed.branches.push({ x: nx, y: ny });
-            ds.crackCells.add(`${nx},${ny}`);
-          }
-        }
-        // Occasionally fork
-        if (Math.random() < 0.3 && seed.branches.length > 2) {
-          const forkPoint = seed.branches[Math.floor(Math.random() * seed.branches.length)];
-          seed.branches.push({ x: forkPoint.x, y: forkPoint.y });
-        }
-      }
-
-      // Draw monster art with jitter and crack overlay
-      for (let row = 0; row < ds.artH; row++) {
-        const line = ds.artLines[row];
-        let firstNonSpace = -1, lastNonSpace = -1;
-        for (let col = 0; col < line.length; col++) {
-          if (line[col] !== ' ') {
-            if (firstNonSpace === -1) firstNonSpace = col;
-            lastNonSpace = col;
-          }
-        }
-        for (let col = 0; col < line.length; col++) {
-          const ch = line[col];
-          const baseX = ds.artX + col;
-          const baseY = ds.artY + row;
-          // Jitter increases over phase
-          const jitter = phaseFrame > 3 ? (Math.random() - 0.5) * Math.min(1.5, phaseFrame * 0.15) : 0;
-          const dx = Math.round(baseX + jitter) + shakeX;
-          const dy = Math.round(baseY + (Math.random() - 0.5) * Math.min(0.8, phaseFrame * 0.08)) + shakeY;
-          if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
-          if (ch === ' ') {
-            if (col > firstNonSpace && col < lastNonSpace) {
-              r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
-            }
-            continue;
-          }
-          // Crack overlay
-          const crackKey = `${baseX},${baseY}`;
-          if (ds.crackCells.has(crackKey)) {
-            const crackChars = ['\u2571', '\u2572', '\u2502', '\u2500', '\u2573'];
-            const crackCh = crackChars[Math.floor(Math.random() * crackChars.length)];
-            r.drawChar(dx, dy, crackCh, '#FFFFFF', monsterBg, true);
-          } else {
-            // Color shifting toward orange
-            const t = phaseFrame / 14;
-            const color = this._lerpColor(ds.artColor, '#FF6600', t);
-            r.drawChar(dx, dy, ch, color, monsterBg, true);
-          }
-        }
-      }
-
-      // Activate early debris near cracks
-      for (const p of ds.debris) {
-        const key = `${p.origX},${p.origY}`;
-        if (ds.crackCells.has(key) && phaseFrame > 5) {
-          p.delay = 0;
-        }
-      }
-    }
-
-    // ═══ PHASE 3: CRUMBLE + SCATTER (frames 23-45) ═══
-    else if (frame < 46) {
-      const phaseFrame = frame - 23;
-
-      // Spawn extra ember particles at intervals
-      if (this.combatState && (phaseFrame === 2 || phaseFrame === 7 || phaseFrame === 12)) {
-        this.spawnCombatParticles(6, ['*', '\u00B7', '+', '\u2219'], '#FFAA00');
-      }
-
-      // Update and draw debris
-      for (const p of ds.debris) {
-        if (p.alpha <= 0) continue;
-        // Force-activate all debris
-        if (p.delay > 0) { p.delay--; continue; }
-
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.06; // gravity
-        p.vx *= 0.98; // air friction
-
-        // Decay characters every ~5 frames
-        if (phaseFrame % 5 === 0 && p.decayStage < p.decaySeq.length - 1) {
-          p.decayStage++;
-          p.ch = p.decaySeq[p.decayStage];
-        }
-
-        // Color progression: orange → red → ash
-        const t = phaseFrame / 22;
-        if (t < 0.5) {
-          p.color = this._lerpColor('#FF6600', '#FF2200', t * 2);
-        } else {
-          p.color = this._lerpColor('#FF2200', '#888888', (t - 0.5) * 2);
-        }
-
-        const dx = Math.round(p.x) + shakeX;
-        const dy = Math.round(p.y) + shakeY;
-        if (p.ch !== ' ' && dx >= 0 && dx < cols && dy >= 0 && dy < battleH) {
-          r.drawChar(dx, dy, p.ch, p.color, null);
-        }
-      }
-
-      // "Defeated!" text fades in and floats up
-      if (phaseFrame > 5) {
-        const textAlpha = Math.min(1, (phaseFrame - 5) / 8);
-        ds.defeatedY -= 0.08;
-        const defText = `${ds.enemyName} defeated!`;
-        const textColor = textAlpha > 0.7 ? '#FFFFFF' : '#AAAAAA';
-        const tx = Math.floor(cols / 2 - defText.length / 2) + shakeX;
-        const ty = Math.round(ds.defeatedY) + shakeY;
-        if (ty >= 0 && ty < battleH) {
-          r.drawString(Math.max(0, tx), ty, defText, textColor, null);
-        }
-      }
-    }
-
-    // ═══ PHASE 4: DISSOLVE + FADE (frames 46-65) ═══
-    else if (frame < 66) {
-      const phaseFrame = frame - 46;
-
-      // Continue debris falling and fading
-      for (const p of ds.debris) {
-        if (p.alpha <= 0 || p.ch === ' ') continue;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.06;
-        p.vx *= 0.97;
-        p.alpha -= 0.05;
-
-        // Continue decay
-        if (phaseFrame % 3 === 0 && p.decayStage < p.decaySeq.length - 1) {
-          p.decayStage++;
-          p.ch = p.decaySeq[p.decayStage];
-        }
-
-        p.color = this._lerpColor('#555555', '#222222', phaseFrame / 19);
-
-        const dx = Math.round(p.x) + shakeX;
-        const dy = Math.round(p.y) + shakeY;
-        if (p.alpha > 0 && p.ch !== ' ' && dx >= 0 && dx < cols && dy >= 0 && dy < battleH) {
-          r.drawChar(dx, dy, p.ch, p.color, null);
-        }
-      }
-
-      // Floating "defeated" text still visible
-      ds.defeatedY -= 0.04;
+    // ── "Defeated!" text ──
+    if (frame > 15) {
+      const textPhase = frame - 15;
+      const textAlpha = Math.min(1, textPhase / 8);
+      ds.defeatedY -= 0.06;
       const defText = `${ds.enemyName} defeated!`;
-      const tx = Math.floor(cols / 2 - defText.length / 2);
-      const ty = Math.round(ds.defeatedY);
+      const textColor = textAlpha > 0.7 ? '#FFFFFF' : '#AAAAAA';
+      const tx = Math.floor(cols / 2 - defText.length / 2) + shakeX;
+      const ty = Math.round(ds.defeatedY) + shakeY;
       if (ty >= 0 && ty < battleH) {
-        const textFade = Math.max(0, 1 - phaseFrame / 19);
-        const textColor = textFade > 0.5 ? '#FFFFFF' : '#888888';
         r.drawString(Math.max(0, tx), ty, defText, textColor, null);
       }
-
-      // Gradual dark tint
-      const tintAlpha = phaseFrame * 0.015;
-      if (tintAlpha > 0.01) r.tintOverlay('#000000', tintAlpha);
     }
 
-    // ═══ PHASE 5: TRANSITION (frames 66-75) ═══
-    else {
-      const phaseFrame = frame - 66;
-      const tintAlpha = 0.3 + phaseFrame * 0.07;
-      r.tintOverlay('#000000', Math.min(0.95, tintAlpha));
+    // ── Ember particles ──
+    if (this.combatState && (frame === 10 || frame === 20 || frame === 30 || frame === 40)) {
+      this.spawnCombatParticles(6, ['*', '\u00B7', '+', '\u2219'], '#FFAA00');
     }
 
-    // Render combat particles (ember sparks throughout)
+    // Render combat particles
     if (this.combatState && this.combatState.combatParticles) {
       const parts = this.combatState.combatParticles;
       for (let i = parts.length - 1; i >= 0; i--) {
@@ -7976,7 +7858,7 @@ class Game {
         p.vy += 0.05;
         p.life--;
         if (p.life <= 0) {
-          parts[i] = parts[parts.length - 1]; parts.pop(); // swap-and-pop
+          parts[i] = parts[parts.length - 1]; parts.pop();
           continue;
         }
         const px = Math.round(p.x) + shakeX;
@@ -7989,6 +7871,13 @@ class Game {
       }
     }
 
+    // ── Fade-to-black transition (frames 56-75) ──
+    if (frame >= 56) {
+      const phaseFrame = frame - 56;
+      const tintAlpha = 0.1 + phaseFrame * 0.045;
+      r.tintOverlay('#000000', Math.min(0.95, tintAlpha));
+    }
+
     // Bottom HUD
     this.renderCombatHUD(r, cols, rows, battleH, bg);
 
@@ -7998,6 +7887,7 @@ class Game {
     if (ds.frame >= 75) {
       this.combatState = null;
       this.enemyDeathState = null;
+      this._deathExplosionOverlays = null;
       this.setState('BATTLE_RESULTS');
     }
   }
@@ -8038,116 +7928,66 @@ class Game {
       cs.hitRecoil--;
     }
 
-    // Check for pixel art sprite first, fall back to ASCII art
+    // Get pixel art sprite for enemy
     const enemySprite = this.spriteManager.getEnemySprite(enemy);
-    const usePixelSprite = !!enemySprite;
-
-    // ASCII art (used for layout metrics even when pixel sprite exists)
-    const art = getMonsterArt(enemy);
-    const artLines = art.lines;
-    const artH = artLines.length;
-    const artW = Math.max(...artLines.map(l => l.length));
 
     let artX, artY, layoutW, layoutH;
 
-    if (usePixelSprite) {
-      // Pixel sprite: integer nearest-neighbor scaling for crisp pixel art.
-      // Compute the largest integer scale factor that fits the battle area,
-      // with a minimum of 3x so sprites are always prominently sized.
-      const cw = this.renderer.cellWidth;
-      const ch = this.renderer.cellHeight;
+    const cw = this.renderer.cellWidth;
+    const ch = this.renderer.cellHeight;
+
+    if (enemySprite && cw && ch) {
       const imgW = enemySprite.naturalWidth || enemySprite.width;
       const imgH = enemySprite.naturalHeight || enemySprite.height;
 
-      // Guard: fall back to ASCII art if dimensions are invalid (avoids NaN/Infinity)
-      if (!cw || !ch || !imgW || !imgH) {
-        this.ui._enemySpriteOverlay = null;
-        artX = Math.floor(cols / 2 - artW / 2) + shakeX + recoilX;
-        artY = Math.floor(battleH / 2 - artH / 2) - 1 + shakeY;
-        layoutW = artW;
-        layoutH = artH;
+      if (imgW && imgH) {
+        // Pixel sprite: integer nearest-neighbor scaling for crisp pixel art.
+        const availPxW = Math.floor(cols * cw * 0.70);
+        const availPxH = Math.floor(battleH * ch * 0.80);
+        const scaleFactor = Math.max(3, Math.floor(Math.min(availPxW / imgW, availPxH / imgH)));
+        const destPxW = imgW * scaleFactor;
+        const destPxH = imgH * scaleFactor;
+
+        const spriteW = destPxW / cw;
+        const spriteH = destPxH / ch;
+        const spriteCol = Math.floor(cols / 2 - spriteW / 2) + shakeX + recoilX;
+        const spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1 + shakeY;
+
+        this.ui._enemySpriteOverlay = {
+          img: enemySprite,
+          col: spriteCol,
+          row: spriteRow,
+          w: spriteW,
+          h: spriteH,
+          pxW: destPxW,
+          pxH: destPxH,
+        };
+
+        artX = spriteCol;
+        artY = spriteRow;
+        layoutW = Math.ceil(spriteW);
+        layoutH = Math.ceil(spriteH);
+
+        if (cs.hitTimer > 0) {
+          this.ui._enemySpriteOverlay.flash = true;
+          cs.hitTimer--;
+        }
       } else {
-
-      const availPxW = Math.floor(cols * cw * 0.70);
-      const availPxH = Math.floor(battleH * ch * 0.80);
-      // Integer scale factor: largest N where imgW*N fits, minimum 3
-      const scaleFactor = Math.max(3, Math.floor(Math.min(availPxW / imgW, availPxH / imgH)));
-      const destPxW = imgW * scaleFactor;
-      const destPxH = imgH * scaleFactor;
-
-      // Convert to fractional cell units for centering
-      const spriteW = destPxW / cw;
-      const spriteH = destPxH / ch;
-      const spriteCol = Math.floor(cols / 2 - spriteW / 2) + shakeX + recoilX;
-      const spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1 + shakeY;
-
-      // Queue for overlay rendering after endFrame (drawn directly as pixels)
-      this.ui._enemySpriteOverlay = {
-        img: enemySprite,
-        col: spriteCol,
-        row: spriteRow,
-        w: spriteW,
-        h: spriteH,
-        pxW: destPxW,
-        pxH: destPxH,
-      };
-
-      // Use sprite center for name plate / HP bar positioning
-      artX = spriteCol;
-      artY = spriteRow;
-      // Override artW/artH for layout
-      layoutW = Math.ceil(spriteW);
-      layoutH = Math.ceil(spriteH);
-
-      // Hit flash: apply a white tint overlay via canvas compositing
-      // (handled in the overlay pass — store flash state)
-      if (cs.hitTimer > 0) {
-        this.ui._enemySpriteOverlay.flash = true;
-        cs.hitTimer--;
+        // Invalid sprite dimensions — skip sprite overlay
+        this.ui._enemySpriteOverlay = null;
+        artX = Math.floor(cols / 2) + shakeX + recoilX;
+        artY = Math.floor(battleH / 2) - 1 + shakeY;
+        layoutW = 10;
+        layoutH = 8;
       }
-      } // end valid-dimensions else
     } else {
-      // ASCII art path (original)
+      // No sprite available — fire bg shows through, name/HP still render
       this.ui._enemySpriteOverlay = null;
-      artX = Math.floor(cols / 2 - artW / 2) + shakeX + recoilX;
-      artY = Math.floor(battleH / 2 - artH / 2) - 1 + shakeY;
-      layoutW = artW;
-      layoutH = artH;
-
-      // Determine monster draw color (flash white on hit)
-      let drawColor = art.color;
-      if (cs.hitTimer > 0) {
-        drawColor = '#FFFFFF';
-        cs.hitTimer--;
-      }
-
-      // Draw monster art - internal spaces filled, external spaces show fire bg
-      const monsterBg = '#0a0500';
-      for (let row = 0; row < artH; row++) {
-        const line = artLines[row];
-        // Find internal bounds (leftmost and rightmost non-space)
-        let firstNonSpace = -1, lastNonSpace = -1;
-        for (let col = 0; col < line.length; col++) {
-          if (line[col] !== ' ') {
-            if (firstNonSpace === -1) firstNonSpace = col;
-            lastNonSpace = col;
-          }
-        }
-        for (let col = 0; col < line.length; col++) {
-          const ch = line[col];
-          const dx = artX + col;
-          const dy = artY + row;
-          if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
-          if (ch === ' ') {
-            // Internal space: fill with monster bg so fire doesn't bleed through
-            if (col > firstNonSpace && col < lastNonSpace) {
-              r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
-            }
-            continue; // External space: fire bg shows through
-          }
-          r.drawChar(dx, dy, ch, drawColor, monsterBg, true);
-        }
-      }
+      artX = Math.floor(cols / 2) + shakeX + recoilX;
+      artY = Math.floor(battleH / 2) - 1 + shakeY;
+      layoutW = 10;
+      layoutH = 8;
+      if (cs.hitTimer > 0) cs.hitTimer--;
     }
 
     // Monster name plate centered above art
