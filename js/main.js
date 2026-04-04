@@ -1593,7 +1593,7 @@ class Game {
   enterLocation(location) {
     const locId = typeof location.id === 'string' ? location.id.charCodeAt(0) : (location.id || 0);
     const locRng = new SeededRNG(this.seed + locId * 1000);
-    this.currentSettlement = this.settlementGen.generate(locRng, location.type, location.population || 10, 'grassland');
+    this.currentSettlement = this.settlementGen.generate(locRng, location.type, location.population || 10, 'grassland', location.name);
     this.currentSettlement.name = location.name;
     this.currentSettlement.locationData = location;
 
