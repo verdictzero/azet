@@ -114,6 +114,7 @@ export class Renderer {
     this._grassNoise = new PerlinNoise(new SeededRNG(42));
     this._grassNoise2 = new PerlinNoise(new SeededRNG(137));
     this._godRayNoise = new PerlinNoise(new SeededRNG(256));
+    this._waterNoise = new PerlinNoise(new SeededRNG(99));
 
     // Perform initial sizing
     this.resize();
@@ -810,20 +811,31 @@ export class Renderer {
    * @param {string} tileType - RIVER_WATER, LAVA, FIREPLACE, etc.
    * @returns {string} the current animated color
    */
-  getAnimatedColor(baseColor, tileType) {
+  getAnimatedColor(baseColor, tileType, worldX, worldY) {
     const t = (this._frameTime || Date.now()) / 500;
     const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
 
     switch (tileType) {
-      // ── Water types ──
+      // ── Water types — procedural noise-based flowing gradient ──
       case 'RIVER_WATER':
-      case 'WATER': {
-        const blues = ['#4488FF', '#4D90FF', '#3B80EE'];
-        return blues[Math.floor(t) % blues.length];
-      }
-      case 'TIDAL_POOL': {
-        const tides = ['#66AADD', '#5599CC', '#77BBEE'];
-        return tides[Math.floor(t * 1.5) % tides.length];
+      case 'WATER':
+      case 'SHALLOWS':
+      case 'MEDIUM_WATER':
+      case 'TIDAL_POOL':
+      case 'OCEAN':
+      case 'DEEP_WATER':
+      case 'VERY_DEEP_WATER': {
+        const shimmer = { RIVER_WATER: 40, WATER: 40, SHALLOWS: 35, TIDAL_POOL: 30,
+                          MEDIUM_WATER: 25, OCEAN: 20, DEEP_WATER: 15, VERY_DEEP_WATER: 10 }[tileType];
+        if (worldX !== undefined && worldY !== undefined) {
+          const ts = (this._frameTime || Date.now()) / 1000;
+          const n = this._waterNoise.noise2D(worldX * 0.2 - ts * 0.8, worldY * 0.15);
+          const cr = parseInt(baseColor.slice(1, 3), 16);
+          const cg = Math.max(0, Math.min(255, parseInt(baseColor.slice(3, 5), 16) + Math.round(n * shimmer * 0.4)));
+          const cb = Math.max(0, Math.min(255, parseInt(baseColor.slice(5, 7), 16) + Math.round(n * shimmer)));
+          return '#' + ((1 << 24) | (cr << 16) | (cg << 8) | cb).toString(16).slice(1);
+        }
+        return baseColor;
       }
       case 'TOXIC_SUMP': {
         const toxics = ['#44FF00', '#33DD00', '#55FF22'];
