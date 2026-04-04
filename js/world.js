@@ -965,14 +965,15 @@ export class ChunkManager {
       // Water depth gradient: deep center → shallow edges
       const depthFrac = 1 - riverDist / RIVER_HALF_WIDTH; // 1 at center, 0 at edge
       if (depthFrac > 0.7) {
-        return tile('MEDIUM_WATER', '~', '#2266CC', '#000066', false, { biome: 'river', waterDepth: 2 });
+        // Deepest center — dark navy
+        return tile('MEDIUM_WATER', '~', '#2266CC', '#000022', false, { biome: 'river', waterDepth: 2 });
       }
       if (depthFrac > 0.35) {
         return tile('RIVER_WATER', '~', '#4488ff', '#001144', false, { biome: 'river', waterDepth: 1 });
       }
-      // Shallow edges
+      // Shallow edges — brightest
       const sfg = _lerpColor('#4488ff', '#5599ff', d);
-      return tile('SHALLOWS', '~', sfg, '#001133', false, { biome: 'river', waterDepth: 0 });
+      return tile('SHALLOWS', '~', sfg, '#002266', false, { biome: 'river', waterDepth: 0 });
     }
     if (riverDist <= RIVER_HALF_WIDTH + 1) {
       // Inner shore — wet sand with noise variation

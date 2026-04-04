@@ -1725,7 +1725,11 @@ export class UIManager {
 
           if (overworld.exploredChunks.has(chunkKey)) {
             const tile = overworld.getTile(wx, wy);
-            r.drawChar(sx + 2, sy + 2, tile.char, tile.fg, tile.bg || COLORS.BLACK);
+            const ch = r.getAnimatedChar ? r.getAnimatedChar(tile.char, tile.type, wx, wy) : tile.char;
+            const fg = r.getAnimatedColorWithPos
+              ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy)
+              : (r.getAnimatedColor ? r.getAnimatedColor(tile.fg, tile.type, wx, wy) : tile.fg);
+            r.drawChar(sx + 2, sy + 2, ch, fg, tile.bg || COLORS.BLACK);
           } else {
             r.drawChar(sx + 2, sy + 2, ' ', COLORS.BLACK, COLORS.BLACK);
           }
