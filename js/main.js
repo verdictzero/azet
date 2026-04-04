@@ -8096,8 +8096,8 @@ class Game {
       artX = spriteCol;
       artY = spriteRow;
       // Override artW/artH for layout
-      layoutW = spriteW;
-      layoutH = spriteH;
+      layoutW = Math.ceil(spriteW);
+      layoutH = Math.ceil(spriteH);
 
       // Hit flash: apply a white tint overlay via canvas compositing
       // (handled in the overlay pass — store flash state)
