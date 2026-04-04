@@ -6766,7 +6766,7 @@ class Game {
 
         if (density === 1) {
           const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type);
+          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type, wx, wy);
           const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
           r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, bg);
         } else {
@@ -6777,7 +6777,7 @@ class Game {
               const screenY = viewTop + wy_off * density + dy;
               if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
                 const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type, wx + dx / density, wy + dy / density);
                 const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
                 r.drawChar(screenX, screenY, ch, fg, bg);
               }
@@ -6869,7 +6869,7 @@ class Game {
 
         if (density === 1) {
           const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type);
+          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type, wx, wy);
           const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
           r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, bg);
         } else {
@@ -6880,7 +6880,7 @@ class Game {
               const screenY = viewTop + wy_off * density + dy;
               if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
                 const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type, wx + dx / density, wy + dy / density);
                 const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
                 r.drawChar(screenX, screenY, ch, fg, bg);
               }
@@ -7242,7 +7242,7 @@ class Game {
           }
 
           if (isVisible) {
-            let animFg = r.getAnimatedColor(tile.fg, tile.type);
+            let animFg = r.getAnimatedColor(tile.fg, tile.type, wx, wy);
             const iType = tile.type;
             if (iType === 'STAIRS_DOWN' || iType === 'STAIRS_UP' || iType === 'DOOR' || iType === 'CHEST' || iType === 'BRIDGE') {
               animFg = this.glow.getGlowColor('INTERACTIVE', animFg);
@@ -7259,7 +7259,7 @@ class Game {
                   const screenX = viewLeft + wx_off * density + dx;
                   const screenY = viewTop + wy_off * density + dy;
                   if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                    const eFg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                    const eFg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type, wx + dx / density, wy + dy / density);
                     const dimFg = this._dimColor(eFg, Math.max(0.15, brightness));
                     const dimBg = this._dimColor(expanded.bgs[dy][dx], brightness);
                     r.drawChar(screenX, screenY, expanded.chars[dy][dx], dimFg, dimBg);
@@ -7368,7 +7368,7 @@ class Game {
           brightness = 1.0;
         }
 
-        const animFg = r.getAnimatedColor(tile.fg, tile.type);
+        const animFg = r.getAnimatedColor(tile.fg, tile.type, wx, wy);
 
         if (density === 1) {
           const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
@@ -7381,7 +7381,7 @@ class Game {
               const screenX = viewLeft + wx_off * density + dx;
               const screenY = viewTop + wy_off * density + dy;
               if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                const eFg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
+                const eFg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type, wx + dx / density, wy + dy / density);
                 const dimFg = this._dimColor(eFg, Math.max(0.15, brightness));
                 const dimBg = this._dimColor(expanded.bgs[dy][dx], brightness);
                 r.drawChar(screenX, screenY, expanded.chars[dy][dx], dimFg, dimBg);
