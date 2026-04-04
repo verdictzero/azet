@@ -330,7 +330,7 @@ export class OverworldGenerator {
 
           // Must be on walkable, non-water, non-mountain terrain
           if (!t.walkable) continue;
-          if (t.type === 'RIVER_WATER' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE') continue;
+          if (t.type === 'RIVER_WATER' || t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE') continue;
 
           // Minimum distance from existing locations
           let tooClose = false;
@@ -416,7 +416,7 @@ export class OverworldGenerator {
           if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'DEEP_FOREST' ||
               t.type === 'INNER_SHORE' || t.type === 'OUTER_SHORE') {
             tiles[p.y][p.x] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
-          } else if (t.type === 'RIVER_WATER') {
+          } else if (t.type === 'RIVER_WATER' || t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER') {
             tiles[p.y][p.x] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
           }
         }
@@ -427,7 +427,7 @@ export class OverworldGenerator {
   }
 
   _findOverworldPath(rng, tiles, sx, sy, ex, ey, width, height) {
-    const impassable = new Set(['RIVER_WATER', 'MOUNTAIN']);
+    const impassable = new Set(['RIVER_WATER', 'SHALLOWS', 'MEDIUM_WATER', 'MOUNTAIN']);
     const isWalkable = (x, y) => {
       if (x < 0 || y < 0 || x >= width || y >= height) return false;
       const t = tiles[y][x];
@@ -735,8 +735,8 @@ const TERRAIN_SCALE = 0.02;
 const RIVER_SPACING = 125;        // vertical distance between river center lines
 const RIVER_MEANDER_AMP = 35;     // max vertical offset from base Y
 const RIVER_MEANDER_FREQ = 0.015; // noise frequency for meander curves
-const RIVER_HALF_WIDTH = 1;       // tiles from center = 3 total water tiles
-const RIVER_SHORE_WIDTH = 1;      // 1 shore tile each side
+const RIVER_HALF_WIDTH = 3;       // tiles from center = 7 total water tiles
+const RIVER_SHORE_WIDTH = 2;      // 2 shore tiles each side (inner + outer)
 
 // Procedural name generator using syllable combination
 const NAME_PREFIXES = [
@@ -959,13 +959,34 @@ export class ChunkManager {
         return this._overgrownTerrain(h, m, d, wx, wy);
     }
 
-    // Default (lush) — standard terrain with rivers
+    // Default (lush) — standard terrain with rivers (depth + shore gradient)
     const riverDist = this._getRiverDistance(wx, wy);
     if (riverDist <= RIVER_HALF_WIDTH) {
-      return tile('RIVER_WATER', '~', '#4488ff', '#001144', false, { biome: 'river', waterDepth: 1 });
+      // Water depth gradient: deep center → shallow edges
+      const depthFrac = 1 - riverDist / RIVER_HALF_WIDTH; // 1 at center, 0 at edge
+      if (depthFrac > 0.7) {
+        return tile('MEDIUM_WATER', '~', '#2266CC', '#000066', false, { biome: 'river', waterDepth: 2 });
+      }
+      if (depthFrac > 0.35) {
+        return tile('RIVER_WATER', '~', '#4488ff', '#001144', false, { biome: 'river', waterDepth: 1 });
+      }
+      // Shallow edges
+      const sfg = _lerpColor('#4488ff', '#5599ff', d);
+      return tile('SHALLOWS', '~', sfg, '#001133', false, { biome: 'river', waterDepth: 0 });
+    }
+    if (riverDist <= RIVER_HALF_WIDTH + 1) {
+      // Inner shore — wet sand with noise variation
+      const prox = 0.3 + d * 0.4;
+      const fg = _lerpColor('#8B7D5B', '#C2B280', prox);
+      const bg = _lerpColor('#2A2210', '#3D3418', prox);
+      return tile('INNER_SHORE', '\u00B7', fg, bg, true, { biome: 'shore', waterDepth: -1 });
     }
     if (riverDist <= RIVER_HALF_WIDTH + RIVER_SHORE_WIDTH) {
-      return tile('INNER_SHORE', '\u00B7', '#8B7D5B', '#2A2210', true, { biome: 'shore', waterDepth: -1 });
+      // Outer shore — sandy dirt transitioning to surrounding terrain
+      const prox = 0.5 + d * 0.3;
+      const fg = _lerpColor('#C2B280', '#88AA55', prox);
+      const bg = _lerpColor('#3D3418', '#1A2210', prox);
+      return tile('OUTER_SHORE', '.', fg, bg, true, { biome: 'shore', waterDepth: -2 });
     }
     return this._terrainGen._terrainFromNoise(h, m, a, d, t);
   }
@@ -1536,7 +1557,7 @@ export class ChunkManager {
     const MIN_CLUSTER = 25; // minimum 5x5 equivalent cluster size
     const visited = new Uint8Array(S * S);
     // River water is exempt
-    const WATER_TYPES = new Set(['RIVER_WATER']);
+    const WATER_TYPES = new Set(['RIVER_WATER', 'SHALLOWS', 'MEDIUM_WATER']);
     // Walkable replacement for non-walkable terrain by biome
     const REPLACEMENTS = {
       forest: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
@@ -1600,7 +1621,7 @@ export class ChunkManager {
 
   // ── Bridge detection: find horizontal water segments 7-9 cells wide ──
   _isWaterTile(t) {
-    return t && t.type === 'RIVER_WATER';
+    return t && (t.type === 'RIVER_WATER' || t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER');
   }
 
   _isLandTile(t) {
@@ -1611,7 +1632,7 @@ export class ChunkManager {
     const rng = new SeededRNG(this.seed + cx * 31337 + cy * 7919 + 88888);
     const ox = cx * CHUNK_SIZE;
     const oy = cy * CHUNK_SIZE;
-    const WATER_TYPES = new Set(['RIVER_WATER']);
+    const WATER_TYPES = new Set(['RIVER_WATER', 'SHALLOWS', 'MEDIUM_WATER']);
 
     // Scan columns for vertical water segments (rivers now flow left-to-right)
     for (let lx = 2; lx < CHUNK_SIZE - 2; lx++) {
@@ -1628,7 +1649,7 @@ export class ChunkManager {
         } else {
           if (waterStart !== -1) {
             const span = ly - waterStart;
-            if (span >= 3 && span <= 5) {
+            if (span >= 3 && span <= RIVER_HALF_WIDTH * 2 + 3) {
               // Check walkable land above and below
               const aboveTile = waterStart > 0 ? tiles[waterStart - 1][lx] : null;
               const belowTile = ly < CHUNK_SIZE ? tiles[ly][lx] : null;
@@ -1769,7 +1790,7 @@ export class ChunkManager {
         const t = tiles[ly][lx];
 
         if (!t.walkable) continue;
-        if (t.type === 'RIVER_WATER' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE' || t.type === 'INNER_SHORE') continue;
+        if (t.type === 'RIVER_WATER' || t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER' || t.type === 'MOUNTAIN' || t.type === 'MOUNTAIN_BASE' || t.type === 'INNER_SHORE') continue;
 
         const wx = ox + lx;
         const wy = oy + ly;
@@ -1935,7 +1956,7 @@ export class ChunkManager {
           if (t.type === 'GRASSLAND' || t.type === 'FOREST' || t.type === 'DEEP_FOREST' ||
               t.type === 'INNER_SHORE' || t.type === 'OUTER_SHORE') {
             chunk.tiles[ly][lx] = tile('ROAD', '=', '#aa8844', '#332211', true, { biome: t.biome });
-          } else if (t.type === 'RIVER_WATER') {
+          } else if (t.type === 'RIVER_WATER' || t.type === 'SHALLOWS' || t.type === 'MEDIUM_WATER') {
             chunk.tiles[ly][lx] = tile('BRIDGE', '=', '#aa6622', '#000066', true, { biome: t.biome });
           }
         }
@@ -1945,7 +1966,7 @@ export class ChunkManager {
 
   _findPath(sx, sy, ex, ey) {
     const self = this;
-    const IMPASSABLE = new Set(['RIVER_WATER', 'MOUNTAIN']);
+    const IMPASSABLE = new Set(['RIVER_WATER', 'SHALLOWS', 'MEDIUM_WATER', 'MOUNTAIN']);
     const isWalkable = (x, y) => {
       const t = self.getTile(x, y);
       if (IMPASSABLE.has(t.type)) return false;

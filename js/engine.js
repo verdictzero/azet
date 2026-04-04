@@ -825,13 +825,16 @@ export class Renderer {
       case 'OCEAN':
       case 'DEEP_WATER':
       case 'VERY_DEEP_WATER': {
-        const shimmer = { RIVER_WATER: 40, WATER: 40, SHALLOWS: 35, TIDAL_POOL: 30,
-                          MEDIUM_WATER: 25, OCEAN: 20, DEEP_WATER: 15, VERY_DEEP_WATER: 10 }[tileType];
+        const shimmer = { RIVER_WATER: 50, WATER: 50, SHALLOWS: 45, TIDAL_POOL: 40,
+                          MEDIUM_WATER: 35, OCEAN: 25, DEEP_WATER: 20, VERY_DEEP_WATER: 12 }[tileType];
         if (worldX !== undefined && worldY !== undefined) {
           const ts = (this._frameTime || Date.now()) / 1000;
-          const n = this._waterNoise.noise2D(worldX * 0.2 - ts * 0.8, worldY * 0.15);
+          // Two octaves: broad flow + fine ripple detail
+          const n1 = this._waterNoise.noise2D(worldX * 0.15 - ts * 0.8, worldY * 0.12);
+          const n2 = this._waterNoise.noise2D(worldX * 0.4 - ts * 1.5, worldY * 0.3 + 50) * 0.35;
+          const n = n1 + n2;
           const cr = parseInt(baseColor.slice(1, 3), 16);
-          const cg = Math.max(0, Math.min(255, parseInt(baseColor.slice(3, 5), 16) + Math.round(n * shimmer * 0.4)));
+          const cg = Math.max(0, Math.min(255, parseInt(baseColor.slice(3, 5), 16) + Math.round(n * shimmer * 0.5)));
           const cb = Math.max(0, Math.min(255, parseInt(baseColor.slice(5, 7), 16) + Math.round(n * shimmer)));
           return '#' + ((1 << 24) | (cr << 16) | (cg << 8) | cb).toString(16).slice(1);
         }

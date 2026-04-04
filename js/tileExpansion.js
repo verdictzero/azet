@@ -570,6 +570,8 @@ const TYPE_PATTERNS = {
 
   // Water (depth gradient)
   RIVER_WATER:    { 2: WATER_2x2, 3: WATER_3x3 },
+  SHALLOWS:       { 2: WATER_2x2, 3: WATER_3x3 },
+  MEDIUM_WATER:   { 2: WATER_2x2, 3: WATER_3x3 },
 
   // Shoreline
   INNER_SHORE:    { 2: GRASS_2x2, 3: GRASS_3x3 },
