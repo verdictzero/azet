@@ -1,4 +1,4 @@
-// randomizer.js — Random generation tool tab for the ASCIIQUEST structure editor
+// randomizer.js — Random generation tool tab for the Terminal Gradient structure editor
 
 import {
   NAME_POOLS, NICKNAMES, PERSONALITY_TRAITS, ARCHETYPES,

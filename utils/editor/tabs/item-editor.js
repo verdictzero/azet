@@ -1,4 +1,4 @@
-// item-editor.js — Item/Weapon editor tab for the ASCIIQUEST structure editor
+// item-editor.js — Item/Weapon editor tab for the Terminal Gradient structure editor
 
 import {
   WEAPON_SUBTYPES, ARMOR_SUBTYPES, ITEM_PREFIXES, ITEM_SUFFIXES,

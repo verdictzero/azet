@@ -1,5 +1,5 @@
 // ============================================================================
-// worldhistory.js — Deep procedural world history generation for ASCIIQUEST
+// worldhistory.js — Deep procedural world history generation for Terminal Gradient
 // Inspired by Dwarf Fortress: generates eras, civilizations, historical
 // figures, wars, alliances, artifacts, religions, and cultural traditions.
 // Everything is seeded and deterministic. Pure browser JS, no server needed.

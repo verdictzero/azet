@@ -1,4 +1,4 @@
-// app.js — Main application controller for the ASCIIQUEST Structure Editor
+// app.js — Main application controller for the Terminal Gradient Structure Editor
 
 import { State } from './state.js';
 import { JsonPreview } from './components/json-preview.js';

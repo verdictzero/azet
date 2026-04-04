@@ -1,5 +1,5 @@
 // ============================================================================
-// world.js — World generation for ASCIIQUEST, a colony salvage roguelike
+// world.js — World generation for Terminal Gradient, a colony salvage roguelike
 // ============================================================================
 //
 // ┌─────────────────────────────────────────────────────────────────────────┐
