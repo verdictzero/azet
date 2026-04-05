@@ -6234,9 +6234,10 @@ class Game {
       // Use exact integer-scaled pixel dims when available for crisp pixel art
       const pw = eso.pxW || Math.round(eso.w * cw);
       const ph = eso.pxH || Math.round(eso.h * ch);
-      // Center the pixel-precise size within the cell region
-      const px = Math.round(eso.col * cw + (eso.w * cw - pw) / 2);
-      const py = Math.round(eso.row * ch + (eso.h * ch - ph) / 2);
+      // Prefer pixel-space position (set by renderCombat) so tall/narrow sprites
+      // are centered exactly; fall back to cell-region centering otherwise.
+      const px = (eso.pxX != null) ? eso.pxX : Math.round(eso.col * cw + (eso.w * cw - pw) / 2);
+      const py = (eso.pxY != null) ? eso.pxY : Math.round(eso.row * ch + (eso.h * ch - ph) / 2);
 
       // Draw sprite
       ctx.save();
@@ -7907,7 +7908,8 @@ class Game {
     r.clear();
 
     // ── Earthbound-style battle layout ──
-    const battleH = Math.floor(rows * 0.55);
+    const isPortrait = rows > cols;
+    const battleH = Math.floor(rows * (isPortrait ? 0.60 : 0.55));
 
     // Screen shake offset
     let shakeX = 0, shakeY = 0;
@@ -7943,17 +7945,28 @@ class Game {
       const imgH = enemySprite.naturalHeight || enemySprite.height;
 
       if (imgW && imgH) {
-        // Pixel sprite: integer nearest-neighbor scaling for crisp pixel art.
-        const availPxW = Math.floor(cols * cw * 0.70);
-        const availPxH = Math.floor(battleH * ch * 0.80);
-        const scaleFactor = Math.max(3, Math.floor(Math.min(availPxW / imgW, availPxH / imgH)));
-        const destPxW = imgW * scaleFactor;
-        const destPxH = imgH * scaleFactor;
+        // Pixel sprite: prefer integer nearest-neighbor scaling for crisp pixel art,
+        // but fall back to fractional scaling on tight (portrait) layouts so tall or
+        // wide sprites always fit within the battle area without clipping.
+        const availPxW = Math.floor(cols * cw * (isPortrait ? 0.90 : 0.70));
+        const availPxH = Math.floor(battleH * ch * (isPortrait ? 0.90 : 0.80));
+        const fitScale = Math.min(availPxW / imgW, availPxH / imgH);
+        const scaleFactor = fitScale >= 1 ? Math.floor(fitScale) : fitScale;
+        const destPxW = Math.round(imgW * scaleFactor);
+        const destPxH = Math.round(imgH * scaleFactor);
 
+        // Center in pixel space (not cell-grid space) so tall/narrow sprites are
+        // centered exactly rather than biased by Math.floor cell snapping.
+        const battlePxW = cols * cw;
+        const battlePxH = battleH * ch;
+        const pxX = Math.round((battlePxW - destPxW) / 2) + (shakeX + recoilX) * cw;
+        const pxY = Math.round((battlePxH - destPxH) / 2) - ch + shakeY * ch;
+
+        // Derive cell-grid coords for the name plate / HP bar layout below.
         const spriteW = destPxW / cw;
         const spriteH = destPxH / ch;
-        const spriteCol = Math.floor(cols / 2 - spriteW / 2) + shakeX + recoilX;
-        const spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1 + shakeY;
+        const spriteCol = Math.round(pxX / cw);
+        const spriteRow = Math.round(pxY / ch);
 
         this.ui._enemySpriteOverlay = {
           img: enemySprite,
@@ -7961,6 +7974,8 @@ class Game {
           row: spriteRow,
           w: spriteW,
           h: spriteH,
+          pxX: pxX,
+          pxY: pxY,
           pxW: destPxW,
           pxH: destPxH,
         };
