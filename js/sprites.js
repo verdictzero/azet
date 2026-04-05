@@ -40,7 +40,10 @@ const ENEMY_MANIFEST = {
   golem:       'sprites/enemies/golem.png',
   ghost:       'sprites/enemies/ghost.png',
   serpent:     'sprites/enemies/serpent.png',
-  drone:       'sprites/enemies/rogue_pizza_delivery_drone.png',
+  driller:     'sprites/enemies/ag_drone_driller_normal.png',
+  grabber:     'sprites/enemies/ag_drone_grabber_normal.png',
+  sprayer:     'sprites/enemies/ag_drone_sprayer_normal.png',
+  pogo:        'sprites/enemies/pogo_drone.png',
   fungal:      'sprites/enemies/fungal.png',
   default:     'sprites/enemies/default.png',
 };
