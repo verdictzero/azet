@@ -2,6 +2,7 @@
 // ES module: exports COLORS, LAYOUT, wordWrap, Renderer, Camera, InputManager
 
 import { PerlinNoise, SeededRNG } from './utils.js';
+import { expandTile } from './tileExpansion.js';
 
 // ─────────────────────────────────────────────
 // Layout Constants
@@ -235,10 +236,15 @@ export class Renderer {
     this.resize();
   }
 
-  // densityLevel zoom removed — graphics buffer provides double density natively
-  get densityLevel() { return 1; }
-  get zoomLevel() { return 1; }
-  setZoom(_level) { /* no-op: density zoom retired */ }
+  // Tile density: each world tile expands to 3×3 characters in the graphics buffer
+  get tileDensity() { return 3; }
+  get densityLevel() { return 3; }
+  get zoomLevel() { return 3; }
+  setZoom(_level) { /* no-op: density fixed at 3 */ }
+
+  /** World-space viewport dimensions (in world tiles, not graphics cells) */
+  get worldCols() { return Math.floor(this.gCols / this.tileDensity); }
+  get worldRows() { return Math.floor(this.gRows / this.tileDensity); }
 
   setCrtScale(scale) {
     this.crtScale = Math.max(0.25, Math.min(1.0, scale));
@@ -624,6 +630,88 @@ export class Renderer {
    */
   get graphicsCols() { return this.gCols; }
   get graphicsRows() { return this.gRows; }
+
+  // ── World-tile drawing helpers (density-aware) ──────────
+
+  /**
+   * Draw a pre-expanded tile (3×3 grid) at world offset.
+   * @param {number} wx_off - world-space column offset
+   * @param {number} wy_off - world-space row offset
+   * @param {{ chars: string[][], fgs: string[][], bgs: string[][] }} expanded
+   */
+  drawWorldTile(wx_off, wy_off, expanded) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++) {
+      for (let dx = 0; dx < D; dx++) {
+        this.drawGraphicsChar(gx + dx, gy + dy, expanded.chars[dy][dx], expanded.fgs[dy][dx], expanded.bgs[dy][dx]);
+      }
+    }
+  }
+
+  /**
+   * Draw a single entity character at the center of a world tile's 3×3 cell.
+   */
+  drawEntityChar(wx_off, wy_off, char, fg = COLORS.WHITE, bg) {
+    const D = this.tileDensity;
+    const cx = wx_off * D + ((D - 1) >> 1);
+    const cy = wy_off * D + ((D - 1) >> 1);
+    if (bg !== undefined) {
+      this.drawGraphicsChar(cx, cy, char, fg, bg);
+    } else {
+      // Transparent bg — only set char and fg, leave existing bg
+      cx |= 0; cy |= 0;
+      if (!(cx >= 0 && cx < this.gCols && cy >= 0 && cy < this.gRows)) return;
+      const cell = this.graphicsBuffer[cy][cx];
+      cell.char = char;
+      cell.fg = fg;
+    }
+  }
+
+  /**
+   * Draw a uniform 3×3 tile (same char/fg/bg in all cells) at world offset.
+   */
+  drawUniformTile(wx_off, wy_off, char, fg, bg) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++) {
+      for (let dx = 0; dx < D; dx++) {
+        this.drawGraphicsChar(gx + dx, gy + dy, char, fg, bg);
+      }
+    }
+  }
+
+  /** Darken all cells of a world tile (3×3 block). */
+  darkenWorldCell(wx_off, wy_off, alpha) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++)
+      for (let dx = 0; dx < D; dx++)
+        this.darkenGraphicsCell(gx + dx, gy + dy, alpha);
+  }
+
+  /** Brighten all cells of a world tile (3×3 block). */
+  brightenWorldCell(wx_off, wy_off, alpha, tint) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++)
+      for (let dx = 0; dx < D; dx++)
+        this.brightenGraphicsCell(gx + dx, gy + dy, alpha, tint);
+  }
+
+  /** Tint all cells of a world tile (3×3 block). */
+  tintWorldCell(wx_off, wy_off, color, alpha) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++)
+      for (let dx = 0; dx < D; dx++)
+        this.tintGraphicsCell(gx + dx, gy + dy, color, alpha);
+  }
 
   /**
    * Draw a horizontal separator spanning a box: ├───────┤
@@ -1693,15 +1781,15 @@ export class ParticleSystem {
    * Render particles to the renderer relative to camera.
    */
   render(renderer, cameraX, cameraY) {
-    const viewW = renderer.graphicsCols;
-    const viewH = renderer.graphicsRows;
+    const viewW = renderer.worldCols;
+    const viewH = renderer.worldRows;
     for (const p of this.particles) {
       const wx_off = Math.round(p.x - cameraX);
       const wy_off = Math.round(p.y - cameraY);
       if (wx_off >= 0 && wx_off < viewW && wy_off >= 0 && wy_off < viewH) {
         const fade = p.life / p.maxLife;
         if (fade > 0.3) {
-          renderer.drawGraphicsChar(wx_off, wy_off, p.char, p.fg);
+          renderer.drawEntityChar(wx_off, wy_off, p.char, p.fg);
         }
       }
     }
