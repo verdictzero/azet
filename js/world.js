@@ -270,14 +270,14 @@ export class OverworldGenerator {
     if (h < 0.55) {
       let prox = Math.max(0, Math.min(1, h / 0.55));              // 0 = low, 1 = near forest
       prox = Math.max(0, Math.min(1, prox + (d - 0.5) * 0.15));   // detail noise adds organic jitter
-      const fg = _lerpColor('#33dd44', '#99aa33', prox);            // lush vivid green → muted yellow-green near forest
-      const bg = _lerpColor('#0a2210', '#1a1a08', prox);            // cool dark green → warm olive dark near forest
+      const fg = _lerpColor('#3a9950', '#7a8844', prox);            // muted green → muted yellow-green near forest
+      const bg = _lerpColor('#0c1610', '#141408', prox);            // desaturated dark green → desaturated olive dark
       return tile('GRASSLAND', '.', fg, bg, true, { biome: 'grassland' });
     }
 
     // ── FOREST (h 0.55 - 0.7) — trees ──
-    if (h < 0.62) return tile('FOREST', '\u2663', '#22AA22', '#0a1a0a', true, { biome: 'forest' });
-    if (h < 0.7) return tile('DEEP_FOREST', '\u2660', '#116611', '#060f06', true, { biome: 'forest' });
+    if (h < 0.62) return tile('FOREST', '\u2663', '#2d8840', '#0c140c', true, { biome: 'forest' });
+    if (h < 0.7) return tile('DEEP_FOREST', '\u2660', '#1a5520', '#090d09', true, { biome: 'forest' });
 
     // ── MOUNTAIN (h 0.7+) ──
     if (h < 0.82) return tile('MOUNTAIN_BASE', '\u2593', '#AAAAAA', '#333333', false, { biome: 'mountain' });
@@ -966,14 +966,14 @@ export class ChunkManager {
       const depthFrac = 1 - riverDist / RIVER_HALF_WIDTH; // 1 at center, 0 at edge
       if (depthFrac > 0.7) {
         // Deepest center — dark navy
-        return tile('MEDIUM_WATER', '~', '#2266CC', '#000022', false, { biome: 'river', waterDepth: 2 });
+        return tile('MEDIUM_WATER', '~', '#2E5599', '#000018', false, { biome: 'river', waterDepth: 2 });
       }
       if (depthFrac > 0.35) {
-        return tile('RIVER_WATER', '~', '#4488ff', '#001144', false, { biome: 'river', waterDepth: 1 });
+        return tile('RIVER_WATER', '~', '#3E70AA', '#000D30', false, { biome: 'river', waterDepth: 1 });
       }
       // Shallow edges — brightest
-      const sfg = _lerpColor('#4488ff', '#5599ff', d);
-      return tile('SHALLOWS', '~', sfg, '#002266', false, { biome: 'river', waterDepth: 0 });
+      const sfg = _lerpColor('#3E70AA', '#4E80BB', d);
+      return tile('SHALLOWS', '~', sfg, '#001844', false, { biome: 'river', waterDepth: 0 });
     }
     if (riverDist <= RIVER_HALF_WIDTH + 1) {
       // Inner shore — wet sand with noise variation
@@ -996,19 +996,19 @@ export class ChunkManager {
 
   _desertTerrain(h, m, d, t) {
     if (h < 0.3) {
-      const fg = _lerpColor('#DDCC88', '#CCBB66', d);
-      return tile('SAND', '.', fg, '#332200', true, { biome: 'desert' });
+      const fg = _lerpColor('#B8A878', '#A89858', d);
+      return tile('SAND', '.', fg, '#2A1E08', true, { biome: 'desert' });
     }
     if (h < 0.5) {
-      return tile('DUNE', '~', '#CCAA55', '#2A1A00', true, { biome: 'desert' });
+      return tile('DUNE', '~', '#A89050', '#221608', true, { biome: 'desert' });
     }
     if (h < 0.65) {
-      return tile('SCRUB', ',', '#998844', '#221100', true, { biome: 'desert' });
+      return tile('SCRUB', ',', '#887844', '#1A1008', true, { biome: 'desert' });
     }
     if (h < 0.75) {
-      return tile('DESERT_ROCK', '▓', '#AA8866', '#332211', false, { biome: 'desert' });
+      return tile('DESERT_ROCK', '▓', '#907860', '#2A2018', false, { biome: 'desert' });
     }
-    return tile('MESA', '△', '#BB9977', '#443322', false, { biome: 'desert' });
+    return tile('MESA', '△', '#A08868', '#3A2E20', false, { biome: 'desert' });
   }
 
   _frozenTerrain(h, m, d, t, wx, wy) {
@@ -1561,11 +1561,11 @@ export class ChunkManager {
     const WATER_TYPES = new Set(['RIVER_WATER', 'SHALLOWS', 'MEDIUM_WATER']);
     // Walkable replacement for non-walkable terrain by biome
     const REPLACEMENTS = {
-      forest: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
-      mountain: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
-      grassland: { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' },
+      forest: { type: 'GRASSLAND', char: '.', fg: '#3a9950', bg: '#0e160e', biome: 'grassland' },
+      mountain: { type: 'GRASSLAND', char: '.', fg: '#3a9950', bg: '#0e160e', biome: 'grassland' },
+      grassland: { type: 'GRASSLAND', char: '.', fg: '#3a9950', bg: '#0e160e', biome: 'grassland' },
     };
-    const DEFAULT_REPLACE = { type: 'GRASSLAND', char: '.', fg: '#44cc44', bg: '#112211', biome: 'grassland' };
+    const DEFAULT_REPLACE = { type: 'GRASSLAND', char: '.', fg: '#3a9950', bg: '#0e160e', biome: 'grassland' };
 
     for (let y = 0; y < S; y++) {
       for (let x = 0; x < S; x++) {

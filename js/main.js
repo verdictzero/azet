@@ -6669,21 +6669,12 @@ class Game {
       }
     }
 
-    // Draw player (1×3 multi-tile: head, torso, legs)
+    // Draw player (single character)
     const ppx = this.player.position.x - camX;
     const ppy = this.player.position.y - camY;
     if (ppx >= 0 && ppx < worldW && ppy >= 0 && ppy < worldH) {
       const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
-      r.drawEntityChar(ppx, ppy - 2, '\u263A', pc);  // ☺ head
-      r.drawEntityChar(ppx, ppy - 1, '\u2502', pc);  // │ torso
-      r.drawEntityChar(ppx, ppy, '@', pc);            // @ legs/anchor
-
-      const t = Date.now() % 1000;
-      const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawEntityChar(ppx - 1, ppy - 2, '\u250C', reticleColor);
-      r.drawEntityChar(ppx + 1, ppy - 2, '\u2510', reticleColor);
-      r.drawEntityChar(ppx - 1, ppy + 1, '\u2514', reticleColor);
-      r.drawEntityChar(ppx + 1, ppy + 1, '\u2518', reticleColor);
+      r.drawEntityChar(ppx, ppy, '@', pc);
     }
 
     // Quest navigation line overlay
@@ -7102,7 +7093,7 @@ class Game {
       }
     }
 
-    // Draw enemies (multi-tile: head above body, bosses wider)
+    // Draw enemies (single character)
     for (const enemy of this.enemies) {
       const light = this.debug.disableLighting ? { brightness: visible.has(`${enemy.position.x},${enemy.position.y}`) ? 1 : 0 }
         : this.lighting.getLight(enemy.position.x, enemy.position.y);
@@ -7111,39 +7102,16 @@ class Game {
         const wy_off = enemy.position.y - offsetY;
         if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
           const ec = enemy.color || COLORS.BRIGHT_RED;
-          if (enemy.isBoss) {
-            // Boss: 3×3 sprite
-            r.drawEntityChar(wx_off, wy_off - 2, '\u25BC', ec);         // ▼ crown/horns
-            r.drawEntityChar(wx_off - 1, wy_off - 1, '\u2524', ec);     // ┤ left arm
-            r.drawEntityChar(wx_off, wy_off - 1, '\u2588', ec);         // █ torso
-            r.drawEntityChar(wx_off + 1, wy_off - 1, '\u251C', ec);     // ├ right arm
-            r.drawEntityChar(wx_off, wy_off, enemy.char, ec);            // body char
-          } else {
-            // Regular enemy: 1×2 (head + body)
-            r.drawEntityChar(wx_off, wy_off - 1, '\u263B', ec);         // ☻ head
-            r.drawEntityChar(wx_off, wy_off, enemy.char, ec);            // body
-          }
+          r.drawEntityChar(wx_off, wy_off, enemy.char, ec);
         }
       }
     }
 
-    // Draw player at center (1×3 multi-tile)
+    // Draw player at center (single character)
     const playerGX = Math.floor(worldW / 2);
     const playerGY = Math.floor(worldH / 2);
     const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
-    r.drawEntityChar(playerGX, playerGY - 2, '\u263A', pc);  // ☺ head
-    r.drawEntityChar(playerGX, playerGY - 1, '\u2502', pc);  // │ torso
-    r.drawEntityChar(playerGX, playerGY, '@', pc);            // @ legs/anchor
-
-    // Player targeting reticle (4 corners, pulsing)
-    {
-      const t = Date.now() % 1000;
-      const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawEntityChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
-      r.drawEntityChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
-      r.drawEntityChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
-      r.drawEntityChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
-    }
+    r.drawEntityChar(playerGX, playerGY, '@', pc);
 
     // MECH_ARM overlay
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
@@ -7204,19 +7172,10 @@ class Game {
       }
     }
 
-    // Draw player (1×3 multi-tile)
+    // Draw player (single character)
     const playerGX = Math.floor(worldW / 2);
     const playerGY = Math.floor(worldH / 2);
-    r.drawEntityChar(playerGX, playerGY - 2, '\u263A', COLORS.BRIGHT_YELLOW);
-    r.drawEntityChar(playerGX, playerGY - 1, '\u2502', COLORS.BRIGHT_YELLOW);
     r.drawEntityChar(playerGX, playerGY, '@', COLORS.BRIGHT_YELLOW);
-
-    const t = Date.now() % 1000;
-    const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-    r.drawEntityChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
-    r.drawEntityChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
-    r.drawEntityChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
-    r.drawEntityChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
   }
 
   renderBattleResults() {
