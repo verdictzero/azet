@@ -2287,6 +2287,10 @@ class Game {
     if (key === 'p' || key === 'P') { this.saveGame(1, { exportFile: true }); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
+    // Zoom: +/= to zoom in, - to zoom out
+    if (key === '+' || key === '=') { this._zoom(1); return; }
+    if (key === '-') { this._zoom(-1); return; }
+
     if (key === 'Escape') {
       // Bridge crossing: exit based on player Y position
       if (this.currentSettlement && this.currentSettlement.isBridge) {
@@ -7877,6 +7881,9 @@ class Game {
 
       // Update transitions
       this.updateTransition();
+
+      // Poll physical gamepad each frame
+      this.input.update();
 
       // Process queued input (block during transitions)
       if (this.transitionTimer <= 0) {
