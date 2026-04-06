@@ -6256,7 +6256,7 @@ class Game {
             const alongX = owSunDir.dx || 0;
             const alongY = owSunDir.dy || 0;
             // Compute projection range across viewport for normalization
-            const c0 = 0, c1 = (viewW - 1) * alongX, c2 = (viewH - 1) * alongY, c3 = c1 + c2;
+            const c0 = 0, c1 = (sW - 1) * alongX, c2 = (sH - 1) * alongY, c3 = c1 + c2;
             const minAlong = Math.min(c0, c1, c2, c3);
             const maxAlong = Math.max(c0, c1, c2, c3);
             const alongRange = maxAlong - minAlong || 1;
