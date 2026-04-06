@@ -1,6 +1,6 @@
 import { COLORS, LAYOUT, wordWrap } from './engine.js';
 import { CRYSTAL_WIDTH, CRYSTAL_HEIGHT, CRYSTAL_FRAMES } from './crystal-frames.js';
-// expandTile no longer used — graphics buffer provides double density natively
+import { NPC_SPRITES } from './entities.js';
 
 // ─── Color conversion helpers for hue-shifting effects ───
 function hexToHsl(hex) {
@@ -1920,6 +1920,8 @@ export class UIManager {
     // Tile height lookup for settlement shadow casting — buildings only
     const SETTLEMENT_HEIGHTS = {
       WALL: 3, BUILDING_WALL: 3,
+      CHIMNEY: 4,     // Chimneys protrude above roofline
+      SHUTTER: 2,     // Shutters on building sides
     };
     // Character-based heights for decorations — buildings only
     const CHAR_HEIGHTS = {
@@ -2220,26 +2222,47 @@ export class UIManager {
         godRayCells, lampGlowOps,
       };
 
-      // Draw NPCs
+      // Draw NPCs (multi-tile sprites)
       if (npcs) {
         for (const npc of npcs) {
           const wx_off = npc.position.x - camX;
           const wy_off = npc.position.y - camY;
-          if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-            r.drawGraphicsChar(wx_off, wy_off, npc.char, npc.color || COLORS.BRIGHT_CYAN, '#1a1a2e');
+          if (wx_off < -2 || wx_off >= worldW + 2 || wy_off < -2 || wy_off >= worldH + 2) continue;
+          const sprite = NPC_SPRITES[npc.role];
+          if (sprite) {
+            // Anchor = bottom-center of sprite
+            const anchorCol = Math.floor(sprite.w / 2);
+            const anchorRow = sprite.h - 1;
+            for (let sr = 0; sr < sprite.h; sr++) {
+              for (let sc = 0; sc < sprite.w; sc++) {
+                const ch = sprite.chars[sr][sc];
+                if (ch == null) continue;
+                const gx = wx_off + (sc - anchorCol);
+                const gy = wy_off + (sr - anchorRow);
+                if (gx >= 0 && gx < worldW && gy >= 0 && gy < worldH) {
+                  r.drawGraphicsChar(gx, gy, ch, sprite.fgs[sr][sc] || npc.color || COLORS.BRIGHT_CYAN);
+                }
+              }
+            }
+          } else {
+            // Fallback: single char
+            if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
+              r.drawGraphicsChar(wx_off, wy_off, npc.char, npc.color || COLORS.BRIGHT_CYAN);
+            }
           }
         }
       }
 
-      // Draw enemies (bridge zones)
+      // Draw enemies (bridge zones, multi-tile)
       if (enemies) {
         for (const enemy of enemies) {
           if (!enemy.position) continue;
           const wx_off = enemy.position.x - camX;
           const wy_off = enemy.position.y - camY;
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-            const enemyColor = this.glow ? this.glow.getGlowColor('ENEMY', COLORS.BRIGHT_RED) : COLORS.BRIGHT_RED;
-            r.drawGraphicsChar(wx_off, wy_off, enemy.char || 'E', enemyColor);
+            const ec = this.glow ? this.glow.getGlowColor('ENEMY', COLORS.BRIGHT_RED) : COLORS.BRIGHT_RED;
+            r.drawGraphicsChar(wx_off, wy_off - 1, '\u263B', ec);  // ☻ head
+            r.drawGraphicsChar(wx_off, wy_off, enemy.char || 'E', ec);
           }
         }
       }
@@ -2257,18 +2280,21 @@ export class UIManager {
         }
       }
 
-      // Draw player
+      // Draw player (multi-tile: head + body + anchor)
       if (player) {
         const px = player.position.x - camX;
         const py = player.position.y - camY;
         if (px >= 0 && px < worldW && py >= 0 && py < worldH) {
           const playerColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
-          r.drawGraphicsChar(px, py, '@', playerColor);
+          // 1×3 player sprite: head, torso, legs (anchor = bottom)
+          r.drawGraphicsChar(px, py - 2, '\u263A', playerColor);  // ☺ head
+          r.drawGraphicsChar(px, py - 1, '\u2502', playerColor);  // │ torso
+          r.drawGraphicsChar(px, py, '@', playerColor);            // @ legs/anchor
 
           const t = Date.now() % 1000;
           const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-          r.drawGraphicsChar(px - 1, py - 1, '\u250C', reticleColor);
-          r.drawGraphicsChar(px + 1, py - 1, '\u2510', reticleColor);
+          r.drawGraphicsChar(px - 1, py - 2, '\u250C', reticleColor);
+          r.drawGraphicsChar(px + 1, py - 2, '\u2510', reticleColor);
           r.drawGraphicsChar(px - 1, py + 1, '\u2514', reticleColor);
           r.drawGraphicsChar(px + 1, py + 1, '\u2518', reticleColor);
         }

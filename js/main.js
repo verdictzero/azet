@@ -1,7 +1,7 @@
 import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SectionManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator } from './world.js';
-import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms, QUEST_CHAIN_DEFINITIONS } from './entities.js';
+import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms, QUEST_CHAIN_DEFINITIONS, NPC_SPRITES } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
@@ -6582,32 +6582,62 @@ class Game {
       }
     }
 
-    // Draw locations
+    // Draw locations (multi-tile landmarks)
     for (const loc of this.overworld.getLoadedLocations()) {
       const wx_off = loc.x - camX;
       const wy_off = loc.y - camY;
-      if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-        const ch = loc.type === 'city' ? '\u25A3' : loc.type === 'town' ? '\u25A1' :
-          loc.type === 'village' ? '\u25CB' : loc.type === 'dungeon' ? '\u25BC' :
-            loc.type === 'castle' ? '\u2666' : loc.type === 'temple' ? '\u2020' :
-              loc.type === 'ruins' ? '\u25AA' : loc.type === 'tower' ? '\u25B2' : '\u25E6';
-        const isDungeon = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
-        const glowCat = isDungeon ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
-        r.drawGraphicsChar(wx_off, wy_off, ch, this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE));
+      if (wx_off < -2 || wx_off >= worldW + 2 || wy_off < -2 || wy_off >= worldH + 2) continue;
+      const isDungeon = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
+      const glowCat = isDungeon ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
+      const gc = this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE);
+      if (loc.type === 'city') {
+        // 3×3 city icon
+        r.drawGraphicsChar(wx_off, wy_off - 2, '\u25B2', gc);     // ▲ spire
+        r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u2502', gc); // │
+        r.drawGraphicsChar(wx_off, wy_off - 1, '\u25A3', gc);     // ▣
+        r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u2502', gc); // │
+        r.drawGraphicsChar(wx_off - 1, wy_off, '\u2500', gc);     // ─
+        r.drawGraphicsChar(wx_off, wy_off, '\u25A3', gc);         // ▣
+        r.drawGraphicsChar(wx_off + 1, wy_off, '\u2500', gc);     // ─
+      } else if (loc.type === 'castle') {
+        // 3×2 castle
+        r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u25B2', gc); // ▲
+        r.drawGraphicsChar(wx_off, wy_off - 1, '\u2666', gc);     // ♦
+        r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u25B2', gc); // ▲
+        r.drawGraphicsChar(wx_off - 1, wy_off, '\u2550', gc);     // ═
+        r.drawGraphicsChar(wx_off, wy_off, '\u2666', gc);         // ♦
+        r.drawGraphicsChar(wx_off + 1, wy_off, '\u2550', gc);     // ═
+      } else if (loc.type === 'town') {
+        // 1×2 town
+        r.drawGraphicsChar(wx_off, wy_off - 1, '\u25B2', gc);     // ▲ roof
+        r.drawGraphicsChar(wx_off, wy_off, '\u25A1', gc);         // □ building
+      } else if (loc.type === 'tower') {
+        // 1×3 tower
+        r.drawGraphicsChar(wx_off, wy_off - 2, '\u25B2', gc);     // ▲ top
+        r.drawGraphicsChar(wx_off, wy_off - 1, '\u2502', gc);     // │ shaft
+        r.drawGraphicsChar(wx_off, wy_off, '\u25B2', gc);         // ▲ base
+      } else {
+        // Default: 1×2 (icon + base)
+        const ch = loc.type === 'village' ? '\u25CB' : loc.type === 'dungeon' ? '\u25BC' :
+          loc.type === 'temple' ? '\u2020' : loc.type === 'ruins' ? '\u25AA' : '\u25E6';
+        r.drawGraphicsChar(wx_off, wy_off - 1, ch, gc);
+        r.drawGraphicsChar(wx_off, wy_off, '\u2219', gc);  // ∙ base marker
       }
     }
 
-    // Draw player
+    // Draw player (1×3 multi-tile: head, torso, legs)
     const ppx = this.player.position.x - camX;
     const ppy = this.player.position.y - camY;
     if (ppx >= 0 && ppx < worldW && ppy >= 0 && ppy < worldH) {
-      r.drawGraphicsChar(ppx, ppy, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+      const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
+      r.drawGraphicsChar(ppx, ppy - 2, '\u263A', pc);  // ☺ head
+      r.drawGraphicsChar(ppx, ppy - 1, '\u2502', pc);  // │ torso
+      r.drawGraphicsChar(ppx, ppy, '@', pc);            // @ legs/anchor
 
-      // Player targeting reticle (4 corners, pulsing)
       const t = Date.now() % 1000;
       const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawGraphicsChar(ppx - 1, ppy - 1, '\u250C', reticleColor);
-      r.drawGraphicsChar(ppx + 1, ppy - 1, '\u2510', reticleColor);
+      r.drawGraphicsChar(ppx - 1, ppy - 2, '\u250C', reticleColor);
+      r.drawGraphicsChar(ppx + 1, ppy - 2, '\u2510', reticleColor);
       r.drawGraphicsChar(ppx - 1, ppy + 1, '\u2514', reticleColor);
       r.drawGraphicsChar(ppx + 1, ppy + 1, '\u2518', reticleColor);
     }
@@ -7022,7 +7052,7 @@ class Game {
       }
     }
 
-    // Draw enemies
+    // Draw enemies (multi-tile: head above body, bosses wider)
     for (const enemy of this.enemies) {
       const light = this.debug.disableLighting ? { brightness: visible.has(`${enemy.position.x},${enemy.position.y}`) ? 1 : 0 }
         : this.lighting.getLight(enemy.position.x, enemy.position.y);
@@ -7030,22 +7060,37 @@ class Game {
         const wx_off = enemy.position.x - offsetX;
         const wy_off = enemy.position.y - offsetY;
         if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-          r.drawGraphicsChar(wx_off, wy_off, enemy.char, enemy.color || COLORS.BRIGHT_RED);
+          const ec = enemy.color || COLORS.BRIGHT_RED;
+          if (enemy.isBoss) {
+            // Boss: 3×3 sprite
+            r.drawGraphicsChar(wx_off, wy_off - 2, '\u25BC', ec);         // ▼ crown/horns
+            r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u2524', ec);     // ┤ left arm
+            r.drawGraphicsChar(wx_off, wy_off - 1, '\u2588', ec);         // █ torso
+            r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u251C', ec);     // ├ right arm
+            r.drawGraphicsChar(wx_off, wy_off, enemy.char, ec);            // body char
+          } else {
+            // Regular enemy: 1×2 (head + body)
+            r.drawGraphicsChar(wx_off, wy_off - 1, '\u263B', ec);         // ☻ head
+            r.drawGraphicsChar(wx_off, wy_off, enemy.char, ec);            // body
+          }
         }
       }
     }
 
-    // Draw player at center
+    // Draw player at center (1×3 multi-tile)
     const playerGX = Math.floor(worldW / 2);
     const playerGY = Math.floor(worldH / 2);
-    r.drawGraphicsChar(playerGX, playerGY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+    const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
+    r.drawGraphicsChar(playerGX, playerGY - 2, '\u263A', pc);  // ☺ head
+    r.drawGraphicsChar(playerGX, playerGY - 1, '\u2502', pc);  // │ torso
+    r.drawGraphicsChar(playerGX, playerGY, '@', pc);            // @ legs/anchor
 
     // Player targeting reticle (4 corners, pulsing)
     {
       const t = Date.now() % 1000;
       const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawGraphicsChar(playerGX - 1, playerGY - 1, '\u250C', reticleColor);
-      r.drawGraphicsChar(playerGX + 1, playerGY - 1, '\u2510', reticleColor);
+      r.drawGraphicsChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
+      r.drawGraphicsChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
       r.drawGraphicsChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
       r.drawGraphicsChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
     }
@@ -7106,16 +7151,17 @@ class Game {
       }
     }
 
-    // Draw player
+    // Draw player (1×3 multi-tile)
     const playerGX = Math.floor(worldW / 2);
     const playerGY = Math.floor(worldH / 2);
+    r.drawGraphicsChar(playerGX, playerGY - 2, '\u263A', COLORS.BRIGHT_YELLOW);
+    r.drawGraphicsChar(playerGX, playerGY - 1, '\u2502', COLORS.BRIGHT_YELLOW);
     r.drawGraphicsChar(playerGX, playerGY, '@', COLORS.BRIGHT_YELLOW);
 
-    // Player reticle
     const t = Date.now() % 1000;
     const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-    r.drawGraphicsChar(playerGX - 1, playerGY - 1, '\u250C', reticleColor);
-    r.drawGraphicsChar(playerGX + 1, playerGY - 1, '\u2510', reticleColor);
+    r.drawGraphicsChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
+    r.drawGraphicsChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
     r.drawGraphicsChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
     r.drawGraphicsChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
   }

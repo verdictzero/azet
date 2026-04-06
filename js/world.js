@@ -2769,6 +2769,44 @@ export class SettlementGenerator {
     const doorFg = biomeTheme ? biomeTheme.doorFg : ['#aa6622', '#cc4444', '#4466aa', '#44aa44', '#aa44aa'][hash % 5];
     const doorX = bx + Math.floor(bw / 2);
     tiles[by + bh - 1][doorX] = tile('DOOR', '\u25AF', doorFg, floorBg, true, { solid: false, buildingId }); // ▯
+
+    // Chimney on rooftop (above top-right corner, if space)
+    if (by > 0 && bx + bw - 2 >= 0) {
+      const chimneyX = bx + bw - 2;
+      const chimneyY = by - 1;
+      if (chimneyY >= 0 && tiles[chimneyY] && tiles[chimneyY][chimneyX] &&
+          tiles[chimneyY][chimneyX].walkable && tiles[chimneyY][chimneyX].type !== 'WALL') {
+        tiles[chimneyY][chimneyX] = tile('CHIMNEY', '\u2593', '#887766', '#443322', false, { solid: true, buildingId }); // ▓
+      }
+    }
+
+    // Awning over door (1 tile above door, extends 1 tile each side)
+    if (by + bh < tiles.length) {
+      const awningY = by + bh;
+      const awningColors = ['#884422', '#446622', '#224466', '#664422'];
+      const awningFg = awningColors[hash % awningColors.length];
+      for (let dx = -1; dx <= 1; dx++) {
+        const ax = doorX + dx;
+        if (ax >= 0 && ax < tiles[0].length && tiles[awningY] && tiles[awningY][ax] &&
+            tiles[awningY][ax].walkable && tiles[awningY][ax].type !== 'WALL') {
+          tiles[awningY][ax] = tile('AWNING', '\u2580', awningFg, tiles[awningY][ax].bg || '#112211', true, { buildingId }); // ▀
+        }
+      }
+    }
+
+    // Shutters on windows (tiles adjacent to windows, outside building)
+    for (let y = by + 1; y < by + bh - 1; y++) {
+      if ((y - by) % 3 === 0) {
+        // Left window shutter
+        if (bx > 0 && tiles[y][bx - 1] && tiles[y][bx - 1].walkable && tiles[y][bx - 1].type !== 'WALL') {
+          tiles[y][bx - 1] = tile('SHUTTER', '\u2551', wallColor, tiles[y][bx - 1].bg || '#112211', true, { buildingId }); // ║
+        }
+        // Right window shutter
+        if (bx + bw < tiles[0].length && tiles[y][bx + bw] && tiles[y][bx + bw].walkable && tiles[y][bx + bw].type !== 'WALL') {
+          tiles[y][bx + bw] = tile('SHUTTER', '\u2551', wallColor, tiles[y][bx + bw].bg || '#112211', true, { buildingId }); // ║
+        }
+      }
+    }
   }
 
   _carveRoad(tiles, sx, sy, ex, ey, w, h) {
