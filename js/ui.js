@@ -907,8 +907,8 @@ export class UIManager {
     if (hasPortrait) {
       const cw = r.cellWidth;
       const ch = r.cellHeight;
-      const maxW = Math.min(Math.floor(cols * 0.45), 32);
-      const maxH = Math.min(Math.floor(rows * 0.5), 28);
+      const maxW = Math.min(Math.floor(cols * 0.45), 96);
+      const maxH = Math.min(Math.floor(rows * 0.5), 84);
       const img = dialogueState.portrait;
       const imgW = img.naturalWidth || img.width;
       const imgH = img.naturalHeight || img.height;
@@ -947,10 +947,12 @@ export class UIManager {
       const portraitX = px + panelW - portraitW; // right-align with text box
       const portraitY = startY;
 
-      // Try ASCII art conversion via spriteManager's generator
+      // Try ASCII art conversion via spriteManager's generator (doubled for better aspect ratio)
+      let innerW = portraitW - 2;
+      if (innerW % 2 !== 0) innerW--;
       const asciiGrid = (this.spriteManager && this.spriteManager.asciiGen)
-        ? this.spriteManager.asciiGen.convertCached(
-            dialogueState.portrait, portraitW - 2, portraitH - 2, bg)
+        ? this.spriteManager.asciiGen.convertDoubledCached(
+            dialogueState.portrait, innerW, portraitH - 2, bg)
         : null;
 
       if (asciiGrid) {
