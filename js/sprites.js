@@ -4,6 +4,8 @@
 // and enemy battle sprites.
 // ─────────────────────────────────────────────
 
+import { AsciiArtGenerator } from './ascii-art-gen.js';
+
 // ── Sprite manifest ──────────────────────────
 // Maps logical names to PNG paths under sprites/
 
@@ -79,6 +81,7 @@ export class SpriteManager {
   constructor() {
     this._cache = new Map();       // name → Image or Canvas
     this._loading = new Map();     // name → Promise
+    this.asciiGen = new AsciiArtGenerator();
   }
 
   // Load a single sprite PNG. Returns a Promise<Image>.
@@ -161,5 +164,33 @@ export class SpriteManager {
   // Get any cached sprite by exact name.
   getSprite(name) {
     return this._cache.get(name) || null;
+  }
+
+  /**
+   * Get an ASCII art grid for an NPC portrait.
+   * @param {object} npc - NPC with .portrait field
+   * @param {number} cols - target width in character columns
+   * @param {number} rows - target height in character rows
+   * @param {string} [bgColor='#0e0e14'] - background color for transparent areas
+   * @returns {{ cols, rows, cells }|null}
+   */
+  getPortraitAscii(npc, cols, rows, bgColor = '#0e0e14') {
+    const img = this.getPortrait(npc);
+    if (!img) return null;
+    return this.asciiGen.convertCached(img, cols, rows, bgColor);
+  }
+
+  /**
+   * Get an ASCII art grid for an enemy battle sprite.
+   * @param {object} creature - creature object with .name
+   * @param {number} cols - target width in character columns
+   * @param {number} rows - target height in character rows
+   * @param {string} [bgColor='#000000'] - background color for transparent areas
+   * @returns {{ cols, rows, cells }|null}
+   */
+  getEnemySpriteAscii(creature, cols, rows, bgColor = '#000000') {
+    const img = this.getEnemySprite(creature);
+    if (!img) return null;
+    return this.asciiGen.convertCached(img, cols, rows, bgColor);
   }
 }
