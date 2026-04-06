@@ -941,37 +941,23 @@ export class UIManager {
     const totalH = (hasPortrait ? portraitH + portraitGapV : 0) + nameH + dialogH + optH;
     const startY = Math.max(1, Math.floor((rows - totalH) / 2));
 
-    // Render portrait as ASCII art directly into the cell buffer.
-    // Right-aligned: portrait right edge aligns with text box right edge.
+    // Portrait uses direct pixel rendering (full-block grid at near-1:1 density).
+    // Rendered as a post-endFrame overlay for maximum detail, bypassing the text buffer.
     if (hasPortrait) {
       const portraitX = px + panelW - portraitW; // right-align with text box
       const portraitY = startY;
 
-      // Try ASCII art conversion via spriteManager's generator (doubled for better aspect ratio)
-      let innerW = portraitW - 2;
-      if (innerW % 2 !== 0) innerW--;
-      const asciiGrid = (this.spriteManager && this.spriteManager.asciiGen)
-        ? this.spriteManager.asciiGen.convertDoubledCached(
-            dialogueState.portrait, innerW, portraitH - 2, bg)
-        : null;
+      // Reserve space in text buffer (clear area so text doesn't bleed through)
+      r.fillRect(portraitX, portraitY, portraitW, portraitH, ' ', bg, bg);
 
-      if (asciiGrid) {
-        // Draw border frame around ASCII portrait
-        r.drawBox(portraitX, portraitY, portraitW, portraitH, COLORS.FF_BORDER, bg);
-        // Draw ASCII art cells inside the border
-        this._drawAsciiGrid(r, portraitX + 1, portraitY + 1, asciiGrid);
-        this._portraitOverlay = null; // no pixel overlay needed
-      } else {
-        // Fallback: pixel overlay (original path)
-        this._portraitOverlay = {
-          img: dialogueState.portrait,
-          col: portraitX,
-          row: portraitY,
-          w: portraitW,
-          h: portraitH,
-        };
-        r.fillRect(portraitX, portraitY, portraitW, portraitH, ' ', bg, bg);
-      }
+      // Set overlay for post-frame direct pixel rendering
+      this._portraitOverlay = {
+        img: dialogueState.portrait,
+        col: portraitX,
+        row: portraitY,
+        w: portraitW,
+        h: portraitH,
+      };
     } else {
       this._portraitOverlay = null;
     }
@@ -1033,17 +1019,17 @@ export class UIManager {
   }
 
   /**
-   * Render the NPC portrait pixel art window overlay (fallback path).
-   * Called AFTER endFrame() so it draws directly to the canvas as pixels.
-   * When ASCII art conversion succeeds, this is a no-op.
+   * Render the NPC portrait as a high-density full-block pixel grid.
+   * Called AFTER endFrame() so it draws directly to the canvas,
+   * bypassing the text buffer for maximum portrait resolution.
    */
   drawPortraitOverlay(dialogueState) {
     const po = this._portraitOverlay;
     if (!po || !po.img) return;
-    this.renderer.drawPixelArtWindow(
+    this.renderer.renderPortraitDirect(
       po.img, po.col, po.row, po.w, po.h,
-      '#c0c0c0', // bright grey outer stroke
-      '#1a1a2a'  // dark inner stroke
+      COLORS.FF_BLUE_DARK,  // background
+      COLORS.FF_BORDER      // border frame
     );
   }
 
