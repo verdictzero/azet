@@ -974,6 +974,103 @@ export class Renderer {
     ctx.restore();
   }
 
+  // ── Direct portrait rendering (full-block pixel grid) ──
+
+  /**
+   * Render a portrait image directly to the canvas as a grid of tiny colored
+   * squares (full-block characters at near-1:1 pixel density).
+   * Bypasses the text buffer entirely for maximum portrait detail.
+   *
+   * @param {Image} img - Source portrait image
+   * @param {number} col - Left edge in text cell units
+   * @param {number} row - Top edge in text cell units
+   * @param {number} widthCells - Width in text cell units
+   * @param {number} heightCells - Height in text cell units
+   * @param {string} bgColor - Background color for the portrait area
+   * @param {string} borderColor - Border/frame color
+   */
+  renderPortraitDirect(img, col, row, widthCells, heightCells, bgColor = '#0e0e14', borderColor = '#c0c0c0') {
+    if (!img) return;
+    const ctx = this.ctx;
+    const cw = this.cellWidth;
+    const ch = this.cellHeight;
+
+    // Portrait area in canvas pixels (inside border)
+    const borderPx = 2;
+    const areaX = Math.round(col * cw) + borderPx;
+    const areaY = Math.round(row * ch) + borderPx;
+    const areaW = Math.round(widthCells * cw) - borderPx * 2;
+    const areaH = Math.round(heightCells * ch) - borderPx * 2;
+    if (areaW <= 0 || areaH <= 0) return;
+
+    const srcW = img.naturalWidth || img.width;
+    const srcH = img.naturalHeight || img.height;
+    if (!srcW || !srcH) return;
+
+    // Draw border frame
+    const outerX = Math.round(col * cw);
+    const outerY = Math.round(row * ch);
+    const outerW = Math.round(widthCells * cw);
+    const outerH = Math.round(heightCells * ch);
+    ctx.fillStyle = borderColor;
+    ctx.fillRect(outerX, outerY, outerW, outerH);
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(areaX, areaY, areaW, areaH);
+
+    // Compute integer scale for crisp pixels, capped to fill the area
+    const rawScale = Math.min(areaW / srcW, areaH / srcH);
+    const cellPx = Math.max(1, Math.floor(rawScale));
+    const gridW = Math.floor(areaW / cellPx);
+    const gridH = Math.floor(areaH / cellPx);
+
+    // Sample image at grid resolution via offscreen canvas
+    if (!this._portraitCanvas) {
+      this._portraitCanvas = document.createElement('canvas');
+      this._portraitCtx = this._portraitCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    this._portraitCanvas.width = gridW;
+    this._portraitCanvas.height = gridH;
+    const pctx = this._portraitCtx;
+    pctx.clearRect(0, 0, gridW, gridH);
+    pctx.imageSmoothingEnabled = true;
+    pctx.imageSmoothingQuality = 'medium';
+    pctx.drawImage(img, 0, 0, gridW, gridH);
+
+    const imageData = pctx.getImageData(0, 0, gridW, gridH);
+    const data = imageData.data;
+
+    // Center the pixel grid within the area
+    const offsetX = areaX + Math.floor((areaW - gridW * cellPx) / 2);
+    const offsetY = areaY + Math.floor((areaH - gridH * cellPx) / 2);
+
+    // Parse bg color for alpha blending
+    const bgH = bgColor.replace('#', '');
+    const bgR = parseInt(bgH.slice(0, 2), 16) || 0;
+    const bgG = parseInt(bgH.slice(2, 4), 16) || 0;
+    const bgB = parseInt(bgH.slice(4, 6), 16) || 0;
+
+    // Draw each pixel as a cellPx × cellPx colored square (full block)
+    let lastColor = null;
+    for (let gy = 0; gy < gridH; gy++) {
+      for (let gx = 0; gx < gridW; gx++) {
+        const idx = (gy * gridW + gx) * 4;
+        const a = data[idx + 3];
+        if (a < 30) continue; // transparent — skip, bg already drawn
+
+        // Alpha-blend over background
+        const alpha = a / 255;
+        const inv = 1 - alpha;
+        const r = Math.round(data[idx] * alpha + bgR * inv);
+        const g = Math.round(data[idx + 1] * alpha + bgG * inv);
+        const b = Math.round(data[idx + 2] * alpha + bgB * inv);
+        const color = `rgb(${r},${g},${b})`;
+
+        if (color !== lastColor) { ctx.fillStyle = color; lastColor = color; }
+        ctx.fillRect(offsetX + gx * cellPx, offsetY + gy * cellPx, cellPx, cellPx);
+      }
+    }
+  }
+
   // ── Day/night tint overlay ─────────────────
 
   /**
