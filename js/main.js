@@ -7757,29 +7757,32 @@ class Game {
 
       if (imgW && imgH) {
         // Calculate ASCII art dimensions in cell units.
-        // Use most of the battle area for a large, detailed ASCII rendering.
-        const maxAsciiW = Math.floor(cols * (isPortrait ? 0.85 : 0.65));
-        const maxAsciiH = Math.floor(battleH * (isPortrait ? 0.70 : 0.65));
+        // Double-density: 2 chars per source pixel horizontally, half-block
+        // vertically. Fill most of the battle area for maximum detail.
+        const maxAsciiW = Math.floor(cols * (isPortrait ? 0.95 : 0.90));
+        const maxAsciiH = Math.floor(battleH * (isPortrait ? 0.80 : 0.80));
         const imgAspect = imgW / imgH;
-        // Half-block gives 2x vertical density, so aspect ratio factor:
-        // asciiW / (asciiH * 2) should match imgW / imgH
-        // → asciiH = asciiW / (imgAspect * 2)
+        // With doubled horizontal (2 chars per pixel) + half-block vertical
+        // (2 pixels per row): (asciiW/2) / (asciiH*2) = imgAspect
+        // → asciiH = asciiW / (imgAspect * 4)
         let asciiW = maxAsciiW;
-        let asciiH = Math.round(asciiW / (imgAspect * 2));
+        let asciiH = Math.round(asciiW / (imgAspect * 4));
         if (asciiH > maxAsciiH) {
           asciiH = maxAsciiH;
-          asciiW = Math.round(asciiH * imgAspect * 2);
+          asciiW = Math.round(asciiH * imgAspect * 4);
         }
-        asciiW = Math.max(4, Math.min(asciiW, cols - 2));
+        // Ensure even width for doubled conversion (2 chars per pixel)
+        asciiW = Math.max(8, Math.min(asciiW, cols - 2));
+        if (asciiW % 2 !== 0) asciiW--;
         asciiH = Math.max(3, Math.min(asciiH, battleH - 4));
 
         // Center in the battle area
         const asciiCol = Math.floor((cols - asciiW) / 2) + shakeX + recoilX;
         const asciiRow = Math.floor((battleH - asciiH) / 2) - 1 + shakeY;
 
-        // Convert to ASCII art
+        // Convert to double-density ASCII art
         const asciiGen = this.spriteManager.asciiGen;
-        const asciiGrid = asciiGen.convertCached(enemySprite, asciiW, asciiH, '#000000');
+        const asciiGrid = asciiGen.convertDoubledCached(enemySprite, asciiW, asciiH, '#000000');
 
         if (asciiGrid) {
           // Apply hit flash brightening

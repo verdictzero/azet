@@ -143,6 +143,108 @@ export class AsciiArtGenerator {
   }
 
   /**
+   * Double-density conversion: each source pixel emits 2 adjacent character
+   * columns. Combined with half-block vertical encoding (2 pixels per row),
+   * this gives ~4x the character count and visually square pixels since
+   * monospace cells are ~2.25x taller than wide.
+   *
+   * @param {Image|HTMLCanvasElement} img - Source raster image
+   * @param {number} cols - Target width in character columns (must be even; each source pixel → 2 cols)
+   * @param {number} rows - Target height in character rows (each row = 2 vertical pixels)
+   * @param {string} [bgColor='#000000'] - Background color for transparent regions
+   * @returns {{ cols: number, rows: number, cells: {char:string, fg:string, bg:string}[][] }} or null
+   */
+  convertDoubled(img, cols, rows, bgColor = '#000000') {
+    if (!img || cols <= 0 || rows <= 0) return null;
+
+    const srcW = img.naturalWidth || img.width;
+    const srcH = img.naturalHeight || img.height;
+    if (!srcW || !srcH) return null;
+
+    // Sample at half the column count since each pixel becomes 2 chars
+    const sampleW = Math.ceil(cols / 2);
+    const sampleH = rows * 2;
+
+    this._canvas.width = sampleW;
+    this._canvas.height = sampleH;
+    const ctx = this._ctx;
+    ctx.clearRect(0, 0, sampleW, sampleH);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'medium';
+    ctx.drawImage(img, 0, 0, sampleW, sampleH);
+
+    const imageData = ctx.getImageData(0, 0, sampleW, sampleH);
+    const data = imageData.data;
+    const [bgR, bgG, bgB] = parseHex(bgColor);
+
+    const cells = [];
+    for (let r = 0; r < rows; r++) {
+      const row = [];
+      for (let c = 0; c < sampleW; c++) {
+        // Top pixel
+        const topIdx = ((r * 2) * sampleW + c) * 4;
+        const tR = data[topIdx], tG = data[topIdx + 1], tB = data[topIdx + 2], tA = data[topIdx + 3];
+
+        // Bottom pixel
+        const botIdx = ((r * 2 + 1) * sampleW + c) * 4;
+        const bR = data[botIdx], bG = data[botIdx + 1], bB = data[botIdx + 2], bA = data[botIdx + 3];
+
+        const topTransparent = tA < ALPHA_THRESHOLD;
+        const botTransparent = bA < ALPHA_THRESHOLD;
+
+        let char, fg, bg;
+
+        if (topTransparent && botTransparent) {
+          char = ' ';
+          fg = bgColor;
+          bg = bgColor;
+        } else if (topTransparent) {
+          char = LOWER_HALF;
+          fg = blendOver(bR, bG, bB, bA, bgR, bgG, bgB);
+          bg = bgColor;
+        } else if (botTransparent) {
+          char = UPPER_HALF;
+          fg = blendOver(tR, tG, tB, tA, bgR, bgG, bgB);
+          bg = bgColor;
+        } else {
+          const topColor = blendOver(tR, tG, tB, tA, bgR, bgG, bgB);
+          const botColor = blendOver(bR, bG, bB, bA, bgR, bgG, bgB);
+          if (topColor === botColor) {
+            char = FULL_BLOCK;
+            fg = topColor;
+            bg = topColor;
+          } else {
+            char = UPPER_HALF;
+            fg = topColor;
+            bg = botColor;
+          }
+        }
+
+        // Emit each pixel as 2 adjacent identical cells
+        const cell = { char, fg, bg };
+        row.push(cell);
+        row.push({ char, fg, bg });
+      }
+      cells.push(row);
+    }
+
+    const outCols = sampleW * 2;
+    return { cols: outCols, rows, cells };
+  }
+
+  /**
+   * Cached double-density conversion.
+   */
+  convertDoubledCached(img, cols, rows, bgColor = '#000000') {
+    if (!img) return null;
+    const key = (img.src || img._cacheKey || '') + '|D|' + cols + '|' + rows + '|' + bgColor;
+    if (this._cache.has(key)) return this._cache.get(key);
+    const result = this.convertDoubled(img, cols, rows, bgColor);
+    if (result) this._cache.set(key, result);
+    return result;
+  }
+
+  /**
    * Create a brightened copy of an ASCII grid (for hit flash effect).
    * Blends all colors toward white by the given amount (0-1).
    */
