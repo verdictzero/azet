@@ -7800,11 +7800,12 @@ class Game {
         const maxAsciiW = Math.floor(gCols * (isPortrait ? 0.95 : 0.90));
         const maxAsciiH = Math.floor(gRows * (isPortrait ? 0.80 : 0.80));
         const imgAspect = imgW / imgH;
+        const cellRatio = r.gCellHeight / r.gCellWidth;
         let asciiW = maxAsciiW;
-        let asciiH = Math.round(asciiW / (imgAspect * 4));
+        let asciiH = Math.round(asciiW / (imgAspect * cellRatio));
         if (asciiH > maxAsciiH) {
           asciiH = maxAsciiH;
-          asciiW = Math.round(asciiH * imgAspect * 4);
+          asciiW = Math.round(asciiH * imgAspect * cellRatio);
         }
         asciiW = Math.max(8, Math.min(asciiW, gCols - 2));
         if (asciiW % 2 !== 0) asciiW--;
