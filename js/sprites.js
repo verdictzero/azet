@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────
 
 import { AsciiArtGenerator } from './ascii-art-gen.js';
+import { PORTRAIT_PALETTE, PORTRAIT_CHARS, PORTRAIT_ASCII } from './portrait-data.js';
 
 // ── Sprite manifest ──────────────────────────
 // Maps logical names to PNG paths under sprites/
@@ -167,7 +168,40 @@ export class SpriteManager {
   }
 
   /**
+   * Unpack a pre-generated portrait from palette-indexed data.
+   * Returns the standard { cols, rows, cells } grid format, or null.
+   */
+  _unpackPregenPortrait(path) {
+    const entry = PORTRAIT_ASCII[path];
+    if (!entry) return null;
+    const cacheKey = '_pregen_' + path;
+    if (this._cache.has(cacheKey)) return this._cache.get(cacheKey);
+
+    const { cols, rows, data } = entry;
+    const cells = [];
+    let idx = 0;
+    for (let r = 0; r < rows; r++) {
+      const row = [];
+      for (let c = 0; c < cols; c++) {
+        const charIdx = data[idx++];
+        const fgIdx = data[idx++];
+        const bgIdx = data[idx++];
+        row.push({
+          char: PORTRAIT_CHARS[charIdx],
+          fg: PORTRAIT_PALETTE[fgIdx],
+          bg: PORTRAIT_PALETTE[bgIdx],
+        });
+      }
+      cells.push(row);
+    }
+    const grid = { cols, rows, cells };
+    this._cache.set(cacheKey, grid);
+    return grid;
+  }
+
+  /**
    * Get an ASCII art grid for an NPC portrait.
+   * Tries pre-generated 3x density data first, falls back to runtime conversion.
    * @param {object} npc - NPC with .portrait field
    * @param {number} cols - target width in character columns
    * @param {number} rows - target height in character rows
@@ -175,9 +209,17 @@ export class SpriteManager {
    * @returns {{ cols, rows, cells }|null}
    */
   getPortraitAscii(npc, cols, rows, bgColor = '#0e0e14') {
+    // Try pre-generated portrait if dimensions match
+    if (npc.portrait) {
+      const pregen = this._unpackPregenPortrait(npc.portrait);
+      if (pregen && pregen.cols === cols && pregen.rows === rows) {
+        return pregen;
+      }
+    }
+    // Fall back to runtime conversion
     const img = this.getPortrait(npc);
     if (!img) return null;
-    return this.asciiGen.convertCached(img, cols, rows, bgColor);
+    return this.asciiGen.convertDoubledCached(img, cols, rows, bgColor);
   }
 
   /**
