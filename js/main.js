@@ -7402,36 +7402,58 @@ class Game {
     const rows = r.rows;
     const battleH = Math.floor(rows * 0.55);
 
-    // Compute enemy sprite layout (mirrors renderCombat logic)
     const cw = r.cellWidth;
     const ch = r.cellHeight;
-    const imgW = enemySprite ? (enemySprite.naturalWidth || enemySprite.width) : 16;
-    const imgH = enemySprite ? (enemySprite.naturalHeight || enemySprite.height) : 16;
-    const availPxW = Math.floor(cols * cw * 0.70);
-    const availPxH = Math.floor(battleH * ch * 0.80);
-    const scaleFactor = (cw && ch && imgW && imgH)
-      ? Math.max(3, Math.floor(Math.min(availPxW / imgW, availPxH / imgH)))
-      : 3;
-    const destPxW = imgW * scaleFactor;
-    const destPxH = imgH * scaleFactor;
-    const spriteW = destPxW / (cw || 1);
-    const spriteH = destPxH / (ch || 1);
-    const spriteCol = Math.floor(cols / 2 - spriteW / 2);
-    const spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1;
 
-    // Create a mutable canvas copy for dither-fade effect
-    const ditherCanvas = document.createElement('canvas');
-    ditherCanvas.width = imgW;
-    ditherCanvas.height = imgH;
-    const dCtx = ditherCanvas.getContext('2d');
-    if (enemySprite) dCtx.drawImage(enemySprite, 0, 0);
+    // Check if we have ASCII art from the last combat render
+    const asciiInfo = this._lastEnemyAscii;
+    const useAscii = !!(asciiInfo && asciiInfo.grid);
 
-    // Build shuffled pixel index array for random dither-out
-    const pixelCount = imgW * imgH;
-    const pixelOrder = Array.from({ length: pixelCount }, (_, i) => i);
-    for (let i = pixelOrder.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pixelOrder[i], pixelOrder[j]] = [pixelOrder[j], pixelOrder[i]];
+    let spriteCol, spriteRow, spriteW, spriteH;
+    let destPxW, destPxH, imgW, imgH, scaleFactor;
+    let ditherCanvas = null, dCtx = null, pixelOrder = null;
+
+    if (useAscii) {
+      // Use ASCII grid dimensions
+      spriteCol = asciiInfo.col;
+      spriteRow = asciiInfo.row;
+      spriteW = asciiInfo.w;
+      spriteH = asciiInfo.h;
+      destPxW = spriteW * (cw || 10);
+      destPxH = spriteH * (ch || 16);
+      imgW = spriteW;
+      imgH = spriteH;
+      scaleFactor = 1;
+    } else {
+      // Legacy pixel path
+      imgW = enemySprite ? (enemySprite.naturalWidth || enemySprite.width) : 16;
+      imgH = enemySprite ? (enemySprite.naturalHeight || enemySprite.height) : 16;
+      const availPxW = Math.floor(cols * cw * 0.70);
+      const availPxH = Math.floor(battleH * ch * 0.80);
+      scaleFactor = (cw && ch && imgW && imgH)
+        ? Math.max(3, Math.floor(Math.min(availPxW / imgW, availPxH / imgH)))
+        : 3;
+      destPxW = imgW * scaleFactor;
+      destPxH = imgH * scaleFactor;
+      spriteW = destPxW / (cw || 1);
+      spriteH = destPxH / (ch || 1);
+      spriteCol = Math.floor(cols / 2 - spriteW / 2);
+      spriteRow = Math.floor(battleH / 2 - spriteH / 2) - 1;
+
+      // Create a mutable canvas copy for dither-fade effect
+      ditherCanvas = document.createElement('canvas');
+      ditherCanvas.width = imgW;
+      ditherCanvas.height = imgH;
+      dCtx = ditherCanvas.getContext('2d');
+      if (enemySprite) dCtx.drawImage(enemySprite, 0, 0);
+
+      // Build shuffled pixel index array for random dither-out
+      const pixelCount = imgW * imgH;
+      pixelOrder = Array.from({ length: pixelCount }, (_, i) => i);
+      for (let i = pixelOrder.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pixelOrder[i], pixelOrder[j]] = [pixelOrder[j], pixelOrder[i]];
+      }
     }
 
     // Spawn 4-7 explosion sprite animations at random positions around enemy
@@ -7460,6 +7482,10 @@ class Game {
     this.enemyDeathState = {
       frame: 0,
       enemySprite,
+      useAscii,
+      asciiGrid: useAscii ? asciiInfo.grid : null,
+      asciiCol: useAscii ? asciiInfo.col : 0,
+      asciiRow: useAscii ? asciiInfo.row : 0,
       ditherCanvas,
       ditherCtx: dCtx,
       pixelOrder,
@@ -7506,41 +7532,75 @@ class Game {
     // Fire background (keeps animating throughout)
     this.renderFireBackground(r, cols, battleH, shakeX, shakeY);
 
-    // ── Dither-fade the enemy sprite ──
-    // Clear a batch of random pixels from the dither canvas each frame
-    const ditherStart = 5;   // start dithering at frame 5
-    const ditherEnd = 55;    // fully dissolved by frame 55
-    if (frame >= ditherStart && frame < ditherEnd && ds.ditherCanvas && ds.imgW > 0 && ds.imgH > 0) {
-      const totalPixels = ds.pixelOrder.length;
-      const ditherFrames = ditherEnd - ditherStart;
-      const pixelsPerFrame = Math.ceil(totalPixels / ditherFrames);
-      const imageData = ds.ditherCtx.getImageData(0, 0, ds.imgW, ds.imgH);
-      const data = imageData.data;
-      const end = Math.min(ds.pixelsCleared + pixelsPerFrame, totalPixels);
-      for (let i = ds.pixelsCleared; i < end; i++) {
-        const idx = ds.pixelOrder[i];
-        data[idx * 4 + 3] = 0; // set alpha to 0
-      }
-      ds.pixelsCleared = end;
-      ds.ditherCtx.putImageData(imageData, 0, 0);
-    }
+    // ── Dissolve the enemy (ASCII or pixel dither) ──
+    const ditherStart = 5;
+    const ditherEnd = 55;
 
-    // ── Queue the dither canvas as enemy sprite overlay ──
-    if (ds.pixelsCleared < ds.pixelOrder.length && ds.ditherCanvas) {
-      // Phase 1 flash: strobe white tint on/off during first 8 frames
+    if (ds.useAscii && ds.asciiGrid) {
+      // ASCII dissolution path — dissolve cells randomly over time
+      const progress = frame < ditherStart ? 0
+        : frame >= ditherEnd ? 1
+        : (frame - ditherStart) / (ditherEnd - ditherStart);
+      const asciiGen = this.spriteManager.asciiGen;
+
+      // Phase 1 flash: strobe bright on/off during first 8 frames
       const flash = frame < 8 && (frame % 2 === 0);
-      this.ui._enemySpriteOverlay = {
-        img: ds.ditherCanvas,
-        col: ds.spriteCol + shakeX,
-        row: ds.spriteRow + shakeY,
-        w: ds.spriteW,
-        h: ds.spriteH,
-        pxW: ds.destPxW,
-        pxH: ds.destPxH,
-        flash,
-      };
-    } else {
+      let drawGrid = flash
+        ? asciiGen.brighten(ds.asciiGrid, 0.7)
+        : ds.asciiGrid;
+
+      // Apply dissolution
+      if (progress > 0 && progress < 1) {
+        drawGrid = asciiGen.dissolve(drawGrid, progress, '#000000');
+      } else if (progress >= 1) {
+        drawGrid = null; // fully dissolved
+      }
+
+      if (drawGrid) {
+        const col = ds.asciiCol + shakeX;
+        const row = ds.asciiRow + shakeY;
+        for (let gr = 0; gr < drawGrid.rows; gr++) {
+          for (let gc = 0; gc < drawGrid.cols; gc++) {
+            const cell = drawGrid.cells[gr][gc];
+            if (cell.char === ' ') continue;
+            r.drawChar(col + gc, row + gr, cell.char, cell.fg, cell.bg);
+          }
+        }
+      }
       this.ui._enemySpriteOverlay = null;
+    } else {
+      // Legacy pixel dither path
+      if (frame >= ditherStart && frame < ditherEnd && ds.ditherCanvas && ds.imgW > 0 && ds.imgH > 0) {
+        const totalPixels = ds.pixelOrder.length;
+        const ditherFrames = ditherEnd - ditherStart;
+        const pixelsPerFrame = Math.ceil(totalPixels / ditherFrames);
+        const imageData = ds.ditherCtx.getImageData(0, 0, ds.imgW, ds.imgH);
+        const data = imageData.data;
+        const end = Math.min(ds.pixelsCleared + pixelsPerFrame, totalPixels);
+        for (let i = ds.pixelsCleared; i < end; i++) {
+          const idx = ds.pixelOrder[i];
+          data[idx * 4 + 3] = 0; // set alpha to 0
+        }
+        ds.pixelsCleared = end;
+        ds.ditherCtx.putImageData(imageData, 0, 0);
+      }
+
+      // Queue the dither canvas as enemy sprite overlay
+      if (ds.pixelOrder && ds.pixelsCleared < ds.pixelOrder.length && ds.ditherCanvas) {
+        const flash = frame < 8 && (frame % 2 === 0);
+        this.ui._enemySpriteOverlay = {
+          img: ds.ditherCanvas,
+          col: ds.spriteCol + shakeX,
+          row: ds.spriteRow + shakeY,
+          w: ds.spriteW,
+          h: ds.spriteH,
+          pxW: ds.destPxW,
+          pxH: ds.destPxH,
+          flash,
+        };
+      } else {
+        this.ui._enemySpriteOverlay = null;
+      }
     }
 
     // ── Queue explosion sprite overlays ──
@@ -7683,7 +7743,7 @@ class Game {
       cs.hitRecoil--;
     }
 
-    // Get pixel art sprite for enemy
+    // Get pixel art sprite for enemy → convert to ASCII art
     const enemySprite = this.spriteManager.getEnemySprite(enemy);
 
     let artX, artY, layoutW, layoutH;
@@ -7696,49 +7756,90 @@ class Game {
       const imgH = enemySprite.naturalHeight || enemySprite.height;
 
       if (imgW && imgH) {
-        // Pixel sprite: prefer integer nearest-neighbor scaling for crisp pixel art,
-        // but fall back to fractional scaling on tight (portrait) layouts so tall or
-        // wide sprites always fit within the battle area without clipping.
-        const availPxW = Math.floor(cols * cw * (isPortrait ? 0.90 : 0.70));
-        const availPxH = Math.floor(battleH * ch * (isPortrait ? 0.90 : 0.80));
-        const fitScale = Math.min(availPxW / imgW, availPxH / imgH);
-        const scaleFactor = fitScale >= 1 ? Math.floor(fitScale) : fitScale;
-        const destPxW = Math.round(imgW * scaleFactor);
-        const destPxH = Math.round(imgH * scaleFactor);
+        // Calculate ASCII art dimensions in cell units.
+        // Use most of the battle area for a large, detailed ASCII rendering.
+        const maxAsciiW = Math.floor(cols * (isPortrait ? 0.85 : 0.65));
+        const maxAsciiH = Math.floor(battleH * (isPortrait ? 0.70 : 0.65));
+        const imgAspect = imgW / imgH;
+        // Half-block gives 2x vertical density, so aspect ratio factor:
+        // asciiW / (asciiH * 2) should match imgW / imgH
+        // → asciiH = asciiW / (imgAspect * 2)
+        let asciiW = maxAsciiW;
+        let asciiH = Math.round(asciiW / (imgAspect * 2));
+        if (asciiH > maxAsciiH) {
+          asciiH = maxAsciiH;
+          asciiW = Math.round(asciiH * imgAspect * 2);
+        }
+        asciiW = Math.max(4, Math.min(asciiW, cols - 2));
+        asciiH = Math.max(3, Math.min(asciiH, battleH - 4));
 
-        // Center in pixel space (not cell-grid space) so tall/narrow sprites are
-        // centered exactly rather than biased by Math.floor cell snapping.
-        const battlePxW = cols * cw;
-        const battlePxH = battleH * ch;
-        const pxX = Math.round((battlePxW - destPxW) / 2) + (shakeX + recoilX) * cw;
-        const pxY = Math.round((battlePxH - destPxH) / 2) - ch + shakeY * ch;
+        // Center in the battle area
+        const asciiCol = Math.floor((cols - asciiW) / 2) + shakeX + recoilX;
+        const asciiRow = Math.floor((battleH - asciiH) / 2) - 1 + shakeY;
 
-        // Derive cell-grid coords for the name plate / HP bar layout below.
-        const spriteW = destPxW / cw;
-        const spriteH = destPxH / ch;
-        const spriteCol = Math.round(pxX / cw);
-        const spriteRow = Math.round(pxY / ch);
+        // Convert to ASCII art
+        const asciiGen = this.spriteManager.asciiGen;
+        const asciiGrid = asciiGen.convertCached(enemySprite, asciiW, asciiH, '#000000');
 
-        this.ui._enemySpriteOverlay = {
-          img: enemySprite,
-          col: spriteCol,
-          row: spriteRow,
-          w: spriteW,
-          h: spriteH,
-          pxX: pxX,
-          pxY: pxY,
-          pxW: destPxW,
-          pxH: destPxH,
-        };
+        if (asciiGrid) {
+          // Apply hit flash brightening
+          let drawGrid = asciiGrid;
+          if (cs.hitTimer > 0) {
+            drawGrid = asciiGen.brighten(asciiGrid, 0.6);
+            cs.hitTimer--;
+          }
 
-        artX = spriteCol;
-        artY = spriteRow;
-        layoutW = Math.ceil(spriteW);
-        layoutH = Math.ceil(spriteH);
+          // Draw ASCII art into the cell buffer
+          for (let gr = 0; gr < drawGrid.rows; gr++) {
+            for (let gc = 0; gc < drawGrid.cols; gc++) {
+              const cell = drawGrid.cells[gr][gc];
+              if (cell.char === ' ') continue; // let fire bg show through
+              r.drawChar(asciiCol + gc, asciiRow + gr, cell.char, cell.fg, cell.bg);
+            }
+          }
 
-        if (cs.hitTimer > 0) {
-          this.ui._enemySpriteOverlay.flash = true;
-          cs.hitTimer--;
+          // Store ASCII grid info for death animation to use
+          this._lastEnemyAscii = {
+            grid: asciiGrid,
+            col: asciiCol,
+            row: asciiRow,
+            sprite: enemySprite,
+            w: asciiW,
+            h: asciiH,
+          };
+
+          this.ui._enemySpriteOverlay = null; // no pixel overlay needed
+          artX = asciiCol;
+          artY = asciiRow;
+          layoutW = asciiW;
+          layoutH = asciiH;
+        } else {
+          // ASCII conversion failed — fall back to pixel overlay
+          const availPxW = Math.floor(cols * cw * (isPortrait ? 0.90 : 0.70));
+          const availPxH = Math.floor(battleH * ch * (isPortrait ? 0.90 : 0.80));
+          const fitScale = Math.min(availPxW / imgW, availPxH / imgH);
+          const scaleFactor = fitScale >= 1 ? Math.floor(fitScale) : fitScale;
+          const destPxW = Math.round(imgW * scaleFactor);
+          const destPxH = Math.round(imgH * scaleFactor);
+          const battlePxW = cols * cw;
+          const battlePxH = battleH * ch;
+          const pxX = Math.round((battlePxW - destPxW) / 2) + (shakeX + recoilX) * cw;
+          const pxY = Math.round((battlePxH - destPxH) / 2) - ch + shakeY * ch;
+          const spriteW = destPxW / cw;
+          const spriteH = destPxH / ch;
+          const spriteCol = Math.round(pxX / cw);
+          const spriteRow = Math.round(pxY / ch);
+
+          this.ui._enemySpriteOverlay = {
+            img: enemySprite, col: spriteCol, row: spriteRow,
+            w: spriteW, h: spriteH,
+            pxX, pxY, pxW: destPxW, pxH: destPxH,
+          };
+          if (cs.hitTimer > 0) { this.ui._enemySpriteOverlay.flash = true; cs.hitTimer--; }
+          artX = spriteCol;
+          artY = spriteRow;
+          layoutW = Math.ceil(spriteW);
+          layoutH = Math.ceil(spriteH);
         }
       } else {
         // Invalid sprite dimensions — skip sprite overlay

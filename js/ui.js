@@ -941,21 +941,35 @@ export class UIManager {
     const totalH = (hasPortrait ? portraitH + portraitGapV : 0) + nameH + dialogH + optH;
     const startY = Math.max(1, Math.floor((rows - totalH) / 2));
 
-    // Store portrait position for overlay rendering (drawn after endFrame)
-    // Right-aligned: portrait right edge aligns with text box right edge
+    // Render portrait as ASCII art directly into the cell buffer.
+    // Right-aligned: portrait right edge aligns with text box right edge.
     if (hasPortrait) {
       const portraitX = px + panelW - portraitW; // right-align with text box
       const portraitY = startY;
-      this._portraitOverlay = {
-        img: dialogueState.portrait,
-        col: portraitX,
-        row: portraitY,
-        w: portraitW,
-        h: portraitH,
-      };
-      // Fill the portrait area with dark bg in the character grid so the
-      // animated dialogue background doesn't show through the border gap
-      r.fillRect(portraitX, portraitY, portraitW, portraitH, ' ', bg, bg);
+
+      // Try ASCII art conversion via spriteManager's generator
+      const asciiGrid = (this.spriteManager && this.spriteManager.asciiGen)
+        ? this.spriteManager.asciiGen.convertCached(
+            dialogueState.portrait, portraitW - 2, portraitH - 2, bg)
+        : null;
+
+      if (asciiGrid) {
+        // Draw border frame around ASCII portrait
+        r.drawBox(portraitX, portraitY, portraitW, portraitH, COLORS.FF_BORDER, bg);
+        // Draw ASCII art cells inside the border
+        this._drawAsciiGrid(r, portraitX + 1, portraitY + 1, asciiGrid);
+        this._portraitOverlay = null; // no pixel overlay needed
+      } else {
+        // Fallback: pixel overlay (original path)
+        this._portraitOverlay = {
+          img: dialogueState.portrait,
+          col: portraitX,
+          row: portraitY,
+          w: portraitW,
+          h: portraitH,
+        };
+        r.fillRect(portraitX, portraitY, portraitW, portraitH, ' ', bg, bg);
+      }
     } else {
       this._portraitOverlay = null;
     }
@@ -1017,8 +1031,9 @@ export class UIManager {
   }
 
   /**
-   * Render the NPC portrait pixel art window overlay.
+   * Render the NPC portrait pixel art window overlay (fallback path).
    * Called AFTER endFrame() so it draws directly to the canvas as pixels.
+   * When ASCII art conversion succeeds, this is a no-op.
    */
   drawPortraitOverlay(dialogueState) {
     const po = this._portraitOverlay;
@@ -1028,6 +1043,22 @@ export class UIManager {
       '#c0c0c0', // bright grey outer stroke
       '#1a1a2a'  // dark inner stroke
     );
+  }
+
+  /**
+   * Draw an ASCII art grid into the renderer cell buffer.
+   * @param {Renderer} r - renderer instance
+   * @param {number} col - left column
+   * @param {number} row - top row
+   * @param {{ cols, rows, cells }} grid - ASCII art grid from AsciiArtGenerator
+   */
+  _drawAsciiGrid(r, col, row, grid) {
+    for (let gr = 0; gr < grid.rows; gr++) {
+      for (let gc = 0; gc < grid.cols; gc++) {
+        const cell = grid.cells[gr][gc];
+        r.drawChar(col + gc, row + gr, cell.char, cell.fg, cell.bg);
+      }
+    }
   }
 
   // ─── SHOP (FF-style) ───
