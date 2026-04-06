@@ -535,6 +535,16 @@ class Game {
     this.prevState = this.state;
     this.state = newState;
     this.ui.resetSelection();
+
+    // ── Battle graphics buffer management ──
+    // States that use the high-density battle graphics buffer
+    const battleGraphicsStates = ['BATTLE_ENTER', 'COMBAT', 'ENEMY_DEATH'];
+    const enteringBattleGfx = battleGraphicsStates.includes(newState);
+    const leavingBattleGfx = !enteringBattleGfx && this.renderer._battleGraphicsActive;
+    if (leavingBattleGfx) {
+      this.renderer.restoreOverworldGraphics();
+    }
+
     // Update camera viewport from world-space dimensions (graphics ÷ tileDensity)
     if (newState === 'OVERWORLD') {
       this.camera.viewportCols = this.renderer.worldCols;
@@ -605,10 +615,10 @@ class Game {
     }
   }
 
-  /** Zoom in (+1) or out (-1) by adjusting font/cell size. */
+  /** Zoom in (+1) or out (-1) — only affects graphics viewport, not UI text. */
   _zoom(direction) {
     this.renderer.zoomBy(direction);
-    this.settings.fontSize = this.renderer.fontSize;
+    this.settings.graphicsZoom = this.renderer._graphicsZoom;
     this.handleResize();
     this._saveSettings();
   }
@@ -3390,16 +3400,17 @@ class Game {
   // Helper: spawn screen-space combat particles at monster center
   spawnCombatParticles(count, chars, color) {
     if (!this.combatState || !this.combatState.combatParticles) return;
-    const cols = this.renderer.cols;
-    const rows = this.renderer.rows;
-    const cx = Math.floor(cols / 2);
-    const cy = Math.floor(rows * 0.55 / 2) - 1;
+    // Spawn in graphics-cell coordinates (battle graphics buffer)
+    const gCols = this.renderer.gCols;
+    const gRows = this.renderer.gRows;
+    const cx = Math.floor(gCols / 2);
+    const cy = Math.floor(gRows / 2) - 1;
     for (let i = 0; i < count; i++) {
       this.combatState.combatParticles.push({
-        x: cx + (Math.random() - 0.5) * 4,
-        y: cy + (Math.random() - 0.5) * 2,
-        vx: (Math.random() - 0.5) * 2,
-        vy: (Math.random() - 0.5) * 1.5 - 0.5,
+        x: cx + (Math.random() - 0.5) * 8,
+        y: cy + (Math.random() - 0.5) * 4,
+        vx: (Math.random() - 0.5) * 3,
+        vy: (Math.random() - 0.5) * 2.5 - 0.5,
         char: chars[Math.floor(Math.random() * chars.length)],
         color,
         life: 10 + Math.floor(Math.random() * 10),
@@ -3410,11 +3421,12 @@ class Game {
   // Helper: spawn floating damage number at monster center
   spawnDamageNumber(text, color) {
     if (!this.combatState || !this.combatState.damageNumbers) return;
-    const cols = this.renderer.cols;
-    const rows = this.renderer.rows;
+    // Spawn in graphics-cell coordinates (battle graphics buffer)
+    const gCols = this.renderer.gCols;
+    const gRows = this.renderer.gRows;
     this.combatState.damageNumbers.push({
-      x: Math.floor(cols / 2 - text.length / 2) + Math.floor((Math.random() - 0.5) * 4),
-      y: Math.floor(rows * 0.55 / 2) - 2,
+      x: Math.floor(gCols / 2 - text.length / 2) + Math.floor((Math.random() - 0.5) * 8),
+      y: Math.floor(gRows / 2) - 4,
       text,
       color,
       life: 20,
@@ -5529,6 +5541,11 @@ class Game {
       if (this.settings.fontSize !== 16) {
         this.renderer.setFontSize(this.settings.fontSize);
       }
+      // Restore graphics zoom level (viewport density)
+      if (this.settings.graphicsZoom != null && this.settings.graphicsZoom !== 0) {
+        this.renderer._graphicsZoom = this.settings.graphicsZoom;
+        this.renderer._recalcGraphics();
+      }
       this.renderer.enableCRT = this.settings.crtEffects;
       this.renderer.crtOptions = this.settings;
       this._applyCrtQuality();
@@ -7294,30 +7311,35 @@ class Game {
     }
   }
 
-  // ── Reusable: render animated Voronoi fire background ──
+  // ── Reusable: render animated Voronoi fire background (high-density graphics buffer) ──
   renderFireBackground(r, cols, battleH, shakeX, shakeY) {
+    // Render into the graphics buffer at high density
+    const gCols = r.gCols;
+    const gRows = r.gRows;
+    // Scale shake from text-cell space to graphics-cell space
+    const gShakeX = Math.round(shakeX * r.cellWidth / r.gCellWidth);
+    const gShakeY = Math.round(shakeY * r.cellHeight / r.gCellHeight);
+
     const t = Date.now() / 1000;
     const fireChars = [' ', '.', '\u00B7', ':', '\u2219', '\u2591', '\u2592', '\u2593'];
     const fireFg = ['#FF2200', '#FF4400', '#FF6600', '#FF8800', '#FFAA00', '#FFCC00', '#FFDD44'];
     const fireBg = ['#1a0800', '#2a0e00', '#3a1500', '#4a1a00', '#5a2200', '#6a2800'];
     const numSeeds = 10;
-    // Pre-compute seed positions once per frame (was 4 trig ops × 10 seeds × every pixel)
     const seedX = new Float64Array(numSeeds);
     const seedY = new Float64Array(numSeeds);
-    const halfCols = cols / 2;
-    const halfH = battleH / 2;
+    const halfCols = gCols / 2;
+    const halfH = gRows / 2;
     for (let s = 0; s < numSeeds; s++) {
-      seedX[s] = halfCols + Math.sin(t * 0.45 + s * 2.09) * (cols * 0.4) + Math.sin(t * 0.26 + s * 1.3) * (cols * 0.15);
+      seedX[s] = halfCols + Math.sin(t * 0.45 + s * 2.09) * (gCols * 0.4) + Math.sin(t * 0.26 + s * 1.3) * (gCols * 0.15);
       seedY[s] = halfH + Math.cos(t * 0.375 + s * 1.88) * (halfH * 0.8) + Math.cos(t * 0.195 + s * 0.9) * (halfH * 0.3);
     }
-    // Pre-compute time-dependent sin values used in pulse calculations
     const tPulse = t * 1.8;
     const tEdgePulse = t * 1.2;
     const fcLen = fireChars.length;
     const ffLen = fireFg.length;
     const fbLen = fireBg.length;
-    for (let row = 0; row < battleH; row++) {
-      for (let col = 0; col < cols; col++) {
+    for (let row = 0; row < gRows; row++) {
+      for (let col = 0; col < gCols; col++) {
         let minDist = Infinity;
         let secondDist = Infinity;
         for (let s = 0; s < numSeeds; s++) {
@@ -7334,10 +7356,10 @@ class Game {
         const ci = Math.min((val * fcLen) | 0, fcLen - 1);
         const fi = Math.min(((val * 0.7 + edge * 0.02) * ffLen) | 0, ffLen - 1);
         const bi = Math.min((val * fbLen) | 0, fbLen - 1);
-        const drawCol = col + shakeX;
-        const drawRow = row + shakeY;
-        if (drawCol >= 0 && drawCol < cols && drawRow >= 0 && drawRow < battleH) {
-          r.drawChar(drawCol, drawRow, fireChars[ci], fireFg[fi], fireBg[bi]);
+        const drawCol = col + gShakeX;
+        const drawRow = row + gShakeY;
+        if (drawCol >= 0 && drawCol < gCols && drawRow >= 0 && drawRow < gRows) {
+          r.drawGraphicsChar(drawCol, drawRow, fireChars[ci], fireFg[fi], fireBg[bi]);
         }
       }
     }
@@ -7518,12 +7540,19 @@ class Game {
     const ctx = r.ctx;
     const cw = r.cellWidth;
     const ch = r.cellHeight;
+    const gCols = r.gCols;
+    const gRows = r.gRows;
 
     r.clear();
 
     const battleH = Math.floor(rows * 0.55);
 
-    // Screen shake — strong initial jolt, decaying
+    // Ensure battle graphics buffer is configured
+    if (!r._battleGraphicsActive) {
+      r.configureBattleGraphics(battleH);
+    }
+
+    // Screen shake — strong initial jolt, decaying (text-cell units)
     let shakeX = 0, shakeY = 0;
     if (frame < 30) {
       const intensity = frame < 8 ? 4 : Math.max(0, 3 - (frame - 8) * 0.15);
@@ -7533,7 +7562,11 @@ class Game {
       }
     }
 
-    // Fire background (keeps animating throughout)
+    // Graphics-cell shake offset
+    const gShakeX = Math.round(shakeX * cw / r.gCellWidth);
+    const gShakeY = Math.round(shakeY * ch / r.gCellHeight);
+
+    // Fire background (keeps animating throughout — renders to graphics buffer)
     this.renderFireBackground(r, cols, battleH, shakeX, shakeY);
 
     // ── Dissolve the enemy (ASCII or pixel dither) ──
@@ -7541,33 +7574,30 @@ class Game {
     const ditherEnd = 55;
 
     if (ds.useAscii && ds.asciiGrid) {
-      // ASCII dissolution path — dissolve cells randomly over time
       const progress = frame < ditherStart ? 0
         : frame >= ditherEnd ? 1
         : (frame - ditherStart) / (ditherEnd - ditherStart);
       const asciiGen = this.spriteManager.asciiGen;
 
-      // Phase 1 flash: strobe bright on/off during first 8 frames
       const flash = frame < 8 && (frame % 2 === 0);
       let drawGrid = flash
         ? asciiGen.brighten(ds.asciiGrid, 0.7)
         : ds.asciiGrid;
 
-      // Apply dissolution
       if (progress > 0 && progress < 1) {
         drawGrid = asciiGen.dissolve(drawGrid, progress, '#000000');
       } else if (progress >= 1) {
-        drawGrid = null; // fully dissolved
+        drawGrid = null;
       }
 
       if (drawGrid) {
-        const col = ds.asciiCol + shakeX;
-        const row = ds.asciiRow + shakeY;
+        const col = ds.asciiCol + gShakeX;
+        const row = ds.asciiRow + gShakeY;
         for (let gr = 0; gr < drawGrid.rows; gr++) {
           for (let gc = 0; gc < drawGrid.cols; gc++) {
             const cell = drawGrid.cells[gr][gc];
             if (cell.char === ' ') continue;
-            r.drawChar(col + gc, row + gr, cell.char, cell.fg, cell.bg);
+            r.drawGraphicsChar(col + gc, row + gr, cell.char, cell.fg, cell.bg);
           }
         }
       }
@@ -7583,13 +7613,12 @@ class Game {
         const end = Math.min(ds.pixelsCleared + pixelsPerFrame, totalPixels);
         for (let i = ds.pixelsCleared; i < end; i++) {
           const idx = ds.pixelOrder[i];
-          data[idx * 4 + 3] = 0; // set alpha to 0
+          data[idx * 4 + 3] = 0;
         }
         ds.pixelsCleared = end;
         ds.ditherCtx.putImageData(imageData, 0, 0);
       }
 
-      // Queue the dither canvas as enemy sprite overlay
       if (ds.pixelOrder && ds.pixelsCleared < ds.pixelOrder.length && ds.ditherCanvas) {
         const flash = frame < 8 && (frame % 2 === 0);
         this.ui._enemySpriteOverlay = {
@@ -7608,7 +7637,6 @@ class Game {
     }
 
     // ── Queue explosion sprite overlays ──
-    // Store explosion draw commands for the overlay pass (after endFrame)
     const explosionOverlays = [];
     for (const exp of ds.explosions) {
       if (exp.done) continue;
@@ -7616,11 +7644,9 @@ class Game {
 
       const frameImg = exp.frames[exp.currentFrame];
       if (frameImg) {
-        // Determine integer scale based on explosion size category
         const expImgW = frameImg.naturalWidth || frameImg.width;
         const expImgH = frameImg.naturalHeight || frameImg.height;
         if (expImgW && expImgH && cw && ch) {
-          // Size target: large ~70% of enemy sprite, medium ~45%, small ~25%
           let sizeFraction = 0.45;
           if (exp.seqName.startsWith('large')) sizeFraction = 0.70;
           else if (exp.seqName.startsWith('small')) sizeFraction = 0.25;
@@ -7634,7 +7660,6 @@ class Game {
         }
       }
 
-      // Advance explosion frame (play at ~4 game frames per sprite frame)
       exp.frameTick++;
       if (exp.frameTick >= 4) {
         exp.frameTick = 0;
@@ -7644,20 +7669,19 @@ class Game {
         }
       }
     }
-    // Store for overlay pass
     this._deathExplosionOverlays = explosionOverlays;
 
-    // ── "Defeated!" text ──
+    // ── "Defeated!" text (graphics buffer) ──
     if (frame > 15) {
       const textPhase = frame - 15;
       const textAlpha = Math.min(1, textPhase / 8);
-      ds.defeatedY -= 0.06;
+      ds.defeatedY -= 0.1;
       const defText = `${ds.enemyName} defeated!`;
       const textColor = textAlpha > 0.7 ? '#FFFFFF' : '#AAAAAA';
-      const tx = Math.floor(cols / 2 - defText.length / 2) + shakeX;
-      const ty = Math.round(ds.defeatedY) + shakeY;
-      if (ty >= 0 && ty < battleH) {
-        r.drawString(Math.max(0, tx), ty, defText, textColor, null);
+      const tx = Math.floor(gCols / 2 - defText.length / 2) + gShakeX;
+      const ty = Math.round(ds.defeatedY) + gShakeY;
+      if (ty >= 0 && ty < gRows) {
+        r.drawGraphicsString(Math.max(0, tx), ty, defText, textColor, null);
       }
     }
 
@@ -7666,7 +7690,7 @@ class Game {
       this.spawnCombatParticles(6, ['*', '\u00B7', '+', '\u2219'], '#FFAA00');
     }
 
-    // Render combat particles
+    // Render combat particles (graphics buffer)
     if (this.combatState && this.combatState.combatParticles) {
       const parts = this.combatState.combatParticles;
       for (let i = parts.length - 1; i >= 0; i--) {
@@ -7679,12 +7703,12 @@ class Game {
           parts[i] = parts[parts.length - 1]; parts.pop();
           continue;
         }
-        const px = Math.round(p.x) + shakeX;
-        const py = Math.round(p.y) + shakeY;
-        if (px >= 0 && px < cols && py >= 0 && py < battleH) {
+        const px = Math.round(p.x) + gShakeX;
+        const py = Math.round(p.y) + gShakeY;
+        if (px >= 0 && px < gCols && py >= 0 && py < gRows) {
           const alpha = Math.min(1, p.life / 10);
           const color = alpha > 0.5 ? p.color : '#666666';
-          r.drawChar(px, py, p.char, color, null);
+          r.drawGraphicsChar(px, py, p.char, color, null);
         }
       }
     }
@@ -7696,7 +7720,7 @@ class Game {
       r.tintOverlay('#000000', Math.min(0.95, tintAlpha));
     }
 
-    // Bottom HUD
+    // Bottom HUD (text buffer, normal size)
     this.renderCombatHUD(r, cols, rows, battleH, bg);
 
     ds.frame++;
@@ -7726,7 +7750,16 @@ class Game {
     const isPortrait = rows > cols;
     const battleH = Math.floor(rows * (isPortrait ? 0.60 : 0.55));
 
-    // Screen shake offset
+    // Ensure battle graphics buffer is configured
+    if (!r._battleGraphicsActive) {
+      r.configureBattleGraphics(battleH);
+    }
+
+    // Graphics-cell dimensions for the battle area
+    const gCols = r.gCols;
+    const gRows = r.gRows;
+
+    // Screen shake offset (in text-cell units, converted to graphics-cell for rendering)
     let shakeX = 0, shakeY = 0;
     if (cs.shake && cs.shake.intensity > 0.1) {
       shakeX = Math.round((Math.random() - 0.5) * cs.shake.intensity * 2);
@@ -7736,76 +7769,70 @@ class Game {
       cs.shake.intensity = 0;
     }
 
-    // ── Fire Voronoi animated background ──
+    // ── Fire Voronoi animated background (rendered to graphics buffer) ──
     this.renderFireBackground(r, cols, battleH, shakeX, shakeY);
 
+    // Graphics-cell shake offset for sprite/overlay positioning
+    const gShakeX = Math.round(shakeX * r.cellWidth / r.gCellWidth);
+    const gShakeY = Math.round(shakeY * r.cellHeight / r.gCellHeight);
+
     // ── Centered Monster Art ──
-    // Hit recoil offset
     let recoilX = 0;
     if (cs.hitRecoil > 0) {
       recoilX = cs.hitRecoil > 3 ? 1 : 0;
       cs.hitRecoil--;
     }
+    const gRecoilX = Math.round(recoilX * r.cellWidth / r.gCellWidth);
 
-    // Get pixel art sprite for enemy → convert to ASCII art
     const enemySprite = this.spriteManager.getEnemySprite(enemy);
 
     let artX, artY, layoutW, layoutH;
 
-    const cw = this.renderer.cellWidth;
-    const ch = this.renderer.cellHeight;
+    const cw = r.cellWidth;
+    const ch = r.cellHeight;
 
     if (enemySprite && cw && ch) {
       const imgW = enemySprite.naturalWidth || enemySprite.width;
       const imgH = enemySprite.naturalHeight || enemySprite.height;
 
       if (imgW && imgH) {
-        // Calculate ASCII art dimensions in cell units.
-        // Double-density: 2 chars per source pixel horizontally, half-block
-        // vertically. Fill most of the battle area for maximum detail.
-        const maxAsciiW = Math.floor(cols * (isPortrait ? 0.95 : 0.90));
-        const maxAsciiH = Math.floor(battleH * (isPortrait ? 0.80 : 0.80));
+        // ASCII art dimensions in graphics-cell units for maximum detail
+        const maxAsciiW = Math.floor(gCols * (isPortrait ? 0.95 : 0.90));
+        const maxAsciiH = Math.floor(gRows * (isPortrait ? 0.80 : 0.80));
         const imgAspect = imgW / imgH;
-        // With doubled horizontal (2 chars per pixel) + half-block vertical
-        // (2 pixels per row): (asciiW/2) / (asciiH*2) = imgAspect
-        // → asciiH = asciiW / (imgAspect * 4)
         let asciiW = maxAsciiW;
         let asciiH = Math.round(asciiW / (imgAspect * 4));
         if (asciiH > maxAsciiH) {
           asciiH = maxAsciiH;
           asciiW = Math.round(asciiH * imgAspect * 4);
         }
-        // Ensure even width for doubled conversion (2 chars per pixel)
-        asciiW = Math.max(8, Math.min(asciiW, cols - 2));
+        asciiW = Math.max(8, Math.min(asciiW, gCols - 2));
         if (asciiW % 2 !== 0) asciiW--;
-        asciiH = Math.max(3, Math.min(asciiH, battleH - 4));
+        asciiH = Math.max(3, Math.min(asciiH, gRows - 4));
 
-        // Center in the battle area
-        const asciiCol = Math.floor((cols - asciiW) / 2) + shakeX + recoilX;
-        const asciiRow = Math.floor((battleH - asciiH) / 2) - 1 + shakeY;
+        // Center in the battle graphics area
+        const asciiCol = Math.floor((gCols - asciiW) / 2) + gShakeX + gRecoilX;
+        const asciiRow = Math.floor((gRows - asciiH) / 2) - 1 + gShakeY;
 
-        // Convert to double-density ASCII art
         const asciiGen = this.spriteManager.asciiGen;
         const asciiGrid = asciiGen.convertDoubledCached(enemySprite, asciiW, asciiH, '#000000');
 
         if (asciiGrid) {
-          // Apply hit flash brightening
           let drawGrid = asciiGrid;
           if (cs.hitTimer > 0) {
             drawGrid = asciiGen.brighten(asciiGrid, 0.6);
             cs.hitTimer--;
           }
 
-          // Draw ASCII art into the cell buffer
+          // Draw ASCII art into the graphics buffer
           for (let gr = 0; gr < drawGrid.rows; gr++) {
             for (let gc = 0; gc < drawGrid.cols; gc++) {
               const cell = drawGrid.cells[gr][gc];
-              if (cell.char === ' ') continue; // let fire bg show through
-              r.drawChar(asciiCol + gc, asciiRow + gr, cell.char, cell.fg, cell.bg);
+              if (cell.char === ' ') continue;
+              r.drawGraphicsChar(asciiCol + gc, asciiRow + gr, cell.char, cell.fg, cell.bg);
             }
           }
 
-          // Store ASCII grid info for death animation to use
           this._lastEnemyAscii = {
             grid: asciiGrid,
             col: asciiCol,
@@ -7815,13 +7842,14 @@ class Game {
             h: asciiH,
           };
 
-          this.ui._enemySpriteOverlay = null; // no pixel overlay needed
+          this.ui._enemySpriteOverlay = null;
           artX = asciiCol;
           artY = asciiRow;
           layoutW = asciiW;
           layoutH = asciiH;
         } else {
           // ASCII conversion failed — fall back to pixel overlay
+          // Pixel overlay uses actual pixel coordinates, so use battleH * ch for area
           const availPxW = Math.floor(cols * cw * (isPortrait ? 0.90 : 0.70));
           const availPxH = Math.floor(battleH * ch * (isPortrait ? 0.90 : 0.80));
           const fitScale = Math.min(availPxW / imgW, availPxH / imgH);
@@ -7832,10 +7860,10 @@ class Game {
           const battlePxH = battleH * ch;
           const pxX = Math.round((battlePxW - destPxW) / 2) + (shakeX + recoilX) * cw;
           const pxY = Math.round((battlePxH - destPxH) / 2) - ch + shakeY * ch;
-          const spriteW = destPxW / cw;
-          const spriteH = destPxH / ch;
-          const spriteCol = Math.round(pxX / cw);
-          const spriteRow = Math.round(pxY / ch);
+          const spriteW = destPxW / r.gCellWidth;
+          const spriteH = destPxH / r.gCellHeight;
+          const spriteCol = Math.round(pxX / r.gCellWidth);
+          const spriteRow = Math.round(pxY / r.gCellHeight);
 
           this.ui._enemySpriteOverlay = {
             img: enemySprite, col: spriteCol, row: spriteRow,
@@ -7849,102 +7877,99 @@ class Game {
           layoutH = Math.ceil(spriteH);
         }
       } else {
-        // Invalid sprite dimensions — skip sprite overlay
         this.ui._enemySpriteOverlay = null;
-        artX = Math.floor(cols / 2) + shakeX + recoilX;
-        artY = Math.floor(battleH / 2) - 1 + shakeY;
-        layoutW = 10;
-        layoutH = 8;
+        artX = Math.floor(gCols / 2) + gShakeX + gRecoilX;
+        artY = Math.floor(gRows / 2) - 1 + gShakeY;
+        layoutW = 20;
+        layoutH = 16;
       }
     } else {
-      // No sprite available — fire bg shows through, name/HP still render
       this.ui._enemySpriteOverlay = null;
-      artX = Math.floor(cols / 2) + shakeX + recoilX;
-      artY = Math.floor(battleH / 2) - 1 + shakeY;
-      layoutW = 10;
-      layoutH = 8;
+      artX = Math.floor(gCols / 2) + gShakeX + gRecoilX;
+      artY = Math.floor(gRows / 2) - 1 + gShakeY;
+      layoutW = 20;
+      layoutH = 16;
       if (cs.hitTimer > 0) cs.hitTimer--;
     }
 
-    // Monster name plate centered above art
+    // Monster name plate centered above art (graphics buffer)
     const eName = enemy.name;
-    const nameX = Math.floor(cols / 2 - eName.length / 2) + shakeX;
+    const nameX = Math.floor(gCols / 2 - eName.length / 2) + gShakeX;
     const nameY = artY - 2;
-    if (nameY >= 0 && nameY < battleH) {
-      // Dark background strip for readability
+    if (nameY >= 0 && nameY < gRows) {
       for (let i = -1; i <= eName.length; i++) {
         const nx = nameX + i;
-        if (nx >= 0 && nx < cols) r.drawChar(nx, nameY, ' ', '#000000', '#0a0500');
+        if (nx >= 0 && nx < gCols) r.drawGraphicsChar(nx, nameY, ' ', '#000000', '#0a0500');
       }
-      r.drawString(Math.max(0, nameX), nameY, eName, COLORS.BRIGHT_WHITE, '#0a0500');
+      r.drawGraphicsString(Math.max(0, nameX), nameY, eName, COLORS.BRIGHT_WHITE, '#0a0500');
     }
 
-    // Monster HP bar centered below art
-    const eHpW = Math.min(20, layoutW + 4);
-    const eHpX = Math.floor(cols / 2 - eHpW / 2) + shakeX;
+    // Monster HP bar centered below art (graphics buffer)
+    const eHpW = Math.min(40, layoutW + 8);
+    const eHpX = Math.floor(gCols / 2 - eHpW / 2) + gShakeX;
     const eHpY = artY + layoutH + 1;
-    if (eHpY < battleH) {
+    if (eHpY < gRows) {
       const eHpFrac = Math.max(0, enemy.stats.hp / enemy.stats.maxHp);
       const eHpFilled = Math.round(eHpFrac * eHpW);
       const eHpColor = eHpFrac < 0.25 ? COLORS.BRIGHT_RED : eHpFrac < 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.BRIGHT_GREEN;
       for (let i = 0; i < eHpW; i++) {
         const hx = eHpX + i;
-        if (hx >= 0 && hx < cols) {
-          r.drawChar(hx, eHpY, i < eHpFilled ? '\u2588' : '\u2591', eHpColor, '#0a0500');
+        if (hx >= 0 && hx < gCols) {
+          r.drawGraphicsChar(hx, eHpY, i < eHpFilled ? '\u2588' : '\u2591', eHpColor, '#0a0500');
         }
       }
       const eHpStr = `${enemy.stats.hp}/${enemy.stats.maxHp}`;
-      const hpStrX = Math.floor(cols / 2 - eHpStr.length / 2) + shakeX;
-      if (eHpY + 1 < battleH) {
-        r.drawString(Math.max(0, hpStrX), eHpY + 1, eHpStr, COLORS.WHITE, '#0a0500');
+      const hpStrX = Math.floor(gCols / 2 - eHpStr.length / 2) + gShakeX;
+      if (eHpY + 1 < gRows) {
+        r.drawGraphicsString(Math.max(0, hpStrX), eHpY + 1, eHpStr, COLORS.WHITE, '#0a0500');
       }
     }
 
-    // ── Combat Particles ──
+    // ── Combat Particles (graphics buffer) ──
     if (cs.combatParticles) {
       const cparts = cs.combatParticles;
       for (let i = cparts.length - 1; i >= 0; i--) {
         const p = cparts[i];
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.05; // gravity
+        p.vy += 0.05;
         p.life--;
         if (p.life <= 0) {
-          cparts[i] = cparts[cparts.length - 1]; cparts.pop(); // swap-and-pop
+          cparts[i] = cparts[cparts.length - 1]; cparts.pop();
           continue;
         }
-        const px = Math.round(p.x) + shakeX;
-        const py = Math.round(p.y) + shakeY;
-        if (px >= 0 && px < cols && py >= 0 && py < battleH) {
+        const px = Math.round(p.x) + gShakeX;
+        const py = Math.round(p.y) + gShakeY;
+        if (px >= 0 && px < gCols && py >= 0 && py < gRows) {
           const alpha = Math.min(1, p.life / 10);
           const color = alpha > 0.5 ? p.color : '#666666';
-          r.drawChar(px, py, p.char, color, null);
+          r.drawGraphicsChar(px, py, p.char, color, null);
         }
       }
     }
 
-    // ── Floating Damage Numbers ──
+    // ── Floating Damage Numbers (graphics buffer) ──
     if (cs.damageNumbers) {
       const dnums = cs.damageNumbers;
       for (let i = dnums.length - 1; i >= 0; i--) {
         const dn = dnums[i];
-        dn.y -= 0.15;
+        dn.y -= 0.2;
         dn.life--;
         if (dn.life <= 0) {
-          dnums[i] = dnums[dnums.length - 1]; dnums.pop(); // swap-and-pop
+          dnums[i] = dnums[dnums.length - 1]; dnums.pop();
           continue;
         }
-        const dx = Math.round(dn.x) + shakeX;
-        const dy = Math.round(dn.y) + shakeY;
-        if (dx >= 0 && dx < cols && dy >= 0 && dy < battleH) {
+        const dx = Math.round(dn.x) + gShakeX;
+        const dy = Math.round(dn.y) + gShakeY;
+        if (dx >= 0 && dx < gCols && dy >= 0 && dy < gRows) {
           const alpha = dn.life / 20;
           const color = alpha > 0.5 ? dn.color : '#888888';
-          r.drawString(Math.max(0, dx), dy, dn.text, color, null);
+          r.drawGraphicsString(Math.max(0, dx), dy, dn.text, color, null);
         }
       }
     }
 
-    // ── Bottom status area (FF-style windows) ──
+    // ── Bottom status area (FF-style windows) — stays in text buffer at normal size ──
     this.renderCombatHUD(r, cols, rows, battleH, bg);
   }
 
