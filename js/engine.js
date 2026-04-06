@@ -655,8 +655,8 @@ export class Renderer {
    */
   drawEntityChar(wx_off, wy_off, char, fg = COLORS.WHITE, bg) {
     const D = this.tileDensity;
-    const cx = wx_off * D + ((D - 1) >> 1);
-    const cy = wy_off * D + ((D - 1) >> 1);
+    let cx = wx_off * D + ((D - 1) >> 1);
+    let cy = wy_off * D + ((D - 1) >> 1);
     if (bg !== undefined) {
       this.drawGraphicsChar(cx, cy, char, fg, bg);
     } else {
