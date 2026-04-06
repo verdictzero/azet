@@ -605,7 +605,13 @@ class Game {
     }
   }
 
-  // Zoom retired — density zoom replaced by graphics buffer double density
+  /** Zoom in (+1) or out (-1) by adjusting font/cell size. */
+  _zoom(direction) {
+    this.renderer.zoomBy(direction);
+    this.settings.fontSize = this.renderer.fontSize;
+    this.handleResize();
+    this._saveSettings();
+  }
 
   // Clear cached rendering data to prevent stale artifacts across state transitions.
   _clearRenderCaches() {
@@ -2208,6 +2214,10 @@ class Game {
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
     if (key === 't' || key === 'T') { this._openTransitMap(); return; }
 
+    // Zoom: +/= to zoom in, - to zoom out (changes font/cell size)
+    if (key === '+' || key === '=') { this._zoom(1); return; }
+    if (key === '-') { this._zoom(-1); return; }
+
     // Movement (with night stumble penalty)
     let dir = this.getDirection(key);
     if (dir) {
@@ -2357,7 +2367,7 @@ class Game {
         return;
       }
       if (key === '?') { this.setState('HELP'); return; }
-      // No zoom controls in test areas (locked to density 1)
+      // No zoom controls in test areas
       const dir = this.getDirection(key);
       if (dir) {
         this.movePlayerInDungeon(dir.dx, dir.dy);
@@ -2374,6 +2384,10 @@ class Game {
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
+
+    // Zoom: +/= to zoom in, - to zoom out
+    if (key === '+' || key === '=') { this._zoom(1); return; }
+    if (key === '-') { this._zoom(-1); return; }
 
     if (key === 'Escape') {
       this.startTransition(() => {
@@ -5508,6 +5522,9 @@ class Game {
     } catch (e) { /* ignore */ }
     // Apply loaded settings to renderer/input (may be called before they exist in constructor)
     if (this.renderer) {
+      if (this.settings.fontSize !== 16) {
+        this.renderer.setFontSize(this.settings.fontSize);
+      }
       this.renderer.enableCRT = this.settings.crtEffects;
       this.renderer.crtOptions = this.settings;
       this._applyCrtQuality();

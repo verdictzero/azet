@@ -238,9 +238,16 @@ export class Renderer {
 
   // Tile density: each world tile expands to 3×3 characters in the graphics buffer
   get tileDensity() { return 3; }
-  get densityLevel() { return 3; }
-  get zoomLevel() { return 3; }
-  setZoom(_level) { /* no-op: density fixed at 3 */ }
+
+  /** Zoom in (+1) or out (-1) by changing font size. Step of 2, clamped to 8–24. */
+  zoomBy(direction) {
+    const step = 2;
+    const next = this.fontSize + step * Math.sign(direction);
+    const clamped = Math.max(8, Math.min(24, next));
+    if (clamped !== this.fontSize) {
+      this.setFontSize(clamped);
+    }
+  }
 
   /** World-space viewport dimensions (in world tiles, not graphics cells) */
   get worldCols() { return Math.floor(this.gCols / this.tileDensity); }
