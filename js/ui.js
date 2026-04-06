@@ -1,6 +1,7 @@
 import { COLORS, LAYOUT, wordWrap } from './engine.js';
 import { CRYSTAL_WIDTH, CRYSTAL_HEIGHT, CRYSTAL_FRAMES } from './crystal-frames.js';
 import { NPC_SPRITES } from './entities.js';
+import { expandTile } from './tileExpansion.js';
 
 // ─── Color conversion helpers for hue-shifting effects ───
 function hexToHsl(hex) {
@@ -1914,8 +1915,8 @@ export class UIManager {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
-    const viewW = r.graphicsCols;
-    const viewH = r.graphicsRows;
+    const viewW = r.worldCols;
+    const viewH = r.worldRows;
 
     // Tile height lookup for settlement shadow casting — buildings only
     const SETTLEMENT_HEIGHTS = {
@@ -1963,8 +1964,8 @@ export class UIManager {
 
     // Draw settlement map tiles with camera (using graphics buffer)
     if (settlement.tiles) {
-      const worldW = r.graphicsCols;
-      const worldH = r.graphicsRows;
+      const worldW = r.worldCols;
+      const worldH = r.worldRows;
 
       const camX = camera ? Math.floor(camera.getRenderX()) : Math.max(0, Math.floor((settlement.tiles[0].length - worldW) / 2));
       const camY = camera ? Math.floor(camera.getRenderY()) : Math.max(0, Math.floor((settlement.tiles.length - worldH) / 2));
@@ -2020,9 +2021,11 @@ export class UIManager {
           if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
             const tile = settlement.tiles[wy][wx];
             if (!tile) continue;
+            const expanded = expandTile(tile, 3, wx, wy);
+            r.drawWorldTile(wx_off, wy_off, expanded);
             const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
             const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
-            r.drawGraphicsChar(wx_off, wy_off, ch, fg, tile.bg || COLORS.BLACK);
+            r.drawEntityChar(wx_off, wy_off, ch, fg, tile.bg || COLORS.BLACK);
           }
         }
       }
@@ -2240,14 +2243,14 @@ export class UIManager {
                 const gx = wx_off + (sc - anchorCol);
                 const gy = wy_off + (sr - anchorRow);
                 if (gx >= 0 && gx < worldW && gy >= 0 && gy < worldH) {
-                  r.drawGraphicsChar(gx, gy, ch, sprite.fgs[sr][sc] || npc.color || COLORS.BRIGHT_CYAN);
+                  r.drawEntityChar(gx, gy, ch, sprite.fgs[sr][sc] || npc.color || COLORS.BRIGHT_CYAN);
                 }
               }
             }
           } else {
             // Fallback: single char
             if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-              r.drawGraphicsChar(wx_off, wy_off, npc.char, npc.color || COLORS.BRIGHT_CYAN);
+              r.drawEntityChar(wx_off, wy_off, npc.char, npc.color || COLORS.BRIGHT_CYAN);
             }
           }
         }
@@ -2261,8 +2264,8 @@ export class UIManager {
           const wy_off = enemy.position.y - camY;
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
             const ec = this.glow ? this.glow.getGlowColor('ENEMY', COLORS.BRIGHT_RED) : COLORS.BRIGHT_RED;
-            r.drawGraphicsChar(wx_off, wy_off - 1, '\u263B', ec);  // ☻ head
-            r.drawGraphicsChar(wx_off, wy_off, enemy.char || 'E', ec);
+            r.drawEntityChar(wx_off, wy_off - 1, '\u263B', ec);  // ☻ head
+            r.drawEntityChar(wx_off, wy_off, enemy.char || 'E', ec);
           }
         }
       }
@@ -2275,7 +2278,7 @@ export class UIManager {
           const wy_off = item.position.y - camY;
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
             const itemColor = this.glow ? this.glow.getGlowColor('ITEM', COLORS.BRIGHT_MAGENTA) : COLORS.BRIGHT_MAGENTA;
-            r.drawGraphicsChar(wx_off, wy_off, item.char || '!', itemColor);
+            r.drawEntityChar(wx_off, wy_off, item.char || '!', itemColor);
           }
         }
       }
@@ -2287,16 +2290,16 @@ export class UIManager {
         if (px >= 0 && px < worldW && py >= 0 && py < worldH) {
           const playerColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
           // 1×3 player sprite: head, torso, legs (anchor = bottom)
-          r.drawGraphicsChar(px, py - 2, '\u263A', playerColor);  // ☺ head
-          r.drawGraphicsChar(px, py - 1, '\u2502', playerColor);  // │ torso
-          r.drawGraphicsChar(px, py, '@', playerColor);            // @ legs/anchor
+          r.drawEntityChar(px, py - 2, '\u263A', playerColor);  // ☺ head
+          r.drawEntityChar(px, py - 1, '\u2502', playerColor);  // │ torso
+          r.drawEntityChar(px, py, '@', playerColor);            // @ legs/anchor
 
           const t = Date.now() % 1000;
           const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-          r.drawGraphicsChar(px - 1, py - 2, '\u250C', reticleColor);
-          r.drawGraphicsChar(px + 1, py - 2, '\u2510', reticleColor);
-          r.drawGraphicsChar(px - 1, py + 1, '\u2514', reticleColor);
-          r.drawGraphicsChar(px + 1, py + 1, '\u2518', reticleColor);
+          r.drawEntityChar(px - 1, py - 2, '\u250C', reticleColor);
+          r.drawEntityChar(px + 1, py - 2, '\u2510', reticleColor);
+          r.drawEntityChar(px - 1, py + 1, '\u2514', reticleColor);
+          r.drawEntityChar(px + 1, py + 1, '\u2518', reticleColor);
         }
       }
 
@@ -2308,9 +2311,11 @@ export class UIManager {
           if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
           const tile = settlement.tiles[wy][wx];
           if (!tile || tile.type !== 'MECH_ARM') continue;
+          const expanded = expandTile(tile, 3, wx, wy);
+          r.drawWorldTile(wx_off, wy_off, expanded);
           const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
           const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
-          r.drawGraphicsChar(wx_off, wy_off, ch, fg, tile.bg || COLORS.BLACK);
+          r.drawEntityChar(wx_off, wy_off, ch, fg, tile.bg || COLORS.BLACK);
         }
       }
     }
@@ -2329,9 +2334,9 @@ export class UIManager {
     // Shadow darkening
     for (const [key, alpha] of shadowCells) {
       const [sx, sy] = key.split(',').map(Number);
-      renderer.darkenGraphicsCell(sx, sy, alpha);
+      renderer.darkenWorldCell(sx, sy, alpha);
       if (shadowTint !== '#000000') {
-        renderer.tintGraphicsCell(sx, sy, shadowTint, alpha * 0.15);
+        renderer.tintWorldCell(sx, sy, shadowTint, alpha * 0.15);
       }
     }
 
@@ -2342,19 +2347,19 @@ export class UIManager {
         for (let sx = 0; sx < viewW; sx++) {
           const key = `${sx},${sy}`;
           if (shadowCells.has(key)) continue;
-          renderer.tintGraphicsCell(sx, sy, sunTint, ambientAlpha);
+          renderer.tintWorldCell(sx, sy, sunTint, ambientAlpha);
         }
       }
     }
 
     // God rays / moonbeams
     for (let i = 0; i < godRayCells.length; i += 4) {
-      renderer.brightenGraphicsCell(godRayCells[i], godRayCells[i + 1], godRayCells[i + 2], godRayCells[i + 3]);
+      renderer.brightenWorldCell(godRayCells[i], godRayCells[i + 1], godRayCells[i + 2], godRayCells[i + 3]);
     }
 
     // Lamp, torch, door, and window glow
     for (let i = 0; i < lampGlowOps.length; i += 4) {
-      renderer.tintGraphicsCell(lampGlowOps[i], lampGlowOps[i + 1], lampGlowOps[i + 2], lampGlowOps[i + 3]);
+      renderer.tintWorldCell(lampGlowOps[i], lampGlowOps[i + 1], lampGlowOps[i + 2], lampGlowOps[i + 3]);
     }
   }
 

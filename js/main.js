@@ -5,8 +5,7 @@ import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, Ite
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
-// tileExpansion no longer used — graphics buffer provides double density natively
-// import { expandTile, clearTileCache } from './tileExpansion.js';
+import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 import { AsciiCutscenePlayer } from './ascii-cutscene.js';
 import { SpriteManager, EXPLOSION_MANIFEST } from './sprites.js';
@@ -172,8 +171,8 @@ class Game {
     this.renderer = new Renderer(this.canvas);
     this.input = new InputManager();
     this.camera = new Camera(
-      this.renderer.graphicsCols,
-      this.renderer.graphicsRows
+      this.renderer.worldCols,
+      this.renderer.worldRows
     );
     this.locationCamera = null;
     this._bumpState = { dx: 0, dy: 0, count: 0, lastTime: 0 };
@@ -393,8 +392,8 @@ class Game {
     this.camera.viewportCols = this.renderer.cols - 2;
     this.camera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
     if (this.locationCamera) {
-      this.locationCamera.viewportCols = this.renderer.cols - 2;
-      this.locationCamera.viewportRows = this.renderer.rows - LAYOUT.HUD_TOTAL;
+      this.locationCamera.viewportCols = this.renderer.worldCols;
+      this.locationCamera.viewportRows = this.renderer.worldRows;
     }
   }
 
@@ -536,10 +535,10 @@ class Game {
     this.prevState = this.state;
     this.state = newState;
     this.ui.resetSelection();
-    // Update camera viewport from graphics buffer dimensions
+    // Update camera viewport from world-space dimensions (graphics ÷ tileDensity)
     if (newState === 'OVERWORLD') {
-      this.camera.viewportCols = this.renderer.graphicsCols;
-      this.camera.viewportRows = this.renderer.graphicsRows;
+      this.camera.viewportCols = this.renderer.worldCols;
+      this.camera.viewportRows = this.renderer.worldRows;
     }
     // Update touch controls layout for new state
     this.input.updateTouchLayout(newState);
@@ -1575,8 +1574,8 @@ class Game {
 
     // Create location camera (sized for graphics viewport)
     this.locationCamera = new Camera(
-      this.renderer.graphicsCols,
-      this.renderer.graphicsRows
+      this.renderer.worldCols,
+      this.renderer.worldRows
     );
     this.locationCamera.follow(this.player);
     this.locationCamera.x = this.locationCamera.targetX;
@@ -1812,8 +1811,8 @@ class Game {
 
     // Set up LOCATION state (same as enterLocation — outdoor rendering with day/night)
     this.locationCamera = new Camera(
-      this.renderer.graphicsCols,
-      this.renderer.graphicsRows
+      this.renderer.worldCols,
+      this.renderer.worldRows
     );
     this.locationCamera.follow(this.player);
     this.locationCamera.x = this.locationCamera.targetX;
@@ -1871,8 +1870,8 @@ class Game {
       this.gameContext.currentLocationName = 'World';
       this.gameContext.currentLocation = null;
       // Update camera viewport dimensions from graphics buffer
-      this.camera.viewportCols = this.renderer.graphicsCols;
-      this.camera.viewportRows = this.renderer.graphicsRows;
+      this.camera.viewportCols = this.renderer.worldCols;
+      this.camera.viewportRows = this.renderer.worldRows;
       this.camera.follow(this.player);
       this.camera.x = this.camera.targetX;
       this.camera.y = this.camera.targetY;
@@ -2298,8 +2297,8 @@ class Game {
         this.gameContext.currentLocationName = 'World';
         this.gameContext.currentLocation = null;
         // Update camera viewport dimensions from graphics buffer
-        this.camera.viewportCols = this.renderer.graphicsCols;
-        this.camera.viewportRows = this.renderer.graphicsRows;
+        this.camera.viewportCols = this.renderer.worldCols;
+        this.camera.viewportRows = this.renderer.worldRows;
         this.camera.follow(this.player);
         this.camera.x = this.camera.targetX;
         this.camera.y = this.camera.targetY;
@@ -2391,8 +2390,8 @@ class Game {
         this.gameContext.currentLocationName = 'World';
         this.gameContext.currentLocation = null;
         // Update camera viewport dimensions from graphics buffer
-        this.camera.viewportCols = this.renderer.graphicsCols;
-        this.camera.viewportRows = this.renderer.graphicsRows;
+        this.camera.viewportCols = this.renderer.worldCols;
+        this.camera.viewportRows = this.renderer.worldRows;
         this.camera.follow(this.player);
         this.camera.x = this.camera.targetX;
         this.camera.y = this.camera.targetY;
@@ -2530,8 +2529,8 @@ class Game {
             this.gameContext.currentLocationName = 'World';
             this.gameContext.currentLocation = null;
             // Update camera viewport dimensions from graphics buffer
-            this.camera.viewportCols = this.renderer.graphicsCols;
-            this.camera.viewportRows = this.renderer.graphicsRows;
+            this.camera.viewportCols = this.renderer.worldCols;
+            this.camera.viewportRows = this.renderer.worldRows;
             this.camera.follow(this.player);
             this.camera.x = this.camera.targetX;
             this.camera.y = this.camera.targetY;
@@ -6216,7 +6215,7 @@ class Game {
           for (let sx = 0; sx < sW; sx++) {
             const alpha = sBuf[rowOff + sx];
             if (alpha > 0) {
-              this.renderer.darkenGraphicsCell(sx, sy, alpha);
+              this.renderer.darkenWorldCell(sx, sy, alpha);
             }
           }
         }
@@ -6229,7 +6228,7 @@ class Game {
             for (let gx = 0; gx < sW; gx++) {
               const alpha = gBuf[rowOff + gx];
               if (alpha > 0) {
-                this.renderer.darkenGraphicsCell(gx, gy, alpha);
+                this.renderer.darkenWorldCell(gx, gy, alpha);
               }
             }
           }
@@ -6256,7 +6255,7 @@ class Game {
             const alongX = owSunDir.dx || 0;
             const alongY = owSunDir.dy || 0;
             // Compute projection range across viewport for normalization
-            const c0 = 0, c1 = (viewW - 1) * alongX, c2 = (viewH - 1) * alongY, c3 = c1 + c2;
+            const c0 = 0, c1 = (sW - 1) * alongX, c2 = (sH - 1) * alongY, c3 = c1 + c2;
             const minAlong = Math.min(c0, c1, c2, c3);
             const maxAlong = Math.max(c0, c1, c2, c3);
             const alongRange = maxAlong - minAlong || 1;
@@ -6306,7 +6305,7 @@ class Game {
             }
             const tint = '#' + [cR, cG, cB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
             const dimFactor = isGodRayDay ? (1.0 - t * 0.35) : (0.6 - t * 0.2);
-            this.renderer.brightenGraphicsCell(gc[i], gc[i + 1], gc[i + 2] * dimFactor, tint);
+            this.renderer.brightenWorldCell(gc[i], gc[i + 1], gc[i + 2] * dimFactor, tint);
           }
         }
       }
@@ -6327,8 +6326,8 @@ class Game {
           const plx = this.player.position.x - camX;
           const ply = this.player.position.y - camY;
           const rad = lightInfo.radius;
-          const gW = this.renderer.graphicsCols;
-          const gH = this.renderer.graphicsRows;
+          const gW = this.renderer.worldCols;
+          const gH = this.renderer.worldRows;
           for (let ldy = -rad; ldy <= rad; ldy++) {
             for (let ldx = -rad; ldx <= rad; ldx++) {
               const dist = Math.sqrt(ldx * ldx + ldy * ldy);
@@ -6337,7 +6336,7 @@ class Game {
                 const wx_off = plx + ldx;
                 const wy_off = ply + ldy;
                 if (wx_off >= 0 && wx_off < gW && wy_off >= 0 && wy_off < gH) {
-                  this.renderer.tintGraphicsCell(wx_off, wy_off, lightInfo.color, falloff);
+                  this.renderer.tintWorldCell(wx_off, wy_off, lightInfo.color, falloff);
                 }
               }
             }
@@ -6453,8 +6452,8 @@ class Game {
 
     const r = this.renderer;
     this.camera.update();
-    const viewW = r.graphicsCols;
-    const viewH = r.graphicsRows;
+    const viewW = r.worldCols;
+    const viewH = r.worldRows;
 
     const isNight = !this.timeSystem.isDaytime();
     const lightInfo = this.player.hasLightSource();
@@ -6547,7 +6546,7 @@ class Game {
     }
     this._highlightBuf = highlightBuf;
 
-    // Render tiles (1 graphics cell per world tile)
+    // Render tiles (each world tile expands to 3×3 graphics cells)
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
       for (let wx_off = 0; wx_off < worldW; wx_off++) {
         const wx = camX + wx_off;
@@ -6557,7 +6556,7 @@ class Game {
         // Beyond habitat — draw circuitry background instead of void
         if (tile.type === 'VOID_SPACE') {
           const circuit = getCircuitryCell(wx, wy);
-          r.drawGraphicsChar(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
+          r.drawUniformTile(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
           continue;
         }
 
@@ -6567,7 +6566,7 @@ class Game {
           const useTile = circuit.char === ' ';
           const ch = useTile ? tile.char : circuit.char;
           const fg = useTile ? tile.fg : circuit.fg;
-          r.drawGraphicsChar(wx_off, wy_off, ch, fg, '#000000');
+          r.drawUniformTile(wx_off, wy_off, ch, fg, '#000000');
           continue;
         }
 
@@ -6575,10 +6574,17 @@ class Game {
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
         const isFogged = isNight && dist > viewRange;
 
-        const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-        const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type, wx, wy);
-        const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
-        r.drawGraphicsChar(wx_off, wy_off, ch, fg, bg);
+        if (isFogged) {
+          // Fogged: draw uniform dark tile
+          r.drawUniformTile(wx_off, wy_off, tile.char, COLORS.BRIGHT_BLACK, COLORS.BLACK);
+        } else {
+          // Draw 3×3 expansion, then overdraw center with animated char/color
+          const expanded = expandTile(tile, 3, wx, wy);
+          r.drawWorldTile(wx_off, wy_off, expanded);
+          const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+          const fg = r.getAnimatedColor(tile.fg, tile.type, wx, wy);
+          r.drawEntityChar(wx_off, wy_off, ch, fg, tile.bg || COLORS.BLACK);
+        }
       }
     }
 
@@ -6592,36 +6598,36 @@ class Game {
       const gc = this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE);
       if (loc.type === 'city') {
         // 3×3 city icon
-        r.drawGraphicsChar(wx_off, wy_off - 2, '\u25B2', gc);     // ▲ spire
-        r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u2502', gc); // │
-        r.drawGraphicsChar(wx_off, wy_off - 1, '\u25A3', gc);     // ▣
-        r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u2502', gc); // │
-        r.drawGraphicsChar(wx_off - 1, wy_off, '\u2500', gc);     // ─
-        r.drawGraphicsChar(wx_off, wy_off, '\u25A3', gc);         // ▣
-        r.drawGraphicsChar(wx_off + 1, wy_off, '\u2500', gc);     // ─
+        r.drawEntityChar(wx_off, wy_off - 2, '\u25B2', gc);     // ▲ spire
+        r.drawEntityChar(wx_off - 1, wy_off - 1, '\u2502', gc); // │
+        r.drawEntityChar(wx_off, wy_off - 1, '\u25A3', gc);     // ▣
+        r.drawEntityChar(wx_off + 1, wy_off - 1, '\u2502', gc); // │
+        r.drawEntityChar(wx_off - 1, wy_off, '\u2500', gc);     // ─
+        r.drawEntityChar(wx_off, wy_off, '\u25A3', gc);         // ▣
+        r.drawEntityChar(wx_off + 1, wy_off, '\u2500', gc);     // ─
       } else if (loc.type === 'castle') {
         // 3×2 castle
-        r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u25B2', gc); // ▲
-        r.drawGraphicsChar(wx_off, wy_off - 1, '\u2666', gc);     // ♦
-        r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u25B2', gc); // ▲
-        r.drawGraphicsChar(wx_off - 1, wy_off, '\u2550', gc);     // ═
-        r.drawGraphicsChar(wx_off, wy_off, '\u2666', gc);         // ♦
-        r.drawGraphicsChar(wx_off + 1, wy_off, '\u2550', gc);     // ═
+        r.drawEntityChar(wx_off - 1, wy_off - 1, '\u25B2', gc); // ▲
+        r.drawEntityChar(wx_off, wy_off - 1, '\u2666', gc);     // ♦
+        r.drawEntityChar(wx_off + 1, wy_off - 1, '\u25B2', gc); // ▲
+        r.drawEntityChar(wx_off - 1, wy_off, '\u2550', gc);     // ═
+        r.drawEntityChar(wx_off, wy_off, '\u2666', gc);         // ♦
+        r.drawEntityChar(wx_off + 1, wy_off, '\u2550', gc);     // ═
       } else if (loc.type === 'town') {
         // 1×2 town
-        r.drawGraphicsChar(wx_off, wy_off - 1, '\u25B2', gc);     // ▲ roof
-        r.drawGraphicsChar(wx_off, wy_off, '\u25A1', gc);         // □ building
+        r.drawEntityChar(wx_off, wy_off - 1, '\u25B2', gc);     // ▲ roof
+        r.drawEntityChar(wx_off, wy_off, '\u25A1', gc);         // □ building
       } else if (loc.type === 'tower') {
         // 1×3 tower
-        r.drawGraphicsChar(wx_off, wy_off - 2, '\u25B2', gc);     // ▲ top
-        r.drawGraphicsChar(wx_off, wy_off - 1, '\u2502', gc);     // │ shaft
-        r.drawGraphicsChar(wx_off, wy_off, '\u25B2', gc);         // ▲ base
+        r.drawEntityChar(wx_off, wy_off - 2, '\u25B2', gc);     // ▲ top
+        r.drawEntityChar(wx_off, wy_off - 1, '\u2502', gc);     // │ shaft
+        r.drawEntityChar(wx_off, wy_off, '\u25B2', gc);         // ▲ base
       } else {
         // Default: 1×2 (icon + base)
         const ch = loc.type === 'village' ? '\u25CB' : loc.type === 'dungeon' ? '\u25BC' :
           loc.type === 'temple' ? '\u2020' : loc.type === 'ruins' ? '\u25AA' : '\u25E6';
-        r.drawGraphicsChar(wx_off, wy_off - 1, ch, gc);
-        r.drawGraphicsChar(wx_off, wy_off, '\u2219', gc);  // ∙ base marker
+        r.drawEntityChar(wx_off, wy_off - 1, ch, gc);
+        r.drawEntityChar(wx_off, wy_off, '\u2219', gc);  // ∙ base marker
       }
     }
 
@@ -6630,16 +6636,16 @@ class Game {
     const ppy = this.player.position.y - camY;
     if (ppx >= 0 && ppx < worldW && ppy >= 0 && ppy < worldH) {
       const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
-      r.drawGraphicsChar(ppx, ppy - 2, '\u263A', pc);  // ☺ head
-      r.drawGraphicsChar(ppx, ppy - 1, '\u2502', pc);  // │ torso
-      r.drawGraphicsChar(ppx, ppy, '@', pc);            // @ legs/anchor
+      r.drawEntityChar(ppx, ppy - 2, '\u263A', pc);  // ☺ head
+      r.drawEntityChar(ppx, ppy - 1, '\u2502', pc);  // │ torso
+      r.drawEntityChar(ppx, ppy, '@', pc);            // @ legs/anchor
 
       const t = Date.now() % 1000;
       const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawGraphicsChar(ppx - 1, ppy - 2, '\u250C', reticleColor);
-      r.drawGraphicsChar(ppx + 1, ppy - 2, '\u2510', reticleColor);
-      r.drawGraphicsChar(ppx - 1, ppy + 1, '\u2514', reticleColor);
-      r.drawGraphicsChar(ppx + 1, ppy + 1, '\u2518', reticleColor);
+      r.drawEntityChar(ppx - 1, ppy - 2, '\u250C', reticleColor);
+      r.drawEntityChar(ppx + 1, ppy - 2, '\u2510', reticleColor);
+      r.drawEntityChar(ppx - 1, ppy + 1, '\u2514', reticleColor);
+      r.drawEntityChar(ppx + 1, ppy + 1, '\u2518', reticleColor);
     }
 
     // Quest navigation line overlay
@@ -6662,7 +6668,7 @@ class Game {
             const pulse = Math.sin(now / 400 + d * 0.4) * 0.5 + 0.5;
             const navChar = (d % 3 === 0) ? '\u00b7' : '\u2219';
             const navColor = pulse > 0.5 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-            r.drawGraphicsChar(wx_off, wy_off, navChar, navColor);
+            r.drawEntityChar(wx_off, wy_off, navChar, navColor);
           }
 
           // Draw target marker
@@ -6670,7 +6676,7 @@ class Game {
           const ty = navTarget.y - camY;
           if (tx >= 0 && tx < worldW && ty >= 0 && ty < worldH) {
             const tPulse = Math.sin(now / 250) * 0.5 + 0.5;
-            r.drawGraphicsChar(tx, ty, '\u2726',
+            r.drawEntityChar(tx, ty, '\u2726',
               tPulse > 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.YELLOW);
           }
         }
@@ -6688,10 +6694,12 @@ class Game {
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
         const isFogged = isNight && dist > viewRange;
 
+        const expanded = expandTile(tile, 3, wx, wy);
+        r.drawWorldTile(wx_off, wy_off, expanded);
         const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
         const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type, wx, wy);
         const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
-        r.drawGraphicsChar(wx_off, wy_off, ch, fg, bg);
+        r.drawEntityChar(wx_off, wy_off, ch, fg, bg);
       }
     }
 
@@ -6722,7 +6730,7 @@ class Game {
                   const dist = Math.sqrt(distSq);
                   const falloff = 1 - dist / rad;
                   const alpha = falloff * falloff * intensityFactor;
-                  r.tintGraphicsCell(wx_off, wy_off, tintColor, alpha);
+                  r.tintWorldCell(wx_off, wy_off, tintColor, alpha);
                 }
               }
             }
@@ -6832,7 +6840,7 @@ class Game {
               if (tdist > viewRange * 1.4) continue; // Approximate with manhattan
               const falloff = Math.max(0, 1 - dist / Math.max(rad, 1));
               const alpha = falloff * falloff * prof.int;
-              r.tintGraphicsCell(tx, ty, glowColor, alpha);
+              r.tintWorldCell(tx, ty, glowColor, alpha);
             }
           }
         }
@@ -6862,8 +6870,8 @@ class Game {
     this.camera.update();
 
     const r = this.renderer;
-    const viewW = r.graphicsCols;
-    const viewH = r.graphicsRows;
+    const viewW = r.worldCols;
+    const viewH = r.worldRows;
     const worldW = viewW;
     const worldH = viewH;
 
@@ -6991,7 +6999,7 @@ class Game {
       }
     }
 
-    // Render dungeon tiles
+    // Render dungeon tiles (each world tile expands to 3×3 graphics cells)
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
       for (let wx_off = 0; wx_off < worldW; wx_off++) {
         const wx = offsetX + wx_off;
@@ -7003,7 +7011,7 @@ class Game {
           // Umbilical void
           if (tile.type === 'UMBILICAL_VOID') {
             const noise = getNoiseBackgroundCell(wx, wy);
-            r.drawGraphicsChar(wx_off, wy_off, noise.char, noise.fg, noise.bg);
+            r.drawUniformTile(wx_off, wy_off, noise.char, noise.fg, noise.bg);
             continue;
           }
 
@@ -7018,21 +7026,25 @@ class Game {
           }
 
           if (isVisible) {
+            const expanded = expandTile(tile, 3, wx, wy);
+            r.drawWorldTile(wx_off, wy_off, expanded);
+            // Overdraw center with animated/interactive color
             let animFg = r.getAnimatedColor(tile.fg, tile.type, wx, wy);
             const iType = tile.type;
             if (iType === 'STAIRS_DOWN' || iType === 'STAIRS_UP' || iType === 'DOOR' || iType === 'CHEST' || iType === 'BRIDGE') {
               animFg = this.glow.getGlowColor('INTERACTIVE', animFg);
             }
-            const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
-            const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
-            r.drawGraphicsChar(wx_off, wy_off, tile.char, dimFg, dimBg);
+            r.drawEntityChar(wx_off, wy_off, tile.char, animFg, tile.bg || COLORS.BLACK);
+            // Apply lighting as post-process darkening
+            const darkenAlpha = 1.0 - Math.max(0.15, brightness);
+            if (darkenAlpha > 0) r.darkenWorldCell(wx_off, wy_off, darkenAlpha);
           } else {
             const circuit = getCircuitryCell(wx, wy);
-            r.drawGraphicsChar(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
+            r.drawUniformTile(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
           }
         } else {
           const circuit = getCircuitryCell(wx, wy);
-          r.drawGraphicsChar(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
+          r.drawUniformTile(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
         }
       }
     }
@@ -7046,7 +7058,7 @@ class Game {
           const wx_off = item.position.x - offsetX;
           const wy_off = item.position.y - offsetY;
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-            r.drawGraphicsChar(wx_off, wy_off, item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW));
+            r.drawEntityChar(wx_off, wy_off, item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW));
           }
         }
       }
@@ -7063,15 +7075,15 @@ class Game {
           const ec = enemy.color || COLORS.BRIGHT_RED;
           if (enemy.isBoss) {
             // Boss: 3×3 sprite
-            r.drawGraphicsChar(wx_off, wy_off - 2, '\u25BC', ec);         // ▼ crown/horns
-            r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u2524', ec);     // ┤ left arm
-            r.drawGraphicsChar(wx_off, wy_off - 1, '\u2588', ec);         // █ torso
-            r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u251C', ec);     // ├ right arm
-            r.drawGraphicsChar(wx_off, wy_off, enemy.char, ec);            // body char
+            r.drawEntityChar(wx_off, wy_off - 2, '\u25BC', ec);         // ▼ crown/horns
+            r.drawEntityChar(wx_off - 1, wy_off - 1, '\u2524', ec);     // ┤ left arm
+            r.drawEntityChar(wx_off, wy_off - 1, '\u2588', ec);         // █ torso
+            r.drawEntityChar(wx_off + 1, wy_off - 1, '\u251C', ec);     // ├ right arm
+            r.drawEntityChar(wx_off, wy_off, enemy.char, ec);            // body char
           } else {
             // Regular enemy: 1×2 (head + body)
-            r.drawGraphicsChar(wx_off, wy_off - 1, '\u263B', ec);         // ☻ head
-            r.drawGraphicsChar(wx_off, wy_off, enemy.char, ec);            // body
+            r.drawEntityChar(wx_off, wy_off - 1, '\u263B', ec);         // ☻ head
+            r.drawEntityChar(wx_off, wy_off, enemy.char, ec);            // body
           }
         }
       }
@@ -7081,18 +7093,18 @@ class Game {
     const playerGX = Math.floor(worldW / 2);
     const playerGY = Math.floor(worldH / 2);
     const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
-    r.drawGraphicsChar(playerGX, playerGY - 2, '\u263A', pc);  // ☺ head
-    r.drawGraphicsChar(playerGX, playerGY - 1, '\u2502', pc);  // │ torso
-    r.drawGraphicsChar(playerGX, playerGY, '@', pc);            // @ legs/anchor
+    r.drawEntityChar(playerGX, playerGY - 2, '\u263A', pc);  // ☺ head
+    r.drawEntityChar(playerGX, playerGY - 1, '\u2502', pc);  // │ torso
+    r.drawEntityChar(playerGX, playerGY, '@', pc);            // @ legs/anchor
 
     // Player targeting reticle (4 corners, pulsing)
     {
       const t = Date.now() % 1000;
       const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawGraphicsChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
-      r.drawGraphicsChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
-      r.drawGraphicsChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
-      r.drawGraphicsChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
+      r.drawEntityChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
+      r.drawEntityChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
+      r.drawEntityChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
+      r.drawEntityChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
     }
 
     // MECH_ARM overlay
@@ -7114,10 +7126,12 @@ class Game {
           brightness = 1.0;
         }
 
+        const expanded = expandTile(tile, 3, wx, wy);
+        r.drawWorldTile(wx_off, wy_off, expanded);
         const animFg = r.getAnimatedColor(tile.fg, tile.type, wx, wy);
-        const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
-        const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
-        r.drawGraphicsChar(wx_off, wy_off, tile.char, dimFg, dimBg);
+        r.drawEntityChar(wx_off, wy_off, tile.char, animFg, tile.bg || COLORS.BLACK);
+        const darkenAlpha = 1.0 - Math.max(0.15, brightness);
+        if (darkenAlpha > 0) r.darkenWorldCell(wx_off, wy_off, darkenAlpha);
       }
     }
 
@@ -7128,8 +7142,8 @@ class Game {
 
   _renderTestArea() {
     const r = this.renderer;
-    const worldW = r.graphicsCols;
-    const worldH = r.graphicsRows;
+    const worldW = r.worldCols;
+    const worldH = r.worldRows;
 
     const offsetX = this.player.position.x - Math.floor(worldW / 2);
     const offsetY = this.player.position.y - Math.floor(worldH / 2);
@@ -7144,9 +7158,10 @@ class Game {
 
         if (wy >= 0 && wy < dh && wx >= 0 && wx < dw) {
           const tile = this.currentDungeon.tiles[wy][wx];
-          r.drawGraphicsChar(wx_off, wy_off, tile.char, tile.fg, tile.bg);
+          const expanded = expandTile(tile, 3, wx, wy);
+          r.drawWorldTile(wx_off, wy_off, expanded);
         } else {
-          r.drawGraphicsChar(wx_off, wy_off, ' ', '#000000', '#000000');
+          r.drawUniformTile(wx_off, wy_off, ' ', '#000000', '#000000');
         }
       }
     }
@@ -7154,16 +7169,16 @@ class Game {
     // Draw player (1×3 multi-tile)
     const playerGX = Math.floor(worldW / 2);
     const playerGY = Math.floor(worldH / 2);
-    r.drawGraphicsChar(playerGX, playerGY - 2, '\u263A', COLORS.BRIGHT_YELLOW);
-    r.drawGraphicsChar(playerGX, playerGY - 1, '\u2502', COLORS.BRIGHT_YELLOW);
-    r.drawGraphicsChar(playerGX, playerGY, '@', COLORS.BRIGHT_YELLOW);
+    r.drawEntityChar(playerGX, playerGY - 2, '\u263A', COLORS.BRIGHT_YELLOW);
+    r.drawEntityChar(playerGX, playerGY - 1, '\u2502', COLORS.BRIGHT_YELLOW);
+    r.drawEntityChar(playerGX, playerGY, '@', COLORS.BRIGHT_YELLOW);
 
     const t = Date.now() % 1000;
     const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-    r.drawGraphicsChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
-    r.drawGraphicsChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
-    r.drawGraphicsChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
-    r.drawGraphicsChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
+    r.drawEntityChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
+    r.drawEntityChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
+    r.drawEntityChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
+    r.drawEntityChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
   }
 
   renderBattleResults() {
