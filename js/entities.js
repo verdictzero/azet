@@ -137,19 +137,19 @@ const ROLE_CHARS = {
 };
 
 const ROLE_COLORS = {
-  merchant:   '#e6c619',
-  blacksmith: '#cc6633',
-  barkeep:    '#d4915c',
-  priest:     '#f0f0f0',
-  guard:      '#7799cc',
-  noble:      '#cc66cc',
-  farmer:     '#88aa44',
-  miner:      '#aa8855',
-  hunter:     '#66aa66',
-  scholar:    '#aaaaee',
-  beggar:     '#888888',
-  child:      '#ffaaaa',
-  knight:     '#ccccdd',
+  merchant:   '#ffcc00',
+  blacksmith: '#ff6622',
+  barkeep:    '#ee8833',
+  priest:     '#ffffff',
+  guard:      '#4499ff',
+  noble:      '#ee44ff',
+  farmer:     '#66dd22',
+  miner:      '#cc8833',
+  hunter:     '#33dd44',
+  scholar:    '#7788ff',
+  beggar:     '#aaaaaa',
+  child:      '#ff7777',
+  knight:     '#aabbff',
 };
 
 // Multi-tile NPC sprites: each entry defines a grid of chars/colors drawn

@@ -68,6 +68,15 @@ export const COLORS = Object.freeze({
   BRIGHT_MAGENTA: '#c060d0',
   BRIGHT_YELLOW:  '#f8e060',
   BRIGHT_WHITE:   '#f8f0ff',
+  // Vivid entity accent colors
+  VIVID_GOLD:     '#ffcc00',
+  VIVID_ORANGE:   '#ff6622',
+  VIVID_PINK:     '#ff4488',
+  VIVID_LIME:     '#44ff22',
+  VIVID_SKY:      '#44bbff',
+  VIVID_VIOLET:   '#bb44ff',
+  VIVID_TEAL:     '#00ddaa',
+  VIVID_CRIMSON:  '#ff2244',
   // FF-style UI colors
   FF_BLUE_BG:     '#1a1a2a',
   FF_BLUE_DARK:   '#0e0e14',
