@@ -152,6 +152,87 @@ const ROLE_COLORS = {
   knight:     '#ccccdd',
 };
 
+// Multi-tile NPC sprites: each entry defines a grid of chars/colors drawn
+// relative to the NPC's anchor position (bottom-center of sprite).
+// Cells with null are transparent (underlying tile shows through).
+// Format: { w, h, chars[][], fgs[][] } — rows top-to-bottom.
+export const NPC_SPRITES = {
+  merchant: {
+    w: 1, h: 3,
+    chars: [['\u263A'], ['\u2502'], ['M']],
+    //        ☺           │          M
+    fgs:   [['#e6c619'], ['#e6c619'], ['#e6c619']],
+  },
+  blacksmith: {
+    w: 3, h: 3,
+    chars: [[null, '\u263A', null], [null, '\u2588', '\u2524'], [null, 'M', null]],
+    //              ☺                       █         ┤  (hammer arm)
+    fgs:   [[null, '#cc6633', null], [null, '#cc6633', '#aa5522'], [null, '#cc6633', null]],
+  },
+  barkeep: {
+    w: 1, h: 3,
+    chars: [['\u263A'], ['\u2502'], ['B']],
+    fgs:   [['#d4915c'], ['#d4915c'], ['#d4915c']],
+  },
+  priest: {
+    w: 1, h: 3,
+    chars: [['\u2020'], ['\u263A'], ['P']],
+    //        †            ☺          P
+    fgs:   [['#ffdd44'], ['#f0f0f0'], ['#f0f0f0']],
+  },
+  guard: {
+    w: 1, h: 3,
+    chars: [['\u25B2'], ['\u263B'], ['G']],
+    //        ▲ (helmet)   ☻          G
+    fgs:   [['#7799cc'], ['#7799cc'], ['#7799cc']],
+  },
+  noble: {
+    w: 1, h: 3,
+    chars: [['\u2666'], ['\u263A'], ['N']],
+    //        ♦ (crown)    ☺          N
+    fgs:   [['#ffdd44'], ['#cc66cc'], ['#cc66cc']],
+  },
+  farmer: {
+    w: 1, h: 3,
+    chars: [['\u263A'], ['\u2502'], ['N']],
+    fgs:   [['#88aa44'], ['#88aa44'], ['#88aa44']],
+  },
+  miner: {
+    w: 1, h: 3,
+    chars: [['\u25CB'], ['\u263A'], ['N']],
+    //        ○ (helmet)   ☺          N
+    fgs:   [['#aa8855'], ['#aa8855'], ['#aa8855']],
+  },
+  hunter: {
+    w: 1, h: 3,
+    chars: [['\u263A'], ['\u2502'], ['N']],
+    fgs:   [['#66aa66'], ['#66aa66'], ['#66aa66']],
+  },
+  scholar: {
+    w: 1, h: 3,
+    chars: [['\u25D8'], ['\u263A'], ['N']],
+    //        ◘ (glasses)  ☺          N
+    fgs:   [['#aaaaee'], ['#aaaaee'], ['#aaaaee']],
+  },
+  beggar: {
+    w: 1, h: 2,
+    chars: [['\u263A'], ['N']],
+    fgs:   [['#888888'], ['#888888']],
+  },
+  child: {
+    w: 1, h: 2,
+    chars: [['\u00B0'], ['N']],
+    //        ° (small head)
+    fgs:   [['#ffaaaa'], ['#ffaaaa']],
+  },
+  knight: {
+    w: 3, h: 3,
+    chars: [[null, '\u25B2', null], ['\u2524', '\u2588', '\u251C'], [null, 'K', null]],
+    //              ▲ (helmet)       ┤     █       ├  (arms)           K
+    fgs:   [[null, '#ccccdd', null], ['#aaaacc', '#ccccdd', '#aaaacc'], [null, '#ccccdd', null]],
+  },
+};
+
 const ROLE_TITLES = {
   merchant:   ['Supply Trader', 'Parts Dealer', 'Salvage Broker', 'Junk Peddler', 'Market Keeper'],
   blacksmith: ['Fabricator', 'Armorer', 'Weld Smith', 'Metalworker', 'Forge Operator'],

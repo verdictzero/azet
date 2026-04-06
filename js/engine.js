@@ -97,13 +97,21 @@ export class Renderer {
     this.buffer = [];      // current frame being built
     this.prevBuffer = [];  // last rendered frame
 
+    // Graphics buffer: half-size cells for the viewport region (double density)
+    this.gFontSize = 8;
+    this.gCellWidth = 0;
+    this.gCellHeight = 0;
+    this.gCols = 0;
+    this.gRows = 0;
+    this.gOriginX = 0;     // pixel X of viewport origin
+    this.gOriginY = 0;     // pixel Y of viewport origin
+    this.graphicsBuffer = [];
+    this.prevGraphicsBuffer = [];
+
     // Cache measured widths for non-ASCII characters to detect overly wide glyphs
     this._charWidthCache = {};
 
     this.effectsEnabled = false; // visual FX disabled for now (toggle with settings)
-    this.zoomLevel = 3;       // legacy compat
-    this.densityLevel = 3;    // density zoom: 1, 2, or 3
-    this._baseFontSize = null; // stored when zoom is applied
 
     // CRT post-processing resolution scaling
     this.crtScale = 0.5;      // render CRT effects at this fraction of full res (0.25–1.0)
@@ -145,9 +153,6 @@ export class Renderer {
       this.fontSize = Math.round(minFont + t * (maxFont - minFont));
       if (isPortrait) this.fontSize = Math.max(8, this.fontSize - 1);
     }
-    // Store base font size (no longer modified by zoom — density zoom is character-based)
-    this._baseFontSize = this.fontSize;
-
     // Measure a representative character to derive cell size
     this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     const metrics = this.ctx.measureText('M');
@@ -168,7 +173,6 @@ export class Renderer {
       if (!this._userFontSize) {
         const neededCellH = Math.floor(availH / minRows);
         this.fontSize = Math.max(7, Math.floor(neededCellH / 1.35));
-        this._baseFontSize = this.fontSize;
         this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
         const m = this.ctx.measureText('M');
         this.cellWidth = Math.ceil(m.width);
@@ -200,11 +204,29 @@ export class Renderer {
     this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     this.ctx.textBaseline = 'top';
 
+    // Compute graphics (viewport) cell metrics — half-size font for double density
+    this.gFontSize = Math.max(5, Math.round(this.fontSize / 2));
+    this.ctx.font = `${this.gFontSize}px ${this.fontFamily}`;
+    const gm = this.ctx.measureText('M');
+    this.gCellWidth = Math.ceil(gm.width);
+    this.gCellHeight = Math.ceil(this.gFontSize * 1.35);
+    // Restore text font
+    this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+
+    // Graphics grid covers the viewport region (inside borders, above HUD)
+    const vpPixelW = (this.cols - 2) * this.cellWidth;
+    const vpPixelH = (this.rows - LAYOUT.HUD_TOTAL) * this.cellHeight;
+    this.gCols = Math.floor(vpPixelW / this.gCellWidth);
+    this.gRows = Math.floor(vpPixelH / this.gCellHeight);
+    this.gOriginX = 1 * this.cellWidth;
+    this.gOriginY = LAYOUT.VIEWPORT_TOP * this.cellHeight;
+
     // Allocate buffers
     this._allocateBuffers();
 
     // Force full redraw next frame
     this.prevBuffer = [];
+    this.prevGraphicsBuffer = [];
   }
 
   setFontSize(size) {
@@ -213,11 +235,10 @@ export class Renderer {
     this.resize();
   }
 
-  setZoom(level) {
-    this.densityLevel = Math.max(1, Math.min(3, Math.round(level)));
-    this.zoomLevel = this.densityLevel; // keep in sync for compat
-    this.invalidate();
-  }
+  // densityLevel zoom removed — graphics buffer provides double density natively
+  get densityLevel() { return 1; }
+  get zoomLevel() { return 1; }
+  setZoom(_level) { /* no-op: density zoom retired */ }
 
   setCrtScale(scale) {
     this.crtScale = Math.max(0.25, Math.min(1.0, scale));
@@ -257,6 +278,15 @@ export class Renderer {
       }
       this.buffer.push(row);
     }
+    // Graphics buffer for viewport (half-size cells)
+    this.graphicsBuffer = [];
+    for (let r = 0; r < this.gRows; r++) {
+      const row = [];
+      for (let c = 0; c < this.gCols; c++) {
+        row.push({ char: ' ', fg: COLORS.WHITE, bg: COLORS.BLACK, safety: false });
+      }
+      this.graphicsBuffer.push(row);
+    }
   }
 
   // ── Frame lifecycle ─────────────────────────
@@ -278,6 +308,16 @@ export class Renderer {
         cell.safety = false;
       }
     }
+    // Clear graphics buffer
+    for (let r = 0; r < this.gRows; r++) {
+      for (let c = 0; c < this.gCols; c++) {
+        const cell = this.graphicsBuffer[r][c];
+        cell.char = ' ';
+        cell.fg = COLORS.WHITE;
+        cell.bg = COLORS.BLACK;
+        cell.safety = false;
+      }
+    }
   }
 
   /**
@@ -287,6 +327,7 @@ export class Renderer {
    */
   invalidate() {
     this.prevBuffer = [];
+    this.prevGraphicsBuffer = [];
   }
 
   /**
@@ -301,10 +342,28 @@ export class Renderer {
     const ch = this.cellHeight;
     const hasPrev = !forceFullRedraw && this.prevBuffer.length === this.rows;
 
+    // Viewport region in text-cell coords (skip these for text pass)
+    const vpTop = LAYOUT.VIEWPORT_TOP;
+    const vpBot = this.rows - LAYOUT.HUD_BOTTOM;
+    const vpLeft = 1;
+    const vpRight = this.cols - 1;
+
+    // Check if any graphics cells were written this frame (non-blank)
+    // If not, don't skip the viewport in text pass (menus draw there via text buffer)
+    let hasGraphics = false;
+    outer: for (let r = 0; r < this.gRows; r++) {
+      for (let c = 0; c < this.gCols; c++) {
+        if (this.graphicsBuffer[r][c].char !== ' ' || this.graphicsBuffer[r][c].bg !== COLORS.BLACK) {
+          hasGraphics = true;
+          break outer;
+        }
+      }
+    }
+
+    // ── Pass 1: Text buffer (HUD, menus, borders) ──
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     ctx.textBaseline = 'top';
 
-    // Batch background fills: merge horizontal runs of same bg color
     let lastBg = null;
     let runStartC = 0;
     let runRow = 0;
@@ -319,22 +378,20 @@ export class Renderer {
     for (let r = 0; r < this.rows; r++) {
       lastBg = null;
       for (let c = 0; c < this.cols; c++) {
-        const cell = this.buffer[r][c];
+        // Skip viewport cells when graphics buffer is active
+        if (hasGraphics && r >= vpTop && r < vpBot && c >= vpLeft && c < vpRight) {
+          if (lastBg !== null) { flushBgRun(); lastBg = null; }
+          continue;
+        }
 
-        // Skip unchanged cells (only when dirty tracking is valid)
+        const cell = this.buffer[r][c];
         if (hasPrev) {
           const prev = this.prevBuffer[r][c];
-          if (
-            prev.char === cell.char &&
-            prev.fg === cell.fg &&
-            prev.bg === cell.bg
-          ) {
+          if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) {
             if (lastBg !== null) { flushBgRun(); lastBg = null; }
             continue;
           }
         }
-
-        // Extend or start bg run
         if (cell.bg === lastBg && r === runRow) {
           this._runEndC = c + 1;
         } else {
@@ -348,48 +405,108 @@ export class Renderer {
       if (lastBg !== null) { flushBgRun(); lastBg = null; }
     }
 
-    // Draw foreground characters
     let lastFg = null;
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
+        if (hasGraphics && r >= vpTop && r < vpBot && c >= vpLeft && c < vpRight) continue;
         const cell = this.buffer[r][c];
-
         if (hasPrev) {
           const prev = this.prevBuffer[r][c];
           if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) continue;
         }
-
         if (cell.char !== ' ') {
-          if (cell.fg !== lastFg) {
-            ctx.fillStyle = cell.fg;
-            lastFg = cell.fg;
-          }
+          if (cell.fg !== lastFg) { ctx.fillStyle = cell.fg; lastFg = cell.fg; }
           const x = c * cw;
           const y = r * ch;
-          // Safety: check if non-ASCII char is wider than cell (enemy art only)
           if (cell.safety && cell.char.charCodeAt(0) > 127) {
             const w = this._charWidthCache[cell.char];
-            if (w === undefined) {
-              this._charWidthCache[cell.char] = ctx.measureText(cell.char).width;
-            }
-            if ((this._charWidthCache[cell.char] || 0) > cw * 1.3) {
-              ctx.fillText('?', x, y);
-              continue;
-            }
+            if (w === undefined) this._charWidthCache[cell.char] = ctx.measureText(cell.char).width;
+            if ((this._charWidthCache[cell.char] || 0) > cw * 1.3) { ctx.fillText('?', x, y); continue; }
           }
           ctx.fillText(cell.char, x, y);
         }
       }
     }
 
-    // Snapshot current buffer into prevBuffer
-    // (skip snapshot when force-redrawing with effects, since canvas
-    //  will be modified after this call and dirty tracking would be wrong)
+    // ── Pass 2: Graphics buffer (viewport, half-size cells) ──
+    if (hasGraphics) {
+      const gcw = this.gCellWidth;
+      const gch = this.gCellHeight;
+      const ox = this.gOriginX;
+      const oy = this.gOriginY;
+      const hasGPrev = !forceFullRedraw && this.prevGraphicsBuffer.length === this.gRows;
+
+      ctx.font = `${this.gFontSize}px ${this.fontFamily}`;
+      ctx.textBaseline = 'top';
+
+      // Background runs
+      lastBg = null;
+      for (let r = 0; r < this.gRows; r++) {
+        lastBg = null;
+        for (let c = 0; c < this.gCols; c++) {
+          const cell = this.graphicsBuffer[r][c];
+          if (hasGPrev) {
+            const prev = this.prevGraphicsBuffer[r][c];
+            if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) {
+              if (lastBg !== null) { flushBgRun(); lastBg = null; }
+              continue;
+            }
+          }
+          if (cell.bg === lastBg && r === runRow) {
+            this._runEndC = c + 1;
+          } else {
+            // Override flushBgRun for graphics coordinates
+            if (lastBg !== null) {
+              ctx.fillStyle = lastBg;
+              ctx.fillRect(ox + runStartC * gcw, oy + runRow * gch, (this._runEndC - runStartC) * gcw, gch);
+            }
+            lastBg = cell.bg;
+            runStartC = c;
+            runRow = r;
+            this._runEndC = c + 1;
+          }
+        }
+        if (lastBg !== null) {
+          ctx.fillStyle = lastBg;
+          ctx.fillRect(ox + runStartC * gcw, oy + runRow * gch, (this._runEndC - runStartC) * gcw, gch);
+          lastBg = null;
+        }
+      }
+
+      // Foreground chars
+      lastFg = null;
+      for (let r = 0; r < this.gRows; r++) {
+        for (let c = 0; c < this.gCols; c++) {
+          const cell = this.graphicsBuffer[r][c];
+          if (hasGPrev) {
+            const prev = this.prevGraphicsBuffer[r][c];
+            if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) continue;
+          }
+          if (cell.char !== ' ') {
+            if (cell.fg !== lastFg) { ctx.fillStyle = cell.fg; lastFg = cell.fg; }
+            const x = ox + c * gcw;
+            const y = oy + r * gch;
+            if (cell.safety && cell.char.charCodeAt(0) > 127) {
+              const w = this._charWidthCache[cell.char];
+              if (w === undefined) this._charWidthCache[cell.char] = ctx.measureText(cell.char).width;
+              if ((this._charWidthCache[cell.char] || 0) > gcw * 1.3) { ctx.fillText('?', x, y); continue; }
+            }
+            ctx.fillText(cell.char, x, y);
+          }
+        }
+      }
+
+      // Restore text font
+      ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+    }
+
+    // ── Snapshot buffers ──
     if (forceFullRedraw) {
       this.prevBuffer = [];
+      this.prevGraphicsBuffer = [];
     } else {
+      // Text buffer snapshot
       if (!this.prevBuffer.length) {
-        // Allocate prevBuffer once, reuse
         this.prevBuffer = [];
         for (let r = 0; r < this.rows; r++) {
           const row = [];
@@ -400,14 +517,33 @@ export class Renderer {
           this.prevBuffer.push(row);
         }
       } else {
-        // Reuse existing objects to avoid GC pressure
         for (let r = 0; r < this.rows; r++) {
           for (let c = 0; c < this.cols; c++) {
             const s = this.buffer[r][c];
             const p = this.prevBuffer[r][c];
-            p.char = s.char;
-            p.fg = s.fg;
-            p.bg = s.bg;
+            p.char = s.char; p.fg = s.fg; p.bg = s.bg;
+          }
+        }
+      }
+      // Graphics buffer snapshot
+      if (hasGraphics) {
+        if (!this.prevGraphicsBuffer.length) {
+          this.prevGraphicsBuffer = [];
+          for (let r = 0; r < this.gRows; r++) {
+            const row = [];
+            for (let c = 0; c < this.gCols; c++) {
+              const s = this.graphicsBuffer[r][c];
+              row.push({ char: s.char, fg: s.fg, bg: s.bg });
+            }
+            this.prevGraphicsBuffer.push(row);
+          }
+        } else {
+          for (let r = 0; r < this.gRows; r++) {
+            for (let c = 0; c < this.gCols; c++) {
+              const s = this.graphicsBuffer[r][c];
+              const p = this.prevGraphicsBuffer[r][c];
+              p.char = s.char; p.fg = s.fg; p.bg = s.bg;
+            }
           }
         }
       }
@@ -422,7 +558,8 @@ export class Renderer {
   clear() {
     this.ctx.fillStyle = COLORS.BLACK;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    this.prevBuffer = []; // force full redraw next endFrame
+    this.prevBuffer = [];
+    this.prevGraphicsBuffer = [];
   }
 
   /**
@@ -452,6 +589,41 @@ export class Renderer {
       this.drawChar(col + i, row, str[i], fg, bg);
     }
   }
+
+  // ── Graphics buffer drawing (viewport, half-size cells) ──
+
+  /**
+   * Set a single cell in the graphics buffer (viewport region, double density).
+   */
+  drawGraphicsChar(gc, gr, char, fg = COLORS.WHITE, bg = COLORS.BLACK, safety = false) {
+    gc = gc | 0;
+    gr = gr | 0;
+    if (!(gc >= 0 && gc < this.gCols && gr >= 0 && gr < this.gRows)) return;
+    const cell = this.graphicsBuffer[gr][gc];
+    cell.char = char;
+    cell.fg = fg;
+    cell.bg = bg;
+    cell.safety = safety;
+  }
+
+  /**
+   * Write a horizontal string into the graphics buffer.
+   */
+  drawGraphicsString(gc, gr, str, fg = COLORS.WHITE, bg = COLORS.BLACK, maxWidth = 0) {
+    const screenLimit = this.gCols - gc;
+    if (screenLimit <= 0) return;
+    let len = maxWidth > 0 ? Math.min(str.length, maxWidth) : str.length;
+    len = Math.min(len, screenLimit);
+    for (let i = 0; i < len; i++) {
+      this.drawGraphicsChar(gc + i, gr, str[i], fg, bg);
+    }
+  }
+
+  /**
+   * Convenience getters for graphics grid dimensions.
+   */
+  get graphicsCols() { return this.gCols; }
+  get graphicsRows() { return this.gRows; }
 
   /**
    * Draw a horizontal separator spanning a box: ├───────┤
@@ -742,6 +914,51 @@ export class Renderer {
     this._tintBatch.push(col, row, color, alpha);
   }
 
+  // ── Graphics-cell overlay variants (viewport, half-size cells) ──
+
+  /**
+   * Tint the entire graphics viewport with a color overlay.
+   */
+  tintGraphicsViewport(color, alpha) {
+    if (alpha <= 0.005) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(this.gOriginX, this.gOriginY, this.gCols * this.gCellWidth, this.gRows * this.gCellHeight);
+    ctx.restore();
+  }
+
+  /**
+   * Darken a graphics cell (viewport coordinates).
+   */
+  darkenGraphicsCell(gc, gr, alpha) {
+    if (gc < 0 || gc >= this.gCols || gr < 0 || gr >= this.gRows) return;
+    if (alpha <= 0) return;
+    if (!this._gDarkenBatch) this._gDarkenBatch = [];
+    this._gDarkenBatch.push(gc, gr, alpha);
+  }
+
+  /**
+   * Brighten a graphics cell with a warm tint.
+   */
+  brightenGraphicsCell(gc, gr, alpha, tintColor) {
+    if (gc < 0 || gc >= this.gCols || gr < 0 || gr >= this.gRows) return;
+    if (alpha <= 0) return;
+    if (!this._gBrightenBatch) this._gBrightenBatch = [];
+    this._gBrightenBatch.push(gc, gr, alpha, tintColor || '#FFEEAA');
+  }
+
+  /**
+   * Tint a graphics cell with a color overlay.
+   */
+  tintGraphicsCell(gc, gr, color, alpha) {
+    if (gc < 0 || gc >= this.gCols || gr < 0 || gr >= this.gRows) return;
+    if (alpha <= 0) return;
+    if (!this._gTintBatch) this._gTintBatch = [];
+    this._gTintBatch.push(gc, gr, color, alpha);
+  }
+
   /**
    * Flush all queued darken/brighten/tint operations in batched canvas calls.
    * Call this once after all overlay operations are done for the frame.
@@ -796,6 +1013,48 @@ export class Renderer {
         ctx.fillRect(batch[i] * cw, batch[i + 1] * ch, cw, ch);
       }
       this._tintBatch.length = 0;
+    }
+
+    // ── Graphics-cell batches (viewport, half-size cells) ──
+    const gcw = this.gCellWidth;
+    const gch = this.gCellHeight;
+    const ox = this.gOriginX;
+    const oy = this.gOriginY;
+
+    if (this._gDarkenBatch && this._gDarkenBatch.length > 0) {
+      const batch = this._gDarkenBatch;
+      ctx.fillStyle = '#000000';
+      for (let i = 0; i < batch.length; i += 3) {
+        ctx.globalAlpha = batch[i + 2];
+        ctx.fillRect(ox + batch[i] * gcw, oy + batch[i + 1] * gch, gcw, gch);
+      }
+      this._gDarkenBatch.length = 0;
+    }
+
+    if (this._gBrightenBatch && this._gBrightenBatch.length > 0) {
+      const batch = this._gBrightenBatch;
+      ctx.globalCompositeOperation = 'screen';
+      let lastColor = null;
+      for (let i = 0; i < batch.length; i += 4) {
+        const color = batch[i + 3];
+        if (color !== lastColor) { ctx.fillStyle = color; lastColor = color; }
+        ctx.globalAlpha = batch[i + 2];
+        ctx.fillRect(ox + batch[i] * gcw, oy + batch[i + 1] * gch, gcw, gch);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      this._gBrightenBatch.length = 0;
+    }
+
+    if (this._gTintBatch && this._gTintBatch.length > 0) {
+      const batch = this._gTintBatch;
+      let lastColor = null;
+      for (let i = 0; i < batch.length; i += 4) {
+        const color = batch[i + 2];
+        if (color !== lastColor) { ctx.fillStyle = color; lastColor = color; }
+        ctx.globalAlpha = batch[i + 3];
+        ctx.fillRect(ox + batch[i] * gcw, oy + batch[i + 1] * gch, gcw, gch);
+      }
+      this._gTintBatch.length = 0;
     }
 
     // Restore default state
@@ -1434,21 +1693,15 @@ export class ParticleSystem {
    * Render particles to the renderer relative to camera.
    */
   render(renderer, cameraX, cameraY) {
-    const viewLeft = 1;
-    const viewTop = LAYOUT.VIEWPORT_TOP;
-    const viewW = renderer.cols - 2;
-    const viewH = renderer.rows - LAYOUT.HUD_TOTAL;
-    const density = renderer.densityLevel;
-    const entityOff = Math.floor(density / 2);
+    const viewW = renderer.graphicsCols;
+    const viewH = renderer.graphicsRows;
     for (const p of this.particles) {
       const wx_off = Math.round(p.x - cameraX);
       const wy_off = Math.round(p.y - cameraY);
-      const screenX = wx_off * density + entityOff;
-      const screenY = wy_off * density + entityOff;
-      if (screenX >= 0 && screenX < viewW && screenY >= 0 && screenY < viewH) {
+      if (wx_off >= 0 && wx_off < viewW && wy_off >= 0 && wy_off < viewH) {
         const fade = p.life / p.maxLife;
         if (fade > 0.3) {
-          renderer.drawChar(viewLeft + screenX, viewTop + screenY, p.char, p.fg);
+          renderer.drawGraphicsChar(wx_off, wy_off, p.char, p.fg);
         }
       }
     }

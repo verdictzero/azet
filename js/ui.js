@@ -1,6 +1,6 @@
 import { COLORS, LAYOUT, wordWrap } from './engine.js';
 import { CRYSTAL_WIDTH, CRYSTAL_HEIGHT, CRYSTAL_FRAMES } from './crystal-frames.js';
-import { expandTile } from './tileExpansion.js';
+import { NPC_SPRITES } from './entities.js';
 
 // ─── Color conversion helpers for hue-shifting effects ───
 function hexToHsl(hex) {
@@ -1677,7 +1677,7 @@ export class UIManager {
     const mapW = cols - 4;
     const mapH = rows - 4;
     const CHUNK_SIZE = 32;
-    const zoom = r.densityLevel || 1;
+    const zoom = 1;
 
     // Chunk-based overworld: compute bounding box from explored chunks
     if (overworld.exploredChunks && overworld.exploredChunks.size > 0) {
@@ -1914,14 +1914,14 @@ export class UIManager {
     const r = this.renderer;
     const cols = r.cols;
     const rows = r.rows;
-    const viewLeft = 1;
-    const viewTop = LAYOUT.VIEWPORT_TOP;
-    const viewW = cols - 2;
-    const viewH = rows - LAYOUT.HUD_TOTAL;
+    const viewW = r.graphicsCols;
+    const viewH = r.graphicsRows;
 
     // Tile height lookup for settlement shadow casting — buildings only
     const SETTLEMENT_HEIGHTS = {
       WALL: 3, BUILDING_WALL: 3,
+      CHIMNEY: 4,     // Chimneys protrude above roofline
+      SHUTTER: 2,     // Shutters on building sides
     };
     // Character-based heights for decorations — buildings only
     const CHAR_HEIGHTS = {
@@ -1961,12 +1961,10 @@ export class UIManager {
       sunWarmth = 0.15;
     }
 
-    // Draw settlement map tiles with camera
+    // Draw settlement map tiles with camera (using graphics buffer)
     if (settlement.tiles) {
-      const density = r.densityLevel;
-      const worldW = Math.ceil(viewW / density);
-      const worldH = Math.ceil(viewH / density);
-      const entityOff = Math.floor(density / 2);
+      const worldW = r.graphicsCols;
+      const worldH = r.graphicsRows;
 
       const camX = camera ? Math.floor(camera.getRenderX()) : Math.max(0, Math.floor((settlement.tiles[0].length - worldW) / 2));
       const camY = camera ? Math.floor(camera.getRenderY()) : Math.max(0, Math.floor((settlement.tiles.length - worldH) / 2));
@@ -1994,24 +1992,17 @@ export class UIManager {
               // Cast infinitely linear shadow to viewport edge
               const baseAlpha = shadowAlpha + Math.min(0.125, height * 0.025);
               for (let i = 1; i <= maxRayLen; i++) {
-                const shBaseX = wx_off * density + sdxN * i * density;
-                const shBaseY = wy_off * density + sdyN * i * density;
-                let anyInBounds = false;
-                for (let sdy = 0; sdy < density; sdy++) {
-                  for (let sdx = 0; sdx < density; sdx++) {
-                    const shx = Math.floor(shBaseX) + sdx;
-                    const shy = Math.floor(shBaseY) + sdy;
-                    if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
-                      anyInBounds = true;
-                      const key = `${shx},${shy}`;
-                      const existing = shadowCells.get(key) || 0;
-                      const dist = i / maxRayLen;
-                      const fadedAlpha = baseAlpha * Math.pow(1.0 - dist, 2);
-                      shadowCells.set(key, Math.min(shadowMax, existing + fadedAlpha));
-                    }
-                  }
+                const shx = Math.floor(wx_off + sdxN * i);
+                const shy = Math.floor(wy_off + sdyN * i);
+                if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
+                  const key = `${shx},${shy}`;
+                  const existing = shadowCells.get(key) || 0;
+                  const dist = i / maxRayLen;
+                  const fadedAlpha = baseAlpha * Math.pow(1.0 - dist, 2);
+                  shadowCells.set(key, Math.min(shadowMax, existing + fadedAlpha));
+                } else {
+                  break;
                 }
-                if (!anyInBounds) break;
               }
             }
           }
@@ -2021,7 +2012,7 @@ export class UIManager {
       // Edge highlights disabled — using soft gradient shadows instead
       const sunlitCells = new Map();
 
-      // Render tiles with density expansion
+      // Render tiles
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
         for (let wx_off = 0; wx_off < worldW; wx_off++) {
           const wx = camX + wx_off;
@@ -2029,25 +2020,9 @@ export class UIManager {
           if (wy >= 0 && wy < settlement.tiles.length && wx >= 0 && wx < settlement.tiles[0].length) {
             const tile = settlement.tiles[wy][wx];
             if (!tile) continue;
-
-            if (density === 1) {
-              const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-              const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
-              r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, tile.bg || COLORS.BLACK);
-            } else {
-              const expanded = expandTile(tile, density, wx, wy);
-              for (let dy = 0; dy < density; dy++) {
-                for (let dx = 0; dx < density; dx++) {
-                  const screenX = viewLeft + wx_off * density + dx;
-                  const screenY = viewTop + wy_off * density + dy;
-                  if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                    const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx, wy);
-                    const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(expanded.fgs[dy][dx], tile.type, wx, wy) : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
-                    r.drawChar(screenX, screenY, ch, fg, expanded.bgs[dy][dx]);
-                  }
-                }
-              }
-            }
+            const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+            const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
+            r.drawGraphicsChar(wx_off, wy_off, ch, fg, tile.bg || COLORS.BLACK);
           }
         }
       }
@@ -2066,8 +2041,8 @@ export class UIManager {
               if (settlement.tiles[wy][wx] && settlement.tiles[wy][wx].type === 'TREE_CANOPY') {
                 for (let cdy = -2; cdy <= 2; cdy++) {
                   for (let cdx = -2; cdx <= 2; cdx++) {
-                    const nsx = wx_off * density + cdx;
-                    const nsy = wy_off * density + cdy;
+                    const nsx = wx_off + cdx;
+                    const nsy = wy_off + cdy;
                     if (nsx >= 0 && nsx < viewW && nsy >= 0 && nsy < viewH) {
                       canopyNearbyCells.add(`${nsx},${nsy}`);
                     }
@@ -2203,11 +2178,7 @@ export class UIManager {
               if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
               const falloff = Math.max(0, 1 - dist / rad);
               const alpha = falloff * falloff * baseInt;
-              for (let sdy2 = 0; sdy2 < density; sdy2++) {
-                for (let sdx2 = 0; sdx2 < density; sdx2++) {
-                  lampGlowOps.push(viewLeft + tx * density + sdx2, viewTop + ty * density + sdy2, tintColor, alpha);
-                }
-              }
+              lampGlowOps.push(tx, ty, tintColor, alpha);
             }
           }
         }
@@ -2235,11 +2206,7 @@ export class UIManager {
                     if (tx < 0 || tx >= worldW || ty < 0 || ty >= worldH) continue;
                     const falloff = Math.max(0, 1 - dist / wRad);
                     const alpha = falloff * falloff * 0.35 * wFlicker * doorMul;
-                    for (let sdy2 = 0; sdy2 < density; sdy2++) {
-                      for (let sdx2 = 0; sdx2 < density; sdx2++) {
-                        lampGlowOps.push(viewLeft + tx * density + sdx2, viewTop + ty * density + sdy2, '#FFCC66', alpha);
-                      }
-                    }
+                    lampGlowOps.push(tx, ty, '#FFCC66', alpha);
                   }
                 }
               }
@@ -2251,35 +2218,51 @@ export class UIManager {
       // Store all lighting data for application after endFrame
       this._locationLighting = {
         shadowCells, shadowTint, sunlitCells, sunTint, sunWarmth,
-        isDay, isNight, viewLeft, viewTop, viewW, viewH,
+        isDay, isNight, viewW, viewH,
         godRayCells, lampGlowOps,
       };
 
-      // Draw NPCs — visible and color-coded by role, subtle background
+      // Draw NPCs (multi-tile sprites)
       if (npcs) {
         for (const npc of npcs) {
           const wx_off = npc.position.x - camX;
           const wy_off = npc.position.y - camY;
-          if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-            const cx = viewLeft + wx_off * density + entityOff;
-            const cy = viewTop + wy_off * density + entityOff;
-
-            const npcFg = npc.color || COLORS.BRIGHT_CYAN;
-            const npcBg = '#1a1a2e';
-            r.drawChar(cx, cy, npc.char, npcFg, npcBg);
+          if (wx_off < -2 || wx_off >= worldW + 2 || wy_off < -2 || wy_off >= worldH + 2) continue;
+          const sprite = NPC_SPRITES[npc.role];
+          if (sprite) {
+            // Anchor = bottom-center of sprite
+            const anchorCol = Math.floor(sprite.w / 2);
+            const anchorRow = sprite.h - 1;
+            for (let sr = 0; sr < sprite.h; sr++) {
+              for (let sc = 0; sc < sprite.w; sc++) {
+                const ch = sprite.chars[sr][sc];
+                if (ch == null) continue;
+                const gx = wx_off + (sc - anchorCol);
+                const gy = wy_off + (sr - anchorRow);
+                if (gx >= 0 && gx < worldW && gy >= 0 && gy < worldH) {
+                  r.drawGraphicsChar(gx, gy, ch, sprite.fgs[sr][sc] || npc.color || COLORS.BRIGHT_CYAN);
+                }
+              }
+            }
+          } else {
+            // Fallback: single char
+            if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
+              r.drawGraphicsChar(wx_off, wy_off, npc.char, npc.color || COLORS.BRIGHT_CYAN);
+            }
           }
         }
       }
 
-      // Draw enemies (bridge zones)
+      // Draw enemies (bridge zones, multi-tile)
       if (enemies) {
         for (const enemy of enemies) {
           if (!enemy.position) continue;
           const wx_off = enemy.position.x - camX;
           const wy_off = enemy.position.y - camY;
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-            const enemyColor = this.glow ? this.glow.getGlowColor('ENEMY', COLORS.BRIGHT_RED) : COLORS.BRIGHT_RED;
-            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, enemy.char || 'E', enemyColor);
+            const ec = this.glow ? this.glow.getGlowColor('ENEMY', COLORS.BRIGHT_RED) : COLORS.BRIGHT_RED;
+            r.drawGraphicsChar(wx_off, wy_off - 1, '\u263B', ec);  // ☻ head
+            r.drawGraphicsChar(wx_off, wy_off, enemy.char || 'E', ec);
           }
         }
       }
@@ -2292,32 +2275,32 @@ export class UIManager {
           const wy_off = item.position.y - camY;
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
             const itemColor = this.glow ? this.glow.getGlowColor('ITEM', COLORS.BRIGHT_MAGENTA) : COLORS.BRIGHT_MAGENTA;
-            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, item.char || '!', itemColor);
+            r.drawGraphicsChar(wx_off, wy_off, item.char || '!', itemColor);
           }
         }
       }
 
-      // Draw player
+      // Draw player (multi-tile: head + body + anchor)
       if (player) {
         const px = player.position.x - camX;
         const py = player.position.y - camY;
         if (px >= 0 && px < worldW && py >= 0 && py < worldH) {
-          const psx = viewLeft + px * density + entityOff;
-          const psy = viewTop + py * density + entityOff;
           const playerColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
-          r.drawChar(psx, psy, '@', playerColor);
+          // 1×3 player sprite: head, torso, legs (anchor = bottom)
+          r.drawGraphicsChar(px, py - 2, '\u263A', playerColor);  // ☺ head
+          r.drawGraphicsChar(px, py - 1, '\u2502', playerColor);  // │ torso
+          r.drawGraphicsChar(px, py, '@', playerColor);            // @ legs/anchor
 
-          // Player targeting reticle (4 corners, pulsing)
           const t = Date.now() % 1000;
           const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-          r.drawChar(psx - 1, psy - 1, '\u250C', reticleColor);
-          r.drawChar(psx + 1, psy - 1, '\u2510', reticleColor);
-          r.drawChar(psx - 1, psy + 1, '\u2514', reticleColor);
-          r.drawChar(psx + 1, psy + 1, '\u2518', reticleColor);
+          r.drawGraphicsChar(px - 1, py - 2, '\u250C', reticleColor);
+          r.drawGraphicsChar(px + 1, py - 2, '\u2510', reticleColor);
+          r.drawGraphicsChar(px - 1, py + 1, '\u2514', reticleColor);
+          r.drawGraphicsChar(px + 1, py + 1, '\u2518', reticleColor);
         }
       }
 
-      // MECH_ARM overlay — draw on top of all entities
+      // MECH_ARM overlay
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
         for (let wx_off = 0; wx_off < worldW; wx_off++) {
           const wx = camX + wx_off;
@@ -2325,25 +2308,9 @@ export class UIManager {
           if (wy < 0 || wy >= settlement.tiles.length || wx < 0 || wx >= settlement.tiles[0].length) continue;
           const tile = settlement.tiles[wy][wx];
           if (!tile || tile.type !== 'MECH_ARM') continue;
-
-          if (density === 1) {
-            const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-            const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
-            r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, tile.bg || COLORS.BLACK);
-          } else {
-            const expanded = expandTile(tile, density, wx, wy);
-            for (let dy = 0; dy < density; dy++) {
-              for (let dx = 0; dx < density; dx++) {
-                const screenX = viewLeft + wx_off * density + dx;
-                const screenY = viewTop + wy_off * density + dy;
-                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                  const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx, wy);
-                  const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(expanded.fgs[dy][dx], tile.type, wx, wy) : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type);
-                  r.drawChar(screenX, screenY, ch, fg, expanded.bgs[dy][dx]);
-                }
-              }
-            }
-          }
+          const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+          const fg = r.getAnimatedColorWithPos ? r.getAnimatedColorWithPos(tile.fg, tile.type, wx, wy) : r.getAnimatedColor(tile.fg, tile.type);
+          r.drawGraphicsChar(wx_off, wy_off, ch, fg, tile.bg || COLORS.BLACK);
         }
       }
     }
@@ -2356,41 +2323,38 @@ export class UIManager {
     const L = this._locationLighting;
     if (!L) return;
     const { shadowCells, shadowTint, sunlitCells, sunTint, sunWarmth,
-            isDay, isNight, viewLeft, viewTop, viewW, viewH,
+            isDay, isNight, viewW, viewH,
             godRayCells, lampGlowOps } = L;
 
-    // Shadow darkening — low contrast, subtle depth
+    // Shadow darkening
     for (const [key, alpha] of shadowCells) {
       const [sx, sy] = key.split(',').map(Number);
-      renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
-      // Very subtle cool tint in shadows
+      renderer.darkenGraphicsCell(sx, sy, alpha);
       if (shadowTint !== '#000000') {
-        renderer.tintCell(viewLeft + sx, viewTop + sy, shadowTint, alpha * 0.15);
+        renderer.tintGraphicsCell(sx, sy, shadowTint, alpha * 0.15);
       }
     }
 
-    // Edge highlights disabled
-
-    // Ambient fill — extremely subtle, barely perceptible directional bias
+    // Ambient fill
     if (isDay && sunWarmth > 0.2) {
       const ambientAlpha = sunWarmth * 0.015;
       for (let sy = 0; sy < viewH; sy++) {
         for (let sx = 0; sx < viewW; sx++) {
           const key = `${sx},${sy}`;
           if (shadowCells.has(key)) continue;
-          renderer.tintCell(viewLeft + sx, viewTop + sy, sunTint, ambientAlpha);
+          renderer.tintGraphicsCell(sx, sy, sunTint, ambientAlpha);
         }
       }
     }
 
-    // God rays / moonbeams — subtle volumetric hints
+    // God rays / moonbeams
     for (let i = 0; i < godRayCells.length; i += 4) {
-      renderer.brightenCell(viewLeft + godRayCells[i], viewTop + godRayCells[i + 1], godRayCells[i + 2], godRayCells[i + 3]);
+      renderer.brightenGraphicsCell(godRayCells[i], godRayCells[i + 1], godRayCells[i + 2], godRayCells[i + 3]);
     }
 
     // Lamp, torch, door, and window glow
     for (let i = 0; i < lampGlowOps.length; i += 4) {
-      renderer.tintCell(lampGlowOps[i], lampGlowOps[i + 1], lampGlowOps[i + 2], lampGlowOps[i + 3]);
+      renderer.tintGraphicsCell(lampGlowOps[i], lampGlowOps[i + 1], lampGlowOps[i + 2], lampGlowOps[i + 3]);
     }
   }
 

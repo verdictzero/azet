@@ -1,11 +1,12 @@
 import { COLORS, LAYOUT, Renderer, Camera, InputManager, ParticleSystem, GlowSystem } from './engine.js';
 import { SeededRNG, PerlinNoise, AStar, distance, bresenhamLine } from './utils.js';
 import { OverworldGenerator, ChunkManager, SectionManager, SettlementGenerator, BuildingInterior, DungeonGenerator, TowerGenerator, RuinGenerator, BridgeDungeonGenerator } from './world.js';
-import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms, QUEST_CHAIN_DEFINITIONS } from './entities.js';
+import { NameGenerator, NPCGenerator, DialogueSystem, LoreGenerator, Player, ItemGenerator, CreatureGenerator, degradeTechTerms, QUEST_CHAIN_DEFINITIONS, NPC_SPRITES } from './entities.js';
 import { CombatSystem, QuestSystem, ShopSystem, FactionSystem, TimeSystem, InventorySystem, EventSystem, WeatherSystem, LightingSystem, CloudSystem } from './systems.js';
 import { WorldHistoryGenerator } from './worldhistory.js';
 import { UIManager } from './ui.js';
-import { expandTile, clearTileCache } from './tileExpansion.js';
+// tileExpansion no longer used — graphics buffer provides double density natively
+// import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 import { AsciiCutscenePlayer } from './ascii-cutscene.js';
 import { SpriteManager, EXPLOSION_MANIFEST } from './sprites.js';
@@ -170,10 +171,9 @@ class Game {
     this.canvas = document.getElementById('game-canvas');
     this.renderer = new Renderer(this.canvas);
     this.input = new InputManager();
-    const initDensity = this.renderer.densityLevel;
     this.camera = new Camera(
-      Math.floor((this.renderer.cols - 2) / initDensity),
-      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / initDensity)
+      this.renderer.graphicsCols,
+      this.renderer.graphicsRows
     );
     this.locationCamera = null;
     this._bumpState = { dx: 0, dy: 0, count: 0, lastTime: 0 };
@@ -536,11 +536,10 @@ class Game {
     this.prevState = this.state;
     this.state = newState;
     this.ui.resetSelection();
-    // Update camera viewport for density zoom when switching states
+    // Update camera viewport from graphics buffer dimensions
     if (newState === 'OVERWORLD') {
-      const density = this.renderer.densityLevel;
-      this.camera.viewportCols = Math.floor((this.renderer.cols - 2) / density);
-      this.camera.viewportRows = Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density);
+      this.camera.viewportCols = this.renderer.graphicsCols;
+      this.camera.viewportRows = this.renderer.graphicsRows;
     }
     // Update touch controls layout for new state
     this.input.updateTouchLayout(newState);
@@ -607,53 +606,7 @@ class Game {
     }
   }
 
-  _zoomIn() {
-    const levels = [1, 2, 3];
-    const cur = this.renderer.densityLevel;
-    const next = levels.find(l => l > cur) || levels[levels.length - 1];
-    if (next === cur) return;
-    this.renderer.setZoom(next);
-    this._updateCameraAfterZoom();
-    this.ui.addMessage(`Zoom: ${next}x density`, COLORS.BRIGHT_CYAN);
-  }
-
-  _zoomOut() {
-    const levels = [1, 2, 3];
-    const cur = this.renderer.densityLevel;
-    const prev = [...levels].reverse().find(l => l < cur) || levels[0];
-    if (prev === cur) return;
-    this.renderer.setZoom(prev);
-    this._updateCameraAfterZoom();
-    this.ui.addMessage(`Zoom: ${prev}x density`, COLORS.BRIGHT_CYAN);
-  }
-
-  _updateCameraAfterZoom() {
-    const density = this.renderer.densityLevel;
-    const viewW = this.renderer.cols - 2;
-    const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
-    // Camera viewport is in world tiles, so divide screen size by density
-    const worldW = Math.floor(viewW / density);
-    const worldH = Math.floor(viewH / density);
-    if (this.state === 'OVERWORLD') {
-      this.camera.viewportCols = worldW;
-      this.camera.viewportRows = worldH;
-      this.camera.follow(this.player);
-      this.camera.x = this.camera.targetX;
-      this.camera.y = this.camera.targetY;
-    }
-    if (this.state === 'LOCATION' && this.locationCamera) {
-      this.locationCamera.viewportCols = worldW;
-      this.locationCamera.viewportRows = worldH;
-      this.locationCamera.follow(this.player);
-      this.locationCamera.x = this.locationCamera.targetX;
-      this.locationCamera.y = this.locationCamera.targetY;
-    }
-    if (this.state === 'DUNGEON') {
-      this.camera.viewportCols = worldW;
-      this.camera.viewportRows = worldH;
-    }
-    this.renderer.invalidate();
-  }
+  // Zoom retired — density zoom replaced by graphics buffer double density
 
   // Clear cached rendering data to prevent stale artifacts across state transitions.
   _clearRenderCaches() {
@@ -661,7 +614,6 @@ class Game {
     this._shadowBuf = null;
     this._highlightBuf = null;
     this._shadowBufData = null;
-    clearTileCache();
   }
 
   // Start a screen fade transition. Fades out, runs callback, fades in.
@@ -1176,10 +1128,6 @@ class Game {
       this.player.position.y = -this.testArea.worldOffsetY;
     }
 
-    // Lock zoom to density 1 (closest)
-    this.renderer.setZoom(1);
-    this._preLocationZoom = 1;
-
     // Clear entities
     this.enemies = [];
     this.items = [];
@@ -1214,10 +1162,6 @@ class Game {
       this.player.position.x = -this.testArea.worldOffsetX;
       this.player.position.y = -this.testArea.worldOffsetY;
     }
-
-    // Lock zoom to density 1 (closest)
-    this.renderer.setZoom(1);
-    this._preLocationZoom = 1;
 
     // Clear entities
     this.enemies = [];
@@ -1629,15 +1573,10 @@ class Game {
     this.player.position.x = coreOff.x + Math.floor(coreW / 2);
     this.player.position.y = (this.currentSettlement.tiles || []).length - coreOff.y - 2;
 
-    // Save current zoom and set max zoom for town view
-    this._preLocationZoom = this.renderer.densityLevel;
-    this.renderer.setZoom(3);
-
-    // Create location camera (sized for max zoom density)
-    const density = this.renderer.densityLevel;
+    // Create location camera (sized for graphics viewport)
     this.locationCamera = new Camera(
-      Math.floor((this.renderer.cols - 2) / density),
-      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density)
+      this.renderer.graphicsCols,
+      this.renderer.graphicsRows
     );
     this.locationCamera.follow(this.player);
     this.locationCamera.x = this.locationCamera.targetX;
@@ -1872,13 +1811,9 @@ class Game {
     location.discovered = true;
 
     // Set up LOCATION state (same as enterLocation — outdoor rendering with day/night)
-    this._preLocationZoom = this.renderer.densityLevel;
-    this.renderer.setZoom(3);
-
-    const density = this.renderer.densityLevel;
     this.locationCamera = new Camera(
-      Math.floor((this.renderer.cols - 2) / density),
-      Math.floor((this.renderer.rows - LAYOUT.HUD_TOTAL) / density)
+      this.renderer.graphicsCols,
+      this.renderer.graphicsRows
     );
     this.locationCamera.follow(this.player);
     this.locationCamera.x = this.locationCamera.targetX;
@@ -1916,12 +1851,6 @@ class Game {
       this.items = [];
       this.npcs = [];
 
-      // Restore zoom level from before entering the bridge
-      if (this._preLocationZoom) {
-        this.renderer.setZoom(this._preLocationZoom);
-        this._preLocationZoom = null;
-      }
-
       // Place player on the correct side of the bridge on the overworld
       if (bridgeLoc) {
         const bx = bridgeLoc.bridgeX != null ? bridgeLoc.bridgeX : bridgeLoc.x;
@@ -1941,12 +1870,9 @@ class Game {
 
       this.gameContext.currentLocationName = 'World';
       this.gameContext.currentLocation = null;
-      // Update camera viewport dimensions for restored zoom level
-      const density = this.renderer.densityLevel;
-      const viewW = this.renderer.cols - 2;
-      const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
-      this.camera.viewportCols = Math.floor(viewW / density);
-      this.camera.viewportRows = Math.floor(viewH / density);
+      // Update camera viewport dimensions from graphics buffer
+      this.camera.viewportCols = this.renderer.graphicsCols;
+      this.camera.viewportRows = this.renderer.graphicsRows;
       this.camera.follow(this.player);
       this.camera.x = this.camera.targetX;
       this.camera.y = this.camera.targetY;
@@ -2283,10 +2209,6 @@ class Game {
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
     if (key === 't' || key === 'T') { this._openTransitMap(); return; }
 
-    // Zoom controls
-    if (key === '+' || key === '=') { this._zoomIn(); return; }
-    if (key === '-') { this._zoomOut(); return; }
-
     // Movement (with night stumble penalty)
     let dir = this.getDirection(key);
     if (dir) {
@@ -2356,10 +2278,6 @@ class Game {
     if (key === 'p' || key === 'P') { this.saveGame(1, { exportFile: true }); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
-    // Zoom controls
-    if (key === '+' || key === '=') { this._zoomIn(); return; }
-    if (key === '-') { this._zoomOut(); return; }
-
     if (key === 'Escape') {
       // Bridge crossing: exit based on player Y position
       if (this.currentSettlement && this.currentSettlement.isBridge) {
@@ -2379,17 +2297,9 @@ class Game {
         this.npcs = [];
         this.gameContext.currentLocationName = 'World';
         this.gameContext.currentLocation = null;
-        // Restore zoom level from before entering the town
-        if (this._preLocationZoom) {
-          this.renderer.setZoom(this._preLocationZoom);
-          this._preLocationZoom = null;
-        }
-        // Update camera viewport dimensions for restored zoom level
-        const density = this.renderer.densityLevel;
-        const viewW = this.renderer.cols - 2;
-        const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
-        this.camera.viewportCols = Math.floor(viewW / density);
-        this.camera.viewportRows = Math.floor(viewH / density);
+        // Update camera viewport dimensions from graphics buffer
+        this.camera.viewportCols = this.renderer.graphicsCols;
+        this.camera.viewportRows = this.renderer.graphicsRows;
         this.camera.follow(this.player);
         this.camera.x = this.camera.targetX;
         this.camera.y = this.camera.targetY;
@@ -2466,10 +2376,6 @@ class Game {
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
-    // Zoom controls
-    if (key === '+' || key === '=') { this._zoomIn(); return; }
-    if (key === '-') { this._zoomOut(); return; }
-
     if (key === 'Escape') {
       this.startTransition(() => {
         this.currentDungeon = null;
@@ -2484,17 +2390,9 @@ class Game {
         }
         this.gameContext.currentLocationName = 'World';
         this.gameContext.currentLocation = null;
-        // Restore zoom level from before entering
-        if (this._preLocationZoom) {
-          this.renderer.setZoom(this._preLocationZoom);
-          this._preLocationZoom = null;
-        }
-        // Update camera viewport dimensions for restored zoom level
-        const density = this.renderer.densityLevel;
-        const viewW = this.renderer.cols - 2;
-        const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
-        this.camera.viewportCols = Math.floor(viewW / density);
-        this.camera.viewportRows = Math.floor(viewH / density);
+        // Update camera viewport dimensions from graphics buffer
+        this.camera.viewportCols = this.renderer.graphicsCols;
+        this.camera.viewportRows = this.renderer.graphicsRows;
         this.camera.follow(this.player);
         this.camera.x = this.camera.targetX;
         this.camera.y = this.camera.targetY;
@@ -2631,17 +2529,9 @@ class Game {
             }
             this.gameContext.currentLocationName = 'World';
             this.gameContext.currentLocation = null;
-            // Restore zoom level from before entering
-            if (this._preLocationZoom) {
-              this.renderer.setZoom(this._preLocationZoom);
-              this._preLocationZoom = null;
-            }
-            // Update camera viewport dimensions for restored zoom level
-            const density = this.renderer.densityLevel;
-            const viewW = this.renderer.cols - 2;
-            const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
-            this.camera.viewportCols = Math.floor(viewW / density);
-            this.camera.viewportRows = Math.floor(viewH / density);
+            // Update camera viewport dimensions from graphics buffer
+            this.camera.viewportCols = this.renderer.graphicsCols;
+            this.camera.viewportRows = this.renderer.graphicsRows;
             this.camera.follow(this.player);
             this.camera.x = this.camera.targetX;
             this.camera.y = this.camera.targetY;
@@ -3793,10 +3683,6 @@ class Game {
     if (key === '?') { this.setState('HELP'); return; }
     if (key === 'Escape') {
       this.setState(this.prevState || 'OVERWORLD');
-    } else if (key === '+' || key === '=') {
-      this._zoomIn();
-    } else if (key === '-') {
-      this._zoomOut();
     }
   }
 
@@ -6269,18 +6155,13 @@ class Game {
 
     // Day/night tint — viewport only (not HUD)
     if (hasTimeTint) {
-      const viewLeft = 1;
-      const viewTop = LAYOUT.VIEWPORT_TOP;
-      const viewW = this.renderer.cols - 2;
-      const viewH = this.renderer.rows - LAYOUT.HUD_TOTAL;
-
       // Get smooth tint from TimeSystem
       const effectiveHour = this.debug.forceTimeOfDay != null ? this.debug.forceTimeOfDay : this.timeSystem.hour;
       const origHour = this.timeSystem.hour;
       this.timeSystem.hour = effectiveHour;
       const tint = this.timeSystem.getTimeTint();
       this.timeSystem.hour = origHour;
-      this.renderer.tintViewport(tint.color, tint.alpha, viewLeft, viewTop, viewW, viewH);
+      this.renderer.tintGraphicsViewport(tint.color, tint.alpha);
 
       // Apply weather ambient lighting (skip in overworld — weather disabled there)
       if (this.state !== 'OVERWORLD') {
@@ -6291,24 +6172,24 @@ class Game {
             const pulse = Math.sin((this.renderer._frameTimeSec || Date.now() / 1000) * weatherAmbient.pulseSpeed) * weatherAmbient.pulseAmount;
             wAlpha = Math.max(0, Math.min(1, wAlpha + pulse));
           }
-          this.renderer.tintViewport(weatherAmbient.tintColor, wAlpha, viewLeft, viewTop, viewW, viewH);
+          this.renderer.tintGraphicsViewport(weatherAmbient.tintColor, wAlpha);
 
           // Brightness shift across viewport (single tint call instead of per-cell)
           const bShift = weatherAmbient.brightnessShift;
           if (bShift < 0) {
-            this.renderer.tintViewport('#000000', Math.abs(bShift), viewLeft, viewTop, viewW, viewH);
+            this.renderer.tintGraphicsViewport('#000000', Math.abs(bShift));
           } else if (bShift > 0) {
             // Screen-blend bright tint over viewport
             const ctx = this.renderer.ctx;
-            const x = viewLeft * this.renderer.cellWidth;
-            const y = viewTop * this.renderer.cellHeight;
-            const w = viewW * this.renderer.cellWidth;
-            const h = viewH * this.renderer.cellHeight;
+            const ox = this.renderer.gOriginX;
+            const oy = this.renderer.gOriginY;
+            const w = this.renderer.gCols * this.renderer.gCellWidth;
+            const h = this.renderer.gRows * this.renderer.gCellHeight;
             ctx.save();
             ctx.globalCompositeOperation = 'screen';
             ctx.globalAlpha = bShift;
             ctx.fillStyle = '#FFEEAA';
-            ctx.fillRect(x, y, w, h);
+            ctx.fillRect(ox, oy, w, h);
             ctx.restore();
           }
 
@@ -6335,7 +6216,7 @@ class Game {
           for (let sx = 0; sx < sW; sx++) {
             const alpha = sBuf[rowOff + sx];
             if (alpha > 0) {
-              this.renderer.darkenCell(viewLeft + sx, viewTop + sy, alpha);
+              this.renderer.darkenGraphicsCell(sx, sy, alpha);
             }
           }
         }
@@ -6348,7 +6229,7 @@ class Game {
             for (let gx = 0; gx < sW; gx++) {
               const alpha = gBuf[rowOff + gx];
               if (alpha > 0) {
-                this.renderer.darkenCell(viewLeft + gx, viewTop + gy, alpha);
+                this.renderer.darkenGraphicsCell(gx, gy, alpha);
               }
             }
           }
@@ -6425,7 +6306,7 @@ class Game {
             }
             const tint = '#' + [cR, cG, cB].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
             const dimFactor = isGodRayDay ? (1.0 - t * 0.35) : (0.6 - t * 0.2);
-            this.renderer.brightenCell(viewLeft + gc[i], viewTop + gc[i + 1], gc[i + 2] * dimFactor, tint);
+            this.renderer.brightenGraphicsCell(gc[i], gc[i + 1], gc[i + 2] * dimFactor, tint);
           }
         }
       }
@@ -6443,10 +6324,11 @@ class Game {
         if (lightInfo?.hasLight && this.state === 'OVERWORLD') {
           const camX = Math.floor(this.camera.getRenderX());
           const camY = Math.floor(this.camera.getRenderY());
-          const dLevel = this.renderer.densityLevel;
           const plx = this.player.position.x - camX;
           const ply = this.player.position.y - camY;
           const rad = lightInfo.radius;
+          const gW = this.renderer.graphicsCols;
+          const gH = this.renderer.graphicsRows;
           for (let ldy = -rad; ldy <= rad; ldy++) {
             for (let ldx = -rad; ldx <= rad; ldx++) {
               const dist = Math.sqrt(ldx * ldx + ldy * ldy);
@@ -6454,18 +6336,8 @@ class Game {
                 const falloff = (1 - dist / rad) * 0.15;
                 const wx_off = plx + ldx;
                 const wy_off = ply + ldy;
-                const worldW = Math.ceil(viewW / dLevel);
-                const worldH = Math.ceil(viewH / dLevel);
-                if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-                  for (let sdy = 0; sdy < dLevel; sdy++) {
-                    for (let sdx = 0; sdx < dLevel; sdx++) {
-                      const screenX = wx_off * dLevel + sdx;
-                      const screenY = wy_off * dLevel + sdy;
-                      if (screenX < viewW && screenY < viewH) {
-                        this.renderer.tintCell(viewLeft + screenX, viewTop + screenY, lightInfo.color, falloff);
-                      }
-                    }
-                  }
+                if (wx_off >= 0 && wx_off < gW && wy_off >= 0 && wy_off < gH) {
+                  this.renderer.tintGraphicsCell(wx_off, wy_off, lightInfo.color, falloff);
                 }
               }
             }
@@ -6581,10 +6453,8 @@ class Game {
 
     const r = this.renderer;
     this.camera.update();
-    const viewLeft = 1;
-    const viewTop = LAYOUT.VIEWPORT_TOP;
-    const viewW = r.cols - 2;
-    const viewH = r.rows - LAYOUT.HUD_TOTAL;
+    const viewW = r.graphicsCols;
+    const viewH = r.graphicsRows;
 
     const isNight = !this.timeSystem.isDaytime();
     const lightInfo = this.player.hasLightSource();
@@ -6596,17 +6466,13 @@ class Game {
       viewRange = lightInfo.hasLight ? (lightInfo.radius + 2) : 3;
     }
 
-    const density = r.densityLevel;
     const camX = Math.floor(this.camera.getRenderX());
     const camY = Math.floor(this.camera.getRenderY());
-    const worldW = Math.ceil(viewW / density);
-    const worldH = Math.ceil(viewH / density);
-    // Center offset for entities within their expanded tile (0 for d=1, 0 for d=2, 1 for d=3)
-    const entityOff = Math.floor(density / 2);
+    const worldW = viewW;
+    const worldH = viewH;
 
-    // Shadow and highlight buffers (flat Float32Arrays indexed by screen coords)
-    // Cache: only recompute when camera moves or sun direction changes
-    const shadowKey = `${camX},${camY},${sunDir.dx.toFixed(2)},${sunDir.dy.toFixed(2)},${density},${viewW},${viewH}`;
+    // Shadow and highlight buffers (flat Float32Arrays indexed by graphics coords)
+    const shadowKey = `${camX},${camY},${sunDir.dx.toFixed(2)},${sunDir.dy.toFixed(2)},${viewW},${viewH}`;
     let shadowBuf, highlightBuf;
     if (!this.debug.disableShadows && this._shadowCacheKey === shadowKey && this._shadowBuf) {
       shadowBuf = this._shadowBuf;
@@ -6615,11 +6481,9 @@ class Game {
       shadowBuf = new Float32Array(viewW * viewH);
       highlightBuf = new Float32Array(viewW * viewH);
 
-      // Normalized shadow direction for ray marching
       const sdMag = Math.sqrt(sunDir.dx * sunDir.dx + sunDir.dy * sunDir.dy) || 1;
       const sdx = sunDir.dx / sdMag;
       const sdy = sunDir.dy / sdMag;
-      // Max ray steps: 5 blocks for short, soft shadows
       const maxRayLen = 6;
 
       for (let wy_off = 0; wy_off < worldH; wy_off++) {
@@ -6628,22 +6492,12 @@ class Game {
           const wy = camY + wy_off;
           const tile = this.overworld.getTile(wx, wy);
           const height = Game.TILE_HEIGHTS[tile.type] || (tile.depth || 0);
-          // Recessed tiles (negative depth) receive permanent self-shadow
           if (height < 0) {
             const recessShadow = Math.min(0.625, Math.abs(height) * 0.25);
-            for (let dy = 0; dy < density; dy++) {
-              for (let dx = 0; dx < density; dx++) {
-                const px = wx_off * density + dx;
-                const py = wy_off * density + dy;
-                if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
-                  const idx = py * viewW + px;
-                  shadowBuf[idx] = Math.min(0.8125, shadowBuf[idx] + recessShadow);
-                }
-              }
-            }
+            const idx = wy_off * viewW + wx_off;
+            shadowBuf[idx] = Math.min(0.8125, shadowBuf[idx] + recessShadow);
           }
           if (height > 0) {
-            // Halve shadow alpha for vegetation to soften forest edge contrast
             const isVegetation = tile.type === 'TREE' || tile.type === 'PINE' || tile.type === 'PALM' ||
               tile.type === 'TREE_CANOPY' || tile.type === 'TREE_TRUNK' || tile.type === 'FOREST' ||
               tile.type === 'DEEP_FOREST' || tile.type === 'CANOPY' || tile.type === 'PINE_STAND' ||
@@ -6651,30 +6505,19 @@ class Game {
             const baseShadow = sunDir.isDay ? 0.3125 : 0.1875;
             const shadowAlpha = (isVegetation ? baseShadow * 0.5 : baseShadow) + Math.min(0.1875, height * 0.0375);
             const shadowMax = sunDir.isDay ? 0.8125 : 0.5625;
-            // Cast infinitely linear shadow ray from this object to viewport edge
             for (let i = 1; i <= maxRayLen; i++) {
-              const shBaseX = wx_off * density + sdx * i * density;
-              const shBaseY = wy_off * density + sdy * i * density;
-              let anyInBounds = false;
-              for (let sdy2 = 0; sdy2 < density; sdy2++) {
-                for (let sdx2 = 0; sdx2 < density; sdx2++) {
-                  const shx = Math.floor(shBaseX) + sdx2;
-                  const shy = Math.floor(shBaseY) + sdy2;
-                  if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
-                    anyInBounds = true;
-                    const idx = shy * viewW + shx;
-                    // Quadratic fade for soft gradient shadow edge
-                    const dist = i / maxRayLen;
-                    const fadedAlpha = shadowAlpha * Math.pow(1.0 - dist, 2);
-                    shadowBuf[idx] = Math.min(shadowMax, shadowBuf[idx] + fadedAlpha);
-                  }
-                }
+              const shx = Math.floor(wx_off + sdx * i);
+              const shy = Math.floor(wy_off + sdy * i);
+              if (shx >= 0 && shx < viewW && shy >= 0 && shy < viewH) {
+                const idx = shy * viewW + shx;
+                const dist = i / maxRayLen;
+                const fadedAlpha = shadowAlpha * Math.pow(1.0 - dist, 2);
+                shadowBuf[idx] = Math.min(shadowMax, shadowBuf[idx] + fadedAlpha);
+              } else {
+                break;
               }
-              if (!anyInBounds) break; // past viewport edge
             }
 
-            // Gradient directional lighting: depth-based darkening for forest interiors
-            // Walk backward toward sun to count consecutive raised neighbors
             let depth = 0;
             for (let d = 1; d <= 5; d++) {
               const checkX = wx - Math.round(sdx * d);
@@ -6686,16 +6529,8 @@ class Game {
             }
             if (depth > 0) {
               const darkenAlpha = Math.min(0.12, depth * 0.025);
-              for (let dy = 0; dy < density; dy++) {
-                for (let dx = 0; dx < density; dx++) {
-                  const px = wx_off * density + dx;
-                  const py = wy_off * density + dy;
-                  if (px >= 0 && px < viewW && py >= 0 && py < viewH) {
-                    const idx = py * viewW + px;
-                    highlightBuf[idx] = darkenAlpha;
-                  }
-                }
-              }
+              const idx = wy_off * viewW + wx_off;
+              highlightBuf[idx] = darkenAlpha;
             }
           }
         }
@@ -6712,7 +6547,7 @@ class Game {
     }
     this._highlightBuf = highlightBuf;
 
-    // Render tiles with density expansion
+    // Render tiles (1 graphics cell per world tile)
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
       for (let wx_off = 0; wx_off < worldW; wx_off++) {
         const wx = camX + wx_off;
@@ -6722,104 +6557,89 @@ class Game {
         // Beyond habitat — draw circuitry background instead of void
         if (tile.type === 'VOID_SPACE') {
           const circuit = getCircuitryCell(wx, wy);
-          if (density === 1) {
-            r.drawChar(viewLeft + wx_off, viewTop + wy_off, circuit.char, circuit.fg, circuit.bg);
-          } else {
-            for (let dy = 0; dy < density; dy++) {
-              for (let dx = 0; dx < density; dx++) {
-                const screenX = viewLeft + wx_off * density + dx;
-                const screenY = viewTop + wy_off * density + dy;
-                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                  r.drawChar(screenX, screenY, circuit.char, circuit.fg, circuit.bg);
-                }
-              }
-            }
-          }
+          r.drawGraphicsChar(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
           continue;
         }
 
-        // Inner hull corridor — overlay circuit pattern on non-walkable machinery tiles
+        // Inner hull corridor
         if (tile.biome === 'inner_hull' && !tile.walkable && !tile.airlockFrame) {
-          // Use circuit pattern as animated background, tile char as foreground
           const circuit = getCircuitryCell(wx, wy);
-          const useTile = circuit.char === ' '; // no circuit trace here — use tile's own char
+          const useTile = circuit.char === ' ';
           const ch = useTile ? tile.char : circuit.char;
           const fg = useTile ? tile.fg : circuit.fg;
-          if (density === 1) {
-            r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, '#000000');
-          } else {
-            for (let dy = 0; dy < density; dy++) {
-              for (let dx = 0; dx < density; dx++) {
-                const screenX = viewLeft + wx_off * density + dx;
-                const screenY = viewTop + wy_off * density + dy;
-                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                  r.drawChar(screenX, screenY, ch, fg, '#000000');
-                }
-              }
-            }
-          }
+          r.drawGraphicsChar(wx_off, wy_off, ch, fg, '#000000');
           continue;
         }
 
-        // Fog of war — only at night; daytime has full visibility
+        // Fog of war — only at night
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
         const isFogged = isNight && dist > viewRange;
 
-        if (density === 1) {
-          const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type, wx, wy);
-          const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
-          r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, bg);
-        } else {
-          const expanded = expandTile(tile, density, wx, wy);
-          for (let dy = 0; dy < density; dy++) {
-            for (let dx = 0; dx < density; dx++) {
-              const screenX = viewLeft + wx_off * density + dx;
-              const screenY = viewTop + wy_off * density + dy;
-              if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
-                r.drawChar(screenX, screenY, ch, fg, bg);
-              }
-            }
-          }
-        }
+        const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+        const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type, wx, wy);
+        const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
+        r.drawGraphicsChar(wx_off, wy_off, ch, fg, bg);
       }
     }
 
-    // Draw locations
+    // Draw locations (multi-tile landmarks)
     for (const loc of this.overworld.getLoadedLocations()) {
       const wx_off = loc.x - camX;
       const wy_off = loc.y - camY;
-      if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-        const ch = loc.type === 'city' ? '▣' : loc.type === 'town' ? '□' :
-          loc.type === 'village' ? '○' : loc.type === 'dungeon' ? '▼' :
-            loc.type === 'castle' ? '♦' : loc.type === 'temple' ? '†' :
-              loc.type === 'ruins' ? '▪' : loc.type === 'tower' ? '▲' : '◦';
-        const isDungeon = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
-        const glowCat = isDungeon ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
-        const screenX = viewLeft + wx_off * density + entityOff;
-        const screenY = viewTop + wy_off * density + entityOff;
-        r.drawChar(screenX, screenY, ch, this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE));
+      if (wx_off < -2 || wx_off >= worldW + 2 || wy_off < -2 || wy_off >= worldH + 2) continue;
+      const isDungeon = loc.type === 'dungeon' || loc.type === 'tower' || loc.type === 'ruins';
+      const glowCat = isDungeon ? 'DUNGEON_ENTRANCE' : 'SETTLEMENT';
+      const gc = this.glow.getGlowColor(glowCat, COLORS.BRIGHT_WHITE);
+      if (loc.type === 'city') {
+        // 3×3 city icon
+        r.drawGraphicsChar(wx_off, wy_off - 2, '\u25B2', gc);     // ▲ spire
+        r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u2502', gc); // │
+        r.drawGraphicsChar(wx_off, wy_off - 1, '\u25A3', gc);     // ▣
+        r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u2502', gc); // │
+        r.drawGraphicsChar(wx_off - 1, wy_off, '\u2500', gc);     // ─
+        r.drawGraphicsChar(wx_off, wy_off, '\u25A3', gc);         // ▣
+        r.drawGraphicsChar(wx_off + 1, wy_off, '\u2500', gc);     // ─
+      } else if (loc.type === 'castle') {
+        // 3×2 castle
+        r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u25B2', gc); // ▲
+        r.drawGraphicsChar(wx_off, wy_off - 1, '\u2666', gc);     // ♦
+        r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u25B2', gc); // ▲
+        r.drawGraphicsChar(wx_off - 1, wy_off, '\u2550', gc);     // ═
+        r.drawGraphicsChar(wx_off, wy_off, '\u2666', gc);         // ♦
+        r.drawGraphicsChar(wx_off + 1, wy_off, '\u2550', gc);     // ═
+      } else if (loc.type === 'town') {
+        // 1×2 town
+        r.drawGraphicsChar(wx_off, wy_off - 1, '\u25B2', gc);     // ▲ roof
+        r.drawGraphicsChar(wx_off, wy_off, '\u25A1', gc);         // □ building
+      } else if (loc.type === 'tower') {
+        // 1×3 tower
+        r.drawGraphicsChar(wx_off, wy_off - 2, '\u25B2', gc);     // ▲ top
+        r.drawGraphicsChar(wx_off, wy_off - 1, '\u2502', gc);     // │ shaft
+        r.drawGraphicsChar(wx_off, wy_off, '\u25B2', gc);         // ▲ base
+      } else {
+        // Default: 1×2 (icon + base)
+        const ch = loc.type === 'village' ? '\u25CB' : loc.type === 'dungeon' ? '\u25BC' :
+          loc.type === 'temple' ? '\u2020' : loc.type === 'ruins' ? '\u25AA' : '\u25E6';
+        r.drawGraphicsChar(wx_off, wy_off - 1, ch, gc);
+        r.drawGraphicsChar(wx_off, wy_off, '\u2219', gc);  // ∙ base marker
       }
     }
 
-    // Draw player
+    // Draw player (1×3 multi-tile: head, torso, legs)
     const ppx = this.player.position.x - camX;
     const ppy = this.player.position.y - camY;
     if (ppx >= 0 && ppx < worldW && ppy >= 0 && ppy < worldH) {
-      const screenX = viewLeft + ppx * density + entityOff;
-      const screenY = viewTop + ppy * density + entityOff;
-      r.drawChar(screenX, screenY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+      const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
+      r.drawGraphicsChar(ppx, ppy - 2, '\u263A', pc);  // ☺ head
+      r.drawGraphicsChar(ppx, ppy - 1, '\u2502', pc);  // │ torso
+      r.drawGraphicsChar(ppx, ppy, '@', pc);            // @ legs/anchor
 
-      // Player targeting reticle (4 corners, pulsing)
       const t = Date.now() % 1000;
       const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawChar(screenX - 1, screenY - 1, '\u250C', reticleColor);
-      r.drawChar(screenX + 1, screenY - 1, '\u2510', reticleColor);
-      r.drawChar(screenX - 1, screenY + 1, '\u2514', reticleColor);
-      r.drawChar(screenX + 1, screenY + 1, '\u2518', reticleColor);
+      r.drawGraphicsChar(ppx - 1, ppy - 2, '\u250C', reticleColor);
+      r.drawGraphicsChar(ppx + 1, ppy - 2, '\u2510', reticleColor);
+      r.drawGraphicsChar(ppx - 1, ppy + 1, '\u2514', reticleColor);
+      r.drawGraphicsChar(ppx + 1, ppy + 1, '\u2518', reticleColor);
     }
 
     // Quest navigation line overlay
@@ -6842,7 +6662,7 @@ class Game {
             const pulse = Math.sin(now / 400 + d * 0.4) * 0.5 + 0.5;
             const navChar = (d % 3 === 0) ? '\u00b7' : '\u2219';
             const navColor = pulse > 0.5 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff, navChar, navColor);
+            r.drawGraphicsChar(wx_off, wy_off, navChar, navColor);
           }
 
           // Draw target marker
@@ -6850,7 +6670,7 @@ class Game {
           const ty = navTarget.y - camY;
           if (tx >= 0 && tx < worldW && ty >= 0 && ty < worldH) {
             const tPulse = Math.sin(now / 250) * 0.5 + 0.5;
-            r.drawChar(viewLeft + tx * density + entityOff, viewTop + ty * density + entityOff, '\u2726',
+            r.drawGraphicsChar(tx, ty, '\u2726',
               tPulse > 0.5 ? COLORS.BRIGHT_YELLOW : COLORS.YELLOW);
           }
         }
@@ -6868,33 +6688,16 @@ class Game {
         const dist = distance(wx, wy, this.player.position.x, this.player.position.y);
         const isFogged = isNight && dist > viewRange;
 
-        if (density === 1) {
-          const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
-          const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type, wx, wy);
-          const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
-          r.drawChar(viewLeft + wx_off, viewTop + wy_off, ch, fg, bg);
-        } else {
-          const expanded = expandTile(tile, density, wx, wy);
-          for (let dy = 0; dy < density; dy++) {
-            for (let dx = 0; dx < density; dx++) {
-              const screenX = viewLeft + wx_off * density + dx;
-              const screenY = viewTop + wy_off * density + dy;
-              if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                const ch = r.getAnimatedChar(expanded.chars[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(expanded.fgs[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                const bg = isFogged ? COLORS.BLACK : expanded.bgs[dy][dx];
-                r.drawChar(screenX, screenY, ch, fg, bg);
-              }
-            }
-          }
-        }
+        const ch = r.getAnimatedChar(tile.char, tile.type, wx, wy);
+        const fg = isFogged ? COLORS.BRIGHT_BLACK : r.getAnimatedColor(tile.fg, tile.type, wx, wy);
+        const bg = isFogged ? COLORS.BLACK : (tile.bg || COLORS.BLACK);
+        r.drawGraphicsChar(wx_off, wy_off, ch, fg, bg);
       }
     }
 
     // Render structure light glow on overworld at night
     if (isNight && this.overworld.chunkManager) {
       const cm = this.overworld.chunkManager;
-      // Check visible chunks for structures with lights
       const cx1 = Math.floor(camX / 32) - 1;
       const cy1 = Math.floor(camY / 32) - 1;
       const cx2 = Math.floor((camX + worldW) / 32) + 1;
@@ -6907,7 +6710,6 @@ class Game {
             for (const light of struct.lights) {
               const rad = light.radius;
               const radSq = rad * rad;
-              // Precompute color string once per light (not per cell!)
               const tintColor = `#${Math.round(light.r * 255).toString(16).padStart(2, '0')}${Math.round(light.g * 255).toString(16).padStart(2, '0')}${Math.round(light.b * 255).toString(16).padStart(2, '0')}`;
               const intensityFactor = light.intensity * 0.4;
               for (let ldy = -rad; ldy <= rad; ldy++) {
@@ -6920,12 +6722,7 @@ class Game {
                   const dist = Math.sqrt(distSq);
                   const falloff = 1 - dist / rad;
                   const alpha = falloff * falloff * intensityFactor;
-                  // Tint all screen cells for this world tile
-                  for (let sdy = 0; sdy < density; sdy++) {
-                    for (let sdx = 0; sdx < density; sdx++) {
-                      r.tintCell(viewLeft + wx_off * density + sdx, viewTop + wy_off * density + sdy, tintColor, alpha);
-                    }
-                  }
+                  r.tintGraphicsCell(wx_off, wy_off, tintColor, alpha);
                 }
               }
             }
@@ -7035,11 +6832,7 @@ class Game {
               if (tdist > viewRange * 1.4) continue; // Approximate with manhattan
               const falloff = Math.max(0, 1 - dist / Math.max(rad, 1));
               const alpha = falloff * falloff * prof.int;
-              for (let sdy = 0; sdy < density; sdy++) {
-                for (let sdx = 0; sdx < density; sdx++) {
-                  r.tintCell(viewLeft + tx * density + sdx, viewTop + ty * density + sdy, glowColor, alpha);
-                }
-              }
+              r.tintGraphicsCell(tx, ty, glowColor, alpha);
             }
           }
         }
@@ -7069,15 +6862,10 @@ class Game {
     this.camera.update();
 
     const r = this.renderer;
-    const viewLeft = 1;
-    const viewTop = LAYOUT.VIEWPORT_TOP;
-    const viewW = r.cols - 2;
-    const viewH = r.rows - LAYOUT.HUD_TOTAL;
-
-    const density = r.densityLevel;
-    const worldW = Math.ceil(viewW / density);
-    const worldH = Math.ceil(viewH / density);
-    const entityOff = Math.floor(density / 2);
+    const viewW = r.graphicsCols;
+    const viewH = r.graphicsRows;
+    const worldW = viewW;
+    const worldH = viewH;
 
     // Center on player (in world tiles), include camera shake offset
     const shakeX = this.camera.shakeOffsetX || 0;
@@ -7203,7 +6991,7 @@ class Game {
       }
     }
 
-    // Render dungeon tiles with density expansion
+    // Render dungeon tiles
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
       for (let wx_off = 0; wx_off < worldW; wx_off++) {
         const wx = offsetX + wx_off;
@@ -7212,29 +7000,14 @@ class Game {
         if (wy >= 0 && wy < dh && wx >= 0 && wx < dw) {
           const tile = this.currentDungeon.tiles[wy][wx];
 
-          // Umbilical void — draw noise background instead of circuitry
+          // Umbilical void
           if (tile.type === 'UMBILICAL_VOID') {
             const noise = getNoiseBackgroundCell(wx, wy);
-            if (density === 1) {
-              r.drawChar(viewLeft + wx_off, viewTop + wy_off, noise.char, noise.fg, noise.bg);
-            } else {
-              for (let dy = 0; dy < density; dy++) {
-                for (let dx = 0; dx < density; dx++) {
-                  const screenX = viewLeft + wx_off * density + dx;
-                  const screenY = viewTop + wy_off * density + dy;
-                  if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                    // Use per-sub-cell noise for denser fill at higher zoom
-                    const subNoise = getNoiseBackgroundCell(wx * density + dx, wy * density + dy);
-                    r.drawChar(screenX, screenY, subNoise.char, subNoise.fg, subNoise.bg);
-                  }
-                }
-              }
-            }
+            r.drawGraphicsChar(wx_off, wy_off, noise.char, noise.fg, noise.bg);
             continue;
           }
 
           let isVisible, brightness;
-
           if (!this.debug.disableLighting) {
             const light = this.lighting.getLight(wx, wy);
             brightness = light.brightness;
@@ -7250,59 +7023,16 @@ class Game {
             if (iType === 'STAIRS_DOWN' || iType === 'STAIRS_UP' || iType === 'DOOR' || iType === 'CHEST' || iType === 'BRIDGE') {
               animFg = this.glow.getGlowColor('INTERACTIVE', animFg);
             }
-
-            if (density === 1) {
-              const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
-              const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
-              r.drawChar(viewLeft + wx_off, viewTop + wy_off, tile.char, dimFg, dimBg);
-            } else {
-              const expanded = expandTile(tile, density, wx, wy);
-              for (let dy = 0; dy < density; dy++) {
-                for (let dx = 0; dx < density; dx++) {
-                  const screenX = viewLeft + wx_off * density + dx;
-                  const screenY = viewTop + wy_off * density + dy;
-                  if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                    const eFg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                    const dimFg = this._dimColor(eFg, Math.max(0.15, brightness));
-                    const dimBg = this._dimColor(expanded.bgs[dy][dx], brightness);
-                    r.drawChar(screenX, screenY, expanded.chars[dy][dx], dimFg, dimBg);
-                  }
-                }
-              }
-            }
+            const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
+            const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
+            r.drawGraphicsChar(wx_off, wy_off, tile.char, dimFg, dimBg);
           } else {
-            // Not visible — draw circuitry background
             const circuit = getCircuitryCell(wx, wy);
-            if (density === 1) {
-              r.drawChar(viewLeft + wx_off, viewTop + wy_off, circuit.char, circuit.fg, circuit.bg);
-            } else {
-              for (let dy = 0; dy < density; dy++) {
-                for (let dx = 0; dx < density; dx++) {
-                  const screenX = viewLeft + wx_off * density + dx;
-                  const screenY = viewTop + wy_off * density + dy;
-                  if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                    r.drawChar(screenX, screenY, circuit.char, circuit.fg, circuit.bg);
-                  }
-                }
-              }
-            }
+            r.drawGraphicsChar(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
           }
         } else {
-          // Out of bounds — draw circuitry background
           const circuit = getCircuitryCell(wx, wy);
-          if (density === 1) {
-            r.drawChar(viewLeft + wx_off, viewTop + wy_off, circuit.char, circuit.fg, circuit.bg);
-          } else {
-            for (let dy = 0; dy < density; dy++) {
-              for (let dx = 0; dx < density; dx++) {
-                const screenX = viewLeft + wx_off * density + dx;
-                const screenY = viewTop + wy_off * density + dy;
-                if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                  r.drawChar(screenX, screenY, circuit.char, circuit.fg, circuit.bg);
-                }
-              }
-            }
-          }
+          r.drawGraphicsChar(wx_off, wy_off, circuit.char, circuit.fg, circuit.bg);
         }
       }
     }
@@ -7316,14 +7046,13 @@ class Game {
           const wx_off = item.position.x - offsetX;
           const wy_off = item.position.y - offsetY;
           if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-            r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff,
-              item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW));
+            r.drawGraphicsChar(wx_off, wy_off, item.char || '!', this.glow.getGlowColor('LOOT', item.color || COLORS.BRIGHT_YELLOW));
           }
         }
       }
     }
 
-    // Draw enemies
+    // Draw enemies (multi-tile: head above body, bosses wider)
     for (const enemy of this.enemies) {
       const light = this.debug.disableLighting ? { brightness: visible.has(`${enemy.position.x},${enemy.position.y}`) ? 1 : 0 }
         : this.lighting.getLight(enemy.position.x, enemy.position.y);
@@ -7331,28 +7060,42 @@ class Game {
         const wx_off = enemy.position.x - offsetX;
         const wy_off = enemy.position.y - offsetY;
         if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-          r.drawChar(viewLeft + wx_off * density + entityOff, viewTop + wy_off * density + entityOff,
-            enemy.char, enemy.color || COLORS.BRIGHT_RED);
+          const ec = enemy.color || COLORS.BRIGHT_RED;
+          if (enemy.isBoss) {
+            // Boss: 3×3 sprite
+            r.drawGraphicsChar(wx_off, wy_off - 2, '\u25BC', ec);         // ▼ crown/horns
+            r.drawGraphicsChar(wx_off - 1, wy_off - 1, '\u2524', ec);     // ┤ left arm
+            r.drawGraphicsChar(wx_off, wy_off - 1, '\u2588', ec);         // █ torso
+            r.drawGraphicsChar(wx_off + 1, wy_off - 1, '\u251C', ec);     // ├ right arm
+            r.drawGraphicsChar(wx_off, wy_off, enemy.char, ec);            // body char
+          } else {
+            // Regular enemy: 1×2 (head + body)
+            r.drawGraphicsChar(wx_off, wy_off - 1, '\u263B', ec);         // ☻ head
+            r.drawGraphicsChar(wx_off, wy_off, enemy.char, ec);            // body
+          }
         }
       }
     }
 
-    // Draw player at center
-    const playerScreenX = viewLeft + Math.floor(worldW / 2) * density + entityOff;
-    const playerScreenY = viewTop + Math.floor(worldH / 2) * density + entityOff;
-    r.drawChar(playerScreenX, playerScreenY, '@', this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW));
+    // Draw player at center (1×3 multi-tile)
+    const playerGX = Math.floor(worldW / 2);
+    const playerGY = Math.floor(worldH / 2);
+    const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
+    r.drawGraphicsChar(playerGX, playerGY - 2, '\u263A', pc);  // ☺ head
+    r.drawGraphicsChar(playerGX, playerGY - 1, '\u2502', pc);  // │ torso
+    r.drawGraphicsChar(playerGX, playerGY, '@', pc);            // @ legs/anchor
 
     // Player targeting reticle (4 corners, pulsing)
     {
       const t = Date.now() % 1000;
       const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawChar(playerScreenX - 1, playerScreenY - 1, '\u250C', reticleColor);
-      r.drawChar(playerScreenX + 1, playerScreenY - 1, '\u2510', reticleColor);
-      r.drawChar(playerScreenX - 1, playerScreenY + 1, '\u2514', reticleColor);
-      r.drawChar(playerScreenX + 1, playerScreenY + 1, '\u2518', reticleColor);
+      r.drawGraphicsChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
+      r.drawGraphicsChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
+      r.drawGraphicsChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
+      r.drawGraphicsChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
     }
 
-    // MECH_ARM overlay — draw on top of all entities
+    // MECH_ARM overlay
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
       for (let wx_off = 0; wx_off < worldW; wx_off++) {
         const wx = offsetX + wx_off;
@@ -7372,26 +7115,9 @@ class Game {
         }
 
         const animFg = r.getAnimatedColor(tile.fg, tile.type, wx, wy);
-
-        if (density === 1) {
-          const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
-          const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
-          r.drawChar(viewLeft + wx_off, viewTop + wy_off, tile.char, dimFg, dimBg);
-        } else {
-          const expanded = expandTile(tile, density, wx, wy);
-          for (let dy = 0; dy < density; dy++) {
-            for (let dx = 0; dx < density; dx++) {
-              const screenX = viewLeft + wx_off * density + dx;
-              const screenY = viewTop + wy_off * density + dy;
-              if (screenX < viewLeft + viewW && screenY < viewTop + viewH) {
-                const eFg = r.getAnimatedColor(expanded.fgs[dy][dx], tile.type, wx + dx / density, wy + dy / density);
-                const dimFg = this._dimColor(eFg, Math.max(0.15, brightness));
-                const dimBg = this._dimColor(expanded.bgs[dy][dx], brightness);
-                r.drawChar(screenX, screenY, expanded.chars[dy][dx], dimFg, dimBg);
-              }
-            }
-          }
-        }
+        const dimFg = this._dimColor(animFg, Math.max(0.15, brightness));
+        const dimBg = this._dimColor(tile.bg || COLORS.BLACK, brightness);
+        r.drawGraphicsChar(wx_off, wy_off, tile.char, dimFg, dimBg);
       }
     }
 
@@ -7402,14 +7128,8 @@ class Game {
 
   _renderTestArea() {
     const r = this.renderer;
-    const viewLeft = 1;
-    const viewTop = LAYOUT.VIEWPORT_TOP;
-    const viewW = r.cols - 2;
-    const viewH = r.rows - LAYOUT.HUD_TOTAL;
-
-    // Always density 1 for test areas
-    const worldW = viewW;
-    const worldH = viewH;
+    const worldW = r.graphicsCols;
+    const worldH = r.graphicsRows;
 
     const offsetX = this.player.position.x - Math.floor(worldW / 2);
     const offsetY = this.player.position.y - Math.floor(worldH / 2);
@@ -7417,7 +7137,6 @@ class Game {
     const dw = this.currentDungeon.tiles[0]?.length || 0;
     const dh = this.currentDungeon.tiles.length;
 
-    // Render tiles at full brightness, no FOV
     for (let wy_off = 0; wy_off < worldH; wy_off++) {
       for (let wx_off = 0; wx_off < worldW; wx_off++) {
         const wx = offsetX + wx_off;
@@ -7425,26 +7144,26 @@ class Game {
 
         if (wy >= 0 && wy < dh && wx >= 0 && wx < dw) {
           const tile = this.currentDungeon.tiles[wy][wx];
-          r.drawChar(viewLeft + wx_off, viewTop + wy_off, tile.char, tile.fg, tile.bg);
+          r.drawGraphicsChar(wx_off, wy_off, tile.char, tile.fg, tile.bg);
         } else {
-          // Out of bounds — dark
-          r.drawChar(viewLeft + wx_off, viewTop + wy_off, ' ', '#000000', '#000000');
+          r.drawGraphicsChar(wx_off, wy_off, ' ', '#000000', '#000000');
         }
       }
     }
 
-    // Draw player
-    const playerScreenX = viewLeft + Math.floor(worldW / 2);
-    const playerScreenY = viewTop + Math.floor(worldH / 2);
-    r.drawChar(playerScreenX, playerScreenY, '@', COLORS.BRIGHT_YELLOW);
+    // Draw player (1×3 multi-tile)
+    const playerGX = Math.floor(worldW / 2);
+    const playerGY = Math.floor(worldH / 2);
+    r.drawGraphicsChar(playerGX, playerGY - 2, '\u263A', COLORS.BRIGHT_YELLOW);
+    r.drawGraphicsChar(playerGX, playerGY - 1, '\u2502', COLORS.BRIGHT_YELLOW);
+    r.drawGraphicsChar(playerGX, playerGY, '@', COLORS.BRIGHT_YELLOW);
 
-    // Player reticle
     const t = Date.now() % 1000;
     const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-    r.drawChar(playerScreenX - 1, playerScreenY - 1, '\u250C', reticleColor);
-    r.drawChar(playerScreenX + 1, playerScreenY - 1, '\u2510', reticleColor);
-    r.drawChar(playerScreenX - 1, playerScreenY + 1, '\u2514', reticleColor);
-    r.drawChar(playerScreenX + 1, playerScreenY + 1, '\u2518', reticleColor);
+    r.drawGraphicsChar(playerGX - 1, playerGY - 2, '\u250C', reticleColor);
+    r.drawGraphicsChar(playerGX + 1, playerGY - 2, '\u2510', reticleColor);
+    r.drawGraphicsChar(playerGX - 1, playerGY + 1, '\u2514', reticleColor);
+    r.drawGraphicsChar(playerGX + 1, playerGY + 1, '\u2518', reticleColor);
   }
 
   renderBattleResults() {
