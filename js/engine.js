@@ -99,6 +99,10 @@ export class Renderer {
     this.prevBuffer = [];  // last rendered frame
 
     // Graphics buffer: half-size cells for the viewport region (double density)
+    this._graphicsZoom = 0;  // zoom offset (px) applied only to graphics font size
+    this._battleGraphicsActive = false;
+    this._battleTextRows = 0;
+    this._savedGraphicsConfig = null;
     this.gFontSize = 8;
     this.gCellWidth = 0;
     this.gCellHeight = 0;
@@ -205,25 +209,11 @@ export class Renderer {
     this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     this.ctx.textBaseline = 'top';
 
-    // Compute graphics (viewport) cell metrics — half-size font for double density
-    this.gFontSize = Math.max(5, Math.round(this.fontSize / 2));
-    this.ctx.font = `${this.gFontSize}px ${this.fontFamily}`;
-    const gm = this.ctx.measureText('M');
-    this.gCellWidth = Math.ceil(gm.width);
-    this.gCellHeight = Math.ceil(this.gFontSize * 1.35);
-    // Restore text font
-    this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+    // Allocate text buffers first, then compute graphics metrics
+    this._allocateTextBuffers();
 
-    // Graphics grid covers the viewport region (inside borders, above HUD)
-    const vpPixelW = (this.cols - 2) * this.cellWidth;
-    const vpPixelH = (this.rows - LAYOUT.HUD_TOTAL) * this.cellHeight;
-    this.gCols = Math.floor(vpPixelW / this.gCellWidth);
-    this.gRows = Math.floor(vpPixelH / this.gCellHeight);
-    this.gOriginX = 1 * this.cellWidth;
-    this.gOriginY = LAYOUT.VIEWPORT_TOP * this.cellHeight;
-
-    // Allocate buffers
-    this._allocateBuffers();
+    // Compute graphics (viewport) metrics — separate from text sizing
+    this._recalcGraphics();
 
     // Force full redraw next frame
     this.prevBuffer = [];
@@ -236,22 +226,90 @@ export class Renderer {
     this.resize();
   }
 
+  /**
+   * Recompute graphics (viewport) cell metrics and reallocate graphics buffers.
+   * Called from resize() and zoomBy(). Text buffer / canvas size are NOT changed.
+   */
+  _recalcGraphics() {
+    const baseGFont = Math.max(5, Math.round(this.fontSize / 2));
+    this.gFontSize = Math.max(3, Math.min(16, baseGFont + this._graphicsZoom));
+    this.ctx.font = `${this.gFontSize}px ${this.fontFamily}`;
+    const gm = this.ctx.measureText('M');
+    this.gCellWidth = Math.ceil(gm.width);
+    this.gCellHeight = Math.ceil(this.gFontSize * 1.35);
+    // Restore text font
+    this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+
+    if (this._battleGraphicsActive) {
+      // Battle mode: graphics cover top N text rows, full width
+      const pixelW = this.cols * this.cellWidth;
+      const pixelH = (this._battleTextRows || 0) * this.cellHeight;
+      this.gCols = Math.floor(pixelW / this.gCellWidth);
+      this.gRows = Math.floor(pixelH / this.gCellHeight);
+      this.gOriginX = 0;
+      this.gOriginY = 0;
+    } else {
+      // Overworld mode: graphics cover viewport region (inside borders, above HUD)
+      const vpPixelW = (this.cols - 2) * this.cellWidth;
+      const vpPixelH = (this.rows - LAYOUT.HUD_TOTAL) * this.cellHeight;
+      this.gCols = Math.floor(vpPixelW / this.gCellWidth);
+      this.gRows = Math.floor(vpPixelH / this.gCellHeight);
+      this.gOriginX = 1 * this.cellWidth;
+      this.gOriginY = LAYOUT.VIEWPORT_TOP * this.cellHeight;
+    }
+
+    this._allocateGraphicsBuffers();
+    // Force full graphics redraw next frame
+    this.prevGraphicsBuffer = [];
+  }
+
   // Tile density: each world tile expands to 3×3 characters in the graphics buffer
   get tileDensity() { return 3; }
 
-  /** Zoom in (+1) or out (-1) by changing font size. Step of 2, clamped to 8–24. */
+  /** Zoom in (+1) or out (-1) by adjusting graphics density only. UI text stays the same. */
   zoomBy(direction) {
-    const step = 2;
-    const next = this.fontSize + step * Math.sign(direction);
-    const clamped = Math.max(8, Math.min(24, next));
-    if (clamped !== this.fontSize) {
-      this.setFontSize(clamped);
-    }
+    const step = 1;
+    const next = this._graphicsZoom + step * Math.sign(direction);
+    const baseGFont = Math.max(5, Math.round(this.fontSize / 2));
+    const resultFont = baseGFont + next;
+    // Clamp so gFontSize stays in 3–16 range
+    if (resultFont < 3 || resultFont > 16) return;
+    if (next === this._graphicsZoom) return;
+    this._graphicsZoom = next;
+    this._recalcGraphics();
   }
 
   /** World-space viewport dimensions (in world tiles, not graphics cells) */
   get worldCols() { return Math.floor(this.gCols / this.tileDensity); }
   get worldRows() { return Math.floor(this.gRows / this.tileDensity); }
+
+  // ── Battle graphics mode ──────────────────────
+  // Repurposes the graphics buffer to cover the battle graphical area
+  // (top portion of screen) at high density, while the HUD stays in the text buffer.
+
+  /**
+   * Configure the graphics buffer to cover the battle area (top battleRows text rows).
+   * @param {number} battleRows - number of text rows the battle graphic occupies
+   */
+  configureBattleGraphics(battleRows) {
+    if (this._battleGraphicsActive && this._battleTextRows === battleRows) return; // already configured
+    this._battleGraphicsActive = true;
+    this._battleTextRows = battleRows;
+    // Recalculate graphics metrics for battle mode
+    this._recalcGraphics();
+  }
+
+  /**
+   * Restore the graphics buffer to overworld viewport configuration.
+   */
+  restoreOverworldGraphics() {
+    if (!this._battleGraphicsActive) return;
+    this._battleGraphicsActive = false;
+    this._battleTextRows = 0;
+    this._savedGraphicsConfig = null;
+    // Recalculate from scratch (handles window resizes that happened during battle)
+    this._recalcGraphics();
+  }
 
   setCrtScale(scale) {
     this.crtScale = Math.max(0.25, Math.min(1.0, scale));
@@ -283,6 +341,11 @@ export class Renderer {
    * Create empty buffer grids.
    */
   _allocateBuffers() {
+    this._allocateTextBuffers();
+    this._allocateGraphicsBuffers();
+  }
+
+  _allocateTextBuffers() {
     this.buffer = [];
     for (let r = 0; r < this.rows; r++) {
       const row = [];
@@ -291,7 +354,9 @@ export class Renderer {
       }
       this.buffer.push(row);
     }
-    // Graphics buffer for viewport (half-size cells)
+  }
+
+  _allocateGraphicsBuffers() {
     this.graphicsBuffer = [];
     for (let r = 0; r < this.gRows; r++) {
       const row = [];
@@ -356,10 +421,11 @@ export class Renderer {
     const hasPrev = !forceFullRedraw && this.prevBuffer.length === this.rows;
 
     // Viewport region in text-cell coords (skip these for text pass)
-    const vpTop = LAYOUT.VIEWPORT_TOP;
-    const vpBot = this.rows - LAYOUT.HUD_BOTTOM;
-    const vpLeft = 1;
-    const vpRight = this.cols - 1;
+    // In battle mode, the graphics buffer covers the top portion instead
+    const vpTop = this._battleGraphicsActive ? 0 : LAYOUT.VIEWPORT_TOP;
+    const vpBot = this._battleGraphicsActive ? (this._battleTextRows || 0) : (this.rows - LAYOUT.HUD_BOTTOM);
+    const vpLeft = this._battleGraphicsActive ? 0 : 1;
+    const vpRight = this._battleGraphicsActive ? this.cols : (this.cols - 1);
 
     // Check if any graphics cells were written this frame (non-blank)
     // If not, don't skip the viewport in text pass (menus draw there via text buffer)
