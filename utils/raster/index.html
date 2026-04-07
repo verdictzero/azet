@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fullblock Converter - Raster to ASCII</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0a; color: #ccc; font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 14px; min-height: 100vh;
+  }
+  h1 { color: #55FF55; font-size: 1.4em; font-family: monospace; }
+  h2 { color: #55FFFF; font-size: 1em; margin-bottom: 8px; font-family: monospace; }
+  .app { display: flex; height: 100vh; }
+  .sidebar {
+    width: 320px; min-width: 320px; background: #111; border-right: 2px solid #333;
+    padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
+  }
+  .preview-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .preview-toolbar {
+    background: #111; border-bottom: 2px solid #333; padding: 8px 16px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .preview-container {
+    flex: 1; overflow: auto; padding: 8px;
+    background-color: #111;
+    background-image:
+      linear-gradient(45deg, #1a1a1a 25%, transparent 25%),
+      linear-gradient(-45deg, #1a1a1a 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1a1a1a 75%),
+      linear-gradient(-45deg, transparent 75%, #1a1a1a 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+  #outputCanvas { display: block; image-rendering: pixelated; }
+  .section { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 12px; }
+  label { display: block; color: #aaa; font-size: 12px; margin-bottom: 4px; }
+  input[type="file"] { width: 100%; color: #aaa; font-size: 12px; }
+  input[type="number"], input[type="text"], select {
+    width: 100%; background: #222; color: #eee; border: 1px solid #444;
+    padding: 4px 8px; border-radius: 3px; font-size: 13px; font-family: monospace;
+  }
+  input[type="range"] { width: 100%; accent-color: #55FF55; }
+  input[type="checkbox"] { accent-color: #55FF55; vertical-align: middle; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .thumb-row { margin-top: 8px; }
+  .thumb-row canvas {
+    width: 100%; height: 100px; border: 1px solid #333; background: #000; display: block;
+  }
+  button {
+    background: #222; color: #55FF55; border: 1px solid #55FF55; padding: 6px 14px;
+    border-radius: 3px; cursor: pointer; font-family: monospace; font-size: 13px;
+    transition: background 0.15s;
+  }
+  button:hover { background: #55FF5522; }
+  button.primary { background: #55FF5533; }
+  .status { color: #888; font-size: 12px; font-family: monospace; }
+  .presets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .presets button { font-size: 11px; padding: 3px 8px; }
+  .dim-info { color: #888; font-size: 11px; font-family: monospace; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <h1>╔═ FULLBLOCK CONVERTER ═╗</h1>
+
+    <div class="section">
+      <h2>▸ Image</h2>
+      <label>Source Image</label>
+      <input type="file" id="srcFile" accept="image/*">
+      <div class="thumb-row">
+        <canvas id="srcThumb" title="Source"></canvas>
+      </div>
+      <div class="dim-info" id="srcDims"></div>
+    </div>
+
+    <div class="section">
+      <h2>▸ Resize</h2>
+      <div class="presets">
+        <button onclick="applyPreset(80)">80w</button>
+        <button onclick="applyPreset(120)">120w</button>
+        <button onclick="applyPreset(160)">160w</button>
+        <button onclick="applyPreset(240)">240w</button>
+        <button onclick="applyPreset(0)">Original</button>
+      </div>
+      <div class="row">
+        <div><label>Width</label><input type="number" id="outWidth" value="80" min="1" max="2000"></div>
+        <div><label>Height</label><input type="number" id="outHeight" value="80" min="1" max="2000"></div>
+      </div>
+      <label style="margin-top:6px"><input type="checkbox" id="lockAspect" checked> Lock aspect ratio</label>
+    </div>
+
+    <div class="section">
+      <h2>▸ Alpha Threshold</h2>
+      <label>Threshold: <span id="alphaVal">128</span></label>
+      <input type="range" id="alphaThreshold" min="0" max="255" value="128">
+      <div class="dim-info">Pixels with alpha below this become transparent</div>
+    </div>
+
+    <div class="section">
+      <h2>▸ Font Size</h2>
+      <label>Size: <span id="fontVal">14</span>px</label>
+      <input type="range" id="fontSize" min="4" max="24" value="14">
+      <div class="dim-info">Controls output PNG resolution</div>
+    </div>
+
+    <button class="primary" onclick="generate()" style="width:100%">▶ Generate</button>
+    <label><input type="checkbox" id="autoGen" checked> Auto-generate on change</label>
+    <div class="status" id="status">Ready — upload an image to begin</div>
+  </div>
+
+  <div class="preview-area">
+    <div class="preview-toolbar">
+      <button onclick="downloadPNG()">Download PNG</button>
+      <button onclick="copyANSI()">Copy ANSI</button>
+      <button onclick="copyHTML()">Copy HTML</button>
+      <span class="status" id="previewInfo"></span>
+    </div>
+    <div class="preview-container" id="previewContainer">
+      <canvas id="outputCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+let srcImage = null;
+let grid = null;
+let aspectRatio = 1;
+
+// --- Image Loading ---
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+    img.src = url;
+  });
+}
+
+function drawThumb(canvas, img) {
+  const ctx = canvas.getContext('2d');
+  const cw = canvas.clientWidth || 280;
+  const ch = canvas.clientHeight || 100;
+  canvas.width = cw; canvas.height = ch;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, cw, ch);
+  // Checkerboard for transparency
+  ctx.fillStyle = '#1a1a1a';
+  for (let y = 0; y < ch; y += 8) {
+    for (let x = 0; x < cw; x += 8) {
+      if ((Math.floor(x / 8) + Math.floor(y / 8)) % 2 === 0) {
+        ctx.fillRect(x, y, 8, 8);
+      }
+    }
+  }
+  const scale = Math.min(cw / img.width, ch / img.height);
+  const w = img.width * scale, h = img.height * scale;
+  ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
+}
+
+document.getElementById('srcFile').addEventListener('change', async (e) => {
+  if (e.target.files[0]) {
+    srcImage = await loadImage(e.target.files[0]);
+    drawThumb(document.getElementById('srcThumb'), srcImage);
+    document.getElementById('srcDims').textContent = `Original: ${srcImage.width} x ${srcImage.height}`;
+    aspectRatio = srcImage.width / srcImage.height;
+    // Set default output size
+    const w = Math.min(srcImage.width, 80);
+    document.getElementById('outWidth').value = w;
+    document.getElementById('outHeight').value = Math.round(w / aspectRatio);
+    autoGenerate();
+  }
+});
+
+// --- Resize controls ---
+document.getElementById('outWidth').addEventListener('input', () => {
+  if (document.getElementById('lockAspect').checked && aspectRatio) {
+    const w = parseInt(document.getElementById('outWidth').value) || 80;
+    document.getElementById('outHeight').value = Math.round(w / aspectRatio);
+  }
+  autoGenerate();
+});
+
+document.getElementById('outHeight').addEventListener('input', () => {
+  if (document.getElementById('lockAspect').checked && aspectRatio) {
+    const h = parseInt(document.getElementById('outHeight').value) || 80;
+    document.getElementById('outWidth').value = Math.round(h * aspectRatio);
+  }
+  autoGenerate();
+});
+
+function applyPreset(w) {
+  if (!srcImage) return;
+  if (w === 0) {
+    document.getElementById('outWidth').value = srcImage.width;
+    document.getElementById('outHeight').value = srcImage.height;
+  } else {
+    document.getElementById('outWidth').value = w;
+    document.getElementById('outHeight').value = Math.round(w / aspectRatio);
+  }
+  autoGenerate();
+}
+
+// --- Slider labels ---
+document.getElementById('alphaThreshold').addEventListener('input', (e) => {
+  document.getElementById('alphaVal').textContent = e.target.value;
+  autoGenerate();
+});
+
+document.getElementById('fontSize').addEventListener('input', (e) => {
+  document.getElementById('fontVal').textContent = e.target.value;
+  autoGenerate();
+});
+
+// --- Auto-generate ---
+let autoTimer = null;
+function autoGenerate() {
+  if (!document.getElementById('autoGen').checked) return;
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(generate, 150);
+}
+
+// --- Core ---
+function getPixels(img, w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h).data;
+}
+
+function generate() {
+  if (!srcImage) {
+    document.getElementById('status').textContent = 'No image loaded';
+    return;
+  }
+
+  const cols = Math.max(1, parseInt(document.getElementById('outWidth').value) || 80);
+  const rows = Math.max(1, parseInt(document.getElementById('outHeight').value) || 80);
+  const threshold = parseInt(document.getElementById('alphaThreshold').value);
+  const fontSize = parseInt(document.getElementById('fontSize').value);
+
+  // Get pixel data at target resolution
+  const pixels = getPixels(srcImage, cols, rows);
+
+  // Build grid
+  grid = [];
+  for (let y = 0; y < rows; y++) {
+    grid[y] = [];
+    for (let x = 0; x < cols; x++) {
+      const i = (y * cols + x) * 4;
+      const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2], a = pixels[i + 3];
+      if (a < threshold) {
+        grid[y][x] = null; // transparent
+      } else {
+        grid[y][x] = { r, g, b };
+      }
+    }
+  }
+
+  // Render to canvas
+  const canvas = document.getElementById('outputCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Measure fullblock character dimensions
+  ctx.font = `${fontSize}px monospace`;
+  const charW = Math.ceil(ctx.measureText('\u2588').width);
+  const charH = fontSize;
+
+  canvas.width = cols * charW;
+  canvas.height = rows * charH;
+
+  // Clear (transparent)
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = `${fontSize}px monospace`;
+  ctx.textBaseline = 'top';
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const cell = grid[y][x];
+      if (cell === null) continue;
+      const color = `rgb(${cell.r},${cell.g},${cell.b})`;
+      ctx.fillStyle = color;
+      // fillRect ensures no sub-pixel gaps
+      ctx.fillRect(x * charW, y * charH, charW, charH);
+      // fillText overlays the fullblock character
+      ctx.fillText('\u2588', x * charW, y * charH);
+    }
+  }
+
+  document.getElementById('status').textContent = `Generated ${cols}\u00d7${rows} (${cols * charW}\u00d7${rows * charH}px)`;
+  document.getElementById('previewInfo').textContent = `${cols} \u00d7 ${rows} chars | ${canvas.width} \u00d7 ${canvas.height} px | font ${fontSize}px`;
+}
+
+// --- Export ---
+function downloadPNG() {
+  if (!grid) { alert('Generate first!'); return; }
+  const canvas = document.getElementById('outputCanvas');
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'fullblock-art.png';
+  a.click();
+  document.getElementById('status').textContent = 'Downloaded PNG!';
+}
+
+function copyANSI() {
+  if (!grid) { alert('Generate first!'); return; }
+  const lines = [];
+  for (let y = 0; y < grid.length; y++) {
+    let line = '';
+    for (let x = 0; x < grid[y].length; x++) {
+      const cell = grid[y][x];
+      if (cell === null) {
+        line += ' ';
+      } else {
+        line += `\x1b[38;2;${cell.r};${cell.g};${cell.b}m\u2588`;
+      }
+    }
+    line += '\x1b[0m';
+    lines.push(line);
+  }
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    document.getElementById('status').textContent = 'Copied ANSI text to clipboard!';
+  });
+}
+
+function copyHTML() {
+  if (!grid) { alert('Generate first!'); return; }
+  let html = '<pre style="font-family:monospace;font-size:14px;line-height:1;background:transparent;">';
+  for (let y = 0; y < grid.length; y++) {
+    for (let x = 0; x < grid[y].length; x++) {
+      const cell = grid[y][x];
+      if (cell === null) {
+        html += ' ';
+      } else {
+        html += `<span style="color:rgb(${cell.r},${cell.g},${cell.b})">\u2588</span>`;
+      }
+    }
+    if (y < grid.length - 1) html += '\n';
+  }
+  html += '</pre>';
+
+  // Copy as both text/html and text/plain
+  const plainLines = [];
+  for (let y = 0; y < grid.length; y++) {
+    let line = '';
+    for (let x = 0; x < grid[y].length; x++) {
+      line += grid[y][x] === null ? ' ' : '\u2588';
+    }
+    plainLines.push(line);
+  }
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const item = new ClipboardItem({
+    'text/html': blob,
+    'text/plain': new Blob([plainLines.join('\n')], { type: 'text/plain' })
+  });
+  navigator.clipboard.write([item]).then(() => {
+    document.getElementById('status').textContent = 'Copied HTML to clipboard!';
+  });
+}
+</script>
+</body>
+</html>
