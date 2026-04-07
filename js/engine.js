@@ -2845,8 +2845,8 @@ export class GlowSystem {
       }
       case 'rainbow': {
         hue = (t * 60) % 360;
-        saturation = 90;
-        lightness = 60 + Math.sin(t * 3) * 10;
+        saturation = 100;
+        lightness = 65;
         break;
       }
       default: {
@@ -2859,7 +2859,7 @@ export class GlowSystem {
     const glowRGB = this._hslToRgb(hue / 360, saturation / 100, lightness / 100);
     const baseRGB = this._hexToRgb(baseColor);
 
-    const blend = 0.4;
+    const blend = (category === 'PLAYER') ? 0.9 : 0.4;
     const r = Math.round(baseRGB.r * (1 - blend) + glowRGB.r * blend);
     const g = Math.round(baseRGB.g * (1 - blend) + glowRGB.g * blend);
     const b = Math.round(baseRGB.b * (1 - blend) + glowRGB.b * blend);
