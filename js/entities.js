@@ -131,25 +131,25 @@ const PERSONALITY_TRAITS = [
 const ARCHETYPES = ['mentor', 'rival', 'ally', 'antagonist', 'neutral', 'comic_relief'];
 
 const ROLE_CHARS = {
-  merchant: 'M', blacksmith: 'M', barkeep: 'B', priest: 'P', guard: 'G',
-  noble: 'N', farmer: 'N', miner: 'N', hunter: 'N', scholar: 'N',
-  beggar: 'N', child: 'N', knight: 'K',
+  merchant: '\u263A', blacksmith: '\u263B', barkeep: '\u263A', priest: '\u2639', guard: '\u263B',
+  noble: '\u263A', farmer: '\u263B', miner: '\u263B', hunter: '\u263A', scholar: '\u2639',
+  beggar: '\u2639', child: '\u263A', knight: '\u263B',
 };
 
 const ROLE_COLORS = {
-  merchant:   '#e6c619',
-  blacksmith: '#cc6633',
-  barkeep:    '#d4915c',
-  priest:     '#f0f0f0',
-  guard:      '#7799cc',
-  noble:      '#cc66cc',
-  farmer:     '#88aa44',
-  miner:      '#aa8855',
-  hunter:     '#66aa66',
-  scholar:    '#aaaaee',
-  beggar:     '#888888',
-  child:      '#ffaaaa',
-  knight:     '#ccccdd',
+  merchant:   '#FFD700',
+  blacksmith: '#FF6600',
+  barkeep:    '#FF8800',
+  priest:     '#FFFFFF',
+  guard:      '#00CCFF',
+  noble:      '#FF00FF',
+  farmer:     '#00FF00',
+  miner:      '#FFAA00',
+  hunter:     '#00FF88',
+  scholar:    '#8888FF',
+  beggar:     '#CCCCCC',
+  child:      '#FF88AA',
+  knight:     '#EEEEFF',
 };
 
 // Multi-tile NPC sprites: each entry defines a grid of chars/colors drawn
@@ -1739,10 +1739,10 @@ export class LoreGenerator {
 // ============================================================================
 
 const CLASS_COLORS = {
-  junk_collector: '#aa8855',
-  scavenger:      '#6666ee',
-  mercenary:      '#dd4444',
-  engineer:       '#44aa44',
+  junk_collector: '#FFAA00',
+  scavenger:      '#4444FF',
+  mercenary:      '#FF2222',
+  engineer:       '#00FF00',
 };
 
 const CLASS_BASE_STATS = {

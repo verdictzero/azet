@@ -2228,34 +2228,13 @@ export class UIManager {
         godRayCells, lampGlowOps,
       };
 
-      // Draw NPCs (multi-tile sprites)
+      // Draw NPCs (single face characters, bright solid colors)
       if (npcs) {
         for (const npc of npcs) {
           const wx_off = npc.position.x - camX;
           const wy_off = npc.position.y - camY;
-          if (wx_off < -2 || wx_off >= worldW + 2 || wy_off < -2 || wy_off >= worldH + 2) continue;
-          const sprite = NPC_SPRITES[npc.role];
-          if (sprite) {
-            // Anchor = bottom-center of sprite
-            const anchorCol = Math.floor(sprite.w / 2);
-            const anchorRow = sprite.h - 1;
-            for (let sr = 0; sr < sprite.h; sr++) {
-              for (let sc = 0; sc < sprite.w; sc++) {
-                const ch = sprite.chars[sr][sc];
-                if (ch == null) continue;
-                const gx = wx_off + (sc - anchorCol);
-                const gy = wy_off + (sr - anchorRow);
-                if (gx >= 0 && gx < worldW && gy >= 0 && gy < worldH) {
-                  r.drawEntityChar(gx, gy, ch, sprite.fgs[sr][sc] || npc.color || COLORS.BRIGHT_CYAN);
-                }
-              }
-            }
-          } else {
-            // Fallback: single char
-            if (wx_off >= 0 && wx_off < worldW && wy_off >= 0 && wy_off < worldH) {
-              r.drawEntityChar(wx_off, wy_off, npc.char, npc.color || COLORS.BRIGHT_CYAN);
-            }
-          }
+          if (wx_off < 0 || wx_off >= worldW || wy_off < 0 || wy_off >= worldH) continue;
+          r.drawEntityChar(wx_off, wy_off, npc.char, npc.color || COLORS.BRIGHT_CYAN);
         }
       }
 
@@ -2286,23 +2265,13 @@ export class UIManager {
         }
       }
 
-      // Draw player (multi-tile: head + body + anchor)
+      // Draw player (single diamond, rainbow glow)
       if (player) {
         const px = player.position.x - camX;
         const py = player.position.y - camY;
         if (px >= 0 && px < worldW && py >= 0 && py < worldH) {
           const playerColor = this.glow ? this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW) : COLORS.BRIGHT_YELLOW;
-          // 1×3 player sprite: head, torso, legs (anchor = bottom)
-          r.drawEntityChar(px, py - 2, '\u263A', playerColor);  // ☺ head
-          r.drawEntityChar(px, py - 1, '\u2502', playerColor);  // │ torso
-          r.drawEntityChar(px, py, '@', playerColor);            // @ legs/anchor
-
-          const t = Date.now() % 1000;
-          const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-          r.drawEntityChar(px - 1, py - 2, '\u250C', reticleColor);
-          r.drawEntityChar(px + 1, py - 2, '\u2510', reticleColor);
-          r.drawEntityChar(px - 1, py + 1, '\u2514', reticleColor);
-          r.drawEntityChar(px + 1, py + 1, '\u2518', reticleColor);
+          r.drawEntityChar(px, py, '\u25C6', playerColor);  // ◆ diamond
         }
       }
 

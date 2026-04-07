@@ -6669,21 +6669,12 @@ class Game {
       }
     }
 
-    // Draw player (1×3 multi-tile: head, torso, legs)
+    // Draw player (single diamond, rainbow glow)
     const ppx = this.player.position.x - camX;
     const ppy = this.player.position.y - camY;
     if (ppx >= 0 && ppx < worldW && ppy >= 0 && ppy < worldH) {
       const pc = this.glow.getGlowColor('PLAYER', COLORS.BRIGHT_YELLOW);
-      r.drawEntityChar(ppx, ppy - 2, '\u263A', pc);  // ☺ head
-      r.drawEntityChar(ppx, ppy - 1, '\u2502', pc);  // │ torso
-      r.drawEntityChar(ppx, ppy, '@', pc);            // @ legs/anchor
-
-      const t = Date.now() % 1000;
-      const reticleColor = t < 500 ? COLORS.BRIGHT_CYAN : COLORS.CYAN;
-      r.drawEntityChar(ppx - 1, ppy - 2, '\u250C', reticleColor);
-      r.drawEntityChar(ppx + 1, ppy - 2, '\u2510', reticleColor);
-      r.drawEntityChar(ppx - 1, ppy + 1, '\u2514', reticleColor);
-      r.drawEntityChar(ppx + 1, ppy + 1, '\u2518', reticleColor);
+      r.drawEntityChar(ppx, ppy, '\u25C6', pc);  // ◆ diamond
     }
 
     // Quest navigation line overlay
