@@ -907,8 +907,8 @@ export class UIManager {
     if (hasPortrait) {
       const cw = r.cellWidth;
       const ch = r.cellHeight;
-      const maxW = Math.min(Math.floor(cols * 0.45), 96);
-      const maxH = Math.min(Math.floor(rows * 0.5), 84);
+      const maxW = Math.min(Math.floor(cols * 0.2), 32);
+      const maxH = Math.min(Math.floor(rows * 0.35), 28);
       const img = dialogueState.portrait;
       const imgW = img.naturalWidth || img.width;
       const imgH = img.naturalHeight || img.height;
