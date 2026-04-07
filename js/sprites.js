@@ -4,8 +4,6 @@
 // and enemy battle sprites.
 // ─────────────────────────────────────────────
 
-import { AsciiArtGenerator } from './ascii-art-gen.js';
-import { PORTRAIT_PALETTE, PORTRAIT_CHARS, PORTRAIT_ASCII } from './portrait-data.js';
 
 // ── Sprite manifest ──────────────────────────
 // Maps logical names to PNG paths under sprites/
@@ -82,7 +80,6 @@ export class SpriteManager {
   constructor() {
     this._cache = new Map();       // name → Image or Canvas
     this._loading = new Map();     // name → Promise
-    this.asciiGen = new AsciiArtGenerator();
   }
 
   // Load a single sprite PNG. Returns a Promise<Image>.
@@ -167,72 +164,4 @@ export class SpriteManager {
     return this._cache.get(name) || null;
   }
 
-  /**
-   * Unpack a pre-generated portrait from palette-indexed data.
-   * Returns the standard { cols, rows, cells } grid format, or null.
-   */
-  _unpackPregenPortrait(path) {
-    const entry = PORTRAIT_ASCII[path];
-    if (!entry) return null;
-    const cacheKey = '_pregen_' + path;
-    if (this._cache.has(cacheKey)) return this._cache.get(cacheKey);
-
-    const { cols, rows, data } = entry;
-    const cells = [];
-    let idx = 0;
-    for (let r = 0; r < rows; r++) {
-      const row = [];
-      for (let c = 0; c < cols; c++) {
-        const charIdx = data[idx++];
-        const fgIdx = data[idx++];
-        const bgIdx = data[idx++];
-        row.push({
-          char: PORTRAIT_CHARS[charIdx],
-          fg: PORTRAIT_PALETTE[fgIdx],
-          bg: PORTRAIT_PALETTE[bgIdx],
-        });
-      }
-      cells.push(row);
-    }
-    const grid = { cols, rows, cells };
-    this._cache.set(cacheKey, grid);
-    return grid;
-  }
-
-  /**
-   * Get an ASCII art grid for an NPC portrait.
-   * Tries pre-generated 3x density data first, falls back to runtime conversion.
-   * @param {object} npc - NPC with .portrait field
-   * @param {number} cols - target width in character columns
-   * @param {number} rows - target height in character rows
-   * @param {string} [bgColor='#0e0e14'] - background color for transparent areas
-   * @returns {{ cols, rows, cells }|null}
-   */
-  getPortraitAscii(npc, cols, rows, bgColor = '#0e0e14') {
-    // Try pre-generated portrait if dimensions match
-    if (npc.portrait) {
-      const pregen = this._unpackPregenPortrait(npc.portrait);
-      if (pregen && pregen.cols === cols && pregen.rows === rows) {
-        return pregen;
-      }
-    }
-    // Fall back to runtime conversion
-    const img = this.getPortrait(npc);
-    if (!img) return null;
-    return this.asciiGen.convertDoubledCached(img, cols, rows, bgColor);
-  }
-
-  /**
-   * Get an ASCII art grid for an enemy battle sprite.
-   * @param {object} creature - creature object with .name
-   * @param {number} cols - target width in character columns
-   * @param {number} rows - target height in character rows
-   * @param {string} [bgColor='#000000'] - background color for transparent areas
-   * @returns {{ cols, rows, cells }|null}
-   */
-  getEnemySpriteAscii(creature, cols, rows, bgColor = '#000000') {
-    const img = this.getEnemySprite(creature);
-    if (!img) return null;
-    return this.asciiGen.convertCached(img, cols, rows, bgColor);
-  }
 }

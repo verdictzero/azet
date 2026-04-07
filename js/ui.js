@@ -1033,22 +1033,6 @@ export class UIManager {
     );
   }
 
-  /**
-   * Draw an ASCII art grid into the renderer cell buffer.
-   * @param {Renderer} r - renderer instance
-   * @param {number} col - left column
-   * @param {number} row - top row
-   * @param {{ cols, rows, cells }} grid - ASCII art grid from AsciiArtGenerator
-   */
-  _drawAsciiGrid(r, col, row, grid) {
-    for (let gr = 0; gr < grid.rows; gr++) {
-      for (let gc = 0; gc < grid.cols; gc++) {
-        const cell = grid.cells[gr][gc];
-        r.drawChar(col + gc, row + gr, cell.char, cell.fg, cell.bg);
-      }
-    }
-  }
-
   // ─── SHOP (FF-style) ───
 
   drawShop(shopState, player = null) {
