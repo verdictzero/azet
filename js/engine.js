@@ -99,7 +99,7 @@ export class Renderer {
     this.prevBuffer = [];  // last rendered frame
 
     // Graphics buffer: half-size cells for the viewport region (double density)
-    this._graphicsZoom = 0;  // zoom offset (px) applied only to graphics font size
+    this._graphicsZoom = 8;  // zoom locked at 2x default (gFontSize 16 instead of 8)
     this._battleGraphicsActive = false;
     this._battleTextRows = 0;
     this._savedGraphicsConfig = null;
@@ -266,17 +266,9 @@ export class Renderer {
   // Tile density: each world tile expands to 3×3 characters in the graphics buffer
   get tileDensity() { return 3; }
 
-  /** Zoom in (+1) or out (-1) by adjusting graphics density only. UI text stays the same. */
+  /** Zoom is locked at 2x default — no-op. */
   zoomBy(direction) {
-    const step = 1;
-    const next = this._graphicsZoom + step * Math.sign(direction);
-    const baseGFont = Math.max(5, Math.round(this.fontSize / 2));
-    const resultFont = baseGFont + next;
-    // Clamp so gFontSize stays in 3–16 range
-    if (resultFont < 3 || resultFont > 16) return;
-    if (next === this._graphicsZoom) return;
-    this._graphicsZoom = next;
-    this._recalcGraphics();
+    return;
   }
 
   /** World-space viewport dimensions (in world tiles, not graphics cells) */

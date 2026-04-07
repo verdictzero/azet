@@ -2224,9 +2224,7 @@ class Game {
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
     if (key === 't' || key === 'T') { this._openTransitMap(); return; }
 
-    // Zoom: +/= to zoom in, - to zoom out (changes font/cell size)
-    if (key === '+' || key === '=') { this._zoom(1); return; }
-    if (key === '-') { this._zoom(-1); return; }
+    // Zoom locked at 2x — +/- keys disabled
 
     // Movement (with night stumble penalty)
     let dir = this.getDirection(key);
@@ -2297,9 +2295,7 @@ class Game {
     if (key === 'p' || key === 'P') { this.saveGame(1, { exportFile: true }); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
-    // Zoom: +/= to zoom in, - to zoom out
-    if (key === '+' || key === '=') { this._zoom(1); return; }
-    if (key === '-') { this._zoom(-1); return; }
+    // Zoom locked at 2x — +/- keys disabled
 
     if (key === 'Escape') {
       // Bridge crossing: exit based on player Y position
@@ -2399,9 +2395,7 @@ class Game {
     if (key === 'o' || key === 'O') { this.setState('SETTINGS'); return; }
     if (key === 'l' || key === 'L') { this.setState('ALMANAC'); return; }
 
-    // Zoom: +/= to zoom in, - to zoom out
-    if (key === '+' || key === '=') { this._zoom(1); return; }
-    if (key === '-') { this._zoom(-1); return; }
+    // Zoom locked at 2x — +/- keys disabled
 
     if (key === 'Escape') {
       this.startTransition(() => {
@@ -5541,11 +5535,9 @@ class Game {
       if (this.settings.fontSize !== 16) {
         this.renderer.setFontSize(this.settings.fontSize);
       }
-      // Restore graphics zoom level (viewport density)
-      if (this.settings.graphicsZoom != null && this.settings.graphicsZoom !== 0) {
-        this.renderer._graphicsZoom = this.settings.graphicsZoom;
-        this.renderer._recalcGraphics();
-      }
+      // Zoom locked at 2x — always force _graphicsZoom = 8
+      this.renderer._graphicsZoom = 8;
+      this.renderer._recalcGraphics();
       this.renderer.enableCRT = this.settings.crtEffects;
       this.renderer.crtOptions = this.settings;
       this._applyCrtQuality();
