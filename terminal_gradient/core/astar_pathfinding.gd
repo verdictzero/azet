@@ -90,6 +90,6 @@ static func find_path(start_x: int, start_y: int, end_x: int, end_y: int, is_wal
 
 
 static func _heuristic(x: int, y: int, end_x: int, end_y: int) -> float:
-	var dx := abs(x - end_x)
-	var dy := abs(y - end_y)
+	var dx: int = abs(x - end_x)
+	var dy: int = abs(y - end_y)
 	return float(dx + dy) + (SQRT2 - 2.0) * float(min(dx, dy))
