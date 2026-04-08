@@ -15,11 +15,11 @@ static func manhattan_dist(x1: int, y1: int, x2: int, y2: int) -> int:
 
 static func bresenham_line(x1: int, y1: int, x2: int, y2: int) -> Array[Vector2i]:
 	var points: Array[Vector2i] = []
-	var dx := abs(x2 - x1)
-	var dy := abs(y2 - y1)
+	var dx: int = abs(x2 - x1)
+	var dy: int = abs(y2 - y1)
 	var sx := 1 if x1 < x2 else -1
 	var sy := 1 if y1 < y2 else -1
-	var err := dx - dy
+	var err: int = dx - dy
 	var x := x1
 	var y := y1
 
@@ -27,7 +27,7 @@ static func bresenham_line(x1: int, y1: int, x2: int, y2: int) -> Array[Vector2i
 		points.append(Vector2i(x, y))
 		if x == x2 and y == y2:
 			break
-		var e2 := 2 * err
+		var e2: int = 2 * err
 		if e2 > -dy:
 			err -= dy
 			x += sx
