@@ -175,7 +175,7 @@ export function createTagPicker(label, allTags, selectedTags, maxTags, onChange)
   return wrap;
 }
 
-export function createKeyValueEditor(label, pairs, keyOptions, onChange) {
+export function createKeyValueEditor(label, keyOptions, pairs, onChange) {
   const wrap = el('div', { className: 'form-field' });
   if (label) wrap.appendChild(el('label', { className: 'form-label' }, [label]));
 

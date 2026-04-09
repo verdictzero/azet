@@ -43,9 +43,7 @@ export class CreatureEditor {
   }
 
   editEntity(id) {
-    const creature = this.state.creatures
-      ? this.state.creatures.find(c => c.id === id)
-      : null;
+    const creature = this.state.get('creatures', id);
     if (!creature) return;
     this.entity = creature;
     this.render();
@@ -54,10 +52,8 @@ export class CreatureEditor {
 
   createNew() {
     const creature = DEFAULT_CREATURE();
-    creature.id = `creature_${Date.now()}`;
-    if (!this.state.creatures) this.state.creatures = [];
-    this.state.creatures.push(creature);
-    this.entity = creature;
+    const id = this.state.add('creatures', creature);
+    this.entity = this.state.get('creatures', id);
     this.render();
     this.show();
   }
