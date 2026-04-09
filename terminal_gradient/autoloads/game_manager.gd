@@ -40,6 +40,7 @@ enum State {
 	VIDEO_CUTSCENE,
 	ENGINEERING_SPACE,
 	FIRE_DEMO,
+	TITLE_SCREEN,
 }
 
 var current_state: State = State.PREAMBLE
@@ -73,9 +74,10 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.PREAMBLE, PreambleScreen.new(ascii_grid))
 	ui_manager.register_screen(State.MENU, MainMenuScreen.new(ascii_grid))
 	ui_manager.register_screen(State.FIRE_DEMO, FireDemoScreen.new(ascii_grid))
+	ui_manager.register_screen(State.TITLE_SCREEN, TitleScreen.new(ascii_grid))
 
-	# Start at fire demo for testing GPU renderer
-	set_state(State.FIRE_DEMO)
+	# Start at title screen
+	set_state(State.TITLE_SCREEN)
 
 
 func set_state(new_state: State) -> void:
