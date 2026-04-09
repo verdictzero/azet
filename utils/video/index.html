@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASCIIQUEST - Video to ASCII Converter</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0a; color: #ccc; font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 14px; min-height: 100vh; overflow: hidden;
+  }
+  h1 { color: #55FF55; font-size: 1.4em; font-family: monospace; }
+  h2 { color: #55FFFF; font-size: 1em; margin-bottom: 8px; font-family: monospace; }
+  .app { display: flex; height: 100vh; }
+  .sidebar {
+    width: 320px; min-width: 320px; background: #111; border-right: 2px solid #333;
+    padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .preview-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .preview-toolbar {
+    background: #111; border-bottom: 2px solid #333; padding: 8px 16px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .preview-container {
+    flex: 1; overflow: auto; padding: 8px; background: #000;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #asciiCanvas { display: block; image-rendering: pixelated; }
+  .transport {
+    background: #111; border-top: 2px solid #333; padding: 8px 16px;
+    display: flex; gap: 12px; align-items: center;
+  }
+  .transport input[type="range"] { flex: 1; accent-color: #55FF55; }
+  .section { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 12px; }
+  label { display: block; color: #aaa; font-size: 12px; margin-bottom: 4px; }
+  input[type="file"] { width: 100%; color: #aaa; font-size: 12px; }
+  input[type="number"], input[type="text"], select {
+    width: 100%; background: #222; color: #eee; border: 1px solid #444;
+    padding: 4px 8px; border-radius: 3px; font-size: 13px; font-family: monospace;
+  }
+  input[type="range"] { width: 100%; accent-color: #55FF55; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  button {
+    background: #222; color: #55FF55; border: 1px solid #55FF55; padding: 6px 14px;
+    border-radius: 3px; cursor: pointer; font-family: monospace; font-size: 13px;
+    transition: background 0.15s; white-space: nowrap;
+  }
+  button:hover { background: #55FF5522; }
+  button.primary { background: #55FF5533; }
+  button.recording { background: #AA000055; color: #FF5555; border-color: #FF5555; }
+  .status { color: #888; font-size: 12px; font-family: monospace; }
+  .ramp-presets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .ramp-presets button { font-size: 11px; padding: 3px 8px; }
+  .grid-presets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .grid-presets button { font-size: 11px; padding: 3px 8px; }
+  .time-display { color: #55FF55; font-family: monospace; font-size: 13px; min-width: 110px; text-align: center; }
+  .fps-display { color: #AAAA00; font-family: monospace; font-size: 12px; min-width: 70px; text-align: right; }
+  .transport button { padding: 6px 12px; }
+  .drop-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(85, 255, 85, 0.1); border: 4px dashed #55FF55;
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000; pointer-events: none;
+  }
+  .drop-overlay.active { display: flex; }
+  .drop-overlay span {
+    color: #55FF55; font-family: monospace; font-size: 24px;
+    background: #000; padding: 20px 40px; border: 2px solid #55FF55;
+  }
+  .color-mode-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .color-mode-row label {
+    display: flex; align-items: center; gap: 4px; cursor: pointer;
+    color: #ccc; font-size: 12px; margin-bottom: 0;
+  }
+  video { display: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar Controls -->
+  <div class="sidebar">
+    <h1>╔═ VIDEO → ASCII ═╗</h1>
+
+    <!-- Video Input -->
+    <div class="section">
+      <h2>▸ Video Source</h2>
+      <label>Load Video File</label>
+      <input type="file" id="videoFile" accept="video/*">
+      <div style="height:6px"></div>
+      <div class="status" id="videoInfo">No video loaded</div>
+    </div>
+
+    <!-- Grid Size -->
+    <div class="section">
+      <h2>▸ Output Grid</h2>
+      <label style="font-size:11px; opacity:0.6">16:9 (pixel-corrected — compensates for tall characters)</label>
+      <div class="grid-presets">
+        <button onclick="setGrid(160,45)">160×45</button>
+        <button onclick="setGrid(214,60)">214×60</button>
+        <button onclick="setGrid(284,80)">284×80</button>
+        <button onclick="setGrid(356,100)">356×100</button>
+        <button onclick="setGrid(426,120)">426×120</button>
+      </div>
+      <label style="font-size:11px; opacity:0.6">16:9 (text ratio)</label>
+      <div class="grid-presets">
+        <button onclick="setGrid(80,45)">80×45</button>
+        <button onclick="setGrid(128,72)">128×72</button>
+        <button onclick="setGrid(160,90)">160×90</button>
+        <button onclick="setGrid(192,108)">192×108</button>
+        <button onclick="setGrid(256,144)">256×144</button>
+        <button onclick="setGrid(320,180)">320×180</button>
+      </div>
+      <label style="font-size:11px; opacity:0.6">4:3 (text ratio)</label>
+      <div class="grid-presets">
+        <button onclick="setGrid(80,60)">80×60</button>
+        <button onclick="setGrid(120,90)">120×90</button>
+        <button onclick="setGrid(160,120)">160×120</button>
+        <button onclick="setGrid(200,150)">200×150</button>
+        <button onclick="setGrid(240,180)">240×180</button>
+      </div>
+      <div class="row">
+        <div><label>Columns</label><input type="number" id="cols" value="160" min="20" max="500"></div>
+        <div><label>Rows</label><input type="number" id="rows" value="90" min="10" max="300"></div>
+      </div>
+    </div>
+
+    <!-- Font Size -->
+    <div class="section">
+      <h2>▸ Rendering</h2>
+      <label>Font Size: <span id="fontVal">8</span>px</label>
+      <input type="range" id="fontSize" min="4" max="20" value="8">
+      <div style="height:6px"></div>
+      <label>Canvas Background</label>
+      <select id="canvasBg">
+        <option value="#000000" selected>BLACK</option>
+        <option value="#0a0a0a">NEAR BLACK</option>
+        <option value="#111111">DARK GRAY</option>
+      </select>
+    </div>
+
+    <!-- Color Mode -->
+    <div class="section">
+      <h2>▸ Color Mode</h2>
+      <div class="color-mode-row">
+        <label><input type="radio" name="colorMode" value="cga" checked> CGA 16</label>
+        <label><input type="radio" name="colorMode" value="true"> True Color</label>
+        <label><input type="radio" name="colorMode" value="mono"> Mono</label>
+      </div>
+      <div id="monoColorWrap" style="display:none">
+        <label>Mono Color</label>
+        <select id="monoColor"></select>
+      </div>
+      <div style="height:6px"></div>
+      <label><input type="checkbox" id="cellBg"> Cell background colors</label>
+    </div>
+
+    <!-- Character Ramp -->
+    <div class="section">
+      <h2>▸ Character Ramp</h2>
+      <div class="ramp-presets">
+        <button onclick="setRamp(' .:-=+*#%@')">Standard</button>
+        <button onclick="setRamp(' .:;+xX#@')">Simple</button>
+        <button onclick="setRamp(' ░▒▓█')">Blocks</button>
+        <button onclick="setRamp(' .░▒▓█')">Mixed</button>
+        <button onclick="setRamp(' .\'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$')">Dense</button>
+      </div>
+      <label>Custom Ramp (dark → light)</label>
+      <input type="text" id="charRamp" value=" .:-=+*#%@">
+      <div style="height:4px"></div>
+      <label><input type="checkbox" id="invertRamp"> Invert ramp</label>
+    </div>
+
+    <!-- Playback -->
+    <div class="section">
+      <h2>▸ Playback</h2>
+      <div class="row">
+        <div>
+          <label>Speed</label>
+          <select id="playbackSpeed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+          </select>
+        </div>
+        <div>
+          <label>Record FPS</label>
+          <select id="recordFps">
+            <option value="24">24 fps</option>
+            <option value="30" selected>30 fps</option>
+            <option value="60">60 fps</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="status" id="status">Ready — load a video to begin</div>
+  </div>
+
+  <!-- Preview Area -->
+  <div class="preview-area">
+    <div class="preview-toolbar">
+      <button id="generateBtn" onclick="generateMovie()">🎬 Generate Movie</button>
+      <button id="recordBtn" onclick="toggleRecording()">⏺ Manual Record</button>
+      <button onclick="snapshotPNG()">🖼 Snapshot</button>
+      <button onclick="copyTextFrame()">📋 Copy Text</button>
+      <span class="status" id="previewInfo"></span>
+    </div>
+    <div class="preview-container" id="previewContainer">
+      <canvas id="asciiCanvas"></canvas>
+    </div>
+    <div class="transport">
+      <button id="playBtn" onclick="togglePlay()">▶</button>
+      <button onclick="stepBackward()">⏮</button>
+      <button onclick="stepForward()">⏭</button>
+      <input type="range" id="seekBar" min="0" max="1000" value="0">
+      <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
+      <span class="fps-display" id="fpsDisplay">-- fps</span>
+    </div>
+  </div>
+</div>
+
+<!-- Drop overlay -->
+<div class="drop-overlay" id="dropOverlay"><span>Drop video file here</span></div>
+
+<!-- Hidden video element -->
+<video id="videoEl" crossorigin="anonymous"></video>
+
+<script>
+// ============================================================
+// CGA Palette
+// ============================================================
+const CGA_PALETTE = [
+  { name: 'BLACK',          hex: '#000000', r:   0, g:   0, b:   0 },
+  { name: 'BLUE',           hex: '#0000AA', r:   0, g:   0, b: 170 },
+  { name: 'GREEN',          hex: '#00AA00', r:   0, g: 170, b:   0 },
+  { name: 'CYAN',           hex: '#00AAAA', r:   0, g: 170, b: 170 },
+  { name: 'RED',            hex: '#AA0000', r: 170, g:   0, b:   0 },
+  { name: 'MAGENTA',        hex: '#AA00AA', r: 170, g:   0, b: 170 },
+  { name: 'YELLOW',         hex: '#AAAA00', r: 170, g: 170, b:   0 },
+  { name: 'WHITE',          hex: '#AAAAAA', r: 170, g: 170, b: 170 },
+  { name: 'BRIGHT_BLACK',   hex: '#555555', r:  85, g:  85, b:  85 },
+  { name: 'BRIGHT_BLUE',    hex: '#5555FF', r:  85, g:  85, b: 255 },
+  { name: 'BRIGHT_GREEN',   hex: '#55FF55', r:  85, g: 255, b:  85 },
+  { name: 'BRIGHT_CYAN',    hex: '#55FFFF', r:  85, g: 255, b: 255 },
+  { name: 'BRIGHT_RED',     hex: '#FF5555', r: 255, g:  85, b:  85 },
+  { name: 'BRIGHT_MAGENTA', hex: '#FF55FF', r: 255, g:  85, b: 255 },
+  { name: 'BRIGHT_YELLOW',  hex: '#FFFF55', r: 255, g: 255, b:  85 },
+  { name: 'BRIGHT_WHITE',   hex: '#FFFFFF', r: 255, g: 255, b: 255 },
+];
+
+// ============================================================
+// State
+// ============================================================
+const videoEl = document.getElementById('videoEl');
+const asciiCanvas = document.getElementById('asciiCanvas');
+const ctx = asciiCanvas.getContext('2d');
+
+// Offscreen canvas for sampling video frames
+const sampleCanvas = document.createElement('canvas');
+const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+let isPlaying = false;
+let animFrameId = null;
+let grid = null; // 2D array of {char, fg, bg}
+
+// Recording state
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+
+// FPS tracking
+let frameCount = 0;
+let lastFpsTime = performance.now();
+let currentFps = 0;
+
+// ============================================================
+// Populate mono color dropdown
+// ============================================================
+function populateMonoSelect() {
+  const sel = document.getElementById('monoColor');
+  sel.innerHTML = '';
+  for (const c of CGA_PALETTE) {
+    const opt = document.createElement('option');
+    opt.value = c.hex;
+    opt.textContent = c.name.replace(/_/g, ' ');
+    opt.style.color = c.hex;
+    opt.style.backgroundColor = '#111';
+    if (c.name === 'BRIGHT_GREEN') opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+populateMonoSelect();
+
+// ============================================================
+// Color mode toggle
+// ============================================================
+document.querySelectorAll('input[name="colorMode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    document.getElementById('monoColorWrap').style.display =
+      document.querySelector('input[name="colorMode"]:checked').value === 'mono' ? '' : 'none';
+  });
+});
+
+// ============================================================
+// Nearest CGA color (squared distance, no sqrt for speed)
+// ============================================================
+function nearestCGA(r, g, b) {
+  let bestDist = Infinity;
+  let bestColor = CGA_PALETTE[0];
+  for (let i = 0; i < 16; i++) {
+    const c = CGA_PALETTE[i];
+    const dr = r - c.r, dg = g - c.g, db = b - c.b;
+    const dist = dr * dr + dg * dg + db * db;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestColor = c;
+    }
+  }
+  return bestColor;
+}
+
+// Nearest dark CGA color (for cell backgrounds — skip bright colors)
+function nearestDarkCGA(r, g, b) {
+  let bestDist = Infinity;
+  let bestColor = CGA_PALETTE[0];
+  // Use only the first 8 (darker) palette entries
+  for (let i = 0; i < 8; i++) {
+    const c = CGA_PALETTE[i];
+    const dr = r - c.r, dg = g - c.g, db = b - c.b;
+    const dist = dr * dr + dg * dg + db * db;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestColor = c;
+    }
+  }
+  return bestColor;
+}
+
+function luminance(r, g, b) {
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+function rgbToHex(r, g, b) {
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1).toUpperCase();
+}
+
+// ============================================================
+// Video Loading
+// ============================================================
+function loadVideo(file) {
+  const url = URL.createObjectURL(file);
+  videoEl.src = url;
+  videoEl.load();
+  videoEl.addEventListener('loadedmetadata', () => {
+    document.getElementById('videoInfo').textContent =
+      `${file.name} — ${videoEl.videoWidth}×${videoEl.videoHeight}, ` +
+      `${formatTime(videoEl.duration)}`;
+    document.getElementById('seekBar').max = Math.floor(videoEl.duration * 1000);
+    document.getElementById('status').textContent = 'Video loaded — press ▶ to play';
+    // Show first frame
+    videoEl.currentTime = 0;
+    videoEl.addEventListener('seeked', function onFirstFrame() {
+      videoEl.removeEventListener('seeked', onFirstFrame);
+      processAndRenderFrame();
+    }, { once: true });
+  }, { once: true });
+}
+
+document.getElementById('videoFile').addEventListener('change', (e) => {
+  if (e.target.files[0]) loadVideo(e.target.files[0]);
+});
+
+// Drag and drop
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  document.getElementById('dropOverlay').classList.add('active');
+});
+document.addEventListener('dragleave', (e) => {
+  if (e.relatedTarget === null) {
+    document.getElementById('dropOverlay').classList.remove('active');
+  }
+});
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  document.getElementById('dropOverlay').classList.remove('active');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('video/')) {
+    loadVideo(file);
+  }
+});
+
+// ============================================================
+// Playback Controls
+// ============================================================
+function togglePlay() {
+  if (!videoEl.src) return;
+  if (videoEl.paused || videoEl.ended) {
+    videoEl.play();
+    isPlaying = true;
+    document.getElementById('playBtn').textContent = '⏸';
+    startRenderLoop();
+  } else {
+    videoEl.pause();
+    isPlaying = false;
+    document.getElementById('playBtn').textContent = '▶';
+    stopRenderLoop();
+  }
+}
+
+function stepForward() {
+  if (!videoEl.src) return;
+  videoEl.pause();
+  isPlaying = false;
+  document.getElementById('playBtn').textContent = '\u25B6';
+  stopRenderLoop();
+  const frameDur = 1 / getRecordFps();
+  videoEl.currentTime = Math.min(videoEl.currentTime + frameDur, videoEl.duration);
+  videoEl.addEventListener('seeked', () => processAndRenderFrame(), { once: true });
+}
+
+function stepBackward() {
+  if (!videoEl.src) return;
+  videoEl.pause();
+  isPlaying = false;
+  document.getElementById('playBtn').textContent = '\u25B6';
+  stopRenderLoop();
+  const frameDur = 1 / getRecordFps();
+  videoEl.currentTime = Math.max(videoEl.currentTime - frameDur, 0);
+  videoEl.addEventListener('seeked', () => processAndRenderFrame(), { once: true });
+}
+
+// Seek bar
+const seekBar = document.getElementById('seekBar');
+let isSeeking = false;
+seekBar.addEventListener('mousedown', () => { isSeeking = true; });
+seekBar.addEventListener('input', () => {
+  if (!videoEl.src) return;
+  const t = parseInt(seekBar.value) / 1000;
+  videoEl.currentTime = t;
+  if (!isPlaying) {
+    videoEl.addEventListener('seeked', () => processAndRenderFrame(), { once: true });
+  }
+});
+seekBar.addEventListener('mouseup', () => { isSeeking = false; });
+seekBar.addEventListener('touchend', () => { isSeeking = false; });
+
+// Speed
+document.getElementById('playbackSpeed').addEventListener('change', (e) => {
+  videoEl.playbackRate = parseFloat(e.target.value);
+});
+
+// Video ended
+videoEl.addEventListener('ended', () => {
+  isPlaying = false;
+  document.getElementById('playBtn').textContent = '▶';
+  stopRenderLoop();
+});
+
+// ============================================================
+// Render Loop
+// ============================================================
+function startRenderLoop() {
+  if (animFrameId) return;
+  lastFpsTime = performance.now();
+  frameCount = 0;
+  function loop() {
+    if (!isPlaying) return;
+    processAndRenderFrame();
+
+    // Update seek bar
+    if (!isSeeking) {
+      seekBar.value = Math.floor(videoEl.currentTime * 1000);
+    }
+    document.getElementById('timeDisplay').textContent =
+      `${formatTime(videoEl.currentTime)} / ${formatTime(videoEl.duration)}`;
+
+    // FPS counter
+    frameCount++;
+    const now = performance.now();
+    if (now - lastFpsTime >= 1000) {
+      currentFps = frameCount;
+      frameCount = 0;
+      lastFpsTime = now;
+      document.getElementById('fpsDisplay').textContent = `${currentFps} fps`;
+    }
+
+    animFrameId = requestAnimationFrame(loop);
+  }
+  animFrameId = requestAnimationFrame(loop);
+}
+
+function stopRenderLoop() {
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+}
+
+// ============================================================
+// Core: Process & Render Frame
+// ============================================================
+function processAndRenderFrame() {
+  const cols = parseInt(document.getElementById('cols').value) || 160;
+  const rows = parseInt(document.getElementById('rows').value) || 90;
+  let ramp = document.getElementById('charRamp').value;
+  if (!ramp || ramp.length < 2) ramp = ' .:-=+*#%@';
+  if (document.getElementById('invertRamp').checked) ramp = [...ramp].reverse().join('');
+  const rampLen = ramp.length;
+
+  const colorMode = document.querySelector('input[name="colorMode"]:checked').value;
+  const monoHex = document.getElementById('monoColor').value;
+  const canvasBgHex = document.getElementById('canvasBg').value;
+  const useCellBg = document.getElementById('cellBg').checked;
+  const fontSize = parseInt(document.getElementById('fontSize').value) || 8;
+
+  // Sample video frame
+  sampleCanvas.width = cols;
+  sampleCanvas.height = rows;
+  sampleCtx.drawImage(videoEl, 0, 0, cols, rows);
+  const imageData = sampleCtx.getImageData(0, 0, cols, rows);
+  const pixels = imageData.data;
+
+  // Build grid
+  grid = new Array(rows);
+  for (let y = 0; y < rows; y++) {
+    grid[y] = new Array(cols);
+    for (let x = 0; x < cols; x++) {
+      const i = (y * cols + x) * 4;
+      const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+      const lum = luminance(r, g, b) / 255;
+      const ci = Math.min(Math.floor(lum * rampLen), rampLen - 1);
+      const ch = ramp[ci];
+
+      let fg, bg;
+      if (colorMode === 'true') {
+        fg = rgbToHex(r, g, b);
+        if (useCellBg) {
+          // Darken the pixel color for background
+          bg = rgbToHex(r >> 2, g >> 2, b >> 2);
+        } else {
+          bg = canvasBgHex;
+        }
+      } else if (colorMode === 'cga') {
+        const nearest = nearestCGA(r, g, b);
+        fg = nearest.hex;
+        if (useCellBg) {
+          const nearDark = nearestDarkCGA(r >> 1, g >> 1, b >> 1);
+          bg = nearDark.hex;
+        } else {
+          bg = canvasBgHex;
+        }
+      } else {
+        // Mono
+        fg = monoHex;
+        bg = canvasBgHex;
+      }
+
+      grid[y][x] = { char: ch, fg, bg };
+    }
+  }
+
+  renderGrid(cols, rows, canvasBgHex, fontSize);
+}
+
+// ============================================================
+// Canvas Rendering
+// ============================================================
+function renderGrid(cols, rows, canvasBgHex, fontSize) {
+  ctx.font = `${fontSize}px monospace`;
+  const charW = ctx.measureText('M').width;
+  const charH = fontSize * 1.2;
+
+  const canvasW = Math.ceil(cols * charW);
+  const canvasH = Math.ceil(rows * charH);
+
+  if (asciiCanvas.width !== canvasW || asciiCanvas.height !== canvasH) {
+    asciiCanvas.width = canvasW;
+    asciiCanvas.height = canvasH;
+  }
+
+  const useCellBg = document.getElementById('cellBg').checked;
+
+  // Clear with background
+  ctx.fillStyle = canvasBgHex;
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  ctx.font = `${fontSize}px monospace`;
+  ctx.textBaseline = 'top';
+
+  // Batch by color for better performance
+  if (!useCellBg) {
+    // Without cell backgrounds, batch by fg color
+    const colorBatches = {};
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const cell = grid[y][x];
+        if (cell.char === ' ') continue;
+        if (!colorBatches[cell.fg]) colorBatches[cell.fg] = [];
+        colorBatches[cell.fg].push(x, y, cell.char);
+      }
+    }
+    for (const [color, batch] of Object.entries(colorBatches)) {
+      ctx.fillStyle = color;
+      for (let i = 0; i < batch.length; i += 3) {
+        ctx.fillText(batch[i + 2], batch[i] * charW, batch[i + 1] * charH);
+      }
+    }
+  } else {
+    // With cell backgrounds, draw per-cell
+    for (let y = 0; y < rows; y++) {
+      const py = y * charH;
+      for (let x = 0; x < cols; x++) {
+        const cell = grid[y][x];
+        const px = x * charW;
+        // Draw cell background
+        if (cell.bg !== canvasBgHex) {
+          ctx.fillStyle = cell.bg;
+          ctx.fillRect(px, py, charW + 0.5, charH + 0.5);
+        }
+        // Draw character
+        if (cell.char !== ' ') {
+          ctx.fillStyle = cell.fg;
+          ctx.fillText(cell.char, px, py);
+        }
+      }
+    }
+  }
+
+  // Update preview info
+  const fps = document.getElementById('recordFps').value;
+  document.getElementById('previewInfo').textContent =
+    `Text: ${cols}\u00d7${rows} | Video: ${asciiCanvas.width}\u00d7${asciiCanvas.height}px | ${fontSize}px | ${fps}fps`;
+}
+
+// ============================================================
+// Recording (WebM via MediaRecorder)
+// ============================================================
+
+function getRecordFps() {
+  return parseInt(document.getElementById('recordFps').value) || 30;
+}
+
+function getRecordFilename() {
+  const cols = document.getElementById('cols').value;
+  const rows = document.getElementById('rows').value;
+  const fps = getRecordFps();
+  return `ascii-${cols}x${rows}-${asciiCanvas.width}x${asciiCanvas.height}-${fps}fps.webm`;
+}
+
+function createRecorder(fps) {
+  const stream = asciiCanvas.captureStream(fps);
+  recordedChunks = [];
+
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm;codecs=vp9',
+      videoBitsPerSecond: 8000000
+    });
+  } catch (e) {
+    recorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm',
+      videoBitsPerSecond: 8000000
+    });
+  }
+
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  recorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = getRecordFilename();
+    a.click();
+    URL.revokeObjectURL(a.href);
+    const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
+    document.getElementById('status').textContent = `Saved ${getRecordFilename()} (${sizeMB} MB)`;
+  };
+
+  return recorder;
+}
+
+// ── Manual Record (start/stop during playback) ──
+
+function toggleRecording() {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+}
+
+function startRecording() {
+  if (!videoEl.src) { alert('Load a video first!'); return; }
+
+  mediaRecorder = createRecorder(getRecordFps());
+  mediaRecorder.start(100);
+  isRecording = true;
+  const btn = document.getElementById('recordBtn');
+  btn.textContent = '\u23F9 Stop';
+  btn.classList.add('recording');
+  document.getElementById('status').textContent = 'Recording...';
+
+  if (videoEl.paused) togglePlay();
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  isRecording = false;
+  const btn = document.getElementById('recordBtn');
+  btn.textContent = '\u23FA Manual Record';
+  btn.classList.remove('recording');
+}
+
+// ── Generate Movie (auto start → play → stop → download) ──
+
+let isGenerating = false;
+let _genTimeUpdate = null;
+let _genEnded = null;
+
+function generateMovie() {
+  if (!videoEl.src || videoEl.readyState < 2) { alert('Load a video first!'); return; }
+  if (isGenerating) { cancelGeneration(); return; }
+  isGenerating = true;
+
+  const fps = getRecordFps();
+  const genBtn = document.getElementById('generateBtn');
+  genBtn.textContent = '\u23F9 Cancel';
+  genBtn.classList.add('recording');
+  document.getElementById('status').textContent = 'Rewinding...';
+
+  // Stop any current playback/recording
+  if (isPlaying) { videoEl.pause(); isPlaying = false; stopRenderLoop(); }
+  if (isRecording) stopRecording();
+
+  // Rewind to start
+  videoEl.currentTime = 0;
+  videoEl.addEventListener('seeked', function onSeek() {
+    videoEl.removeEventListener('seeked', onSeek);
+    if (!isGenerating) return; // cancelled during rewind
+
+    // Render first frame so canvas has content before recording starts
+    processAndRenderFrame();
+
+    // Start recording
+    mediaRecorder = createRecorder(fps);
+
+    // Progress tracking
+    _genTimeUpdate = () => {
+      if (!isGenerating) return;
+      const pct = Math.round((videoEl.currentTime / videoEl.duration) * 100);
+      document.getElementById('status').textContent = `Generating... ${pct}%`;
+    };
+    videoEl.addEventListener('timeupdate', _genTimeUpdate);
+
+    // Auto-stop on video end
+    _genEnded = () => {
+      videoEl.removeEventListener('timeupdate', _genTimeUpdate);
+      videoEl.removeEventListener('ended', _genEnded);
+      _genTimeUpdate = null;
+      _genEnded = null;
+
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop(); // triggers onstop → download
+      }
+      isPlaying = false;
+      isGenerating = false;
+      isRecording = false;
+      genBtn.textContent = '\uD83C\uDFAC Generate Movie';
+      genBtn.classList.remove('recording');
+      document.getElementById('playBtn').textContent = '\u25B6';
+      stopRenderLoop();
+    };
+    videoEl.addEventListener('ended', _genEnded, { once: true });
+
+    // Start playback at 1× speed
+    mediaRecorder.start(100);
+    isRecording = true;
+    videoEl.playbackRate = 1;
+    videoEl.play();
+    isPlaying = true;
+    document.getElementById('playBtn').textContent = '\u23F8';
+    startRenderLoop();
+    document.getElementById('status').textContent = 'Generating... 0%';
+  }, { once: true });
+}
+
+function cancelGeneration() {
+  // Clean up event listeners
+  if (_genTimeUpdate) { videoEl.removeEventListener('timeupdate', _genTimeUpdate); _genTimeUpdate = null; }
+  if (_genEnded) { videoEl.removeEventListener('ended', _genEnded); _genEnded = null; }
+
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    // Prevent the onstop from downloading by replacing handler
+    mediaRecorder.onstop = () => {};
+    mediaRecorder.stop();
+  }
+  videoEl.pause();
+  isPlaying = false;
+  isRecording = false;
+  isGenerating = false;
+  stopRenderLoop();
+  document.getElementById('generateBtn').textContent = '\uD83C\uDFAC Generate Movie';
+  document.getElementById('generateBtn').classList.remove('recording');
+  document.getElementById('playBtn').textContent = '\u25B6';
+  document.getElementById('status').textContent = 'Generation cancelled';
+}
+
+// ============================================================
+// Export: Snapshot & Copy
+// ============================================================
+function snapshotPNG() {
+  if (!grid) { alert('No frame to export!'); return; }
+  const a = document.createElement('a');
+  a.href = asciiCanvas.toDataURL('image/png');
+  a.download = `ascii-frame-${Math.floor(videoEl.currentTime * 100)}.png`;
+  a.click();
+  document.getElementById('status').textContent = 'Snapshot saved!';
+}
+
+function copyTextFrame() {
+  if (!grid) { alert('No frame to export!'); return; }
+  const lines = grid.map(row => row.map(c => c.char).join(''));
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    document.getElementById('status').textContent = 'Frame text copied to clipboard!';
+  });
+}
+
+// ============================================================
+// Export: Cutscene (.azcut frame sequence)
+// ============================================================
+let isExportingCutscene = false;
+
+async function exportCutscene() {
+  if (!videoEl.src || videoEl.readyState < 2) {
+    alert('Load a video first!');
+    return;
+  }
+  if (isExportingCutscene) return;
+  isExportingCutscene = true;
+
+  const btn = document.getElementById('exportCutBtn');
+  const statusEl = document.getElementById('status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Exporting...';
+
+  // Pause current playback
+  if (isPlaying) togglePlay();
+
+  const cols = parseInt(document.getElementById('cols').value) || 160;
+  const rows = parseInt(document.getElementById('rows').value) || 90;
+  const fps = 30;
+  const frameDuration = 1 / fps;
+  const duration = videoEl.duration;
+  const totalFrames = Math.floor(duration * fps);
+
+  const paletteMap = {};   // hex -> index
+  const paletteArr = [];   // index -> hex
+  const capturedFrames = [];
+
+  function getPaletteIndex(hex) {
+    if (hex in paletteMap) return paletteMap[hex];
+    const idx = paletteArr.length;
+    paletteMap[hex] = idx;
+    paletteArr.push(hex);
+    return idx;
+  }
+
+  // Step through video frame-by-frame using seeking
+  for (let f = 0; f < totalFrames; f++) {
+    const targetTime = f * frameDuration;
+
+    // Seek to target time
+    videoEl.currentTime = targetTime;
+    await new Promise(resolve => {
+      videoEl.addEventListener('seeked', resolve, { once: true });
+    });
+
+    // Render the frame (populates global `grid`)
+    processAndRenderFrame();
+
+    // Pack the frame
+    const cellCount = cols * rows;
+    let chars = '';
+    const fgIndices = new Array(cellCount);
+    const bgIndices = new Array(cellCount);
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const cell = grid[y][x];
+        const idx = y * cols + x;
+        chars += cell.char;
+        fgIndices[idx] = getPaletteIndex(cell.fg);
+        bgIndices[idx] = getPaletteIndex(cell.bg);
+      }
+    }
+
+    capturedFrames.push({
+      chars,
+      fg: fgIndices,
+      bg: bgIndices,
+    });
+
+    // Update progress
+    if (f % 10 === 0 || f === totalFrames - 1) {
+      const pct = Math.round((f + 1) / totalFrames * 100);
+      statusEl.textContent = `Exporting: ${pct}% (${f + 1}/${totalFrames} frames)`;
+      // Yield to UI thread
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  // Build .azcut file
+  const colorMode = document.querySelector('input[name="colorMode"]:checked').value;
+  const azcut = {
+    version: 1,
+    meta: {
+      title: videoEl.src.split('/').pop().replace(/\.[^.]+$/, '') || 'untitled',
+      width: cols,
+      height: rows,
+      fps,
+      frameCount: capturedFrames.length,
+      duration: capturedFrames.length / fps,
+      colorMode,
+    },
+    palette: paletteArr,
+    frames: capturedFrames,
+  };
+
+  // Download
+  const json = JSON.stringify(azcut);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${azcut.meta.title}.azcut`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  statusEl.textContent = `Exported ${capturedFrames.length} frames (${paletteArr.length} colors, ${(blob.size / 1024 / 1024).toFixed(1)} MB)`;
+  btn.disabled = false;
+  btn.textContent = '🎬 Export .azcut';
+  isExportingCutscene = false;
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function formatTime(seconds) {
+  if (!seconds || isNaN(seconds)) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function setGrid(cols, rows) {
+  document.getElementById('cols').value = cols;
+  document.getElementById('rows').value = rows;
+  // Re-render current frame if we have a video
+  if (videoEl.src && videoEl.readyState >= 2) {
+    processAndRenderFrame();
+  }
+  updateResolutionDisplay();
+}
+
+function updateResolutionDisplay() {
+  const cols = parseInt(document.getElementById('cols').value) || 160;
+  const rows = parseInt(document.getElementById('rows').value) || 90;
+  const fontSize = parseInt(document.getElementById('fontSize').value) || 8;
+  ctx.font = `${fontSize}px monospace`;
+  const charW = ctx.measureText('M').width;
+  const charH = fontSize * 1.2;
+  const pxW = Math.ceil(cols * charW);
+  const pxH = Math.ceil(rows * charH);
+  const fps = document.getElementById('recordFps').value;
+  document.getElementById('previewInfo').textContent =
+    `Text: ${cols}\u00d7${rows} | Video: ${pxW}\u00d7${pxH}px | ${fontSize}px | ${fps}fps`;
+}
+
+function setRamp(ramp) {
+  document.getElementById('charRamp').value = ramp;
+  if (videoEl.src && videoEl.readyState >= 2 && !isPlaying) {
+    processAndRenderFrame();
+  }
+}
+
+// Font size label
+document.getElementById('fontSize').addEventListener('input', (e) => {
+  document.getElementById('fontVal').textContent = e.target.value;
+  if (videoEl.src && videoEl.readyState >= 2 && !isPlaying) {
+    processAndRenderFrame();
+  }
+  updateResolutionDisplay();
+});
+
+// Re-render on setting changes when paused
+['cols', 'rows', 'canvasBg', 'charRamp', 'invertRamp', 'cellBg', 'monoColor'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener('change', () => {
+      if (videoEl.src && videoEl.readyState >= 2 && !isPlaying) {
+        processAndRenderFrame();
+      }
+      if (id === 'cols' || id === 'rows') updateResolutionDisplay();
+    });
+  }
+});
+
+// FPS selector updates display
+document.getElementById('recordFps').addEventListener('change', () => {
+  updateResolutionDisplay();
+});
+document.querySelectorAll('input[name="colorMode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (videoEl.src && videoEl.readyState >= 2 && !isPlaying) {
+      processAndRenderFrame();
+    }
+  });
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowRight') { e.preventDefault(); stepForward(); }
+  if (e.code === 'ArrowLeft') { e.preventDefault(); stepBackward(); }
+});
+
+// Show initial resolution on load
+updateResolutionDisplay();
+</script>
+</body>
+</html>

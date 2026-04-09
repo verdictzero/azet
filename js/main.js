@@ -9,6 +9,9 @@ import { getMonsterArt } from './monsterart.js';
 import { expandTile, clearTileCache } from './tileExpansion.js';
 import { MusicManager, TRACKS } from './music.js';
 import { AsciiCutscenePlayer } from './ascii-cutscene.js';
+import { SpriteManager } from './sprites.js';
+import { CutsceneLoader } from './cutscene-loader.js';
+import { VideoCutscenePlayer } from './video-cutscene.js';
 
 // ─── Save Export/Import Cipher ───
 const SAVE_CIPHER_KEY = 'AETHEON-ASCIIQUEST-2024';
@@ -176,8 +179,10 @@ class Game {
     this.locationCamera = null;
     this._bumpState = { dx: 0, dy: 0, count: 0, lastTime: 0 };
     this.playerFacingDir = { dx: 1, dy: 0 }; // default facing right
-    this.ui = new UIManager(this.renderer);
+    this.spriteManager = new SpriteManager();
+    this.ui = new UIManager(this.renderer, this.spriteManager);
     this.music = new MusicManager();
+    this.videoCutscene = new VideoCutscenePlayer(document.getElementById('cutscene-video'));
     this._loadVersion();
 
     // Auto-refresh: version polling
@@ -187,7 +192,7 @@ class Game {
     this._startVersionPolling();
 
     // Game state
-    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU, REST_ITEM_SELECT, TRANSIT_MAP
+    this.state = 'PREAMBLE'; // PREAMBLE, MENU, CHAR_CREATE, LOADING, OVERWORLD, LOCATION, DUNGEON, DIALOGUE, SHOP, INVENTORY, CHARACTER, QUEST_LOG, MAP, HELP, SETTINGS, GAME_OVER, COMBAT, BATTLE_ENTER, BATTLE_RESULTS, QUEST_COMPASS, DEBUG_MENU, CONSOLE_LOG, ALMANAC, GAMEPAD_MENU, REST_ITEM_SELECT, TRANSIT_MAP, VIDEO_CUTSCENE
 
     // ── FF-style Gamepad Menu ──
     this.gamepadMenuCursor = 0;
@@ -768,6 +773,8 @@ class Game {
 
   startNewGame() {
     this.setState('LOADING');
+    // Kick off non-blocking sprite preload (PNG files; missing files silently fallback)
+    this.spriteManager.preloadAll();
     this._loadLog = [];
     this._loadStep = 0;
     this._loadingStep = null; // {current, total, label} for post-history loading modal
@@ -1181,11 +1188,176 @@ class Game {
     this.currentDungeonLocation = null;
     this.currentFloor = 0;
     this._mazeSlowTurns = 0;
-    this.gameContext.currentLocationName = 'Test: Infinite Maze';
+    this.gameContext.currentLocationName = 'Test: Infinite Maze A';
 
     this.setState('DUNGEON');
-    this.ui.addMessage('[DEBUG] Entered Infinite Maze test area.', COLORS.BRIGHT_GREEN);
+    this.ui.addMessage('[DEBUG] Entered Infinite Maze A test area.', COLORS.BRIGHT_GREEN);
     this.ui.addMessage('Use arrow keys to explore. Esc to return.', COLORS.BRIGHT_CYAN);
+  }
+
+  enterTestMazeB() {
+    const CHUNK = 80;
+    this.testArea = { type: 'mazeB', chunks: new Map(), seed: this.seed, chunkSize: CHUNK };
+
+    // Generate initial chunks in a 5x5 area around origin
+    for (let cy = -2; cy <= 2; cy++) {
+      for (let cx = -2; cx <= 2; cx++) {
+        this._generateMazeChunkB(cx, cy);
+      }
+    }
+
+    // Build tile array from chunks
+    this._rebuildTestAreaTiles();
+
+    // Place player at the first walkable cell near world origin
+    const originChunk = this.testArea.chunks.get('0,0');
+    if (originChunk) {
+      this.player.position.x = -this.testArea.worldOffsetX;
+      this.player.position.y = -this.testArea.worldOffsetY;
+    }
+
+    // Lock zoom to density 1 (closest)
+    this.renderer.setZoom(1);
+    this._preLocationZoom = 1;
+
+    // Clear entities
+    this.enemies = [];
+    this.items = [];
+    this.npcs = [];
+    this.currentDungeonLocation = null;
+    this.currentFloor = 0;
+    this._mazeSlowTurns = 0;
+    this.gameContext.currentLocationName = 'Test: Infinite Maze B';
+
+    this.setState('DUNGEON');
+    this.ui.addMessage('[DEBUG] Entered Infinite Maze B test area.', COLORS.BRIGHT_GREEN);
+    this.ui.addMessage('Use arrow keys to explore. Esc to return.', COLORS.BRIGHT_CYAN);
+  }
+
+  _generateMazeChunkB(cx, cy) {
+    const key = `${cx},${cy}`;
+    if (this.testArea.chunks.has(key)) return;
+
+    const CHUNK = this.testArea.chunkSize;
+    const CW = 5;         // corridor width — same as Maze A
+    const GAP = 15;       // wall region — same as Maze A
+    const STEP = CW + GAP; // 20 cells per grid unit — same as Maze A
+    const GRID = CHUNK / STEP; // 4 tiles per axis
+    const seed = this.testArea.seed;
+    const PAD = CW;       // padding for adjacent tiles' border gradients
+
+    // Deterministic hash for any coordinate tuple
+    const hash = (a, b, c) => {
+      let h = (a * 374761393 + b * 668265263 + c) | 0;
+      h = Math.imul(h ^ (h >>> 15), 2246822519);
+      h = Math.imul(h ^ (h >>> 13), 3266489917);
+      return (h ^ (h >>> 16)) >>> 0;
+    };
+    const rand = (a, b, c) => (hash(a, b, c) % 10000) / 10000;
+
+    // Per-row horizontal density — each world row has its own corridor probability
+    // so some rows are near-solid runs, others have occasional breaks
+    const rowHDensity = (wy) => 0.75 + 0.20 * rand(0, wy, seed + 300); // 0.75–0.95
+
+    // Vertical connection density — varies by column region for variety
+    const colVDensity = (wx) => 0.25 + 0.20 * rand(wx, 0, seed + 301); // 0.25–0.45
+
+    // Horizontal corridors: high probability, creating long meandering runs
+    const hasHCorridor = (wx, wy) => rand(wx, wy, seed + 500) < rowHDensity(wy);
+    // Vertical corridors: lower probability, linking horizontal lanes
+    const hasVCorridor = (wx, wy) => rand(wx, wy, seed + 400) < colVDensity(wx);
+
+    // Padded grid for BFS
+    const BFSW = CHUNK + 2 * PAD;
+    const grid = [];
+    for (let y = 0; y < BFSW; y++) {
+      grid[y] = new Array(BFSW).fill(false);
+    }
+
+    // Carve helper — same as Maze A
+    const carve = (gy, gx, h, w) => {
+      for (let dy = 0; dy < h; dy++) {
+        for (let dx = 0; dx < w; dx++) {
+          const py = PAD + gy + dy, px = PAD + gx + dx;
+          if (py >= 0 && py < BFSW && px >= 0 && px < BFSW) {
+            grid[py][px] = true;
+          }
+        }
+      }
+    };
+
+    // Same 6x6 ring (-1..GRID) as Maze A for seamless chunk borders
+    for (let gy = -1; gy <= GRID; gy++) {
+      for (let gx = -1; gx <= GRID; gx++) {
+        const wx = cx * CHUNK + gx * STEP;
+        const wy = cy * CHUNK + gy * STEP;
+        const y = gy * STEP;
+        const x = gx * STEP;
+
+        // Every cell gets a passage block — no voids
+        carve(y, x, CW, CW);
+
+        // Carve east corridor (horizontal runs)
+        if (hasHCorridor(wx, wy)) {
+          carve(y, x + CW, CW, GAP);
+        }
+
+        // Carve south corridor (vertical connections)
+        if (hasVCorridor(wx, wy)) {
+          carve(y + CW, x, GAP, CW);
+        }
+
+        // Prevent isolated blocks: check full NSEW connectivity
+        const hasNorth = hasVCorridor(wx, wy - STEP);
+        const hasSouth = hasVCorridor(wx, wy);
+        const hasWest  = hasHCorridor(wx - STEP, wy);
+        const hasEast  = hasHCorridor(wx, wy);
+
+        if (!hasNorth && !hasSouth && !hasWest && !hasEast) {
+          // Force east connection (prefer extending horizontal runs)
+          carve(y, x + CW, CW, GAP);
+        }
+      }
+    }
+
+    // BFS distance field on padded grid (Chebyshev, 3 wall layers)
+    // Identical to Maze A
+    const bfs = [];
+    const queue = [];
+    for (let y = 0; y < BFSW; y++) {
+      bfs[y] = [];
+      for (let x = 0; x < BFSW; x++) {
+        if (grid[y][x]) { bfs[y][x] = 0; queue.push(y, x); }
+        else bfs[y][x] = 255;
+      }
+    }
+    let qi = 0;
+    while (qi < queue.length) {
+      const by = queue[qi++], bx = queue[qi++];
+      const d = bfs[by][bx];
+      if (d >= 3) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const ny = by + dy, nx = bx + dx;
+          if (ny >= 0 && ny < BFSW && nx >= 0 && nx < BFSW && bfs[ny][nx] > d + 1) {
+            bfs[ny][nx] = d + 1;
+            queue.push(ny, nx);
+          }
+        }
+      }
+    }
+
+    // Extract center CHUNK x CHUNK from the padded BFS result
+    const dist = [];
+    for (let y = 0; y < CHUNK; y++) {
+      dist[y] = [];
+      for (let x = 0; x < CHUNK; x++) {
+        dist[y][x] = bfs[PAD + y][PAD + x];
+      }
+    }
+
+    this.testArea.chunks.set(key, dist);
   }
 
   _generateMazeChunk(cx, cy) {
@@ -1396,7 +1568,11 @@ class Game {
       for (let cx = pcx - 3; cx <= pcx + 3; cx++) {
         const key = `${cx},${cy}`;
         if (!this.testArea.chunks.has(key)) {
-          this._generateMazeChunk(cx, cy);
+          if (this.testArea.type === 'mazeB') {
+            this._generateMazeChunkB(cx, cy);
+          } else {
+            this._generateMazeChunk(cx, cy);
+          }
           needsRebuild = true;
         }
       }
@@ -1910,6 +2086,7 @@ class Game {
       case 'TRANSIT_MAP': return this.handleTransitMapInput(key);
       case 'DEBUG_MENU': return this.handleDebugMenuInput(key);
       case 'ASCII_CUTSCENE': return this.handleCutsceneInput(key);
+      case 'VIDEO_CUTSCENE': return this.handleVideoCutsceneInput(key);
       case 'CONSOLE_LOG': return this.handleConsoleLogInput(key);
       case 'ALMANAC': return this.handleAlmanacInput(key);
       case 'GAMEPAD_MENU': return this.handleGamepadMenuInput(key);
@@ -4235,12 +4412,28 @@ class Game {
         case 'testMaze':
           this.enterTestMaze();
           break;
+        case 'testMazeB':
+          this.enterTestMazeB();
+          break;
         // Hi-Res cutscene demos
         case 'cutscenePlasma':
         case 'cutsceneMatrix':
         case 'cutsceneNoise':
           this._startCutsceneDemo(entry.key.replace('cutscene', '').toLowerCase());
           break;
+        case 'cutsceneVideo':
+          this._promptVideoCutscene();
+          break;
+        case 'playVideoFile':
+          this._pickAndPlayVideoCutscene();
+          break;
+        case 'playVideoUrl': {
+          const name = prompt('Enter video filename in data/cutscenes/ (e.g. intro.webm):');
+          if (name && name.trim()) {
+            this._playVideoCutscene(`data/cutscenes/${name.trim()}`, 'DEBUG_MENU');
+          }
+          break;
+        }
       }
     } else if (entry.type === 'slider') {
       if (entry.key === 'hour' && this.timeSystem) {
@@ -4293,6 +4486,45 @@ class Game {
     this.setState('ASCII_CUTSCENE');
   }
 
+  /**
+   * Load and play a pre-rendered ASCII video cutscene (.azcut file).
+   * @param {string} cutsceneId - Filename without extension in data/cutscenes/
+   * @param {string} [returnState] - State to return to after playback
+   * @param {boolean} [loop] - Whether to loop the cutscene
+   */
+  async _startVideoCutscene(cutsceneId, returnState, loop = false) {
+    try {
+      const data = await CutsceneLoader.load(`data/cutscenes/${cutsceneId}.azcut`);
+      if (!this.cutscenePlayer) {
+        this.cutscenePlayer = new AsciiCutscenePlayer();
+      }
+      // Save current font size, switch to half for 2x density
+      this._cutsceneOrigFontSize = this.renderer.fontSize;
+      this._cutsceneOrigUserFont = this.renderer._userFontSize;
+      this.renderer.setFontSize(Math.max(7, Math.floor(this.renderer.fontSize / 2)));
+      this.cutscenePlayer.startFrames(data, {
+        onComplete: () => this.handleCutsceneInput('Escape'),
+        loop,
+      });
+      this._cutsceneReturnState = returnState || this.state;
+      this.setState('ASCII_CUTSCENE');
+    } catch (e) {
+      console.error(`Failed to load cutscene "${cutsceneId}":`, e);
+      this.ui.addMessage(`Cutscene "${cutsceneId}" not found.`, '#ff6060');
+    }
+  }
+
+  /**
+   * Prompt for a cutscene filename via the browser prompt dialog,
+   * then attempt to load and play it from data/cutscenes/.
+   */
+  _promptVideoCutscene() {
+    const id = prompt('Enter cutscene filename (without .azcut extension):');
+    if (id && id.trim()) {
+      this._startVideoCutscene(id.trim(), 'DEBUG_MENU');
+    }
+  }
+
   handleCutsceneInput(key) {
     if (key === 'Escape') {
       if (this.cutscenePlayer) this.cutscenePlayer.stop();
@@ -4302,6 +4534,44 @@ class Game {
         this.renderer._userFontSize = this._cutsceneOrigUserFont || false;
       }
       this.setState(this._cutsceneReturnState || 'DEBUG_MENU');
+    }
+  }
+
+  // ─── Video Cutscene (WebM/MP4 playback) ────────────────
+
+  /**
+   * Play a pre-rendered ASCII video cutscene file.
+   * @param {string} url - Full path or object URL of the video file
+   * @param {string} [returnState] - State to return to after playback
+   * @param {boolean} [loop] - Loop playback
+   */
+  async _playVideoCutscene(url, returnState, loop = false) {
+    this._cutsceneReturnState = returnState || this.state;
+    this.setState('VIDEO_CUTSCENE');
+    await this.videoCutscene.play(url, {
+      onComplete: () => this._endVideoCutscene(),
+      loop,
+    });
+  }
+
+  _endVideoCutscene() {
+    this.videoCutscene.stop();
+    this.setState(this._cutsceneReturnState || 'DEBUG_MENU');
+  }
+
+  handleVideoCutsceneInput(key) {
+    if (key === 'Escape') {
+      this._endVideoCutscene();
+    }
+  }
+
+  /**
+   * Open a file picker to select and play a local video file as a cutscene.
+   */
+  async _pickAndPlayVideoCutscene() {
+    const url = await this.videoCutscene.pickLocalFile();
+    if (url) {
+      this._playVideoCutscene(url, 'DEBUG_MENU');
     }
   }
 
@@ -5172,7 +5442,8 @@ class Game {
       npcName: npc.name.full || npc.name.first || npc.title || 'NPC',
       reputation: npc.playerReputation || 0,
       text: schedulePrefix + greeting.text + memoryNote,
-      options: options
+      options: options,
+      portrait: this.spriteManager.getPortrait(npc),
     };
     this.ui.resetSelection();
     this.setState('DIALOGUE');
@@ -5595,6 +5866,8 @@ class Game {
 
   loadGame(slot = 1) {
     try {
+      // Ensure sprites are loading
+      this.spriteManager.preloadAll();
       // Try slot-based first, then fallback to legacy key
       let data = localStorage.getItem(`asciiquest_save_${slot}`);
       if (!data) data = localStorage.getItem('asciiquest_save');
@@ -5876,6 +6149,14 @@ class Game {
         }
         break;
 
+      case 'VIDEO_CUTSCENE':
+        // Video element handles display — just draw ESC hint on canvas
+        this.renderer.drawString(
+          this.renderer.cols - 13, this.renderer.rows - 1,
+          ' [ESC] Exit ', '#586078', '#000000'
+        );
+        break;
+
       case 'CONSOLE_LOG':
         this.ui.drawConsoleLog();
         break;
@@ -5934,13 +6215,44 @@ class Game {
     // will modify the canvas after buffer snapshot — otherwise dirty
     // tracking leaves stale post-processed pixels on unchanged cells
     const hasTimeTint = ['OVERWORLD', 'LOCATION', 'DUNGEON', 'GAMEPAD_MENU'].includes(this.state);
-    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS' || this.state === 'ASCII_CUTSCENE';
+    const isAnimatedScreen = this.state === 'QUEST_COMPASS' || this.state === 'MENU' || this.state === 'LOADING' || this.state === 'WORLD_GEN_PAUSE' || this.state === 'COMBAT' || this.state === 'BATTLE_ENTER' || this.state === 'ENEMY_DEATH' || this.state === 'BATTLE_RESULTS' || this.state === 'ASCII_CUTSCENE' || this.state === 'VIDEO_CUTSCENE' || this.state === 'DIALOGUE';
     const needsFullRedraw = this.renderer.effectsEnabled
       || this.transitionTimer > 0
       || hasTimeTint
       || isAnimatedScreen
       || (this.renderer._flashAlpha && this.renderer._flashAlpha > 0);
     this.renderer.endFrame(needsFullRedraw);
+
+    // ── Pixel art overlays (rendered after character grid, before CRT) ──
+    if (this.state === 'DIALOGUE' && this.ui.dialogueState && this.ui.dialogueState.portrait) {
+      this.ui.drawPortraitOverlay(this.ui.dialogueState);
+    }
+    if (this.state === 'COMBAT' && this.ui._enemySpriteOverlay) {
+      const eso = this.ui._enemySpriteOverlay;
+      const ctx = this.renderer.ctx;
+      const cw = this.renderer.cellWidth;
+      const ch = this.renderer.cellHeight;
+      const px = Math.round(eso.col * cw);
+      const py = Math.round(eso.row * ch);
+      const pw = Math.round(eso.w * cw);
+      const ph = Math.round(eso.h * ch);
+
+      // Draw sprite
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(eso.img, px, py, pw, ph);
+
+      // Hit flash: re-draw sprite with lighter compositing to tint white
+      if (eso.flash) {
+        ctx.globalAlpha = 0.7;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(eso.img, px, py, pw, ph);
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+      this.ui._enemySpriteOverlay = null;
+    }
+
     this.renderer.postProcess();
 
     // Day/night tint — viewport only (not HUD)
@@ -7717,11 +8029,6 @@ class Game {
     this.renderFireBackground(r, cols, battleH, shakeX, shakeY);
 
     // ── Centered Monster Art ──
-    const art = getMonsterArt(enemy);
-    const artLines = art.lines;
-    const artH = artLines.length;
-    const artW = Math.max(...artLines.map(l => l.length));
-
     // Hit recoil offset
     let recoilX = 0;
     if (cs.hitRecoil > 0) {
@@ -7729,41 +8036,87 @@ class Game {
       cs.hitRecoil--;
     }
 
-    const artX = Math.floor(cols / 2 - artW / 2) + shakeX + recoilX;
-    const artY = Math.floor(battleH / 2 - artH / 2) - 1 + shakeY;
+    // Check for pixel art sprite first, fall back to ASCII art
+    const enemySprite = this.spriteManager.getEnemySprite(enemy);
+    const usePixelSprite = !!enemySprite;
 
-    // Determine monster draw color (flash white on hit)
-    let drawColor = art.color;
-    if (cs.hitTimer > 0) {
-      drawColor = '#FFFFFF';
-      cs.hitTimer--;
-    }
+    // ASCII art (used for layout metrics even when pixel sprite exists)
+    const art = getMonsterArt(enemy);
+    const artLines = art.lines;
+    const artH = artLines.length;
+    const artW = Math.max(...artLines.map(l => l.length));
 
-    // Draw monster art - internal spaces filled, external spaces show fire bg
-    const monsterBg = '#0a0500';
-    for (let row = 0; row < artH; row++) {
-      const line = artLines[row];
-      // Find internal bounds (leftmost and rightmost non-space)
-      let firstNonSpace = -1, lastNonSpace = -1;
-      for (let col = 0; col < line.length; col++) {
-        if (line[col] !== ' ') {
-          if (firstNonSpace === -1) firstNonSpace = col;
-          lastNonSpace = col;
-        }
+    let artX, artY, layoutW, layoutH;
+
+    if (usePixelSprite) {
+      // Pixel sprite: size in cells, centered in battle area
+      const spriteCells = Math.min(Math.floor(battleH * 0.7), Math.floor(cols * 0.35), 18);
+      const spriteCol = Math.floor(cols / 2 - spriteCells / 2) + shakeX + recoilX;
+      const spriteRow = Math.floor(battleH / 2 - spriteCells / 2) - 1 + shakeY;
+
+      // Queue for overlay rendering after endFrame (drawn directly as pixels)
+      this.ui._enemySpriteOverlay = {
+        img: enemySprite,
+        col: spriteCol,
+        row: spriteRow,
+        w: spriteCells,
+        h: spriteCells,
+      };
+
+      // Use sprite center for name plate / HP bar positioning
+      artX = spriteCol;
+      artY = spriteRow;
+      // Override artW/artH for layout
+      layoutW = spriteCells;
+      layoutH = spriteCells;
+
+      // Hit flash: apply a white tint overlay via canvas compositing
+      // (handled in the overlay pass — store flash state)
+      if (cs.hitTimer > 0) {
+        this.ui._enemySpriteOverlay.flash = true;
+        cs.hitTimer--;
       }
-      for (let col = 0; col < line.length; col++) {
-        const ch = line[col];
-        const dx = artX + col;
-        const dy = artY + row;
-        if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
-        if (ch === ' ') {
-          // Internal space: fill with monster bg so fire doesn't bleed through
-          if (col > firstNonSpace && col < lastNonSpace) {
-            r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
+    } else {
+      // ASCII art path (original)
+      this.ui._enemySpriteOverlay = null;
+      artX = Math.floor(cols / 2 - artW / 2) + shakeX + recoilX;
+      artY = Math.floor(battleH / 2 - artH / 2) - 1 + shakeY;
+      layoutW = artW;
+      layoutH = artH;
+
+      // Determine monster draw color (flash white on hit)
+      let drawColor = art.color;
+      if (cs.hitTimer > 0) {
+        drawColor = '#FFFFFF';
+        cs.hitTimer--;
+      }
+
+      // Draw monster art - internal spaces filled, external spaces show fire bg
+      const monsterBg = '#0a0500';
+      for (let row = 0; row < artH; row++) {
+        const line = artLines[row];
+        // Find internal bounds (leftmost and rightmost non-space)
+        let firstNonSpace = -1, lastNonSpace = -1;
+        for (let col = 0; col < line.length; col++) {
+          if (line[col] !== ' ') {
+            if (firstNonSpace === -1) firstNonSpace = col;
+            lastNonSpace = col;
           }
-          continue; // External space: fire bg shows through
         }
-        r.drawChar(dx, dy, ch, drawColor, monsterBg, true);
+        for (let col = 0; col < line.length; col++) {
+          const ch = line[col];
+          const dx = artX + col;
+          const dy = artY + row;
+          if (dx < 0 || dx >= cols || dy < 0 || dy >= battleH) continue;
+          if (ch === ' ') {
+            // Internal space: fill with monster bg so fire doesn't bleed through
+            if (col > firstNonSpace && col < lastNonSpace) {
+              r.drawChar(dx, dy, ' ', monsterBg, monsterBg);
+            }
+            continue; // External space: fire bg shows through
+          }
+          r.drawChar(dx, dy, ch, drawColor, monsterBg, true);
+        }
       }
     }
 
@@ -7781,9 +8134,9 @@ class Game {
     }
 
     // Monster HP bar centered below art
-    const eHpW = Math.min(20, artW + 4);
+    const eHpW = Math.min(20, layoutW + 4);
     const eHpX = Math.floor(cols / 2 - eHpW / 2) + shakeX;
-    const eHpY = artY + artH + 1;
+    const eHpY = artY + layoutH + 1;
     if (eHpY < battleH) {
       const eHpFrac = Math.max(0, enemy.stats.hp / enemy.stats.maxHp);
       const eHpFilled = Math.round(eHpFrac * eHpW);

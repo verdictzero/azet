@@ -118,8 +118,11 @@ function _getCircuitryCell(wx, wy) {
 }
 
 export class UIManager {
-  constructor(renderer) {
+  constructor(renderer, spriteManager = null) {
     this.renderer = renderer;
+    this.spriteManager = spriteManager;
+    this._portraitOverlay = null;   // pixel art portrait position (set by drawDialogue)
+    this._enemySpriteOverlay = null; // pixel art enemy sprite position (set by renderCombat)
     this.activePanel = null;
     this.messageLog = [];
     this.maxMessages = 500;
@@ -879,9 +882,22 @@ export class UIManager {
     const rows = r.rows;
     const bg = COLORS.FF_BLUE_DARK;
 
-    // FF dialogue: wide centered panel
-    const panelW = Math.min(cols - 4, 64);
-    const px = Math.floor((cols - panelW) / 2);
+    // Portrait sizing — square, adaptive to screen size
+    const hasPortrait = !!dialogueState.portrait;
+    // Portrait occupies a square region in cell units, on the left side
+    const portraitCells = hasPortrait ? Math.min(Math.floor(rows * 0.4), Math.floor(cols * 0.2), 14) : 0;
+    const portraitGap = hasPortrait ? 2 : 0; // gap between portrait and text panels
+
+    // FF dialogue: wide centered panel (shifted right for portrait)
+    const totalAvailW = cols - 4;
+    const textAreaW = hasPortrait ? totalAvailW - portraitCells - portraitGap : totalAvailW;
+    const panelW = Math.min(textAreaW, 64);
+
+    // Left edge of portrait and text area
+    const totalContentW = (hasPortrait ? portraitCells + portraitGap : 0) + panelW;
+    const contentStartX = Math.floor((cols - totalContentW) / 2);
+    const portraitX = contentStartX;
+    const px = contentStartX + (hasPortrait ? portraitCells + portraitGap : 0);
 
     // Calculate total height to center vertically
     const textH = 6;
@@ -891,6 +907,23 @@ export class UIManager {
     const optH = options.length > 0 ? options.length + 2 : 0;
     const totalH = nameH + dialogH + optH;
     const startY = Math.max(1, Math.floor((rows - totalH) / 2));
+
+    // Store portrait position for overlay rendering (drawn after endFrame)
+    if (hasPortrait) {
+      // Center portrait vertically relative to the dialogue panel
+      const portraitY = startY + Math.max(0, Math.floor((nameH + dialogH - portraitCells) / 2));
+      this._portraitOverlay = {
+        img: dialogueState.portrait,
+        col: portraitX,
+        row: portraitY,
+        size: portraitCells,
+      };
+      // Fill the portrait area with dark bg in the character grid so the
+      // animated dialogue background doesn't show through the border gap
+      r.fillRect(portraitX, portraitY, portraitCells, portraitCells, ' ', bg, bg);
+    } else {
+      this._portraitOverlay = null;
+    }
 
     // Name plate box (small box above the dialogue)
     const nameStr = dialogueState.npcName;
@@ -943,6 +976,20 @@ export class UIManager {
           sel ? COLORS.BRIGHT_WHITE : COLORS.WHITE, bg);
       }
     }
+  }
+
+  /**
+   * Render the NPC portrait pixel art window overlay.
+   * Called AFTER endFrame() so it draws directly to the canvas as pixels.
+   */
+  drawPortraitOverlay(dialogueState) {
+    const po = this._portraitOverlay;
+    if (!po || !po.img) return;
+    this.renderer.drawPixelArtWindow(
+      po.img, po.col, po.row, po.size, po.size,
+      '#c0c0c0', // bright grey outer stroke
+      '#1a1a2a'  // dark inner stroke
+    );
   }
 
   // ─── SHOP (FF-style) ───
@@ -3317,7 +3364,7 @@ export class UIManager {
     r.drawBox(px, py, panelW, panelH, COLORS.FF_BORDER, bg, ' Debug Menu ');
 
     // Tab bar
-    const tabs = ['Cheats', 'World', 'Visual', 'Info', 'Test Areas', 'Hi-Res'];
+    const tabs = ['Cheats', 'World', 'Visual', 'Info', 'Test Areas', 'Cutscenes'];
     const tab = this.debugTab || 0;
     const tabLabels = tabs.map((t, i) => `[${i + 1}]${t}`);
     const totalTabLen = tabLabels.reduce((s, l) => s + l.length, 0) + tabLabels.length - 1;
@@ -3427,14 +3474,20 @@ export class UIManager {
     } else if (tab === 4) {
       // Test Areas tab
       entries = [
-        { type: 'action', label: 'Infinite Maze', key: 'testMaze' },
+        { type: 'action', label: 'Infinite Maze A', key: 'testMaze' },
+        { type: 'action', label: 'Infinite Maze B', key: 'testMazeB' },
       ];
     } else if (tab === 5) {
-      // Hi-Res ASCII cutscene demos
+      // Cutscene test panel
       entries = [
         { type: 'action', label: 'Plasma Demo', key: 'cutscenePlasma' },
         { type: 'action', label: 'Matrix Rain', key: 'cutsceneMatrix' },
         { type: 'action', label: 'Noise Storm', key: 'cutsceneNoise' },
+        { type: 'sep' },
+        { type: 'action', label: '\u25B6 Play Video (local file)', key: 'playVideoFile' },
+        { type: 'action', label: '\u25B6 Play Video (data/cutscenes/)', key: 'playVideoUrl' },
+        { type: 'sep' },
+        { type: 'action', label: '\u25B6 Play .azcut File...', key: 'cutsceneVideo' },
       ];
     }
 
@@ -3564,12 +3617,16 @@ export class UIManager {
     } else if (tab === 4) {
       return [
         { type: 'action', key: 'testMaze' },
+        { type: 'action', key: 'testMazeB' },
       ];
     } else if (tab === 5) {
       return [
         { type: 'action', key: 'cutscenePlasma' },
         { type: 'action', key: 'cutsceneMatrix' },
         { type: 'action', key: 'cutsceneNoise' },
+        { type: 'action', key: 'playVideoFile' },
+        { type: 'action', key: 'playVideoUrl' },
+        { type: 'action', key: 'cutsceneVideo' },
       ];
     }
     return [];
