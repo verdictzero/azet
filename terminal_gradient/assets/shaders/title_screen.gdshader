@@ -1,33 +1,45 @@
 shader_type canvas_item;
 
-// Standard grid uniforms (set by AsciiGrid.set_gfx_shader)
+// Viewport pixel dimensions
+uniform vec2 grid_pixel_size;
+
+// ── Raster image grid: fullblock 1:2 cells ──
+uniform vec2 block_size;
+
+// ── Fire grid: font glyph cells ──
 uniform int grid_cols;
 uniform int grid_rows;
 uniform vec2 cell_size;
-uniform vec2 grid_pixel_size;
 
 // Glyph atlas (for fire characters)
 uniform sampler2D glyph_atlas : filter_nearest, repeat_disable;
 uniform int atlas_cols;
 uniform int atlas_rows;
-
-// Fire uniforms
 uniform int fire_glyphs[8];
+
+// Fire animation
 uniform vec2 seeds[10];
 uniform float time;
 
-// Merkabah 3D SubViewport texture
-uniform sampler2D merkabah_texture : filter_nearest, repeat_disable;
-uniform vec4 merkabah_rect;      // x, y, width, height in UV space (0..1)
-uniform vec2 mini_cell_size;     // pixel size of each merkabah mini-cell
-uniform float merkabah_threshold; // alpha threshold for lit pixels
+// Sefirot image
+uniform sampler2D sefirot_texture : filter_linear, repeat_disable;
+uniform vec4 sefirot_rect;  // UV-space: x, y, w, h
 
-// Logo texture
-uniform sampler2D logo_texture : filter_nearest, repeat_disable;
-uniform vec4 logo_rect;          // x, y, width, height in UV space (0..1)
+// Logo image
+uniform sampler2D logo_texture : filter_linear, repeat_disable;
+uniform vec4 logo_rect;
+
+// Menu (Z+1, topmost raster layer)
+uniform sampler2D menu_texture : filter_linear, repeat_disable;
+uniform vec4 menu_rect;
+uniform int menu_selection;
+uniform int menu_items;
+
+const vec3 MENU_SEL = vec3(0.90, 1.0, 0.95);
+const vec3 MENU_DIM = vec3(0.30, 0.33, 0.38);
 
 // 8x8 Bayer dithering matrix (normalized 0..1)
-const float BAYER_8x8[64] = {
+const float BAYER[64] = {
 	 0.0/64.0, 32.0/64.0,  8.0/64.0, 40.0/64.0,  2.0/64.0, 34.0/64.0, 10.0/64.0, 42.0/64.0,
 	48.0/64.0, 16.0/64.0, 56.0/64.0, 24.0/64.0, 50.0/64.0, 18.0/64.0, 58.0/64.0, 26.0/64.0,
 	12.0/64.0, 44.0/64.0,  4.0/64.0, 36.0/64.0, 14.0/64.0, 46.0/64.0,  6.0/64.0, 38.0/64.0,
@@ -38,111 +50,101 @@ const float BAYER_8x8[64] = {
 	63.0/64.0, 31.0/64.0, 55.0/64.0, 23.0/64.0, 61.0/64.0, 29.0/64.0, 53.0/64.0, 21.0/64.0
 };
 
-// Quantize a color channel to N levels with Bayer dithering
-float dither_channel(float val, float levels, float threshold) {
-	float step = 1.0 / (levels - 1.0);
-	float lo = floor(val / step) * step;
-	float hi = lo + step;
-	float frac = (val - lo) / step;
-	return (frac > threshold) ? hi : lo;
+// Per-cell ordered dithering: 12 levels per RGB channel (raster images only)
+vec3 dither12(vec3 color, vec2 cell) {
+	int bx = int(mod(cell.x, 8.0));
+	int by = int(mod(cell.y, 8.0));
+	float t = BAYER[by * 8 + bx];
+	float s = 1.0 / 11.0;
+	vec3 lo = floor(color / s) * s;
+	vec3 f = (color - lo) / s;
+	return lo + s * step(vec3(t), f);
 }
 
-// Apply 8x8x8 Bayer dithering (8 levels per RGB channel)
-vec3 bayer_dither_8(vec3 color, vec2 pixel_pos) {
-	int bx = int(mod(pixel_pos.x, 8.0));
-	int by = int(mod(pixel_pos.y, 8.0));
-	float threshold = BAYER_8x8[by * 8 + bx];
-	return vec3(
-		dither_channel(color.r, 8.0, threshold),
-		dither_channel(color.g, 8.0, threshold),
-		dither_channel(color.b, 8.0, threshold)
-	);
-}
-
-// Dark grey-blue-purple color tables
+// Fire palette — dark grey-blue-purple
 const vec3 FIRE_FG[7] = {
-	vec3(0.15, 0.13, 0.22),
-	vec3(0.20, 0.17, 0.30),
-	vec3(0.25, 0.22, 0.38),
-	vec3(0.30, 0.27, 0.45),
-	vec3(0.35, 0.30, 0.50),
-	vec3(0.40, 0.35, 0.55),
-	vec3(0.48, 0.42, 0.62)
+	vec3(0.07, 0.06, 0.11), vec3(0.10, 0.08, 0.15),
+	vec3(0.12, 0.11, 0.19), vec3(0.15, 0.13, 0.22),
+	vec3(0.17, 0.15, 0.25), vec3(0.20, 0.17, 0.28),
+	vec3(0.24, 0.21, 0.31)
 };
 
 const vec3 FIRE_BG[6] = {
-	vec3(0.03, 0.02, 0.06),
-	vec3(0.05, 0.04, 0.10),
-	vec3(0.07, 0.06, 0.14),
-	vec3(0.09, 0.07, 0.17),
-	vec3(0.11, 0.09, 0.20),
-	vec3(0.13, 0.11, 0.24)
+	vec3(0.01, 0.01, 0.03), vec3(0.02, 0.02, 0.05),
+	vec3(0.03, 0.03, 0.07), vec3(0.05, 0.04, 0.09),
+	vec3(0.06, 0.05, 0.10), vec3(0.07, 0.06, 0.12)
 };
 
 void fragment() {
-	vec2 pixel_pos = UV * grid_pixel_size;
-	vec4 final_color = vec4(0.0);
-	bool resolved = false;
+	vec2 px = UV * grid_pixel_size;
 
-	// ── Layer Z-1: Logo (topmost) ──
-	if (!resolved && logo_rect.z > 0.0) {
-		vec2 logo_uv = (UV - logo_rect.xy) / logo_rect.zw;
-		if (logo_uv.x >= 0.0 && logo_uv.x <= 1.0 && logo_uv.y >= 0.0 && logo_uv.y <= 1.0) {
-			vec4 logo_sample = texture(logo_texture, logo_uv);
-			if (logo_sample.a > 0.5) {
-				vec3 dithered_logo = bayer_dither_8(logo_sample.rgb, pixel_pos);
-				final_color = vec4(dithered_logo, 1.0);
-				resolved = true;
+	// ── Block grid for raster images (1:2 fullblock cells) ──
+	vec2 blk = floor(px / block_size);
+	vec2 blk_center_uv = (blk + 0.5) * block_size / grid_pixel_size;
+
+	vec4 out_color = vec4(0.0);
+	bool hit = false;
+
+	// ── Z+1: Menu (topmost, fullblock + dither12) ──
+	if (menu_rect.z > 0.0) {
+		vec2 muv = (blk_center_uv - menu_rect.xy) / menu_rect.zw;
+		if (muv.x >= 0.0 && muv.x <= 1.0 && muv.y >= 0.0 && muv.y <= 1.0) {
+			vec4 m = texture(menu_texture, muv);
+			if (m.a > 0.1) {
+				int row = clamp(int(floor(muv.y * float(menu_items))), 0, menu_items - 1);
+				vec3 color = (row == menu_selection) ? MENU_SEL : MENU_DIM;
+				out_color = vec4(dither12(color * m.a, blk), 1.0);
+				hit = true;
 			}
 		}
 	}
 
-	// ── Layer Z-2: Merkabah (middle) ──
-	if (!resolved && merkabah_rect.z > 0.0 && mini_cell_size.x > 0.0) {
-		// Quantize pixel position to mini-cell grid
-		vec2 mini_cell_idx = floor(pixel_pos / mini_cell_size);
-		vec2 mini_cell_center = (mini_cell_idx + 0.5) * mini_cell_size;
-
-		// Map mini-cell center to merkabah UV space
-		vec2 merk_uv = (mini_cell_center / grid_pixel_size - merkabah_rect.xy) / merkabah_rect.zw;
-
-		if (merk_uv.x >= 0.0 && merk_uv.x <= 1.0 && merk_uv.y >= 0.0 && merk_uv.y <= 1.0) {
-			vec4 merk_sample = texture(merkabah_texture, merk_uv);
-			if (merk_sample.a > merkabah_threshold) {
-				// Apply 8x8x8 Bayer dithering at mini-cell resolution
-				vec3 dithered = bayer_dither_8(merk_sample.rgb, mini_cell_idx);
-				final_color = vec4(dithered, 1.0);
-				resolved = true;
+	// ── Z-1: Logo (fullblock + dither12) ──
+	if (logo_rect.z > 0.0) {
+		vec2 luv = (blk_center_uv - logo_rect.xy) / logo_rect.zw;
+		if (luv.x >= 0.0 && luv.x <= 1.0 && luv.y >= 0.0 && luv.y <= 1.0) {
+			vec4 s = texture(logo_texture, luv);
+			if (s.a > 0.5) {
+				out_color = vec4(dither12(s.rgb, blk), 1.0);
+				hit = true;
 			}
 		}
 	}
 
-	// ── Layer Z-3: Fire (background) ──
-	if (!resolved) {
-		int cell_x = clamp(int(floor(pixel_pos.x / cell_size.x)), 0, grid_cols - 1);
-		int cell_y = clamp(int(floor(pixel_pos.y / cell_size.y)), 0, grid_rows - 1);
+	// ── Z-2: Sefirot (behind logo, fullblock + dither12) ──
+	if (!hit && sefirot_rect.z > 0.0) {
+		vec2 suv = (blk_center_uv - sefirot_rect.xy) / sefirot_rect.zw;
+		if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
+			vec4 s = texture(sefirot_texture, suv);
+			if (s.a > 0.5) {
+				out_color = vec4(dither12(s.rgb, blk), 1.0);
+				hit = true;
+			}
+		}
+	}
+
+	// ── Z-3: Fire background (glyph-atlas ASCII rendering) ──
+	if (!hit) {
+		int cell_x = clamp(int(floor(px.x / cell_size.x)), 0, grid_cols - 1);
+		int cell_y = clamp(int(floor(px.y / cell_size.y)), 0, grid_rows - 1);
 		float cx = float(cell_x) + 0.5;
 		float cy = float(cell_y) + 0.5;
 
 		// Voronoi cell noise
-		float min_dist = 99999.0;
-		float second_dist = 99999.0;
-		for (int s = 0; s < 10; s++) {
-			float dx = cx - seeds[s].x;
-			float dy = (cy - seeds[s].y) * 2.0;
+		float min_d = 99999.0;
+		float sec_d = 99999.0;
+		for (int i = 0; i < 10; i++) {
+			float dx = cx - seeds[i].x;
+			float dy = (cy - seeds[i].y) * 2.0;
 			float d = sqrt(dx * dx + dy * dy);
-			if (d < min_dist) {
-				second_dist = min_dist;
-				min_dist = d;
-			} else if (d < second_dist) {
-				second_dist = d;
-			}
+			if (d < min_d) { sec_d = min_d; min_d = d; }
+			else if (d < sec_d) { sec_d = d; }
 		}
 
-		float edge = second_dist - min_dist;
-		float pulse_v = sin(min_dist * 0.15 - time * 1.8) * 0.5 + 0.5;
-		float edge_pulse = sin(edge * 0.5 - time * 1.2) * 0.5 + 0.5;
-		float val = pulse_v * 0.6 + edge_pulse * 0.4;
+		float edge = sec_d - min_d;
+		float pv = sin(min_d * 0.15 - time * 1.8) * 0.5 + 0.5;
+		float ep = sin(edge * 0.5 - time * 1.2) * 0.5 + 0.5;
+		float val = pv * 0.6 + ep * 0.4;
 
 		int ci = clamp(int(val * 8.0), 0, 7);
 		int fi = clamp(int((val * 0.7 + edge * 0.02) * 7.0), 0, 6);
@@ -154,16 +156,16 @@ void fragment() {
 
 		// Sample glyph from atlas
 		vec2 in_cell = vec2(
-			(pixel_pos.x - float(cell_x) * cell_size.x) / cell_size.x,
-			(pixel_pos.y - float(cell_y) * cell_size.y) / cell_size.y
+			(px.x - float(cell_x) * cell_size.x) / cell_size.x,
+			(px.y - float(cell_y) * cell_size.y) / cell_size.y
 		);
 		int ax = glyph_index % atlas_cols;
 		int ay = glyph_index / atlas_cols;
 		vec2 atlas_uv = (vec2(float(ax), float(ay)) + in_cell) / vec2(float(atlas_cols), float(atlas_rows));
 		float ga = texture(glyph_atlas, atlas_uv).a;
 
-		final_color = vec4(mix(bg_color, fg_color, ga), 1.0);
+		out_color = vec4(mix(bg_color, fg_color, ga), 1.0);
 	}
 
-	COLOR = final_color;
+	COLOR = out_color;
 }

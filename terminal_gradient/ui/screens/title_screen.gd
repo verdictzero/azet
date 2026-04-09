@@ -1,97 +1,73 @@
 class_name TitleScreen
 extends BaseScreen
-## Title screen with three composited layers:
-## Z-3: Procedural Voronoi fire background (GPU shader)
-## Z-2: 3D merkabah model rendered as ASCII block characters (4x fire density)
-## Z-1: Terminal Gradient logo image (nearest-neighbor scaled)
+## Title screen with dual-grid compositing:
+## - Raster layers (menu, logo, sefirot): fullblock 1:2 cells + dither12
+## - Fire background: glyph-atlas ASCII rendering (░▒▓)
 
 const NUM_SEEDS: int = 10
 const FIRE_CHARSET: Array[String] = [" ", ".", "\u00B7", ":", "\u2219", "\u2591", "\u2592", "\u2593"]
+const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG"]
 
 var _title_shader: Shader
-var _matcap_shader: Shader
 var _logo_tex: Texture2D
+var _sefirot_tex: Texture2D
+var _menu_tex: ImageTexture
+var _menu_selection: int = 0
 var _setup_gen: int = -1
 var _full_cols: int = 0
 var _full_rows: int = 0
-
-# 3D SubViewport for merkabah rendering
-var _sub_viewport: SubViewport
-var _merkabah_root: Node3D
+var _sef_base_rect: Vector4 = Vector4.ZERO
+var _sef_bob_range: float = 0.0
 
 
 func _init(ascii_grid: AsciiGrid) -> void:
 	super._init(ascii_grid)
 	_title_shader = load("res://assets/shaders/title_screen.gdshader")
-	_matcap_shader = load("res://assets/shaders/matcap.gdshader")
 	_logo_tex = load("res://assets/graphics/tg_main_title.png")
+	_sefirot_tex = load("res://assets/graphics/tg_sefirot_title_2.png")
 
 
 func on_enter(context: Dictionary = {}) -> void:
 	super.on_enter(context)
 	_setup_gen = -1
-	_create_merkabah_viewport()
+	_menu_selection = 0
 
 
 func on_exit() -> void:
 	grid.clear_gfx_shader()
-	_cleanup_viewport()
 	_setup_gen = -1
 	super.on_exit()
 
 
-func _create_merkabah_viewport() -> void:
-	_sub_viewport = SubViewport.new()
-	_sub_viewport.size = Vector2i(512, 512)
-	_sub_viewport.transparent_bg = true
-	_sub_viewport.own_world_3d = true
-	_sub_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+func _build_menu_texture() -> ImageTexture:
+	## Render menu items as white-on-transparent using the glyph atlas.
+	var cw: int = grid.g_cell_width
+	var ch: int = grid.g_cell_height
+	var atlas_img: Image = grid.get_gfx_atlas().get_image()
 
-	# Camera — perspective, pulled back with wider FOV to show full model
-	var camera := Camera3D.new()
-	camera.position = Vector3(0.0, 0.0, 6.0)
-	camera.look_at(Vector3.ZERO)
-	camera.fov = 50.0
-	_sub_viewport.add_child(camera)
+	var lines: PackedStringArray = []
+	var max_len: int = 0
+	for item in MENU_ITEMS:
+		var line: String = "[ " + item + " ]"
+		lines.append(line)
+		max_len = maxi(max_len, line.length())
 
-	# Directional light for specular reflections on metallic surface
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-45.0, 30.0, 0.0)
-	light.light_energy = 1.2
-	light.light_color = Color(1.0, 0.95, 0.9)
-	_sub_viewport.add_child(light)
+	var row_h: int = ch * 2  # double-spaced rows
+	var img_w: int = max_len * cw
+	var img_h: int = lines.size() * row_h
+	var img: Image = Image.create(img_w, img_h, false, Image.FORMAT_RGBA8)
 
-	# Environment — transparent bg, subtle ambient
-	var env_res := Environment.new()
-	env_res.background_mode = Environment.BG_COLOR
-	env_res.background_color = Color(0, 0, 0, 0)
-	env_res.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env_res.ambient_light_color = Color(0.3, 0.28, 0.25)
-	env_res.ambient_light_energy = 0.3
-	var world_env := WorldEnvironment.new()
-	world_env.environment = env_res
-	_sub_viewport.add_child(world_env)
+	for row in range(lines.size()):
+		var line: String = lines[row]
+		var x_off: int = (max_len - line.length()) * cw / 2
+		for ci in range(line.length()):
+			var gi: int = grid._char_map.get(line[ci], 0)
+			var ax: int = gi % 16
+			var ay: int = gi / 16
+			img.blit_rect(atlas_img, Rect2i(ax * cw, ay * ch, cw, ch),
+				Vector2i(x_off + ci * cw, row * row_h + (row_h - ch) / 2))
 
-	# Merkabah model — unlit matcap material
-	var scene: PackedScene = load("res://assets/models/merkabahglb.glb")
-	if scene:
-		_merkabah_root = scene.instantiate()
-		var matcap_mat := ShaderMaterial.new()
-		matcap_mat.shader = _matcap_shader
-		var matcap_tex: Texture2D = load("res://assets/matcap/matcap_4.png")
-		matcap_mat.set_shader_parameter("matcap", matcap_tex)
-		matcap_mat.set_shader_parameter("base_color", Color(1.0, 1.0, 1.0, 1.0))
-		_apply_material_recursive(_merkabah_root, matcap_mat)
-		_sub_viewport.add_child(_merkabah_root)
-
-	grid.add_child(_sub_viewport)
-
-
-func _cleanup_viewport() -> void:
-	if _sub_viewport and is_instance_valid(_sub_viewport):
-		_sub_viewport.queue_free()
-	_sub_viewport = null
-	_merkabah_root = null
+	return ImageTexture.create_from_image(img)
 
 
 func _setup_shader() -> bool:
@@ -103,6 +79,7 @@ func _setup_shader() -> bool:
 	grid.set_gfx_fullscreen(true)
 	grid.set_gfx_shader_param("glyph_atlas", atlas)
 
+	# Fire grid: font glyph cells (set by set_gfx_shader / set_gfx_fullscreen)
 	_full_cols = (grid.cols * grid.cell_width) / grid.g_cell_width
 	_full_rows = (grid.rows * grid.cell_height) / grid.g_cell_height
 
@@ -113,40 +90,62 @@ func _setup_shader() -> bool:
 		glyph_indices[i] = grid._char_map.get(FIRE_CHARSET[i], 0)
 	grid.set_gfx_shader_param("fire_glyphs", glyph_indices)
 
-	# Merkabah texture from SubViewport
-	if _sub_viewport:
-		grid.set_gfx_shader_param("merkabah_texture", _sub_viewport.get_texture())
+	# Raster image grid: fullblock 1:2 cells (2x density)
+	var block_w: int = maxi(1, grid.g_cell_width / 2)
+	var block_h: int = block_w * 2
+	grid.set_gfx_shader_param("block_size", Vector2(block_w, block_h))
 
-	# Merkabah rect — square on screen, centered, fills most of viewport
 	var vp_w: float = float(_full_cols * grid.g_cell_width)
 	var vp_h: float = float(_full_rows * grid.g_cell_height)
-	var merk_pixel_h: float = vp_h * 1.8
-	var merk_pixel_w: float = merk_pixel_h  # square
-	var merk_uv_w: float = merk_pixel_w / vp_w
-	var merk_uv_h: float = merk_pixel_h / vp_h
-	grid.set_gfx_shader_param("merkabah_rect", Vector4(
-		0.5 - merk_uv_w / 2.0, 0.5 - merk_uv_h / 2.0,
-		merk_uv_w, merk_uv_h
-	))
 
-	# Mini-cell size: half the fire cell size in each dimension = 4x area density
-	grid.set_gfx_shader_param("mini_cell_size", Vector2(
-		float(grid.g_cell_width) / 2.0,
-		float(grid.g_cell_height) / 2.0
-	))
-	grid.set_gfx_shader_param("merkabah_threshold", 0.08)
+	var block_cols: int = int(vp_w) / block_w
+	var block_rows: int = int(vp_h) / block_h
 
-	# Logo texture + rect — centered both horizontally and vertically
-	grid.set_gfx_shader_param("logo_texture", _logo_tex)
+	# ── Sefirot: 85% height, centered, block-snapped ──
+	var sef_aspect: float = 420.0 / 760.0
+	var sef_bh: int = int(round(float(block_rows) * 0.85))
+	var sef_bw: int = int(round(float(sef_bh) * sef_aspect * float(block_h) / float(block_w)))
+	var sef_x: int = (block_cols - sef_bw) / 2
+	var sef_y: int = (block_rows - sef_bh) / 2
+	_sef_base_rect = Vector4(
+		float(sef_x * block_w) / vp_w, float(sef_y * block_h) / vp_h,
+		float(sef_bw * block_w) / vp_w, float(sef_bh * block_h) / vp_h
+	)
+	_sef_bob_range = float(block_h * 3) / vp_h
+	grid.set_gfx_shader_param("sefirot_texture", _sefirot_tex)
+	grid.set_gfx_shader_param("sefirot_rect", _sef_base_rect)
+
+	# ── Logo: centered, ~60% viewport width, block-snapped ──
 	var logo_aspect: float = 1512.0 / 640.0
-	var logo_uv_w: float = 0.6
-	var logo_pixel_w: float = logo_uv_w * vp_w
-	var logo_pixel_h: float = logo_pixel_w / logo_aspect
-	var logo_uv_h: float = logo_pixel_h / vp_h
+	var logo_bw: int = int(round(float(block_cols) * 0.6))
+	var logo_bh: int = int(round(float(logo_bw) * float(block_w) / (logo_aspect * float(block_h))))
+	var logo_x: int = (block_cols - logo_bw) / 2
+	var logo_y: int = (block_rows - logo_bh) / 2
+	grid.set_gfx_shader_param("logo_texture", _logo_tex)
 	grid.set_gfx_shader_param("logo_rect", Vector4(
-		0.5 - logo_uv_w / 2.0, 0.5 - logo_uv_h / 2.0,
-		logo_uv_w, logo_uv_h
+		float(logo_x * block_w) / vp_w, float(logo_y * block_h) / vp_h,
+		float(logo_bw * block_w) / vp_w, float(logo_bh * block_h) / vp_h
 	))
+
+	# ── Menu: centered horizontally, lower portion, block-snapped ──
+	_menu_tex = _build_menu_texture()
+	var menu_cw: int = grid.g_cell_width
+	var menu_ch: int = grid.g_cell_height
+	var menu_max_len: int = 0
+	for item in MENU_ITEMS:
+		menu_max_len = maxi(menu_max_len, ("[ " + item + " ]").length())
+	var menu_img_aspect: float = float(menu_max_len * menu_cw) / float(MENU_ITEMS.size() * menu_ch * 2)
+	var menu_bw: int = int(round(float(block_cols) * 0.35))
+	var menu_bh: int = int(round(float(menu_bw) * float(block_w) / (menu_img_aspect * float(block_h))))
+	var menu_x: int = (block_cols - menu_bw) / 2
+	var menu_y: int = int(round(float(block_rows) * 0.68))
+	grid.set_gfx_shader_param("menu_texture", _menu_tex)
+	grid.set_gfx_shader_param("menu_rect", Vector4(
+		float(menu_x * block_w) / vp_w, float(menu_y * block_h) / vp_h,
+		float(menu_bw * block_w) / vp_w, float(menu_bh * block_h) / vp_h
+	))
+	grid.set_gfx_shader_param("menu_items", MENU_ITEMS.size())
+	grid.set_gfx_shader_param("menu_selection", _menu_selection)
 
 	_setup_gen = grid.atlas_generation
 	return true
@@ -159,15 +158,7 @@ func draw(_d_cols: int, _d_rows: int) -> void:
 
 	var now: float = grid.frame_time_sec
 
-	# Update merkabah rotation — pseudo-random tumbling via irrational frequencies
-	if _merkabah_root and is_instance_valid(_merkabah_root):
-		_merkabah_root.rotation = Vector3(
-			sin(now * 0.31) * PI + sin(now * 0.17) * 0.5,
-			sin(now * 0.43) * PI + cos(now * 0.23) * 0.7,
-			sin(now * 0.19) * PI * 0.5 + sin(now * 0.37) * 0.3
-		)
-
-	# Animate fire seeds (same pattern as FireDemoScreen)
+	# Animate fire seeds in glyph-cell space
 	var half_cols: float = float(_full_cols) / 2.0
 	var half_rows: float = float(_full_rows) / 2.0
 	var seed_arr := PackedVector2Array()
@@ -182,16 +173,29 @@ func draw(_d_cols: int, _d_rows: int) -> void:
 	grid.set_gfx_shader_param("seeds", seed_arr)
 	grid.set_gfx_shader_param("time", now)
 
-
-func _apply_material_recursive(node: Node, mat: Material) -> void:
-	if node is MeshInstance3D:
-		var mi: MeshInstance3D = node as MeshInstance3D
-		for i in range(mi.get_surface_override_material_count()):
-			mi.set_surface_override_material(i, mat)
-	for child in node.get_children():
-		_apply_material_recursive(child, mat)
+	# Sefirot: subtle float up/down
+	var bob: float = sin(now * 0.5) * _sef_bob_range
+	grid.set_gfx_shader_param("sefirot_rect", Vector4(
+		_sef_base_rect.x, _sef_base_rect.y + bob,
+		_sef_base_rect.z, _sef_base_rect.w
+	))
 
 
 func handle_input(action: String) -> void:
-	if action != "":
-		request_action("goto_menu")
+	match action:
+		"move_up":
+			_menu_selection = (_menu_selection - 1 + MENU_ITEMS.size()) % MENU_ITEMS.size()
+			grid.set_gfx_shader_param("menu_selection", _menu_selection)
+		"move_down":
+			_menu_selection = (_menu_selection + 1) % MENU_ITEMS.size()
+			grid.set_gfx_shader_param("menu_selection", _menu_selection)
+		"interact":
+			_select_menu_item()
+
+
+func _select_menu_item() -> void:
+	match _menu_selection:
+		0: request_action("new_game")
+		1: request_action("continue_game")
+		2: request_action("open_settings")
+		3: request_action("debug_start")
