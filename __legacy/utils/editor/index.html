@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terminal Gradient - Structure Editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <!-- Top Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-title">╔═ STRUCTURE EDITOR ═╗</span>
+    </div>
+    <div class="toolbar-group">
+      <button id="btnNew" title="New Project (Ctrl+N)">New</button>
+      <button id="btnLoad" title="Load JSON (Ctrl+O)">Load</button>
+      <button id="btnSave" title="Save All (Ctrl+S)">Save All</button>
+      <div class="save-dropdown">
+        <button id="btnSaveSection" title="Save Section">Section ▾</button>
+        <div class="save-dropdown-menu" id="saveSectionMenu">
+          <button data-section="npcs">NPCs</button>
+          <button data-section="items">Items</button>
+          <button data-section="creatures">Creatures</button>
+          <button data-section="questChains">Quest Chains</button>
+          <button data-section="dialogueTrees">Dialogue Trees</button>
+          <button data-section="causeEffectChains">Cause &amp; Effect</button>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept=".json" style="display:none">
+    </div>
+    <div class="toolbar-group">
+      <button id="btnUndo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="btnRedo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+    </div>
+    <div class="toolbar-group">
+      <span class="status" id="status">Ready</span>
+    </div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab active" data-tab="npcs">NPCs</button>
+    <button class="tab" data-tab="items">Items</button>
+    <button class="tab" data-tab="creatures">Creatures</button>
+    <button class="tab" data-tab="quests">Quests</button>
+    <button class="tab" data-tab="dialogue">Dialogue</button>
+    <button class="tab" data-tab="chains">Cause &amp; Effect</button>
+    <button class="tab" data-tab="randomizer">Randomizer</button>
+  </div>
+
+  <!-- Main Content Area -->
+  <div class="main-area">
+    <!-- Left Sidebar: Entity List -->
+    <div class="sidebar" id="entityList">
+      <div class="sidebar-header">
+        <input type="text" id="entitySearch" placeholder="Search..." class="search-input">
+        <button id="btnAddEntity" class="btn-add" title="Add New">+</button>
+      </div>
+      <div class="entity-list" id="entityListItems"></div>
+    </div>
+
+    <!-- Center: Editor Panel -->
+    <div class="editor-panel" id="editorPanel">
+      <div class="editor-content" id="editorContent">
+        <div class="empty-state">Select or create an entity to begin editing</div>
+      </div>
+    </div>
+
+    <!-- Right: JSON Preview -->
+    <div class="preview-panel" id="previewPanel">
+      <div class="preview-header">
+        <span>JSON Preview</span>
+        <button id="btnCopyJson" title="Copy JSON">Copy</button>
+      </div>
+      <div class="preview-content" id="previewContent"></div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="statusbar" id="statusbar">
+    <span id="entityCount">0 entities</span>
+    <span id="saveStatus">No unsaved changes</span>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

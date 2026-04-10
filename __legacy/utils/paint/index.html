@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Terminal Gradient - ASCII Art Paint</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <!-- Top Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-title">╔═ ASCII PAINT ═╗</span>
+    </div>
+    <div class="toolbar-group mobile-toggles">
+      <button id="btnTogglePalette" title="Toggle Palette">&#9776; Pal</button>
+      <button id="btnToggleClipboard" title="Toggle Clipboard">&#128203; Clip</button>
+    </div>
+    <div class="toolbar-group">
+      <button id="btnNew" title="New (Ctrl+N)">New</button>
+      <button id="btnLoad" title="Load JSON (Ctrl+O)">Load</button>
+      <button id="btnSave" title="Save JSON (Ctrl+S)">Save</button>
+      <button id="btnExportPNG" title="Export PNG">PNG</button>
+      <button id="btnExportTxt" title="Export Text">TXT</button>
+      <input type="file" id="fileInput" accept=".json" style="display:none">
+    </div>
+    <div class="toolbar-group">
+      <button id="btnUndo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="btnRedo" title="Redo (Ctrl+Y)">Redo</button>
+    </div>
+    <div class="toolbar-group tool-buttons">
+      <button class="tool-btn active" data-tool="pencil" title="Pencil (P)">&#9998; Pen</button>
+      <button class="tool-btn" data-tool="eraser" title="Eraser (E)">&#9003; Erase</button>
+      <button class="tool-btn" data-tool="fill" title="Fill (F)">&#9681; Fill</button>
+      <button class="tool-btn" data-tool="line" title="Line (L)">&#9585; Line</button>
+      <button class="tool-btn" data-tool="rect" title="Rectangle (R)">&#9633; Rect</button>
+      <button class="tool-btn" data-tool="ellipse" title="Ellipse (O)">&#9711; Ellip</button>
+      <button class="tool-btn" data-tool="text" title="Text (T)">T Text</button>
+      <button class="tool-btn" data-tool="pick" title="Eyedropper (I)">&#9738; Pick</button>
+      <button class="tool-btn" data-tool="select" title="Select (S)">&#9634; Sel</button>
+      <button class="tool-btn" data-tool="move" title="Move (M)">&#10021; Move</button>
+    </div>
+    <div class="toolbar-group">
+      <label class="toolbar-label">Brush:
+        <select id="selBrushSize">
+          <option value="1">1x1</option>
+          <option value="3">3x3</option>
+          <option value="5">5x5</option>
+          <option value="7">7x7</option>
+        </select>
+      </label>
+      <label class="toolbar-label">Fill mode:
+        <input type="checkbox" id="chkFilled">
+      </label>
+      <label class="toolbar-label">Grid:
+        <input type="checkbox" id="chkGrid" checked>
+      </label>
+    </div>
+    <div class="toolbar-group">
+      <label class="toolbar-label">Size:
+        <input type="number" id="numCols" value="40" min="4" max="200" style="width:50px">
+        x
+        <input type="number" id="numRows" value="24" min="4" max="200" style="width:50px">
+        <button id="btnResize">Apply</button>
+      </label>
+    </div>
+  </div>
+
+  <div class="main-area">
+    <!-- Left Sidebar -->
+    <div class="sidebar">
+      <!-- Current Preview -->
+      <div class="section">
+        <h2>&#9656; Current</h2>
+        <div class="current-preview">
+          <div class="current-cell" id="previewCell">
+            <span id="previewChar">@</span>
+          </div>
+          <div class="current-info">
+            <div>Char: <span id="infoChar">@</span> (<span id="infoCode">U+0040</span>)</div>
+            <div>FG: <span id="infoFG" class="color-dot"></span></div>
+            <div>BG: <span id="infoBG" class="color-dot"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FG Color -->
+      <div class="section">
+        <h2>&#9656; Foreground</h2>
+        <div class="palette-grid" id="fgPalette"></div>
+      </div>
+
+      <!-- BG Color -->
+      <div class="section">
+        <h2>&#9656; Background</h2>
+        <div class="palette-grid" id="bgPalette"></div>
+      </div>
+
+    </div>
+
+    <!-- Center Column: Canvas + Character Panel -->
+    <div class="center-column">
+      <div class="canvas-area">
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="paintCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Character Panel (bottom) -->
+      <div class="char-panel">
+        <div class="char-panel-header">
+          <h2>&#9656; Characters</h2>
+          <div class="char-tabs" id="charTabs"></div>
+          <div class="char-custom">
+            <label>Custom:</label>
+            <input type="text" id="customChar" maxlength="1" style="width:40px;text-align:center">
+          </div>
+        </div>
+        <div class="quick-select" id="quickSelect"></div>
+        <div class="char-grid" id="charGrid"></div>
+      </div>
+    </div>
+
+    <!-- Right Sidebar: Clipboard History -->
+    <div class="sidebar-right" id="clipboardSidebar">
+      <h2>&#9656; Clipboard</h2>
+      <div class="clipboard-items" id="clipboardItems"></div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="statusbar">
+    <span id="statusPos">0, 0</span>
+    <span id="statusSize">40 x 24</span>
+    <span id="statusTool">Pencil</span>
+    <span id="statusZoom">1x</span>
+    <span id="statusMsg">Ready</span>
+  </div>
+</div>
+
+<script type="module">
+import { App } from './app.js';
+window.addEventListener('DOMContentLoaded', () => { window.app = new App(); });
+</script>
+</body>
+</html>

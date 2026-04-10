@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terminal Gradient - ASCII Art Converter</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0a; color: #ccc; font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 14px; min-height: 100vh;
+  }
+  h1 { color: #55FF55; font-size: 1.4em; font-family: monospace; }
+  h2 { color: #55FFFF; font-size: 1em; margin-bottom: 8px; font-family: monospace; }
+  .app { display: flex; height: 100vh; }
+  .sidebar {
+    width: 320px; min-width: 320px; background: #111; border-right: 2px solid #333;
+    padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
+  }
+  .preview-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .preview-toolbar {
+    background: #111; border-bottom: 2px solid #333; padding: 8px 16px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .preview-container {
+    flex: 1; overflow: auto; padding: 8px; background: #000;
+  }
+  #asciiCanvas { display: block; image-rendering: pixelated; }
+  .section { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 12px; }
+  label { display: block; color: #aaa; font-size: 12px; margin-bottom: 4px; }
+  input[type="file"] { width: 100%; color: #aaa; font-size: 12px; }
+  input[type="number"], input[type="text"], select {
+    width: 100%; background: #222; color: #eee; border: 1px solid #444;
+    padding: 4px 8px; border-radius: 3px; font-size: 13px; font-family: monospace;
+  }
+  input[type="range"] { width: 100%; accent-color: #55FF55; }
+  input[type="color"] { width: 40px; height: 28px; border: 1px solid #444; background: #222; cursor: pointer; vertical-align: middle; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .thumb-row { display: flex; gap: 8px; margin-top: 8px; }
+  .thumb-row canvas {
+    width: 100%; height: 80px; border: 1px solid #333; background: #000; object-fit: contain;
+  }
+  button {
+    background: #222; color: #55FF55; border: 1px solid #55FF55; padding: 6px 14px;
+    border-radius: 3px; cursor: pointer; font-family: monospace; font-size: 13px;
+    transition: background 0.15s;
+  }
+  button:hover { background: #55FF5522; }
+  button.primary { background: #55FF5533; }
+  .color-opt { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+  .color-swatch {
+    display: inline-block; width: 16px; height: 16px; border: 1px solid #555;
+    border-radius: 2px; vertical-align: middle;
+  }
+  .status { color: #888; font-size: 12px; font-family: monospace; }
+  .ramp-presets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .ramp-presets button { font-size: 11px; padding: 3px 8px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar Controls -->
+  <div class="sidebar">
+    <h1>╔═ ASCII CONVERTER ═╗</h1>
+
+    <!-- Image Uploads -->
+    <div class="section">
+      <h2>▸ Images</h2>
+      <label>Background Image</label>
+      <input type="file" id="bgFile" accept="image/*">
+      <div style="height:8px"></div>
+      <label>Foreground Entity Image</label>
+      <input type="file" id="fgFile" accept="image/*">
+      <div class="thumb-row">
+        <canvas id="bgThumb" title="Background"></canvas>
+        <canvas id="fgThumb" title="Foreground"></canvas>
+      </div>
+    </div>
+
+    <!-- Chroma Key -->
+    <div class="section">
+      <h2>▸ Chroma Key</h2>
+      <div class="row">
+        <div>
+          <label>Key Color</label>
+          <div class="row">
+            <input type="color" id="keyColor" value="#00FF00">
+            <select id="keyPreset" style="flex:2">
+              <option value="#00FF00">Green Screen</option>
+              <option value="#0000FF">Blue Screen</option>
+              <option value="#FF0000">Red Screen</option>
+              <option value="#FF00FF">Magenta Screen</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div style="height:6px"></div>
+      <label>Tolerance: <span id="tolVal">30</span>%</label>
+      <input type="range" id="tolerance" min="1" max="100" value="30">
+    </div>
+
+    <!-- Grid Size -->
+    <div class="section">
+      <h2>▸ Output Grid</h2>
+      <div class="row">
+        <div><label>Columns</label><input type="number" id="cols" value="80" min="10" max="300"></div>
+        <div><label>Rows</label><input type="number" id="rows" value="40" min="10" max="200"></div>
+      </div>
+    </div>
+
+    <!-- Colors -->
+    <div class="section">
+      <h2>▸ Colors</h2>
+      <label>Background ASCII Color</label>
+      <select id="bgColor"></select>
+      <div style="height:6px"></div>
+      <label>Foreground Entity Color</label>
+      <select id="fgColor"></select>
+      <div style="height:6px"></div>
+      <label>Canvas Background</label>
+      <select id="canvasBg"></select>
+    </div>
+
+    <!-- Character Ramp -->
+    <div class="section">
+      <h2>▸ Character Ramp</h2>
+      <div class="ramp-presets">
+        <button onclick="setRamp(' .:-=+*#%@')">Standard</button>
+        <button onclick="setRamp(' .:;+xX#@')">Simple</button>
+        <button onclick="setRamp(' ░▒▓█')">Blocks</button>
+        <button onclick="setRamp(' .░▒▓█')">Mixed</button>
+      </div>
+      <label>Custom Ramp (dark → light)</label>
+      <input type="text" id="charRamp" value=" .:-=+*#%@">
+      <div style="height:6px"></div>
+      <label><input type="checkbox" id="invertRamp"> Invert ramp</label>
+    </div>
+
+    <!-- Foreground Position/Scale -->
+    <div class="section">
+      <h2>▸ Entity Placement</h2>
+      <div class="row">
+        <div><label>Offset X</label><input type="number" id="fgOffsetX" value="0"></div>
+        <div><label>Offset Y</label><input type="number" id="fgOffsetY" value="0"></div>
+      </div>
+      <div style="height:6px"></div>
+      <label>Entity Scale: <span id="scaleVal">100</span>%</label>
+      <input type="range" id="fgScale" min="10" max="300" value="100">
+    </div>
+
+    <button class="primary" onclick="generate()" style="width:100%">▶ Generate</button>
+    <label><input type="checkbox" id="autoGen" checked> Auto-generate on change</label>
+    <div class="status" id="status">Ready — upload images to begin</div>
+  </div>
+
+  <!-- Preview Area -->
+  <div class="preview-area">
+    <div class="preview-toolbar">
+      <button onclick="copyText()">📋 Copy Text</button>
+      <button onclick="exportJSON()">{ } Export JSON</button>
+      <button onclick="downloadPNG()">🖼 Download PNG</button>
+      <span class="status" id="previewInfo"></span>
+    </div>
+    <div class="preview-container" id="previewContainer">
+      <canvas id="asciiCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// CGA Palette from engine.js
+const CGA_PALETTE = {
+  BLACK:          '#000000',
+  BLUE:           '#0000AA',
+  GREEN:          '#00AA00',
+  CYAN:           '#00AAAA',
+  RED:            '#AA0000',
+  MAGENTA:        '#AA00AA',
+  YELLOW:         '#AAAA00',
+  WHITE:          '#AAAAAA',
+  BRIGHT_BLACK:   '#555555',
+  BRIGHT_BLUE:    '#5555FF',
+  BRIGHT_GREEN:   '#55FF55',
+  BRIGHT_CYAN:    '#55FFFF',
+  BRIGHT_RED:     '#FF5555',
+  BRIGHT_MAGENTA: '#FF55FF',
+  BRIGHT_YELLOW:  '#FFFF55',
+  BRIGHT_WHITE:   '#FFFFFF',
+};
+
+// State
+let bgImage = null;
+let fgImage = null;
+let grid = null; // 2D array of {char, fg, bg}
+
+// --- Populate color dropdowns ---
+function populateColorSelect(sel, defaultKey) {
+  sel.innerHTML = '';
+  for (const [name, hex] of Object.entries(CGA_PALETTE)) {
+    const opt = document.createElement('option');
+    opt.value = hex;
+    opt.textContent = name.replace(/_/g, ' ');
+    opt.style.color = hex;
+    opt.style.backgroundColor = '#111';
+    if (name === defaultKey) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+populateColorSelect(document.getElementById('bgColor'), 'BRIGHT_BLUE');
+populateColorSelect(document.getElementById('fgColor'), 'BRIGHT_GREEN');
+populateColorSelect(document.getElementById('canvasBg'), 'BLACK');
+
+// --- File loading ---
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+    img.src = url;
+  });
+}
+
+function drawThumb(canvas, img) {
+  const ctx = canvas.getContext('2d');
+  canvas.width = 150; canvas.height = 80;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 150, 80);
+  const scale = Math.min(150 / img.width, 80 / img.height);
+  const w = img.width * scale, h = img.height * scale;
+  ctx.drawImage(img, (150 - w) / 2, (80 - h) / 2, w, h);
+}
+
+document.getElementById('bgFile').addEventListener('change', async (e) => {
+  if (e.target.files[0]) {
+    bgImage = await loadImage(e.target.files[0]);
+    drawThumb(document.getElementById('bgThumb'), bgImage);
+    autoGenerate();
+  }
+});
+
+document.getElementById('fgFile').addEventListener('change', async (e) => {
+  if (e.target.files[0]) {
+    fgImage = await loadImage(e.target.files[0]);
+    drawThumb(document.getElementById('fgThumb'), fgImage);
+    autoGenerate();
+  }
+});
+
+// --- Chroma key preset sync ---
+document.getElementById('keyPreset').addEventListener('change', (e) => {
+  if (e.target.value !== 'custom') {
+    document.getElementById('keyColor').value = e.target.value;
+    autoGenerate();
+  }
+});
+document.getElementById('keyColor').addEventListener('input', () => {
+  document.getElementById('keyPreset').value = 'custom';
+  autoGenerate();
+});
+
+// --- Slider labels ---
+document.getElementById('tolerance').addEventListener('input', (e) => {
+  document.getElementById('tolVal').textContent = e.target.value;
+  autoGenerate();
+});
+document.getElementById('fgScale').addEventListener('input', (e) => {
+  document.getElementById('scaleVal').textContent = e.target.value;
+  autoGenerate();
+});
+
+// --- Auto-generate listeners ---
+['cols', 'rows', 'bgColor', 'fgColor', 'canvasBg', 'charRamp', 'invertRamp',
+ 'fgOffsetX', 'fgOffsetY'].forEach(id => {
+  document.getElementById(id).addEventListener('change', autoGenerate);
+  document.getElementById(id).addEventListener('input', autoGenerate);
+});
+
+let autoTimer = null;
+function autoGenerate() {
+  if (!document.getElementById('autoGen').checked) return;
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(generate, 150);
+}
+
+function setRamp(ramp) {
+  document.getElementById('charRamp').value = ramp;
+  autoGenerate();
+}
+
+// --- Core Processing ---
+function getPixels(img, w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h).data;
+}
+
+function hexToRgb(hex) {
+  const v = parseInt(hex.slice(1), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+function colorDistance(r1, g1, b1, r2, g2, b2) {
+  const dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+function luminance(r, g, b) {
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+function generate() {
+  const cols = parseInt(document.getElementById('cols').value) || 80;
+  const rows = parseInt(document.getElementById('rows').value) || 40;
+  let ramp = document.getElementById('charRamp').value;
+  if (!ramp || ramp.length < 2) ramp = ' .:-=+*#%@';
+  if (document.getElementById('invertRamp').checked) ramp = ramp.split('').reverse().join('');
+
+  const bgColorHex = document.getElementById('bgColor').value;
+  const fgColorHex = document.getElementById('fgColor').value;
+  const canvasBgHex = document.getElementById('canvasBg').value;
+
+  const keyHex = document.getElementById('keyColor').value;
+  const keyRgb = hexToRgb(keyHex);
+  const tolerance = parseInt(document.getElementById('tolerance').value);
+  // Max distance in RGB space is ~441.7; scale tolerance %
+  const tolDist = (tolerance / 100) * 441.7;
+
+  const fgScale = parseInt(document.getElementById('fgScale').value) / 100;
+  const fgOffsetX = parseInt(document.getElementById('fgOffsetX').value) || 0;
+  const fgOffsetY = parseInt(document.getElementById('fgOffsetY').value) || 0;
+
+  // Build background grid
+  grid = [];
+  for (let y = 0; y < rows; y++) {
+    grid[y] = [];
+    for (let x = 0; x < cols; x++) {
+      grid[y][x] = { char: ' ', fg: bgColorHex, bg: canvasBgHex };
+    }
+  }
+
+  // Process background
+  if (bgImage) {
+    const bgPixels = getPixels(bgImage, cols, rows);
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const i = (y * cols + x) * 4;
+        const r = bgPixels[i], g = bgPixels[i+1], b = bgPixels[i+2];
+        const lum = luminance(r, g, b) / 255;
+        const ci = Math.min(Math.floor(lum * ramp.length), ramp.length - 1);
+        grid[y][x].char = ramp[ci];
+        grid[y][x].fg = bgColorHex;
+      }
+    }
+  }
+
+  // Process foreground with chroma key
+  if (fgImage) {
+    // Determine entity size on grid
+    const entityCols = Math.round(cols * fgScale);
+    const entityRows = Math.round(rows * fgScale);
+    if (entityCols > 0 && entityRows > 0) {
+      const fgPixels = getPixels(fgImage, entityCols, entityRows);
+      // Center + offset
+      const startX = Math.round((cols - entityCols) / 2) + fgOffsetX;
+      const startY = Math.round((rows - entityRows) / 2) + fgOffsetY;
+      for (let ey = 0; ey < entityRows; ey++) {
+        for (let ex = 0; ex < entityCols; ex++) {
+          const gx = startX + ex, gy = startY + ey;
+          if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
+          const i = (ey * entityCols + ex) * 4;
+          const r = fgPixels[i], g = fgPixels[i+1], b = fgPixels[i+2], a = fgPixels[i+3];
+          // Check alpha first (for images with actual transparency)
+          if (a < 128) continue;
+          // Then chroma key
+          const dist = colorDistance(r, g, b, keyRgb[0], keyRgb[1], keyRgb[2]);
+          if (dist < tolDist) continue;
+          // Not keyed — render as entity
+          const lum = luminance(r, g, b) / 255;
+          const ci = Math.min(Math.floor(lum * ramp.length), ramp.length - 1);
+          grid[gy][gx].char = ramp[ci];
+          grid[gy][gx].fg = fgColorHex;
+        }
+      }
+    }
+  }
+
+  renderPreview(cols, rows, canvasBgHex);
+  document.getElementById('status').textContent = `Generated ${cols}×${rows} grid`;
+  document.getElementById('previewInfo').textContent = `${cols} cols × ${rows} rows`;
+}
+
+// --- Canvas Rendering ---
+function renderPreview(cols, rows, canvasBgHex) {
+  const canvas = document.getElementById('asciiCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Measure character size
+  const fontSize = 14;
+  ctx.font = `${fontSize}px monospace`;
+  const charW = ctx.measureText('M').width;
+  const charH = fontSize * 1.2;
+
+  canvas.width = Math.ceil(cols * charW);
+  canvas.height = Math.ceil(rows * charH);
+
+  // Background fill
+  ctx.fillStyle = canvasBgHex;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = `${fontSize}px monospace`;
+  ctx.textBaseline = 'top';
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const cell = grid[y][x];
+      if (cell.char === ' ') continue;
+      ctx.fillStyle = cell.fg;
+      ctx.fillText(cell.char, x * charW, y * charH);
+    }
+  }
+}
+
+// --- Export Functions ---
+function copyText() {
+  if (!grid) { alert('Generate first!'); return; }
+  const lines = grid.map(row => row.map(c => c.char).join(''));
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    document.getElementById('status').textContent = 'Copied plain text to clipboard!';
+  });
+}
+
+function exportJSON() {
+  if (!grid) { alert('Generate first!'); return; }
+  const cols = grid[0].length, rows = grid.length;
+  const data = { cols, rows, cells: grid };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ascii-art.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  document.getElementById('status').textContent = 'Exported JSON!';
+}
+
+function downloadPNG() {
+  if (!grid) { alert('Generate first!'); return; }
+  const canvas = document.getElementById('asciiCanvas');
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'ascii-art.png';
+  a.click();
+  document.getElementById('status').textContent = 'Downloaded PNG!';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,2897 @@
+// engine.js - Retro ASCII roguelike rendering engine
+// ES module: exports COLORS, LAYOUT, wordWrap, Renderer, Camera, InputManager
+
+import { PerlinNoise, SeededRNG } from './utils.js';
+import { expandTile } from './tileExpansion.js';
+
+// ─────────────────────────────────────────────
+// Layout Constants
+// ─────────────────────────────────────────────
+
+export const LAYOUT = {
+  TOP_BORDER: 1,
+  TOP_BAR: 1,
+  SEPARATOR: 1,
+  STATS_BAR: 1,
+  MSG_SEPARATOR: 1,
+  MSG_LOG: 5,
+  BOTTOM_BORDER: 1,
+  get VIEWPORT_TOP() { return this.TOP_BORDER + this.TOP_BAR + this.SEPARATOR; },          // 3
+  get HUD_BOTTOM() { return this.SEPARATOR + this.STATS_BAR + this.MSG_SEPARATOR + this.MSG_LOG + this.BOTTOM_BORDER; }, // 9
+  get HUD_TOTAL() { return this.VIEWPORT_TOP + this.HUD_BOTTOM; },                         // 12
+};
+
+// ─────────────────────────────────────────────
+// Word Wrap Utility
+// ─────────────────────────────────────────────
+
+export function wordWrap(text, maxWidth) {
+  if (!text || maxWidth <= 0) return [''];
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    if (word.length > maxWidth) {
+      if (current) { lines.push(current); current = ''; }
+      for (let i = 0; i < word.length; i += maxWidth) {
+        lines.push(word.slice(i, i + maxWidth));
+      }
+    } else if (current.length + word.length + 1 <= maxWidth) {
+      current += (current ? ' ' : '') + word;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [''];
+}
+
+// ─────────────────────────────────────────────
+// Color Constants (CGA-style palette)
+// ─────────────────────────────────────────────
+
+export const COLORS = Object.freeze({
+  BLACK:          '#000000',
+  BLUE:           '#10106e',
+  GREEN:          '#18a040',
+  CYAN:           '#40a0b8',
+  RED:            '#a82020',
+  MAGENTA:        '#8848a0',
+  YELLOW:         '#c09820',
+  WHITE:          '#b0a8c0',
+  BRIGHT_BLACK:   '#586078',
+  BRIGHT_BLUE:    '#4848d8',
+  BRIGHT_GREEN:   '#40d870',
+  BRIGHT_CYAN:    '#60d0e8',
+  BRIGHT_RED:     '#e04848',
+  BRIGHT_MAGENTA: '#c060d0',
+  BRIGHT_YELLOW:  '#f8e060',
+  BRIGHT_WHITE:   '#f8f0ff',
+  // FF-style UI colors
+  FF_BLUE_BG:     '#1a1a2a',
+  FF_BLUE_DARK:   '#0e0e14',
+  FF_BORDER:      '#b0b0b8',
+  FF_CURSOR:      '#f8f0ff',
+});
+
+// ─────────────────────────────────────────────
+// Renderer
+// ─────────────────────────────────────────────
+
+export class Renderer {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   */
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+
+    this.fontSize = 16;
+    this.fontFamily = "'Noto Sans Mono', 'DejaVu Sans Mono', 'Courier New', Courier, monospace";
+    this.cellWidth = 0;
+    this.cellHeight = 0;
+    this.cols = 0;
+    this.rows = 0;
+
+    // Double-buffer: current and previous frame cell data
+    this.buffer = [];      // current frame being built
+    this.prevBuffer = [];  // last rendered frame
+
+    // Graphics buffer: half-size cells for the viewport region (double density)
+    this._graphicsZoom = 8;  // zoom locked at 2x default (gFontSize 16 instead of 8)
+    this._battleGraphicsActive = false;
+    this._battleTextRows = 0;
+    this._savedGraphicsConfig = null;
+    this.gFontSize = 8;
+    this.gCellWidth = 0;
+    this.gCellHeight = 0;
+    this.gCols = 0;
+    this.gRows = 0;
+    this.gOriginX = 0;     // pixel X of viewport origin
+    this.gOriginY = 0;     // pixel Y of viewport origin
+    this.graphicsBuffer = [];
+    this.prevGraphicsBuffer = [];
+
+    // Cache measured widths for non-ASCII characters to detect overly wide glyphs
+    this._charWidthCache = {};
+
+    this.effectsEnabled = false; // visual FX disabled for now (toggle with settings)
+
+    // CRT post-processing resolution scaling
+    this.crtScale = 0.5;      // render CRT effects at this fraction of full res (0.25–1.0)
+    this._crtCanvas = null;    // offscreen canvas for downscaled CRT effects
+    this._crtCtx = null;
+
+    // Noise for grass wind animation & god rays
+    this._grassNoise = new PerlinNoise(new SeededRNG(42));
+    this._grassNoise2 = new PerlinNoise(new SeededRNG(137));
+    this._godRayNoise = new PerlinNoise(new SeededRNG(256));
+    this._waterNoise = new PerlinNoise(new SeededRNG(99));
+
+    // Perform initial sizing
+    this.resize();
+  }
+
+  // ── Sizing ──────────────────────────────────
+
+  /**
+   * Recalculate font size, cell metrics, canvas dimensions, and
+   * allocate fresh cell buffers.
+   */
+  resize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const isPortrait = h > w;
+    const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+    // Reserve space for touch controls on mobile so they don't overlap the game
+    const touchReserve = isMobile ? (isPortrait ? 180 : 120) : 0;
+    const availW = w;
+    const availH = h - touchReserve;
+
+    // Fluid font size: lerp between 10px (320px wide) and 18px (2560px wide)
+    // On very small screens, shrink further to ensure the game fits
+    if (!this._userFontSize) {
+      const minW = 320, maxW = 2560, minFont = 10, maxFont = 18;
+      const t = Math.max(0, Math.min(1, (w - minW) / (maxW - minW)));
+      this.fontSize = Math.round(minFont + t * (maxFont - minFont));
+      if (isPortrait) this.fontSize = Math.max(8, this.fontSize - 1);
+    }
+    // Measure a representative character to derive cell size
+    this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+    const metrics = this.ctx.measureText('M');
+    this.cellWidth = Math.ceil(metrics.width);
+    this.cellHeight = Math.ceil(this.fontSize * 1.35);
+
+    // Compute grid to fill available area
+    this.cols = Math.floor(availW / this.cellWidth);
+    this.rows = Math.floor(availH / this.cellHeight);
+
+    // Ultra-wide cap, portrait minimum
+    if (this.cols > 160) this.cols = 160;
+    if (this.cols < 30) this.cols = 30;
+    // Ensure enough rows for HUD — but shrink font if that would exceed viewport
+    const minRows = LAYOUT.HUD_TOTAL + 5;
+    if (this.rows < minRows) {
+      // Reduce font size to fit minimum rows within available height
+      if (!this._userFontSize) {
+        const neededCellH = Math.floor(availH / minRows);
+        this.fontSize = Math.max(7, Math.floor(neededCellH / 1.35));
+        this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+        const m = this.ctx.measureText('M');
+        this.cellWidth = Math.ceil(m.width);
+        this.cellHeight = Math.ceil(this.fontSize * 1.35);
+        this.cols = Math.floor(availW / this.cellWidth);
+        this.rows = Math.floor(availH / this.cellHeight);
+        if (this.cols > 160) this.cols = 160;
+        if (this.cols < 30) this.cols = 30;
+      }
+      if (this.rows < minRows) this.rows = minRows;
+    }
+
+    // Clamp canvas pixel dimensions to never exceed viewport
+    let canvasW = this.cols * this.cellWidth;
+    let canvasH = this.rows * this.cellHeight;
+    if (canvasW > w) {
+      this.cols = Math.floor(w / this.cellWidth);
+      canvasW = this.cols * this.cellWidth;
+    }
+    if (canvasH > h) {
+      this.rows = Math.floor(h / this.cellHeight);
+      canvasH = this.rows * this.cellHeight;
+    }
+
+    this.canvas.width = canvasW;
+    this.canvas.height = canvasH;
+
+    // Re-set font after canvas resize (canvas resize clears state)
+    this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+    this.ctx.textBaseline = 'top';
+
+    // Allocate text buffers first, then compute graphics metrics
+    this._allocateTextBuffers();
+
+    // Compute graphics (viewport) metrics — separate from text sizing
+    this._recalcGraphics();
+
+    // Force full redraw next frame
+    this.prevBuffer = [];
+    this.prevGraphicsBuffer = [];
+  }
+
+  setFontSize(size) {
+    this._userFontSize = true;
+    this.fontSize = size;
+    this.resize();
+  }
+
+  /**
+   * Recompute graphics (viewport) cell metrics and reallocate graphics buffers.
+   * Called from resize() and zoomBy(). Text buffer / canvas size are NOT changed.
+   */
+  _recalcGraphics() {
+    const baseGFont = Math.max(5, Math.round(this.fontSize / 2));
+    this.gFontSize = Math.max(3, Math.min(16, baseGFont + this._graphicsZoom));
+    this.ctx.font = `${this.gFontSize}px ${this.fontFamily}`;
+    const gm = this.ctx.measureText('M');
+    this.gCellWidth = Math.ceil(gm.width);
+    this.gCellHeight = Math.ceil(this.gFontSize * 1.35);
+    // Restore text font
+    this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+
+    if (this._battleGraphicsActive) {
+      // Battle mode: graphics cover top N text rows, full width
+      const pixelW = this.cols * this.cellWidth;
+      const pixelH = (this._battleTextRows || 0) * this.cellHeight;
+      this.gCols = Math.floor(pixelW / this.gCellWidth);
+      this.gRows = Math.floor(pixelH / this.gCellHeight);
+      this.gOriginX = 0;
+      this.gOriginY = 0;
+    } else {
+      // Overworld mode: graphics cover viewport region (inside borders, above HUD)
+      const vpPixelW = (this.cols - 2) * this.cellWidth;
+      const vpPixelH = (this.rows - LAYOUT.HUD_TOTAL) * this.cellHeight;
+      this.gCols = Math.floor(vpPixelW / this.gCellWidth);
+      this.gRows = Math.floor(vpPixelH / this.gCellHeight);
+      this.gOriginX = 1 * this.cellWidth;
+      this.gOriginY = LAYOUT.VIEWPORT_TOP * this.cellHeight;
+    }
+
+    this._allocateGraphicsBuffers();
+    // Force full graphics redraw next frame
+    this.prevGraphicsBuffer = [];
+  }
+
+  // Tile density: each world tile expands to 3×3 characters in the graphics buffer
+  get tileDensity() { return 3; }
+
+  /** Zoom is locked at 2x default — no-op. */
+  zoomBy(direction) {
+    return;
+  }
+
+  /** World-space viewport dimensions (in world tiles, not graphics cells) */
+  get worldCols() { return Math.floor(this.gCols / this.tileDensity); }
+  get worldRows() { return Math.floor(this.gRows / this.tileDensity); }
+
+  // ── Battle graphics mode ──────────────────────
+  // Repurposes the graphics buffer to cover the battle graphical area
+  // (top portion of screen) at high density, while the HUD stays in the text buffer.
+
+  /**
+   * Configure the graphics buffer to cover the battle area (top battleRows text rows).
+   * @param {number} battleRows - number of text rows the battle graphic occupies
+   */
+  configureBattleGraphics(battleRows) {
+    if (this._battleGraphicsActive && this._battleTextRows === battleRows) return; // already configured
+    this._battleGraphicsActive = true;
+    this._battleTextRows = battleRows;
+    // Recalculate graphics metrics for battle mode
+    this._recalcGraphics();
+  }
+
+  /**
+   * Restore the graphics buffer to overworld viewport configuration.
+   */
+  restoreOverworldGraphics() {
+    if (!this._battleGraphicsActive) return;
+    this._battleGraphicsActive = false;
+    this._battleTextRows = 0;
+    this._savedGraphicsConfig = null;
+    // Recalculate from scratch (handles window resizes that happened during battle)
+    this._recalcGraphics();
+  }
+
+  setCrtScale(scale) {
+    this.crtScale = Math.max(0.25, Math.min(1.0, scale));
+    this._updateCrtCanvas();
+  }
+
+  _updateCrtCanvas() {
+    const w = Math.max(1, Math.floor(this.canvas.width * this.crtScale));
+    const h = Math.max(1, Math.floor(this.canvas.height * this.crtScale));
+    if (!this._crtCanvas) {
+      this._crtCanvas = document.createElement('canvas');
+      this._crtCtx = this._crtCanvas.getContext('2d');
+    }
+    if (this._crtCanvas.width !== w || this._crtCanvas.height !== h) {
+      this._crtCanvas.width = w;
+      this._crtCanvas.height = h;
+      this._crtCtx.imageSmoothingEnabled = false;
+    }
+  }
+
+  set enableCRT(val) {
+    this.effectsEnabled = !!val;
+  }
+  get enableCRT() {
+    return this.effectsEnabled;
+  }
+
+  /**
+   * Create empty buffer grids.
+   */
+  _allocateBuffers() {
+    this._allocateTextBuffers();
+    this._allocateGraphicsBuffers();
+  }
+
+  _allocateTextBuffers() {
+    this.buffer = [];
+    for (let r = 0; r < this.rows; r++) {
+      const row = [];
+      for (let c = 0; c < this.cols; c++) {
+        row.push({ char: ' ', fg: COLORS.WHITE, bg: COLORS.BLACK, safety: false });
+      }
+      this.buffer.push(row);
+    }
+  }
+
+  _allocateGraphicsBuffers() {
+    this.graphicsBuffer = [];
+    for (let r = 0; r < this.gRows; r++) {
+      const row = [];
+      for (let c = 0; c < this.gCols; c++) {
+        row.push({ char: ' ', fg: COLORS.WHITE, bg: COLORS.BLACK, safety: false });
+      }
+      this.graphicsBuffer.push(row);
+    }
+  }
+
+  // ── Frame lifecycle ─────────────────────────
+
+  /**
+   * Start a new frame: clear the working buffer and cache frame time.
+   */
+  beginFrame() {
+    // Cache time once per frame — avoid Date.now() per tile
+    this._frameTime = Date.now();
+    this._frameTimeSec = this._frameTime / 1000;
+
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.buffer[r][c];
+        cell.char = ' ';
+        cell.fg = COLORS.WHITE;
+        cell.bg = COLORS.BLACK;
+        cell.safety = false;
+      }
+    }
+    // Clear graphics buffer
+    for (let r = 0; r < this.gRows; r++) {
+      for (let c = 0; c < this.gCols; c++) {
+        const cell = this.graphicsBuffer[r][c];
+        cell.char = ' ';
+        cell.fg = COLORS.WHITE;
+        cell.bg = COLORS.BLACK;
+        cell.safety = false;
+      }
+    }
+  }
+
+  /**
+   * Force a full redraw on the next endFrame call.
+   * Call this after scene transitions, state changes, or anything that
+   * modifies the canvas outside the normal buffer pipeline.
+   */
+  invalidate() {
+    this.prevBuffer = [];
+    this.prevGraphicsBuffer = [];
+  }
+
+  /**
+   * Finish the frame: render only cells that changed since last frame.
+   * When forceFullRedraw is true, skip dirty checking (needed when
+   * post-processing effects or overlays modify the canvas after
+   * prevBuffer is snapshotted).
+   */
+  endFrame(forceFullRedraw = false) {
+    const ctx = this.ctx;
+    const cw = this.cellWidth;
+    const ch = this.cellHeight;
+    const hasPrev = !forceFullRedraw && this.prevBuffer.length === this.rows;
+
+    // Viewport region in text-cell coords (skip these for text pass)
+    // In battle mode, the graphics buffer covers the top portion instead
+    const vpTop = this._battleGraphicsActive ? 0 : LAYOUT.VIEWPORT_TOP;
+    const vpBot = this._battleGraphicsActive ? (this._battleTextRows || 0) : (this.rows - LAYOUT.HUD_BOTTOM);
+    const vpLeft = this._battleGraphicsActive ? 0 : 1;
+    const vpRight = this._battleGraphicsActive ? this.cols : (this.cols - 1);
+
+    // Check if any graphics cells were written this frame (non-blank)
+    // If not, don't skip the viewport in text pass (menus draw there via text buffer)
+    let hasGraphics = false;
+    outer: for (let r = 0; r < this.gRows; r++) {
+      for (let c = 0; c < this.gCols; c++) {
+        if (this.graphicsBuffer[r][c].char !== ' ' || this.graphicsBuffer[r][c].bg !== COLORS.BLACK) {
+          hasGraphics = true;
+          break outer;
+        }
+      }
+    }
+
+    // ── Pass 1: Text buffer (HUD, menus, borders) ──
+    ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+    ctx.textBaseline = 'top';
+
+    let lastBg = null;
+    let runStartC = 0;
+    let runRow = 0;
+
+    const flushBgRun = () => {
+      if (lastBg !== null) {
+        ctx.fillStyle = lastBg;
+        ctx.fillRect(runStartC * cw, runRow * ch, (this._runEndC - runStartC) * cw, ch);
+      }
+    };
+
+    for (let r = 0; r < this.rows; r++) {
+      lastBg = null;
+      for (let c = 0; c < this.cols; c++) {
+        // Skip viewport cells when graphics buffer is active
+        if (hasGraphics && r >= vpTop && r < vpBot && c >= vpLeft && c < vpRight) {
+          if (lastBg !== null) { flushBgRun(); lastBg = null; }
+          continue;
+        }
+
+        const cell = this.buffer[r][c];
+        if (hasPrev) {
+          const prev = this.prevBuffer[r][c];
+          if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) {
+            if (lastBg !== null) { flushBgRun(); lastBg = null; }
+            continue;
+          }
+        }
+        if (cell.bg === lastBg && r === runRow) {
+          this._runEndC = c + 1;
+        } else {
+          if (lastBg !== null) flushBgRun();
+          lastBg = cell.bg;
+          runStartC = c;
+          runRow = r;
+          this._runEndC = c + 1;
+        }
+      }
+      if (lastBg !== null) { flushBgRun(); lastBg = null; }
+    }
+
+    let lastFg = null;
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        if (hasGraphics && r >= vpTop && r < vpBot && c >= vpLeft && c < vpRight) continue;
+        const cell = this.buffer[r][c];
+        if (hasPrev) {
+          const prev = this.prevBuffer[r][c];
+          if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) continue;
+        }
+        if (cell.char !== ' ') {
+          if (cell.fg !== lastFg) { ctx.fillStyle = cell.fg; lastFg = cell.fg; }
+          const x = c * cw;
+          const y = r * ch;
+          if (cell.safety && cell.char.charCodeAt(0) > 127) {
+            const w = this._charWidthCache[cell.char];
+            if (w === undefined) this._charWidthCache[cell.char] = ctx.measureText(cell.char).width;
+            if ((this._charWidthCache[cell.char] || 0) > cw * 1.3) { ctx.fillText('?', x, y); continue; }
+          }
+          ctx.fillText(cell.char, x, y);
+        }
+      }
+    }
+
+    // ── Pass 2: Graphics buffer (viewport, half-size cells) ──
+    if (hasGraphics) {
+      const gcw = this.gCellWidth;
+      const gch = this.gCellHeight;
+      const ox = this.gOriginX;
+      const oy = this.gOriginY;
+      const hasGPrev = !forceFullRedraw && this.prevGraphicsBuffer.length === this.gRows;
+
+      ctx.font = `${this.gFontSize}px ${this.fontFamily}`;
+      ctx.textBaseline = 'top';
+
+      // Background runs
+      lastBg = null;
+      for (let r = 0; r < this.gRows; r++) {
+        lastBg = null;
+        for (let c = 0; c < this.gCols; c++) {
+          const cell = this.graphicsBuffer[r][c];
+          if (hasGPrev) {
+            const prev = this.prevGraphicsBuffer[r][c];
+            if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) {
+              if (lastBg !== null) { flushBgRun(); lastBg = null; }
+              continue;
+            }
+          }
+          if (cell.bg === lastBg && r === runRow) {
+            this._runEndC = c + 1;
+          } else {
+            // Override flushBgRun for graphics coordinates
+            if (lastBg !== null) {
+              ctx.fillStyle = lastBg;
+              ctx.fillRect(ox + runStartC * gcw, oy + runRow * gch, (this._runEndC - runStartC) * gcw, gch);
+            }
+            lastBg = cell.bg;
+            runStartC = c;
+            runRow = r;
+            this._runEndC = c + 1;
+          }
+        }
+        if (lastBg !== null) {
+          ctx.fillStyle = lastBg;
+          ctx.fillRect(ox + runStartC * gcw, oy + runRow * gch, (this._runEndC - runStartC) * gcw, gch);
+          lastBg = null;
+        }
+      }
+
+      // Foreground chars
+      lastFg = null;
+      for (let r = 0; r < this.gRows; r++) {
+        for (let c = 0; c < this.gCols; c++) {
+          const cell = this.graphicsBuffer[r][c];
+          if (hasGPrev) {
+            const prev = this.prevGraphicsBuffer[r][c];
+            if (prev.char === cell.char && prev.fg === cell.fg && prev.bg === cell.bg) continue;
+          }
+          if (cell.char !== ' ') {
+            if (cell.fg !== lastFg) { ctx.fillStyle = cell.fg; lastFg = cell.fg; }
+            const x = ox + c * gcw;
+            const y = oy + r * gch;
+            if (cell.safety && cell.char.charCodeAt(0) > 127) {
+              const w = this._charWidthCache[cell.char];
+              if (w === undefined) this._charWidthCache[cell.char] = ctx.measureText(cell.char).width;
+              if ((this._charWidthCache[cell.char] || 0) > gcw * 1.3) { ctx.fillText('?', x, y); continue; }
+            }
+            ctx.fillText(cell.char, x, y);
+          }
+        }
+      }
+
+      // Restore text font
+      ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+    }
+
+    // ── Snapshot buffers ──
+    if (forceFullRedraw) {
+      this.prevBuffer = [];
+      this.prevGraphicsBuffer = [];
+    } else {
+      // Text buffer snapshot
+      if (!this.prevBuffer.length) {
+        this.prevBuffer = [];
+        for (let r = 0; r < this.rows; r++) {
+          const row = [];
+          for (let c = 0; c < this.cols; c++) {
+            const s = this.buffer[r][c];
+            row.push({ char: s.char, fg: s.fg, bg: s.bg });
+          }
+          this.prevBuffer.push(row);
+        }
+      } else {
+        for (let r = 0; r < this.rows; r++) {
+          for (let c = 0; c < this.cols; c++) {
+            const s = this.buffer[r][c];
+            const p = this.prevBuffer[r][c];
+            p.char = s.char; p.fg = s.fg; p.bg = s.bg;
+          }
+        }
+      }
+      // Graphics buffer snapshot
+      if (hasGraphics) {
+        if (!this.prevGraphicsBuffer.length) {
+          this.prevGraphicsBuffer = [];
+          for (let r = 0; r < this.gRows; r++) {
+            const row = [];
+            for (let c = 0; c < this.gCols; c++) {
+              const s = this.graphicsBuffer[r][c];
+              row.push({ char: s.char, fg: s.fg, bg: s.bg });
+            }
+            this.prevGraphicsBuffer.push(row);
+          }
+        } else {
+          for (let r = 0; r < this.gRows; r++) {
+            for (let c = 0; c < this.gCols; c++) {
+              const s = this.graphicsBuffer[r][c];
+              const p = this.prevGraphicsBuffer[r][c];
+              p.char = s.char; p.fg = s.fg; p.bg = s.bg;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ── Drawing primitives ──────────────────────
+
+  /**
+   * Fill the entire canvas with black.
+   */
+  clear() {
+    this.ctx.fillStyle = COLORS.BLACK;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.prevBuffer = [];
+    this.prevGraphicsBuffer = [];
+  }
+
+  /**
+   * Set a single cell in the buffer.
+   */
+  drawChar(col, row, char, fg = COLORS.WHITE, bg = COLORS.BLACK, safety = false) {
+    col = col | 0;
+    row = row | 0;
+    if (!(col >= 0 && col < this.cols && row >= 0 && row < this.rows)) return;
+    const cell = this.buffer[row][col];
+    cell.char = char;
+    cell.fg = fg;
+    cell.bg = bg;
+    cell.safety = safety;
+  }
+
+  /**
+   * Write a horizontal string into the buffer.
+   */
+  drawString(col, row, str, fg = COLORS.WHITE, bg = COLORS.BLACK, maxWidth = 0) {
+    // Clip to screen right edge to prevent any horizontal overflow
+    const screenLimit = this.cols - col;
+    if (screenLimit <= 0) return;
+    let len = maxWidth > 0 ? Math.min(str.length, maxWidth) : str.length;
+    len = Math.min(len, screenLimit);
+    for (let i = 0; i < len; i++) {
+      this.drawChar(col + i, row, str[i], fg, bg);
+    }
+  }
+
+  // ── Graphics buffer drawing (viewport, half-size cells) ──
+
+  /**
+   * Set a single cell in the graphics buffer (viewport region, double density).
+   */
+  drawGraphicsChar(gc, gr, char, fg = COLORS.WHITE, bg = COLORS.BLACK, safety = false) {
+    gc = gc | 0;
+    gr = gr | 0;
+    if (!(gc >= 0 && gc < this.gCols && gr >= 0 && gr < this.gRows)) return;
+    const cell = this.graphicsBuffer[gr][gc];
+    cell.char = char;
+    cell.fg = fg;
+    cell.bg = bg;
+    cell.safety = safety;
+  }
+
+  /**
+   * Write a horizontal string into the graphics buffer.
+   */
+  drawGraphicsString(gc, gr, str, fg = COLORS.WHITE, bg = COLORS.BLACK, maxWidth = 0) {
+    const screenLimit = this.gCols - gc;
+    if (screenLimit <= 0) return;
+    let len = maxWidth > 0 ? Math.min(str.length, maxWidth) : str.length;
+    len = Math.min(len, screenLimit);
+    for (let i = 0; i < len; i++) {
+      this.drawGraphicsChar(gc + i, gr, str[i], fg, bg);
+    }
+  }
+
+  /**
+   * Convenience getters for graphics grid dimensions.
+   */
+  get graphicsCols() { return this.gCols; }
+  get graphicsRows() { return this.gRows; }
+
+  // ── World-tile drawing helpers (density-aware) ──────────
+
+  /**
+   * Draw a pre-expanded tile (3×3 grid) at world offset.
+   * @param {number} wx_off - world-space column offset
+   * @param {number} wy_off - world-space row offset
+   * @param {{ chars: string[][], fgs: string[][], bgs: string[][] }} expanded
+   */
+  drawWorldTile(wx_off, wy_off, expanded) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++) {
+      for (let dx = 0; dx < D; dx++) {
+        this.drawGraphicsChar(gx + dx, gy + dy, expanded.chars[dy][dx], expanded.fgs[dy][dx], expanded.bgs[dy][dx]);
+      }
+    }
+  }
+
+  /**
+   * Draw a single entity character at the center of a world tile's 3×3 cell.
+   */
+  drawEntityChar(wx_off, wy_off, char, fg = COLORS.WHITE, bg) {
+    const D = this.tileDensity;
+    let cx = wx_off * D + ((D - 1) >> 1);
+    let cy = wy_off * D + ((D - 1) >> 1);
+    if (bg !== undefined) {
+      this.drawGraphicsChar(cx, cy, char, fg, bg);
+    } else {
+      // Transparent bg — only set char and fg, leave existing bg
+      cx |= 0; cy |= 0;
+      if (!(cx >= 0 && cx < this.gCols && cy >= 0 && cy < this.gRows)) return;
+      const cell = this.graphicsBuffer[cy][cx];
+      cell.char = char;
+      cell.fg = fg;
+    }
+  }
+
+  /**
+   * Draw a uniform 3×3 tile (same char/fg/bg in all cells) at world offset.
+   */
+  drawUniformTile(wx_off, wy_off, char, fg, bg) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++) {
+      for (let dx = 0; dx < D; dx++) {
+        this.drawGraphicsChar(gx + dx, gy + dy, char, fg, bg);
+      }
+    }
+  }
+
+  /** Darken all cells of a world tile (3×3 block). */
+  darkenWorldCell(wx_off, wy_off, alpha) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++)
+      for (let dx = 0; dx < D; dx++)
+        this.darkenGraphicsCell(gx + dx, gy + dy, alpha);
+  }
+
+  /** Brighten all cells of a world tile (3×3 block). */
+  brightenWorldCell(wx_off, wy_off, alpha, tint) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++)
+      for (let dx = 0; dx < D; dx++)
+        this.brightenGraphicsCell(gx + dx, gy + dy, alpha, tint);
+  }
+
+  /** Tint all cells of a world tile (3×3 block). */
+  tintWorldCell(wx_off, wy_off, color, alpha) {
+    const D = this.tileDensity;
+    const gx = wx_off * D;
+    const gy = wy_off * D;
+    for (let dy = 0; dy < D; dy++)
+      for (let dx = 0; dx < D; dx++)
+        this.tintGraphicsCell(gx + dx, gy + dy, color, alpha);
+  }
+
+  /**
+   * Draw a horizontal separator spanning a box: ├───────┤
+   */
+  drawSeparator(col, row, w, fg = COLORS.FF_BORDER, bg = COLORS.FF_BLUE_DARK) {
+    this.drawChar(col, row, '\u251C', fg, bg);         // ├
+    for (let x = 1; x < w - 1; x++) {
+      this.drawChar(col + x, row, '\u2500', fg, bg);   // ─
+    }
+    this.drawChar(col + w - 1, row, '\u2524', fg, bg); // ┤
+  }
+
+  /**
+   * Write a word-wrapped string into the buffer, returning the number of rows used.
+   */
+  drawStringWrapped(col, row, str, maxWidth, fg = COLORS.WHITE, bg = COLORS.BLACK) {
+    const lines = wordWrap(str, maxWidth);
+    for (let i = 0; i < lines.length; i++) {
+      this.drawString(col, row + i, lines[i], fg, bg);
+    }
+    return lines.length;
+  }
+
+  /**
+   * Draw a Final Fantasy-style window with rounded corners and dark blue bg.
+   * ╭─────────╮
+   * │         │
+   * ╰─────────╯
+   * Optional title is centered in the top border.
+   */
+  drawBox(col, row, w, h, fg = COLORS.FF_BORDER, bg = COLORS.FF_BLUE_DARK, title = null) {
+    if (w < 2 || h < 2) return;
+
+    const borderFg = COLORS.FF_BORDER;
+
+    // Corners — rounded FF style
+    this.drawChar(col, row, '\u256D', borderFg, bg);             // ╭
+    this.drawChar(col + w - 1, row, '\u256E', borderFg, bg);     // ╮
+    this.drawChar(col, row + h - 1, '\u2570', borderFg, bg);     // ╰
+    this.drawChar(col + w - 1, row + h - 1, '\u256F', borderFg, bg); // ╯
+
+    // Top and bottom edges
+    for (let x = 1; x < w - 1; x++) {
+      this.drawChar(col + x, row, '\u2500', borderFg, bg);           // ─
+      this.drawChar(col + x, row + h - 1, '\u2500', borderFg, bg);   // ─
+    }
+
+    // Left and right edges
+    for (let y = 1; y < h - 1; y++) {
+      this.drawChar(col, row + y, '\u2502', borderFg, bg);           // │
+      this.drawChar(col + w - 1, row + y, '\u2502', borderFg, bg);   // │
+    }
+
+    // Fill interior with dark blue bg
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        this.drawChar(col + x, row + y, ' ', fg, bg);
+      }
+    }
+
+    // Optional title centered in top border
+    if (title) {
+      const maxLen = w - 4;
+      const truncated = title.length > maxLen ? title.slice(0, maxLen) : title;
+      const tx = col + Math.floor((w - truncated.length) / 2);
+      this.drawString(tx, row, truncated, COLORS.BRIGHT_WHITE, bg);
+    }
+  }
+
+  /**
+   * Draw a box with text lines rendered inside.
+   * @param {string[]} lines - array of text strings
+   */
+  drawPanel(col, row, w, h, fg = COLORS.WHITE, bg = COLORS.BLACK, lines = []) {
+    this.drawBox(col, row, w, h, fg, bg);
+
+    const maxLen = w - 2;
+    let lineY = 0;
+    for (let i = 0; i < lines.length && lineY < h - 2; i++) {
+      const wrapped = wordWrap(lines[i], maxLen);
+      for (const wl of wrapped) {
+        if (lineY >= h - 2) break;
+        this.drawString(col + 1, row + 1 + lineY, wl, fg, bg);
+        lineY++;
+      }
+    }
+  }
+
+  /**
+   * Fill a rectangular region with a single character.
+   */
+  fillRect(col, row, w, h, char = ' ', fg = COLORS.WHITE, bg = COLORS.BLACK) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        this.drawChar(col + x, row + y, char, fg, bg);
+      }
+    }
+  }
+
+  // ── Pixel art rendering ────────────────────
+
+  /**
+   * Draw a pixel art image (Image or Canvas) at cell coordinates.
+   * Rendered with nearest-neighbor scaling for crisp pixels.
+   * Call AFTER endFrame() but BEFORE postProcess().
+   * @param {Image|HTMLCanvasElement} img
+   * @param {number} col - left edge in cell units
+   * @param {number} row - top edge in cell units
+   * @param {number} widthCells - width in cell units
+   * @param {number} heightCells - height in cell units
+   */
+  drawPixelArt(img, col, row, widthCells, heightCells) {
+    if (!img) return;
+    const px = Math.round(col * this.cellWidth);
+    const py = Math.round(row * this.cellHeight);
+    const pw = Math.round(widthCells * this.cellWidth);
+    const ph = Math.round(heightCells * this.cellHeight);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, px, py, pw, ph);
+    ctx.restore();
+  }
+
+  /**
+   * Draw a pixel art image inside a bordered "window" frame.
+   * Outer border: bright grey stroke. Inner border: dark stroke.
+   * @param {Image|HTMLCanvasElement} img
+   * @param {number} col - left edge in cell units (of the image, not border)
+   * @param {number} row - top edge in cell units (of the image, not border)
+   * @param {number} widthCells - image width in cell units
+   * @param {number} heightCells - image height in cell units
+   * @param {string} [outerColor='#b0b0b8'] - bright grey outer border
+   * @param {string} [innerColor='#1a1a2a'] - dark inner border
+   */
+  drawPixelArtWindow(img, col, row, widthCells, heightCells, outerColor = '#b0b0b8', innerColor = '#1a1a2a') {
+    if (!img) return;
+    const cw = this.cellWidth;
+    const ch = this.cellHeight;
+    const px = Math.round(col * cw);
+    const py = Math.round(row * ch);
+    const pw = Math.round(widthCells * cw);
+    const ph = Math.round(heightCells * ch);
+    const ctx = this.ctx;
+
+    // Border thicknesses scale with cell size for consistency across resolutions
+    const outerPx = Math.max(2, Math.round(cw * 0.3));
+    const innerPx = Math.max(1, Math.round(cw * 0.2));
+    const totalBorder = outerPx + innerPx;
+
+    // Outer stroke (bright grey)
+    ctx.fillStyle = outerColor;
+    ctx.fillRect(
+      px - totalBorder, py - totalBorder,
+      pw + totalBorder * 2, ph + totalBorder * 2
+    );
+
+    // Inner stroke (dark)
+    ctx.fillStyle = innerColor;
+    ctx.fillRect(
+      px - innerPx, py - innerPx,
+      pw + innerPx * 2, ph + innerPx * 2
+    );
+
+    // Sprite image — crisp nearest-neighbor scaling with integer multiplier
+    // Snap drawn size to an integer multiple of the source dimensions so every
+    // source pixel maps to the same NxN block, avoiding sub-pixel smearing.
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    const srcW = img.naturalWidth || img.width;
+    const srcH = img.naturalHeight || img.height;
+    let drawW = pw, drawH = ph;
+    if (srcW > 0 && srcH > 0) {
+      const rawScale = Math.min(pw / srcW, ph / srcH);
+      // For small pixel art (≤64px), snap to integer scale to keep pixels uniform.
+      // For larger images, fill the box — individual pixels aren't visible.
+      const scale = (srcW <= 64 && srcH <= 64)
+        ? Math.max(1, Math.round(rawScale))
+        : rawScale;
+      drawW = Math.round(srcW * scale);
+      drawH = Math.round(srcH * scale);
+    }
+    // Center the integer-scaled image within the allocated cell area
+    const ox = px + Math.floor((pw - drawW) / 2);
+    const oy = py + Math.floor((ph - drawH) / 2);
+    ctx.drawImage(img, ox, oy, drawW, drawH);
+    ctx.restore();
+  }
+
+  // ── Direct portrait rendering (full-block pixel grid) ──
+
+  /**
+   * Render a portrait image directly to the canvas as a grid of tiny colored
+   * squares (full-block characters at near-1:1 pixel density).
+   * Bypasses the text buffer entirely for maximum portrait detail.
+   *
+   * @param {Image} img - Source portrait image
+   * @param {number} col - Left edge in text cell units
+   * @param {number} row - Top edge in text cell units
+   * @param {number} widthCells - Width in text cell units
+   * @param {number} heightCells - Height in text cell units
+   * @param {string} bgColor - Background color for the portrait area
+   * @param {string} borderColor - Border/frame color
+   */
+  renderPortraitDirect(img, col, row, widthCells, heightCells, bgColor = '#0e0e14', borderColor = '#c0c0c0') {
+    if (!img) return;
+    const ctx = this.ctx;
+    const cw = this.cellWidth;
+    const ch = this.cellHeight;
+
+    // Portrait area in canvas pixels (inside border)
+    const borderPx = 2;
+    const areaX = Math.round(col * cw) + borderPx;
+    const areaY = Math.round(row * ch) + borderPx;
+    const areaW = Math.round(widthCells * cw) - borderPx * 2;
+    const areaH = Math.round(heightCells * ch) - borderPx * 2;
+    if (areaW <= 0 || areaH <= 0) return;
+
+    const srcW = img.naturalWidth || img.width;
+    const srcH = img.naturalHeight || img.height;
+    if (!srcW || !srcH) return;
+
+    // Draw border frame
+    const outerX = Math.round(col * cw);
+    const outerY = Math.round(row * ch);
+    const outerW = Math.round(widthCells * cw);
+    const outerH = Math.round(heightCells * ch);
+    ctx.fillStyle = borderColor;
+    ctx.fillRect(outerX, outerY, outerW, outerH);
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(areaX, areaY, areaW, areaH);
+
+    // Compute integer scale for crisp pixels, capped to fill the area
+    const rawScale = Math.min(areaW / srcW, areaH / srcH);
+    const cellPx = Math.max(1, Math.floor(rawScale));
+    const gridW = Math.floor(areaW / cellPx);
+    const gridH = Math.floor(areaH / cellPx);
+
+    // Sample image at grid resolution via offscreen canvas
+    if (!this._portraitCanvas) {
+      this._portraitCanvas = document.createElement('canvas');
+      this._portraitCtx = this._portraitCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    this._portraitCanvas.width = gridW;
+    this._portraitCanvas.height = gridH;
+    const pctx = this._portraitCtx;
+    pctx.clearRect(0, 0, gridW, gridH);
+    pctx.imageSmoothingEnabled = true;
+    pctx.imageSmoothingQuality = 'medium';
+    pctx.drawImage(img, 0, 0, gridW, gridH);
+
+    const imageData = pctx.getImageData(0, 0, gridW, gridH);
+    const data = imageData.data;
+
+    // Center the pixel grid within the area
+    const offsetX = areaX + Math.floor((areaW - gridW * cellPx) / 2);
+    const offsetY = areaY + Math.floor((areaH - gridH * cellPx) / 2);
+
+    // Parse bg color for alpha blending
+    const bgH = bgColor.replace('#', '');
+    const bgR = parseInt(bgH.slice(0, 2), 16) || 0;
+    const bgG = parseInt(bgH.slice(2, 4), 16) || 0;
+    const bgB = parseInt(bgH.slice(4, 6), 16) || 0;
+
+    // Draw each pixel as a cellPx × cellPx colored square (full block)
+    let lastColor = null;
+    for (let gy = 0; gy < gridH; gy++) {
+      for (let gx = 0; gx < gridW; gx++) {
+        const idx = (gy * gridW + gx) * 4;
+        const a = data[idx + 3];
+        if (a < 30) continue; // transparent — skip, bg already drawn
+
+        // Alpha-blend over background
+        const alpha = a / 255;
+        const inv = 1 - alpha;
+        const r = Math.round(data[idx] * alpha + bgR * inv);
+        const g = Math.round(data[idx + 1] * alpha + bgG * inv);
+        const b = Math.round(data[idx + 2] * alpha + bgB * inv);
+        const color = `rgb(${r},${g},${b})`;
+
+        if (color !== lastColor) { ctx.fillStyle = color; lastColor = color; }
+        ctx.fillRect(offsetX + gx * cellPx, offsetY + gy * cellPx, cellPx, cellPx);
+      }
+    }
+  }
+
+  // ── Day/night tint overlay ─────────────────
+
+  /**
+   * Apply a color tint overlay to the entire canvas.
+   * @param {string} color - CSS color (e.g. 'rgba(0,0,50,0.3)')
+   * @param {number} alpha - opacity 0-1
+   */
+  /**
+   * Desaturate the entire canvas to greyscale.
+   * Uses an offscreen canvas + ctx.filter for a single-pass conversion.
+   */
+  applyGreyscale() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (w === 0 || h === 0) return;
+    ctx.save();
+    ctx.filter = 'grayscale(1)';
+    ctx.drawImage(this.canvas, 0, 0);
+    ctx.filter = 'none';
+    ctx.restore();
+  }
+
+  tintOverlay(color, alpha) {
+    if (alpha <= 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.restore();
+  }
+
+  /**
+   * Apply day/night tint based on time-of-day phase string. (Legacy)
+   */
+  applyDayNightTint(timeOfDay) {
+    switch (timeOfDay) {
+      case 'night':
+        this.tintOverlay('#000033', 0.35);
+        break;
+      case 'dawn':
+        this.tintOverlay('#332200', 0.15);
+        break;
+      case 'evening':
+        this.tintOverlay('#331100', 0.2);
+        break;
+    }
+  }
+
+  /**
+   * Apply a tint overlay only within the gameplay viewport rectangle.
+   * Does NOT affect HUD, stats bar, or message log.
+   */
+  tintViewport(color, alpha, viewLeft, viewTop, viewW, viewH) {
+    if (alpha <= 0.005) return;
+    const ctx = this.ctx;
+    const x = viewLeft * this.cellWidth;
+    const y = viewTop * this.cellHeight;
+    const w = viewW * this.cellWidth;
+    const h = viewH * this.cellHeight;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * Darken a specific cell by blending with a color.
+   * Used for shadows. Queues to batch for efficient rendering.
+   */
+  darkenCell(col, row, alpha) {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
+    if (alpha <= 0) return;
+    if (!this._darkenBatch) this._darkenBatch = [];
+    this._darkenBatch.push(col, row, alpha);
+  }
+
+  /**
+   * Brighten a specific cell with a warm tint (for god rays).
+   * Queues to batch for efficient rendering.
+   */
+  brightenCell(col, row, alpha, tintColor) {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
+    if (alpha <= 0) return;
+    if (!this._brightenBatch) this._brightenBatch = [];
+    this._brightenBatch.push(col, row, alpha, tintColor || '#FFEEAA');
+  }
+
+  /**
+   * Apply light color tinting to a cell (for colored light sources).
+   * Queues to batch for efficient rendering.
+   */
+  tintCell(col, row, color, alpha) {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return;
+    if (alpha <= 0) return;
+    if (!this._tintBatch) this._tintBatch = [];
+    this._tintBatch.push(col, row, color, alpha);
+  }
+
+  // ── Graphics-cell overlay variants (viewport, half-size cells) ──
+
+  /**
+   * Tint the entire graphics viewport with a color overlay.
+   */
+  tintGraphicsViewport(color, alpha) {
+    if (alpha <= 0.005) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(this.gOriginX, this.gOriginY, this.gCols * this.gCellWidth, this.gRows * this.gCellHeight);
+    ctx.restore();
+  }
+
+  /**
+   * Darken a graphics cell (viewport coordinates).
+   */
+  darkenGraphicsCell(gc, gr, alpha) {
+    if (gc < 0 || gc >= this.gCols || gr < 0 || gr >= this.gRows) return;
+    if (alpha <= 0) return;
+    if (!this._gDarkenBatch) this._gDarkenBatch = [];
+    this._gDarkenBatch.push(gc, gr, alpha);
+  }
+
+  /**
+   * Brighten a graphics cell with a warm tint.
+   */
+  brightenGraphicsCell(gc, gr, alpha, tintColor) {
+    if (gc < 0 || gc >= this.gCols || gr < 0 || gr >= this.gRows) return;
+    if (alpha <= 0) return;
+    if (!this._gBrightenBatch) this._gBrightenBatch = [];
+    this._gBrightenBatch.push(gc, gr, alpha, tintColor || '#FFEEAA');
+  }
+
+  /**
+   * Tint a graphics cell with a color overlay.
+   */
+  tintGraphicsCell(gc, gr, color, alpha) {
+    if (gc < 0 || gc >= this.gCols || gr < 0 || gr >= this.gRows) return;
+    if (alpha <= 0) return;
+    if (!this._gTintBatch) this._gTintBatch = [];
+    this._gTintBatch.push(gc, gr, color, alpha);
+  }
+
+  /**
+   * Flush all queued darken/brighten/tint operations in batched canvas calls.
+   * Call this once after all overlay operations are done for the frame.
+   */
+  flushOverlayBatches() {
+    const ctx = this.ctx;
+    const cw = this.cellWidth;
+    const ch = this.cellHeight;
+
+    // Flush darken batch (all same color #000, varying alpha)
+    if (this._darkenBatch && this._darkenBatch.length > 0) {
+      const batch = this._darkenBatch;
+      ctx.fillStyle = '#000000';
+      // Group by quantized alpha to reduce state changes
+      // Sort by alpha for fewer globalAlpha switches
+      for (let i = 0; i < batch.length; i += 3) {
+        ctx.globalAlpha = batch[i + 2];
+        ctx.fillRect(batch[i] * cw, batch[i + 1] * ch, cw, ch);
+      }
+      this._darkenBatch.length = 0;
+    }
+
+    // Flush brighten batch (screen composite, varying color+alpha)
+    if (this._brightenBatch && this._brightenBatch.length > 0) {
+      const batch = this._brightenBatch;
+      ctx.globalCompositeOperation = 'screen';
+      let lastColor = null;
+      for (let i = 0; i < batch.length; i += 4) {
+        const color = batch[i + 3];
+        if (color !== lastColor) {
+          ctx.fillStyle = color;
+          lastColor = color;
+        }
+        ctx.globalAlpha = batch[i + 2];
+        ctx.fillRect(batch[i] * cw, batch[i + 1] * ch, cw, ch);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      this._brightenBatch.length = 0;
+    }
+
+    // Flush tint batch (normal composite, varying color+alpha)
+    if (this._tintBatch && this._tintBatch.length > 0) {
+      const batch = this._tintBatch;
+      let lastColor = null;
+      for (let i = 0; i < batch.length; i += 4) {
+        const color = batch[i + 2];
+        if (color !== lastColor) {
+          ctx.fillStyle = color;
+          lastColor = color;
+        }
+        ctx.globalAlpha = batch[i + 3];
+        ctx.fillRect(batch[i] * cw, batch[i + 1] * ch, cw, ch);
+      }
+      this._tintBatch.length = 0;
+    }
+
+    // ── Graphics-cell batches (viewport, half-size cells) ──
+    const gcw = this.gCellWidth;
+    const gch = this.gCellHeight;
+    const ox = this.gOriginX;
+    const oy = this.gOriginY;
+
+    if (this._gDarkenBatch && this._gDarkenBatch.length > 0) {
+      const batch = this._gDarkenBatch;
+      ctx.fillStyle = '#000000';
+      for (let i = 0; i < batch.length; i += 3) {
+        ctx.globalAlpha = batch[i + 2];
+        ctx.fillRect(ox + batch[i] * gcw, oy + batch[i + 1] * gch, gcw, gch);
+      }
+      this._gDarkenBatch.length = 0;
+    }
+
+    if (this._gBrightenBatch && this._gBrightenBatch.length > 0) {
+      const batch = this._gBrightenBatch;
+      ctx.globalCompositeOperation = 'screen';
+      let lastColor = null;
+      for (let i = 0; i < batch.length; i += 4) {
+        const color = batch[i + 3];
+        if (color !== lastColor) { ctx.fillStyle = color; lastColor = color; }
+        ctx.globalAlpha = batch[i + 2];
+        ctx.fillRect(ox + batch[i] * gcw, oy + batch[i + 1] * gch, gcw, gch);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      this._gBrightenBatch.length = 0;
+    }
+
+    if (this._gTintBatch && this._gTintBatch.length > 0) {
+      const batch = this._gTintBatch;
+      let lastColor = null;
+      for (let i = 0; i < batch.length; i += 4) {
+        const color = batch[i + 2];
+        if (color !== lastColor) { ctx.fillStyle = color; lastColor = color; }
+        ctx.globalAlpha = batch[i + 3];
+        ctx.fillRect(ox + batch[i] * gcw, oy + batch[i + 1] * gch, gcw, gch);
+      }
+      this._gTintBatch.length = 0;
+    }
+
+    // Restore default state
+    ctx.globalAlpha = 1.0;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── Animated color cycling ────────────────
+
+  /**
+   * Return an animated color for special tile types.
+   * @param {string} baseColor - the tile's static fg color
+   * @param {string} tileType - RIVER_WATER, LAVA, FIREPLACE, etc.
+   * @returns {string} the current animated color
+   */
+  getAnimatedColor(baseColor, tileType, worldX, worldY) {
+    const t = (this._frameTime || Date.now()) / 500;
+    const phase = Math.sin(t) * 0.5 + 0.5; // 0-1
+
+    switch (tileType) {
+      // ── Water types — procedural noise-based flowing gradient ──
+      case 'RIVER_WATER':
+      case 'WATER':
+      case 'SHALLOWS':
+      case 'MEDIUM_WATER':
+      case 'TIDAL_POOL':
+      case 'OCEAN':
+      case 'DEEP_WATER':
+      case 'VERY_DEEP_WATER': {
+        const shimmer = { RIVER_WATER: 70, WATER: 50, SHALLOWS: 60, TIDAL_POOL: 40,
+                          MEDIUM_WATER: 55, OCEAN: 25, DEEP_WATER: 20, VERY_DEEP_WATER: 12 }[tileType];
+        if (worldX !== undefined && worldY !== undefined) {
+          const ts = (this._frameTime || Date.now()) / 1000;
+          // Two octaves: broad left-to-right flow + fine ripple detail
+          const n1 = this._waterNoise.noise2D(worldX * 0.38 - ts * 1.1, worldY * 0.28);
+          const n2 = this._waterNoise.noise2D(worldX * 0.9 - ts * 2.2, worldY * 0.6 + 50) * 0.4;
+          const n = n1 + n2;
+          const cr = parseInt(baseColor.slice(1, 3), 16);
+          const cg = Math.max(0, Math.min(255, parseInt(baseColor.slice(3, 5), 16) + Math.round(n * shimmer * 0.5)));
+          const cb = Math.max(0, Math.min(255, parseInt(baseColor.slice(5, 7), 16) + Math.round(n * shimmer)));
+          return '#' + ((1 << 24) | (cr << 16) | (cg << 8) | cb).toString(16).slice(1);
+        }
+        return baseColor;
+      }
+      case 'TOXIC_SUMP': {
+        const toxics = ['#44FF00', '#33DD00', '#55FF22'];
+        return toxics[Math.floor(t) % toxics.length];
+      }
+      // ── Wetland types ──
+      case 'MIRE':
+      case 'BOG': {
+        const bogs = ['#228844', '#1A7733', '#2A9955'];
+        return bogs[Math.floor(t * 0.7) % bogs.length];
+      }
+      case 'MARSH_REEDS': {
+        const reeds = ['#55AA44', '#4D9940', '#5DBB48'];
+        return reeds[Math.floor(t * 0.8) % reeds.length];
+      }
+      // ── Fire/heat types ──
+      case 'LAVA': {
+        const r = Math.floor(200 + phase * 55);
+        const g = Math.floor(50 + phase * 80);
+        return `rgb(${r},${g},0)`;
+      }
+      case 'FIREPLACE':
+      case 'CAMPFIRE': {
+        const r = Math.floor(220 + phase * 35);
+        const g = Math.floor(80 + phase * 100);
+        return `rgb(${r},${g},0)`;
+      }
+      case 'THERMAL_VENT': {
+        const r = Math.floor(220 + phase * 35);
+        const g = Math.floor(100 + phase * 50);
+        return `rgb(${r},${g},20)`;
+      }
+      case 'REACTOR_SLAG': {
+        const r = Math.floor(200 + phase * 55);
+        const g = Math.floor(60 + phase * 50);
+        return `rgb(${r},${g},0)`;
+      }
+      // ── Anomaly types ──
+      case 'GLITCH_ZONE': {
+        const glitches = ['#FF0088', '#EE0077', '#FF2299', '#DD0066'];
+        return glitches[Math.floor(t * 2) % glitches.length];
+      }
+      case 'CRYSTAL_ZONE': {
+        const crystals = ['#44FFFF', '#33EEFF', '#55FFEE'];
+        return crystals[Math.floor(t * 0.9) % crystals.length];
+      }
+      case 'VOID_RIFT': {
+        const voids = ['#220044', '#110033', '#330055'];
+        return voids[Math.floor(t * 0.4) % voids.length];
+      }
+      // ── Mechanical structure types ──
+      case 'MANUFACTORY_FURNACE': {
+        const r = Math.floor(200 + phase * 55);
+        const g = Math.floor(70 + phase * 50);
+        return `rgb(${r},${g},10)`;
+      }
+      case 'MANUFACTORY_GEAR':
+      case 'CLOCKWORK_GEAR':
+      case 'BORE_GEAR':
+      case 'MECH_GEAR': {
+        const gears = ['#CCAA44', '#BB9933', '#DDBB55'];
+        return gears[Math.floor(t * 0.4) % gears.length];
+      }
+      case 'CLOCKWORK_FLYWHEEL': {
+        const r = Math.floor(220 + phase * 35);
+        const g = Math.floor(180 + phase * 40);
+        return `rgb(${r},${g},40)`;
+      }
+      case 'BORE_SLAG': {
+        const r = Math.floor(180 + phase * 50);
+        const g = Math.floor(40 + phase * 30);
+        return `rgb(${r},${g},0)`;
+      }
+      case 'BORE_DRILL': {
+        const drills = ['#AABBCC', '#BBCCDD', '#99AABB', '#CCDDEE'];
+        return drills[Math.floor(t * 3) % drills.length];
+      }
+      case 'PIPE_VALVE':
+      case 'MECH_VALVE': {
+        const valves = ['#FF4444', '#EE3333', '#FF5555', '#DD2222'];
+        return valves[Math.floor(t * 1.5) % valves.length];
+      }
+      case 'TURBINE_NACELLE': {
+        const nacelles = ['#EEDDAA', '#DDCC99', '#FFEEBB'];
+        return nacelles[Math.floor(t * 2) % nacelles.length];
+      }
+      case 'TURBINE_BLADE': {
+        const blades = ['#BBDDFF', '#AACCEE', '#CCEEFF', '#99BBDD'];
+        return blades[Math.floor(t * 4) % blades.length];
+      }
+      case 'CRANE_BASIN': {
+        const basin = ['#224466', '#1A3355', '#2A5577'];
+        return basin[Math.floor(t * 0.7) % basin.length];
+      }
+      case 'MECH_CONDUIT': {
+        const conduits = ['#44AAFF', '#3399EE', '#55BBFF'];
+        return conduits[Math.floor(t * 2) % conduits.length];
+      }
+      default:
+        return baseColor;
+    }
+  }
+
+  /**
+   * Return an animated character for foliage/decorative tiles.
+   * @param {string} baseChar - the tile's static character
+   * @param {string} tileType - optional tile type hint
+   * @param {number} [worldX] - world x coordinate for position-based animation
+   * @param {number} [worldY] - world y coordinate for position-based animation
+   * @returns {string} the current animated character
+   */
+  getAnimatedChar(baseChar, tileType, worldX, worldY) {
+    const t = this._frameTime || Date.now();
+    switch (baseChar) {
+      // Trees: fast fluid sway
+      case '\u2663': // ♣
+      case '\u2660': // ♠
+      case 'T': {
+        const cycle = Math.floor(t / 800) % 4;
+        const trees = ['\u2663', '\u2663', '\u2660', '\u2660'];
+        return trees[cycle];
+      }
+      // Flowers: lively cycling
+      case '\u273F': // ✿
+      case '\u2740': // ❀
+      case '\u273B': { // ✻
+        const cycle = Math.floor(t / 900) % 3;
+        const flowers = ['\u273F', '\u2740', '\u273B'];
+        return flowers[(flowers.indexOf(baseChar) + cycle) % 3];
+      }
+      // Grass/low vegetation: 45° wind wave using Perlin noise
+      case ',':
+      case '`':
+      case '.': {
+        if (worldX !== undefined && worldY !== undefined) {
+          const ts = t / 1000;
+          // Wind direction at 45° diagonal
+          const COS45 = 0.7071, SIN45 = 0.7071;
+          const along = worldX * COS45 + worldY * SIN45;
+          const perp = -worldX * SIN45 + worldY * COS45;
+          // Traveling wave along the 45° diagonal
+          const n = this._grassNoise.noise2D(along * 0.15 - ts * 0.5, perp * 0.08);
+          if (n > 0.2) return '`';
+          if (n < -0.2) return '.';
+          return ',';
+        }
+        // Fallback: original uniform animation
+        const cycle = Math.floor(t / 1400) % 4;
+        return [',', '`', '.', ','][cycle];
+      }
+      // Water features
+      case '~': {
+        if (worldX !== undefined && worldY !== undefined) {
+          const ts = (this._frameTime || Date.now()) / 1000;
+          // Same phase as the color shimmer so bands and characters line up
+          const n = this._waterNoise.noise2D(worldX * 0.38 - ts * 1.1, worldY * 0.28);
+          if (n > 0.25) return '\u2248'; // ≈
+          if (n < -0.25) return ' ';      // trough gap
+          return '~';
+        }
+        const cycle = Math.floor(t / 400) % 3;
+        const water = ['~', '\u2248', '~']; // ~ ≈ ~
+        return water[cycle];
+      }
+      case '\u223D': { // ∽ deep water wave
+        const cycle = Math.floor(t / 600) % 3;
+        const deep = ['\u223D', '\u2248', '\u223D']; // ∽ ≈ ∽
+        return deep[cycle];
+      }
+      case '\u2248': { // ≈ very deep water
+        const cycle = Math.floor(t / 700) % 3;
+        const vdeep = ['\u2248', '\u223D', '\u2248']; // ≈ ∽ ≈
+        return vdeep[cycle];
+      }
+      default:
+        return baseChar;
+    }
+  }
+
+  /**
+   * Return an animated color for grass tiles based on wind noise.
+   * @param {string} baseColor
+   * @param {string} tileType
+   * @param {number} [worldX]
+   * @param {number} [worldY]
+   * @returns {string}
+   */
+  getAnimatedColorWithPos(baseColor, tileType, worldX, worldY) {
+    if (tileType === 'GRASSLAND' && worldX !== undefined && worldY !== undefined) {
+      const ts = this._frameTimeSec || Date.now() / 1000;
+      // Match 45° wind angle from character animation
+      const cosW = 0.7071, sinW = 0.7071;
+      const along = worldX * cosW + worldY * sinW;
+      const perp = -worldX * sinW + worldY * cosW;
+      const n = this._grassNoise.noise2D(along * 0.15 - ts * 0.5, perp * 0.08);
+      // Brighten on wind gusts, darken in calm
+      const boost = n * 0.15; // -0.15 to +0.15
+      return this._adjustBrightness(baseColor, boost);
+    }
+    return this.getAnimatedColor(baseColor, tileType);
+  }
+
+  _adjustBrightness(hex, amount) {
+    if (!hex || hex.charAt(0) !== '#' || hex.length < 7) return hex;
+    const val = parseInt(hex.slice(1), 16);
+    let r = (val >> 16) & 0xff, g = (val >> 8) & 0xff, b = val & 0xff;
+    const shift = Math.round(amount * 255);
+    r = Math.max(0, Math.min(255, r + shift));
+    g = Math.max(0, Math.min(255, g + shift));
+    b = Math.max(0, Math.min(255, b + shift));
+    return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+  }
+
+  // ── CRT Post-processing ────────────────────
+
+  /**
+   * Run all enabled post-processing effects.
+   */
+  postProcess() {
+    if (!this.effectsEnabled) return;
+    const opts = this.crtOptions || {};
+    const scale = this.crtScale;
+
+    if (scale < 1) {
+      // Route expensive pixel-manipulation effects through a smaller offscreen canvas
+      this._updateCrtCanvas();
+      const crtCtx = this._crtCtx;
+      const cw = this._crtCanvas.width;
+      const ch = this._crtCanvas.height;
+
+      // Downscale main canvas → CRT canvas
+      crtCtx.drawImage(this.canvas, 0, 0, cw, ch);
+
+      // Expensive effects on smaller canvas
+      if (opts.crtGlow !== false) this._applyPhosphorGlowOn(crtCtx, cw, ch);
+      if (opts.crtAberration !== false) this._applyChromaAberrationOn(crtCtx, cw, ch);
+
+      // Upscale CRT canvas back to main canvas
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(this._crtCanvas, 0, 0, this.canvas.width, this.canvas.height);
+      ctx.restore();
+    } else {
+      // Full-res path (original behavior)
+      if (opts.crtGlow !== false) this.applyPhosphorGlow();
+      if (opts.crtAberration !== false) this.applyChromaAberration();
+    }
+
+    // Cheap overlay effects always run on main canvas (just fillRect / gradient calls)
+    if (opts.crtScanlines !== false) this.applyScanlines();
+    this.applyFlicker();
+    this.applyVignette();
+    this.applyGlitch();
+  }
+
+  /**
+   * Phosphor glow: bloom effect using offscreen canvas with blur.
+   */
+  applyPhosphorGlow() {
+    this._glowFrame = (this._glowFrame || 0) + 1;
+    if (this._glowFrame % 2 !== 0) return; // only every 2nd frame
+
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const scale = 0.25;
+    const sw = Math.floor(w * scale);
+    const sh = Math.floor(h * scale);
+
+    if (!this._glowCanvas) {
+      this._glowCanvas = document.createElement('canvas');
+    }
+    this._glowCanvas.width = sw;
+    this._glowCanvas.height = sh;
+
+    const gCtx = this._glowCanvas.getContext('2d');
+    gCtx.filter = 'blur(3px)';
+    gCtx.drawImage(this.canvas, 0, 0, sw, sh);
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.10;
+    ctx.drawImage(this._glowCanvas, 0, 0, w, h);
+    ctx.restore();
+
+    // Subtle blue phosphor tint (FF-style)
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 30, 0.015)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * Scanlines proportional to cell height.
+   */
+  applyScanlines() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const spacing = Math.max(2, Math.floor(this.cellHeight / 3));
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+    for (let y = 0; y < h; y += spacing) {
+      ctx.fillRect(0, y, w, 1);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Subtle chromatic aberration: shift R left, B right by 1px.
+   * GPU-accelerated via canvas composite operations (no getImageData).
+   */
+  applyChromaAberration() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (w === 0 || h === 0) return;
+
+    // Snapshot the current frame
+    if (!this._aberrationSrc) {
+      this._aberrationSrc = document.createElement('canvas');
+      this._aberrationSrcCtx = this._aberrationSrc.getContext('2d');
+    }
+    if (this._aberrationSrc.width !== w || this._aberrationSrc.height !== h) {
+      this._aberrationSrc.width = w;
+      this._aberrationSrc.height = h;
+    }
+    this._aberrationSrcCtx.clearRect(0, 0, w, h);
+    this._aberrationSrcCtx.drawImage(this.canvas, 0, 0);
+
+    ctx.clearRect(0, 0, w, h);
+    this._applyChromaPass(ctx, this._aberrationSrc, w, h);
+  }
+
+  /**
+   * 3-pass GPU chromatic aberration: R(-1px), G(center), B(+1px)
+   */
+  _applyChromaPass(ctx, src, w, h) {
+    // We need 3 temp canvases for each color channel
+    if (!this._chrR) {
+      this._chrR = document.createElement('canvas');
+      this._chrG = document.createElement('canvas');
+      this._chrB = document.createElement('canvas');
+    }
+    for (const c of [this._chrR, this._chrG, this._chrB]) {
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    }
+
+    // Red: shift left 1px, multiply with red
+    const rCtx = this._chrR.getContext('2d');
+    rCtx.clearRect(0, 0, w, h);
+    rCtx.drawImage(src, -1, 0);
+    rCtx.globalCompositeOperation = 'multiply';
+    rCtx.fillStyle = '#ff0000';
+    rCtx.fillRect(0, 0, w, h);
+    rCtx.globalCompositeOperation = 'source-over';
+
+    // Green: center, multiply with green
+    const gCtx = this._chrG.getContext('2d');
+    gCtx.clearRect(0, 0, w, h);
+    gCtx.drawImage(src, 0, 0);
+    gCtx.globalCompositeOperation = 'multiply';
+    gCtx.fillStyle = '#00ff00';
+    gCtx.fillRect(0, 0, w, h);
+    gCtx.globalCompositeOperation = 'source-over';
+
+    // Blue: shift right 1px, multiply with blue
+    const bCtx = this._chrB.getContext('2d');
+    bCtx.clearRect(0, 0, w, h);
+    bCtx.drawImage(src, 1, 0);
+    bCtx.globalCompositeOperation = 'multiply';
+    bCtx.fillStyle = '#0000ff';
+    bCtx.fillRect(0, 0, w, h);
+    bCtx.globalCompositeOperation = 'source-over';
+
+    // Combine: additive blend all 3 channels
+    ctx.drawImage(this._chrR, 0, 0);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this._chrG, 0, 0);
+    ctx.drawImage(this._chrB, 0, 0);
+    ctx.restore();
+  }
+
+  /**
+   * Phosphor glow on an arbitrary canvas context (for downscaled CRT path).
+   */
+  _applyPhosphorGlowOn(ctx, w, h) {
+    this._glowFrame = (this._glowFrame || 0) + 1;
+    if (this._glowFrame % 2 !== 0) return;
+
+    const scale = 0.25;
+    const sw = Math.max(1, Math.floor(w * scale));
+    const sh = Math.max(1, Math.floor(h * scale));
+
+    if (!this._glowCanvas) {
+      this._glowCanvas = document.createElement('canvas');
+    }
+    this._glowCanvas.width = sw;
+    this._glowCanvas.height = sh;
+
+    const gCtx = this._glowCanvas.getContext('2d');
+    gCtx.filter = 'blur(3px)';
+    gCtx.drawImage(this._crtCanvas, 0, 0, sw, sh);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.10;
+    ctx.drawImage(this._glowCanvas, 0, 0, w, h);
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 30, 0.015)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * Chromatic aberration on an arbitrary canvas context (for downscaled CRT path).
+   * GPU-accelerated via canvas composite operations.
+   */
+  _applyChromaAberrationOn(ctx, w, h) {
+    if (w === 0 || h === 0) return;
+
+    // Snapshot current content of the target canvas
+    if (!this._crtAberSrc) {
+      this._crtAberSrc = document.createElement('canvas');
+      this._crtAberSrcCtx = this._crtAberSrc.getContext('2d');
+    }
+    if (this._crtAberSrc.width !== w || this._crtAberSrc.height !== h) {
+      this._crtAberSrc.width = w;
+      this._crtAberSrc.height = h;
+    }
+    this._crtAberSrcCtx.clearRect(0, 0, w, h);
+    this._crtAberSrcCtx.drawImage(ctx.canvas, 0, 0);
+
+    ctx.clearRect(0, 0, w, h);
+    this._applyChromaPass(ctx, this._crtAberSrc, w, h);
+  }
+
+  /**
+   * Random subtle flicker by modulating global alpha.
+   */
+  applyFlicker() {
+    const ctx = this.ctx;
+    const variance = Math.random() * 0.012;
+    ctx.save();
+    ctx.fillStyle = `rgba(0, 0, 0, ${variance})`;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.restore();
+  }
+
+  /**
+   * Radial vignette: darkened corners.
+   */
+  applyVignette() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = Math.max(cx, cy);
+
+    const grad = ctx.createRadialGradient(cx, cy, radius * 0.45, cx, cy, radius);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.55)');
+
+    ctx.save();
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * Rare glitch: horizontal row shift triggered by damage or random chance.
+   * GPU-accelerated via drawImage clipping (no getImageData).
+   */
+  applyGlitch() {
+    if (!this._glitchActive && Math.random() > 0.002) return;
+
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const ch = this.cellHeight;
+    const rows = this.rows;
+
+    // Snapshot current frame for self-draw
+    if (!this._glitchCanvas) {
+      this._glitchCanvas = document.createElement('canvas');
+      this._glitchCtx = this._glitchCanvas.getContext('2d');
+    }
+    if (this._glitchCanvas.width !== w || this._glitchCanvas.height !== this.canvas.height) {
+      this._glitchCanvas.width = w;
+      this._glitchCanvas.height = this.canvas.height;
+    }
+    this._glitchCtx.drawImage(this.canvas, 0, 0);
+
+    const glitchRows = Math.floor(Math.random() * 3) + 1;
+    for (let i = 0; i < glitchRows; i++) {
+      const row = Math.floor(Math.random() * rows);
+      const shift = (Math.random() * 6 - 3) | 0;
+      const y = row * ch;
+      // Clear the row, then draw shifted slice from snapshot
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, y, w, ch);
+      ctx.drawImage(this._glitchCanvas, 0, y, w, ch, shift, y, w, ch);
+    }
+    this._glitchActive = false;
+  }
+
+  /**
+   * Trigger a glitch effect (call from combat hits, damage, etc.)
+   */
+  triggerGlitch() {
+    this._glitchActive = true;
+  }
+
+  /**
+   * Screen flash effect for critical hits, level-ups, etc.
+   * @param {string} color - flash color
+   * @param {number} alpha - flash intensity 0-1
+   */
+  flash(color, alpha) {
+    this._flashColor = color;
+    this._flashAlpha = alpha;
+  }
+
+  /**
+   * Apply and decay the flash overlay.
+   */
+  applyFlash() {
+    if (!this._flashAlpha || this._flashAlpha <= 0) return;
+    this.tintOverlay(this._flashColor || '#ffffff', this._flashAlpha);
+    this._flashAlpha -= 0.05;
+    if (this._flashAlpha <= 0) {
+      this._flashAlpha = 0;
+      this._flashColor = null;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// ParticleSystem — Lightweight character-based particle effects
+// ─────────────────────────────────────────────
+
+export class ParticleSystem {
+  constructor() {
+    this.particles = [];
+  }
+
+  /**
+   * Emit particles at a world position.
+   * @param {number} x - world x
+   * @param {number} y - world y
+   * @param {string} char - particle character
+   * @param {string} fg - particle color
+   * @param {number} count - number of particles
+   * @param {number} spread - max distance from origin
+   * @param {number} lifetime - frames until particle dies
+   */
+  emit(x, y, char, fg, count = 5, spread = 3, lifetime = 15) {
+    for (let i = 0; i < count; i++) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 0.5,
+        y: y + (Math.random() - 0.5) * 0.5,
+        vx: (Math.random() - 0.5) * spread * 0.15,
+        vy: (Math.random() - 0.5) * spread * 0.15 - 0.05,
+        char,
+        fg,
+        life: lifetime,
+        maxLife: lifetime,
+      });
+    }
+  }
+
+  /**
+   * Update all particles, removing dead ones.
+   */
+  update() {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.01; // slight gravity
+      p.life--;
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * Render particles to the renderer relative to camera.
+   */
+  render(renderer, cameraX, cameraY) {
+    const viewW = renderer.worldCols;
+    const viewH = renderer.worldRows;
+    for (const p of this.particles) {
+      const wx_off = Math.round(p.x - cameraX);
+      const wy_off = Math.round(p.y - cameraY);
+      if (wx_off >= 0 && wx_off < viewW && wy_off >= 0 && wy_off < viewH) {
+        const fade = p.life / p.maxLife;
+        if (fade > 0.3) {
+          renderer.drawEntityChar(wx_off, wy_off, p.char, p.fg);
+        }
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// Camera
+// ─────────────────────────────────────────────
+
+export class Camera {
+  /**
+   * @param {number} viewportCols - number of visible columns
+   * @param {number} viewportRows - number of visible rows
+   */
+  constructor(viewportCols, viewportRows) {
+    this.viewportCols = viewportCols;
+    this.viewportRows = viewportRows;
+
+    this.x = 0;
+    this.y = 0;
+    this.targetX = 0;
+    this.targetY = 0;
+
+    this.lerpSpeed = 0.2;
+
+    this.shakeOffsetX = 0;
+    this.shakeOffsetY = 0;
+    this.shakeIntensity = 0;
+    this.shakeDecay = 0.8;
+  }
+
+  /**
+   * Center the camera target on the given entity's position.
+   * Entity must have numeric x and y properties.
+   */
+  follow(entity) {
+    const ex = entity.position ? entity.position.x : entity.x;
+    const ey = entity.position ? entity.position.y : entity.y;
+    this.targetX = ex - Math.floor(this.viewportCols / 2);
+    this.targetY = ey - Math.floor(this.viewportRows / 2);
+  }
+
+  /**
+   * Trigger a camera shake effect.
+   * @param {number} intensity - shake strength (1.0 = subtle, 2.0+ = strong)
+   */
+  shake(intensity) {
+    this.shakeIntensity = intensity;
+  }
+
+  /**
+   * Smoothly interpolate toward the target position.
+   */
+  update() {
+    this.x += (this.targetX - this.x) * this.lerpSpeed;
+    this.y += (this.targetY - this.y) * this.lerpSpeed;
+
+    // Snap when very close to avoid sub-pixel jitter
+    if (Math.abs(this.targetX - this.x) < 0.01) this.x = this.targetX;
+    if (Math.abs(this.targetY - this.y) < 0.01) this.y = this.targetY;
+
+    // Compute and decay shake offsets
+    if (this.shakeIntensity > 0.05) {
+      this.shakeOffsetX = (Math.random() - 0.5) * this.shakeIntensity * 2;
+      this.shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity;
+      this.shakeIntensity *= this.shakeDecay;
+    } else {
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+      this.shakeIntensity = 0;
+    }
+  }
+
+  /** Camera X position including shake offset. */
+  getRenderX() { return this.x + this.shakeOffsetX; }
+
+  /** Camera Y position including shake offset. */
+  getRenderY() { return this.y + this.shakeOffsetY; }
+
+  /**
+   * Convert world coordinates to screen column/row.
+   */
+  worldToScreen(wx, wy) {
+    return {
+      col: Math.round(wx - this.x),
+      row: Math.round(wy - this.y),
+    };
+  }
+
+  /**
+   * Convert screen column/row to world coordinates.
+   */
+  screenToWorld(col, row) {
+    return {
+      wx: Math.round(col + this.x),
+      wy: Math.round(row + this.y),
+    };
+  }
+
+  /**
+   * Check whether a world position falls inside the current viewport.
+   */
+  isVisible(wx, wy) {
+    const sc = wx - this.x;
+    const sr = wy - this.y;
+    return sc >= 0 && sc < this.viewportCols && sr >= 0 && sr < this.viewportRows;
+  }
+}
+
+// ─────────────────────────────────────────────
+// InputManager
+// ─────────────────────────────────────────────
+
+export class InputManager {
+  constructor() {
+    // Keyboard state
+    this._keysDown = new Set();       // currently held
+    this._keysPressed = new Set();    // newly pressed this frame
+    this._keysDownPrev = new Set();   // held last frame
+
+    // Action queue (one action at a time)
+    this.lastAction = null;
+
+    // Key repeat system — fires repeated actions when direction keys are held
+    this._repeatKey = null;           // which key is being repeated
+    this._repeatDelay = 220;          // ms before first repeat fires
+    this._repeatInterval = 90;        // ms between subsequent repeats
+    this._repeatTimer = null;         // setTimeout handle
+    this._repeatIntervalTimer = null; // setInterval handle
+
+    // Game state provider callback (set by Game to query current state)
+    this._gameStateProvider = null;
+
+    // Direction keys eligible for repeat
+    this._repeatableKeys = new Set([
+      'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+      'w', 'a', 's', 'd', 'W', 'A', 'S', 'D',
+      '1', '2', '3', '4', '6', '7', '8', '9',
+    ]);
+
+    // Mobile detection
+    this.isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    this._enableTouch = true;
+
+    // Touch handedness mode: 'dual', 'left', 'right'
+    this._touchMode = localStorage.getItem('touchMode') || 'dual';
+    // Current action tab index (for tabbed button sets)
+    this._actionTab = 0;
+    // Debug state provider callback (set by Game to query toggle states)
+    this._debugStateProvider = null;
+
+    // Touch UI opacity (cycles through levels)
+    this._touchOpacityLevel = 2; // 0=0.2, 1=0.4, 2=0.7, 3=1.0
+    this._touchOpacities = [0.2, 0.4, 0.7, 1.0];
+    // Touch grid collapsed (hide/show toggle)
+    this._touchCollapsed = false;
+
+    // Text input mode (for mobile keyboard)
+    this._textInputMode = false;
+    this._textInput = document.getElementById('mobile-text-input');
+    this._textInputPrevValue = '';
+    this._onTextInput = this._onTextInput.bind(this);
+    this._onTextInputKeyDown = this._onTextInputKeyDown.bind(this);
+
+    // Bind event listeners
+    this._onKeyDown = this._onKeyDown.bind(this);
+    this._onKeyUp = this._onKeyUp.bind(this);
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
+
+    // ── Physical Gamepad (Gamepad API) ──
+    this._gamepadIndex = null;           // index of connected gamepad
+    this._gamepadPrevButtons = [];       // button states from previous frame
+    this._gamepadPrevAxes = [0, 0, 0, 0]; // axis values from previous frame
+    this._gamepadDeadzone = 0.4;         // analog stick deadzone
+    this._gamepadRepeatKey = null;       // current repeating gamepad direction
+    this._gamepadRepeatTimer = null;
+    this._gamepadRepeatIntervalTimer = null;
+    this._gamepadEnabled = true;         // can be toggled in settings
+
+    // Standard Gamepad button index → virtual button name
+    // Based on the "Standard Gamepad" mapping:
+    // https://w3c.github.io/gamepad/#remapping
+    this._gamepadButtonMap = {
+      0: 'A',       // Bottom face button (A / Cross)
+      1: 'B',       // Right face button (B / Circle)
+      2: 'X',       // Left face button (X / Square)
+      3: 'Y',       // Top face button (Y / Triangle)
+      4: 'L1',      // Left shoulder
+      5: 'R1',      // Right shoulder
+      6: 'L2',      // Left trigger
+      7: 'R2',      // Right trigger
+      8: 'SELECT',  // Back / Select / Share
+      9: 'START',   // Start / Options
+      // 10: left stick press, 11: right stick press (unused)
+      12: 'UP',     // D-pad up
+      13: 'DOWN',   // D-pad down
+      14: 'LEFT',   // D-pad left
+      15: 'RIGHT',  // D-pad right
+    };
+
+    // Listen for gamepad connection / disconnection
+    this._onGamepadConnected = this._onGamepadConnected.bind(this);
+    this._onGamepadDisconnected = this._onGamepadDisconnected.bind(this);
+    window.addEventListener('gamepadconnected', this._onGamepadConnected);
+    window.addEventListener('gamepaddisconnected', this._onGamepadDisconnected);
+
+    // Touch / dpad setup
+    this._initTouchControls();
+  }
+
+  // ── Keyboard events ────────────────────────
+
+  _onKeyDown(e) {
+    // In text input mode, let the hidden input handle character keys
+    if (this._textInputMode && e.key.length === 1) return;
+
+    // Prevent default for game keys so the page doesn't scroll
+    const gameKeys = [
+      'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+      ' ', 'Enter', 'Tab',
+    ];
+    if (gameKeys.includes(e.key)) {
+      e.preventDefault();
+    }
+    this._keysDown.add(e.key);
+    // Queue the key as a game action so the game loop can process it
+    this.lastAction = e.key;
+
+    // Start key repeat for direction keys
+    if (this._repeatableKeys.has(e.key) && this._repeatKey !== e.key) {
+      this._startRepeat(e.key);
+    }
+  }
+
+  _onKeyUp(e) {
+    this._keysDown.delete(e.key);
+    // Stop key repeat if this was the repeating key
+    if (this._repeatKey === e.key) {
+      this._stopRepeat();
+    }
+  }
+
+  // ── Key repeat helpers ──────────────────────
+
+  _startRepeat(key) {
+    this._stopRepeat();
+    this._repeatKey = key;
+    // Check walk-really-really-fast debug toggle
+    const debugState = this._debugStateProvider ? this._debugStateProvider() : null;
+    const walkFast = debugState && debugState.walkReallyReallyFast;
+    // Use slower repeat on overworld (50% speed) — unless turbo mode
+    const state = this._gameStateProvider ? this._gameStateProvider() : null;
+    let interval;
+    if (walkFast) {
+      interval = 15; // extremely fast movement
+    } else {
+      interval = state === 'OVERWORLD' ? this._repeatInterval * 2 : this._repeatInterval;
+    }
+    const delay = walkFast ? 50 : this._repeatDelay;
+    // After initial delay, start firing repeats at interval
+    this._repeatTimer = setTimeout(() => {
+      this._repeatIntervalTimer = setInterval(() => {
+        if (this._keysDown.has(key)) {
+          this.lastAction = key;
+        } else {
+          this._stopRepeat();
+        }
+      }, interval);
+    }, delay);
+  }
+
+  _stopRepeat() {
+    this._repeatKey = null;
+    if (this._repeatTimer) {
+      clearTimeout(this._repeatTimer);
+      this._repeatTimer = null;
+    }
+    if (this._repeatIntervalTimer) {
+      clearInterval(this._repeatIntervalTimer);
+      this._repeatIntervalTimer = null;
+    }
+  }
+
+  // ── Virtual Gamepad ──────────────────────────
+
+  // Abstract gamepad button → key action mapping per game state.
+  // State-specific entries override _default. Only list overrides.
+  static GAMEPAD_ACTIONS = {
+    _default: {
+      UP: 'ArrowUp', DOWN: 'ArrowDown', LEFT: 'ArrowLeft', RIGHT: 'ArrowRight',
+      UL: '7', UR: '9', DL: '1', DR: '3',
+      A: 'Enter',           // Confirm / Act
+      B: 'Escape',          // Cancel / Back
+      X: 't',               // Context: talk
+      Y: 'e',               // Context: enter
+      INTERACT: 'Enter',    // Context-sensitive interact (center d-pad)
+      START: 'gamepad:menu', // FF-style menu
+      SELECT: 'Enter',      // Interact / skip
+      L1: '-', R1: '+',
+      L2: '-', R2: '+',
+    },
+    COMBAT: {
+      A: 'Enter', B: 'Escape',
+      X: 'a',     // Attack
+      Y: 'f',     // Flee
+      L1: '1', R1: '2',
+      L2: '3', R2: 'i',
+      START: null, // no menu in combat
+    },
+    BATTLE_RESULTS: { A: 'Enter' },
+    DIALOGUE: {
+      A: 'Enter', B: 'Escape',
+      X: 'a', Y: 'b',
+      L1: 'c', R1: 'd',
+    },
+    SHOP: {
+      A: 'Enter', B: 'Escape',
+      X: 'b', Y: 's',
+    },
+    INVENTORY: {
+      A: 'Enter', B: 'Escape',
+      X: 'e',     // Equip
+      Y: 'd',     // Drop
+    },
+    CHARACTER: { A: 'Enter', B: 'Escape' },
+    QUEST_LOG: {
+      A: 'Enter', B: 'Escape',
+      X: 'n',     // Nav toggle
+    },
+    MAP: {
+      A: 'Enter', B: 'Escape',
+      L2: '-', R2: '+',
+    },
+    HELP: { B: 'Escape', L1: 'ArrowLeft', R1: 'ArrowRight' },
+    SETTINGS: {
+      A: 'Enter', B: 'Escape',
+    },
+    GAME_OVER: { A: 'Enter' },
+    MENU: { A: 'Enter', B: 'Escape' },
+    CHAR_CREATE: { A: 'Enter', B: 'Escape' },
+    DEBUG_MENU: { A: 'Enter', B: 'Escape', L1: 'ArrowLeft', R1: 'ArrowRight' },
+    DUNGEON: {
+      X: 'g',     // Pick up
+      Y: '>',     // Stairs
+    },
+    LOCATION: {
+      X: 't',     // Talk
+      Y: 'e',     // Enter
+    },
+    FACTION: { B: 'Escape' },
+    QUEST_COMPASS: { B: 'Escape' },
+    ALMANAC: { B: 'Escape' },
+    CONSOLE_LOG: { B: 'Escape' },
+    GAMEPAD_MENU: {
+      A: 'Enter',
+      B: 'Escape',
+      START: 'Escape', // close menu
+    },
+  };
+
+  /**
+   * Resolve a virtual gamepad button to the key action for the current state.
+   */
+  resolveGamepadButton(button) {
+    const state = this._gameStateProvider ? this._gameStateProvider() : '_default';
+    const stateMap = InputManager.GAMEPAD_ACTIONS[state];
+    // Check state-specific, then default
+    if (stateMap && button in stateMap) return stateMap[button];
+    return InputManager.GAMEPAD_ACTIONS._default[button] || null;
+  }
+
+  _initTouchControls() {
+    const touchDiv = document.getElementById('touch-controls');
+    if (touchDiv && this.isMobile) {
+      touchDiv.classList.remove('hidden');
+    }
+    this._touchDiv = touchDiv;
+    this._touchGrid = touchDiv ? touchDiv.querySelector('.touch-grid') : null;
+
+    // Bind all static gamepad buttons
+    this._bindGamepadButtons();
+    // Bind utility buttons (debug, opacity, hide/show)
+    this._bindUtilityButtons();
+  }
+
+  set enableTouch(val) {
+    this._enableTouch = !!val;
+    if (this._touchDiv) {
+      if (val && this.isMobile) {
+        this._touchDiv.classList.remove('hidden');
+      } else if (!val) {
+        this._touchDiv.classList.add('hidden');
+      }
+    }
+  }
+  get enableTouch() { return this._enableTouch; }
+
+  get touchMode() { return this._touchMode; }
+
+  /**
+   * Bind touch/mouse events to all static gamepad buttons.
+   * The DOM is never rebuilt — the same buttons persist across all states.
+   */
+  _bindGamepadButtons() {
+    if (!this._touchDiv) return;
+    const buttons = this._touchDiv.querySelectorAll('[data-btn]');
+
+    // D-pad buttons that support held-key repeat
+    const dpadBtns = new Set(['UP', 'DOWN', 'LEFT', 'RIGHT', 'UL', 'UR', 'DL', 'DR']);
+
+    for (const btn of buttons) {
+      const btnId = btn.dataset.btn;
+
+      if (dpadBtns.has(btnId)) {
+        // D-pad: fire resolved key and support repeat
+        const activate = (e) => {
+          e.preventDefault();
+          btn.classList.add('pressed');
+          if (navigator.vibrate) navigator.vibrate(12);
+          const key = this.resolveGamepadButton(btnId);
+          if (!key) return;
+          this._keysDown.add(key);
+          this.lastAction = key;
+          // Store which resolved key this button activated (for deactivation)
+          btn._activeKey = key;
+          this._startRepeat(key);
+        };
+        const deactivate = (e) => {
+          e.preventDefault();
+          btn.classList.remove('pressed');
+          const key = btn._activeKey;
+          if (key) {
+            this._keysDown.delete(key);
+            if (this._repeatKey === key) this._stopRepeat();
+            btn._activeKey = null;
+          }
+        };
+        btn.addEventListener('touchstart', activate, { passive: false });
+        btn.addEventListener('touchend', deactivate, { passive: false });
+        btn.addEventListener('touchcancel', deactivate, { passive: false });
+        btn.addEventListener('mousedown', activate);
+        btn.addEventListener('mouseup', deactivate);
+      } else {
+        // Face / shoulder / meta: single fire, resolved per state
+        const fire = (e) => {
+          e.preventDefault();
+          btn.classList.add('pressed');
+          if (navigator.vibrate) navigator.vibrate(12);
+          const key = this.resolveGamepadButton(btnId);
+          if (key) this.lastAction = key;
+        };
+        const release = () => btn.classList.remove('pressed');
+        btn.addEventListener('touchstart', fire, { passive: false });
+        btn.addEventListener('touchend', release, { passive: false });
+        btn.addEventListener('touchcancel', release, { passive: false });
+        btn.addEventListener('mousedown', fire);
+        btn.addEventListener('mouseup', release);
+      }
+    }
+  }
+
+  /**
+   * Bind utility buttons (debug menu, opacity cycle, hide/show toggle).
+   */
+  _bindUtilityButtons() {
+    if (!this._touchDiv) return;
+    const utilBtns = this._touchDiv.querySelectorAll('[data-util]');
+
+    for (const btn of utilBtns) {
+      const action = btn.dataset.util;
+      const fire = (e) => {
+        e.preventDefault();
+        btn.classList.add('pressed');
+        if (navigator.vibrate) navigator.vibrate(12);
+
+        if (action === 'debug') {
+          // Open/close debug menu via backtick key
+          this.lastAction = '`';
+        } else if (action === 'opacity') {
+          // Cycle touch UI opacity
+          this._touchOpacityLevel = (this._touchOpacityLevel + 1) % this._touchOpacities.length;
+          const opacity = this._touchOpacities[this._touchOpacityLevel];
+          if (this._touchDiv) {
+            this._touchDiv.style.opacity = opacity;
+          }
+        } else if (action === 'hide') {
+          // Toggle touch grid visibility
+          this._touchCollapsed = !this._touchCollapsed;
+          if (this._touchGrid) {
+            this._touchGrid.classList.toggle('collapsed', this._touchCollapsed);
+          }
+          btn.textContent = this._touchCollapsed ? 'SHW' : 'HID';
+        }
+      };
+      const release = () => btn.classList.remove('pressed');
+      btn.addEventListener('touchstart', fire, { passive: false });
+      btn.addEventListener('touchend', release, { passive: false });
+      btn.addEventListener('touchcancel', release, { passive: false });
+      btn.addEventListener('mousedown', fire);
+      btn.addEventListener('mouseup', release);
+    }
+  }
+
+  /**
+   * Update touch control layout. With the virtual gamepad the DOM never
+   * changes — this is kept as a no-op so existing callers don't break.
+   */
+  updateTouchLayout(_state) {
+    // No-op: the gamepad layout is static.
+    // Gamepad button actions are resolved dynamically via GAMEPAD_ACTIONS.
+  }
+
+  // ── Physical Gamepad (Gamepad API) ─────────
+
+  _onGamepadConnected(e) {
+    if (this._gamepadIndex === null) {
+      this._gamepadIndex = e.gamepad.index;
+      console.log(`Gamepad connected: ${e.gamepad.id} [index ${e.gamepad.index}]`);
+    }
+  }
+
+  _onGamepadDisconnected(e) {
+    if (e.gamepad.index === this._gamepadIndex) {
+      console.log(`Gamepad disconnected: ${e.gamepad.id}`);
+      this._gamepadIndex = null;
+      this._stopGamepadRepeat();
+    }
+  }
+
+  /**
+   * Poll the physical gamepad and feed actions into the input system.
+   * Called once per frame from update().
+   */
+  _pollGamepad() {
+    if (!this._gamepadEnabled || this._gamepadIndex === null) return;
+
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gp = gamepads[this._gamepadIndex];
+    if (!gp || !gp.connected) return;
+
+    // ── Buttons ──
+    const prev = this._gamepadPrevButtons;
+    for (let i = 0; i < gp.buttons.length; i++) {
+      const btnName = this._gamepadButtonMap[i];
+      if (!btnName) continue;
+
+      const pressed = gp.buttons[i].pressed;
+      const wasPressed = prev[i] || false;
+
+      if (pressed && !wasPressed) {
+        // Button just pressed — resolve through GAMEPAD_ACTIONS
+        const key = this.resolveGamepadButton(btnName);
+        if (key) {
+          this.lastAction = key;
+          // D-pad buttons get repeat behavior
+          const dpadBtns = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+          if (dpadBtns.includes(btnName)) {
+            this._keysDown.add(key);
+            this._startGamepadRepeat(key);
+          }
+        }
+      } else if (!pressed && wasPressed) {
+        // Button released
+        const key = this.resolveGamepadButton(btnName);
+        if (key) {
+          this._keysDown.delete(key);
+          const dpadBtns = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+          if (dpadBtns.includes(btnName) && this._gamepadRepeatKey === key) {
+            this._stopGamepadRepeat();
+          }
+        }
+      }
+    }
+    // Snapshot button states
+    this._gamepadPrevButtons = gp.buttons.map(b => b.pressed);
+
+    // ── Left Analog Stick → D-pad ──
+    const axisX = gp.axes[0] || 0;
+    const axisY = gp.axes[1] || 0;
+    const dz = this._gamepadDeadzone;
+
+    // Derive digital direction from analog stick
+    let stickDir = null;
+    if (axisX < -dz) stickDir = 'LEFT';
+    else if (axisX > dz) stickDir = 'RIGHT';
+
+    let stickDirY = null;
+    if (axisY < -dz) stickDirY = 'UP';
+    else if (axisY > dz) stickDirY = 'DOWN';
+
+    // Previous stick state
+    const prevX = this._gamepadPrevAxes[0] || 0;
+    const prevY = this._gamepadPrevAxes[1] || 0;
+    let prevStickDir = null;
+    if (prevX < -dz) prevStickDir = 'LEFT';
+    else if (prevX > dz) prevStickDir = 'RIGHT';
+    let prevStickDirY = null;
+    if (prevY < -dz) prevStickDirY = 'UP';
+    else if (prevY > dz) prevStickDirY = 'DOWN';
+
+    // Horizontal axis edge
+    if (stickDir && stickDir !== prevStickDir) {
+      const key = this.resolveGamepadButton(stickDir);
+      if (key) {
+        this.lastAction = key;
+        this._keysDown.add(key);
+        this._startGamepadRepeat(key);
+      }
+    } else if (!stickDir && prevStickDir) {
+      const key = this.resolveGamepadButton(prevStickDir);
+      if (key) {
+        this._keysDown.delete(key);
+        if (this._gamepadRepeatKey === key) this._stopGamepadRepeat();
+      }
+    }
+
+    // Vertical axis edge
+    if (stickDirY && stickDirY !== prevStickDirY) {
+      const key = this.resolveGamepadButton(stickDirY);
+      if (key) {
+        this.lastAction = key;
+        this._keysDown.add(key);
+        this._startGamepadRepeat(key);
+      }
+    } else if (!stickDirY && prevStickDirY) {
+      const key = this.resolveGamepadButton(prevStickDirY);
+      if (key) {
+        this._keysDown.delete(key);
+        if (this._gamepadRepeatKey === key) this._stopGamepadRepeat();
+      }
+    }
+
+    this._gamepadPrevAxes = [axisX, axisY, gp.axes[2] || 0, gp.axes[3] || 0];
+  }
+
+  _startGamepadRepeat(key) {
+    this._stopGamepadRepeat();
+    this._gamepadRepeatKey = key;
+    const state = this._gameStateProvider ? this._gameStateProvider() : null;
+    const interval = state === 'OVERWORLD' ? this._repeatInterval * 2 : this._repeatInterval;
+    this._gamepadRepeatTimer = setTimeout(() => {
+      this._gamepadRepeatIntervalTimer = setInterval(() => {
+        if (this._keysDown.has(key)) {
+          this.lastAction = key;
+        } else {
+          this._stopGamepadRepeat();
+        }
+      }, interval);
+    }, this._repeatDelay);
+  }
+
+  _stopGamepadRepeat() {
+    this._gamepadRepeatKey = null;
+    if (this._gamepadRepeatTimer) {
+      clearTimeout(this._gamepadRepeatTimer);
+      this._gamepadRepeatTimer = null;
+    }
+    if (this._gamepadRepeatIntervalTimer) {
+      clearInterval(this._gamepadRepeatIntervalTimer);
+      this._gamepadRepeatIntervalTimer = null;
+    }
+  }
+
+  /**
+   * Set gamepad layout/mode (called from settings).
+   * @param {string} mode - e.g. 'standard', 'swapAB'
+   */
+  setGamepadLayout(mode) {
+    if (mode === 'swapAB') {
+      // Swap A/B to match Nintendo-style layout
+      this._gamepadButtonMap[0] = 'B';
+      this._gamepadButtonMap[1] = 'A';
+    } else {
+      // Standard Xbox/PlayStation layout
+      this._gamepadButtonMap[0] = 'A';
+      this._gamepadButtonMap[1] = 'B';
+    }
+  }
+
+  /** Whether a physical gamepad is currently connected */
+  get gamepadConnected() {
+    return this._gamepadIndex !== null;
+  }
+
+  // ── Text input mode (mobile keyboard) ─────
+
+  enterTextInputMode() {
+    this._textInputMode = true;
+    if (this._textInput) {
+      this._textInput.value = '';
+      this._textInputPrevValue = '';
+      this._textInput.addEventListener('input', this._onTextInput);
+      this._textInput.addEventListener('keydown', this._onTextInputKeyDown);
+      // Delay focus slightly for Android compatibility
+      setTimeout(() => { if (this._textInput) this._textInput.focus(); }, 100);
+    }
+  }
+
+  exitTextInputMode() {
+    this._textInputMode = false;
+    if (this._textInput) {
+      this._textInput.removeEventListener('input', this._onTextInput);
+      this._textInput.removeEventListener('keydown', this._onTextInputKeyDown);
+      this._textInput.blur();
+      this._textInput.value = '';
+    }
+  }
+
+  _onTextInput() {
+    if (!this._textInput) return;
+    const cur = this._textInput.value;
+    const prev = this._textInputPrevValue;
+    if (cur.length > prev.length) {
+      // New character(s) typed
+      const newChar = cur.charAt(cur.length - 1);
+      this.lastAction = newChar;
+    } else if (cur.length < prev.length) {
+      // Deletion (backspace)
+      this.lastAction = 'Backspace';
+    }
+    this._textInputPrevValue = cur;
+  }
+
+  _onTextInputKeyDown(e) {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      this.lastAction = e.key;
+    }
+  }
+
+  // ── Per-frame queries ──────────────────────
+
+  /**
+   * Is the key currently held down?
+   */
+  isKeyDown(key) {
+    return this._keysDown.has(key);
+  }
+
+  /**
+   * Was the key newly pressed this frame (not held from previous)?
+   */
+  isKeyPressed(key) {
+    return this._keysPressed.has(key);
+  }
+
+  /**
+   * Derive a movement direction vector from currently-pressed
+   * arrow keys, WASD, or numpad.
+   * @returns {{dx: number, dy: number}}
+   */
+  getMovementDir() {
+    let dx = 0;
+    let dy = 0;
+
+    // Numpad (including diagonals)
+    if (this.isKeyPressed('7') || this.isKeyPressed('Home'))       { dx = -1; dy = -1; }
+    else if (this.isKeyPressed('9') || this.isKeyPressed('PageUp'))    { dx =  1; dy = -1; }
+    else if (this.isKeyPressed('1') || this.isKeyPressed('End'))       { dx = -1; dy =  1; }
+    else if (this.isKeyPressed('3') || this.isKeyPressed('PageDown'))  { dx =  1; dy =  1; }
+    else {
+      // Cardinal directions: arrow keys, WASD, numpad 2/4/6/8
+      const up    = this.isKeyPressed('ArrowUp')    || this.isKeyPressed('w') || this.isKeyPressed('W') || this.isKeyPressed('8');
+      const down  = this.isKeyPressed('ArrowDown')  || this.isKeyPressed('s') || this.isKeyPressed('S') || this.isKeyPressed('2');
+      const left  = this.isKeyPressed('ArrowLeft')  || this.isKeyPressed('a') || this.isKeyPressed('A') || this.isKeyPressed('4');
+      const right = this.isKeyPressed('ArrowRight') || this.isKeyPressed('d') || this.isKeyPressed('D') || this.isKeyPressed('6');
+
+      if (up)    dy -= 1;
+      if (down)  dy += 1;
+      if (left)  dx -= 1;
+      if (right) dx += 1;
+    }
+
+    return { dx, dy };
+  }
+
+  /**
+   * Return and clear the last queued action.
+   */
+  consumeAction() {
+    const action = this.lastAction;
+    this.lastAction = null;
+    return action;
+  }
+
+  /**
+   * Call once per frame AFTER reading input.
+   * Transitions pressed keys from "new" to "held".
+   */
+  update() {
+    // Poll physical gamepad before processing key states
+    this._pollGamepad();
+
+    // Determine newly-pressed keys this frame
+    this._keysPressed.clear();
+    for (const key of this._keysDown) {
+      if (!this._keysDownPrev.has(key)) {
+        this._keysPressed.add(key);
+      }
+    }
+
+    // Snapshot current state for next frame comparison
+    this._keysDownPrev = new Set(this._keysDown);
+  }
+
+  /**
+   * Clean up event listeners.
+   */
+  destroy() {
+    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('gamepadconnected', this._onGamepadConnected);
+    window.removeEventListener('gamepaddisconnected', this._onGamepadDisconnected);
+    this._stopGamepadRepeat();
+  }
+}
+
+// ─────────────────────────────────────────────
+// Glow System - Color cycling for interactive objects
+// ─────────────────────────────────────────────
+
+const GLOW_PROFILES = {
+  LOOT:             { hueMin: 40,  hueMax: 60,  speed: 1.5, pattern: 'pulse' },
+  SETTLEMENT:       { hueMin: 180, hueMax: 220, speed: 0.8, pattern: 'wave' },
+  DUNGEON_ENTRANCE: { hueMin: 0,   hueMax: 30,  speed: 1.2, pattern: 'flicker' },
+  NPC:              { hueMin: 0,   hueMax: 360, speed: 3.5, pattern: 'rainbow' },
+  NPC_RETICLE:      { hueMin: 0,   hueMax: 360, speed: 4.5, pattern: 'rainbow' },
+  INTERACTIVE:      { hueMin: 270, hueMax: 310, speed: 1.0, pattern: 'pulse' },
+  PLAYER:           { hueMin: 0,   hueMax: 360, speed: 2.0, pattern: 'rainbow' },
+};
+
+export class GlowSystem {
+  constructor() {
+    this.time = 0;
+    this._cache = {};
+    this._lastCacheTime = 0;
+  }
+
+  update(dt) {
+    this.time += dt;
+    // Only invalidate cache every 0.1s — glow colors change slowly
+    if (this.time - this._lastCacheTime > 0.1) {
+      this._cache = {};
+      this._lastCacheTime = this.time;
+    }
+  }
+
+  getGlowColor(category, baseColor) {
+    const key = category + baseColor;
+    if (this._cache[key]) return this._cache[key];
+
+    const profile = GLOW_PROFILES[category];
+    if (!profile) return baseColor;
+
+    const t = this.time * profile.speed;
+    let hue, saturation, lightness;
+
+    switch (profile.pattern) {
+      case 'pulse': {
+        const phase = Math.sin(t * 2.5) * 0.5 + 0.5;
+        hue = profile.hueMin + (profile.hueMax - profile.hueMin) * 0.5;
+        saturation = 80 + phase * 20;
+        lightness = 50 + phase * 25;
+        break;
+      }
+      case 'wave': {
+        const phase = Math.sin(t * 1.8) * 0.5 + 0.5;
+        hue = profile.hueMin + (profile.hueMax - profile.hueMin) * phase;
+        saturation = 70 + phase * 20;
+        lightness = 55 + Math.sin(t * 2.2) * 15;
+        break;
+      }
+      case 'flicker': {
+        const base = Math.sin(t * 3.0) * 0.5 + 0.5;
+        const jitter = Math.sin(t * 7.3) * 0.15 + Math.sin(t * 13.1) * 0.1;
+        const phase = Math.max(0, Math.min(1, base + jitter));
+        hue = profile.hueMin + (profile.hueMax - profile.hueMin) * phase;
+        saturation = 85;
+        lightness = 45 + phase * 30;
+        break;
+      }
+      case 'rainbow': {
+        hue = (t * 60) % 360;
+        saturation = 100;
+        lightness = 65;
+        break;
+      }
+      default: {
+        hue = profile.hueMin;
+        saturation = 80;
+        lightness = 60;
+      }
+    }
+
+    const glowRGB = this._hslToRgb(hue / 360, saturation / 100, lightness / 100);
+    const baseRGB = this._hexToRgb(baseColor);
+
+    const blend = (category === 'PLAYER') ? 0.9 : 0.4;
+    const r = Math.round(baseRGB.r * (1 - blend) + glowRGB.r * blend);
+    const g = Math.round(baseRGB.g * (1 - blend) + glowRGB.g * blend);
+    const b = Math.round(baseRGB.b * (1 - blend) + glowRGB.b * blend);
+
+    const result = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    this._cache[key] = result;
+    return result;
+  }
+
+  _hexToRgb(hex) {
+    if (!hex || hex.charAt(0) !== '#') return { r: 200, g: 200, b: 200 };
+    const val = parseInt(hex.slice(1), 16);
+    if (hex.length === 4) {
+      const r = ((val >> 8) & 0xf) * 17;
+      const g = ((val >> 4) & 0xf) * 17;
+      const b = (val & 0xf) * 17;
+      return { r, g, b };
+    }
+    return { r: (val >> 16) & 0xff, g: (val >> 8) & 0xff, b: val & 0xff };
+  }
+
+  _hslToRgb(h, s, l) {
+    let r, g, b;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+  }
+}
