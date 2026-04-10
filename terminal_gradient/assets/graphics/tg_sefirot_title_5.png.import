@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://gn1ihj81akn6"
-path="res://.godot/imported/39433A_65866E_86BF8B_BFF8D8-128px.png-3f6b14f047bfddd42e4b56594e94c147.ctex"
+uid="uid://c36gh51ehs8la"
+path="res://.godot/imported/tg_sefirot_title_5.png-6025c03f567f51c6856ed6a8e13a483f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/matcap/39433A_65866E_86BF8B_BFF8D8-128px.png"
-dest_files=["res://.godot/imported/39433A_65866E_86BF8B_BFF8D8-128px.png-3f6b14f047bfddd42e4b56594e94c147.ctex"]
+source_file="res://assets/graphics/tg_sefirot_title_5.png"
+dest_files=["res://.godot/imported/tg_sefirot_title_5.png-6025c03f567f51c6856ed6a8e13a483f.ctex"]
 
 [params]
 

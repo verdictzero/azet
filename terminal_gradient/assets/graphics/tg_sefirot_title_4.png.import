@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ge4ybssy0ptt"
-path="res://.godot/imported/tg_sefirot_title.png-e416054e95e9f12b13ecc0144f3d1c51.ctex"
+uid="uid://dvbsxuer2qgog"
+path="res://.godot/imported/tg_sefirot_title_4.png-211f541b057a89c3df120d07aadaab6c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/graphics/tg_sefirot_title.png"
-dest_files=["res://.godot/imported/tg_sefirot_title.png-e416054e95e9f12b13ecc0144f3d1c51.ctex"]
+source_file="res://assets/graphics/tg_sefirot_title_4.png"
+dest_files=["res://.godot/imported/tg_sefirot_title_4.png-211f541b057a89c3df120d07aadaab6c.ctex"]
 
 [params]
 
