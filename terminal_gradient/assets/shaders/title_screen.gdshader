@@ -29,6 +29,10 @@ uniform vec4 sefirot_rect;  // UV-space: x, y, w, h
 uniform sampler2D logo_texture : filter_linear, repeat_disable;
 uniform vec4 logo_rect;
 
+// Golden wash applied to everything except the logo
+uniform vec3 tint_color = vec3(1.00, 0.78, 0.35);
+uniform float tint_strength : hint_range(0.0, 1.0) = 0.55;
+
 // ── Particle layer (procedural, drifts up from bottom) ──
 const int PARTICLE_COUNT = 22;
 const int CRUMBS_PER_PARTICLE = 10;
@@ -234,6 +238,7 @@ void fragment() {
 
 	vec4 out_color = vec4(0.0);
 	bool hit = false;
+	bool logo_hit = false;
 
 	// ── Z-1: Logo (fullblock + dither12) ──
 	if (logo_rect.z > 0.0) {
@@ -243,6 +248,7 @@ void fragment() {
 			if (s.a > 0.5) {
 				out_color = vec4(dither12(s.rgb, blk), 1.0);
 				hit = true;
+				logo_hit = true;
 			}
 		}
 	}
@@ -308,6 +314,12 @@ void fragment() {
 			vec3 dithered = dither12(p.rgb / max(p.a, 1e-4), blk);
 			out_color.rgb = mix(out_color.rgb, dithered, p.a);
 		}
+	}
+
+	if (!logo_hit) {
+		float lum = dot(out_color.rgb, vec3(0.299, 0.587, 0.114));
+		vec3 tinted = lum * tint_color;
+		out_color.rgb = mix(out_color.rgb, tinted, tint_strength);
 	}
 
 	COLOR = out_color;
