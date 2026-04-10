@@ -611,9 +611,11 @@ func set_gfx_fullscreen(enabled: bool) -> void:
 	if enabled:
 		_gfx_rect.position = Vector2.ZERO
 		_gfx_rect.size = Vector2(cols * cell_width, rows * cell_height)
-		# Recalculate grid dimensions for full screen at half-size cells
-		var full_cols: int = (cols * cell_width) / g_cell_width
-		var full_rows: int = (rows * cell_height) / g_cell_height
+		# Recalculate grid dimensions for full screen at half-size cells.
+		# Use ceil to guarantee the shader covers the entire ColorRect — integer
+		# truncation here was leaving a strip of unrendered pixels at the bottom.
+		var full_cols: int = ceili(float(cols * cell_width) / float(g_cell_width))
+		var full_rows: int = ceili(float(rows * cell_height) / float(g_cell_height))
 		_gfx_mat.set_shader_parameter("grid_cols", full_cols)
 		_gfx_mat.set_shader_parameter("grid_rows", full_rows)
 		_gfx_mat.set_shader_parameter("grid_pixel_size", Vector2(full_cols * g_cell_width, full_rows * g_cell_height))

@@ -1,7 +1,8 @@
 class_name TitleScreen
 extends BaseScreen
 ## Title screen with dual-grid compositing:
-## - Raster layers (menu, logo, sefirot): fullblock 1:2 cells + dither12
+## - Raster layers (logo, sefirot): fullblock 1:2 cells + dither12
+## - Menu: native Label nodes (crisp TTF rendering)
 ## - Fire background: glyph-atlas ASCII rendering (░▒▓)
 
 const NUM_SEEDS: int = 10
@@ -11,7 +12,9 @@ const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG"]
 var _title_shader: Shader
 var _logo_tex: Texture2D
 var _sefirot_tex: Texture2D
-var _menu_tex: ImageTexture
+var _menu_font: Font
+var _menu_labels: Array[Label] = []
+var _menu_tween: Tween
 var _menu_selection: int = 0
 var _setup_gen: int = -1
 var _full_cols: int = 0
@@ -24,7 +27,8 @@ func _init(ascii_grid: AsciiGrid) -> void:
 	super._init(ascii_grid)
 	_title_shader = load("res://assets/shaders/title_screen.gdshader")
 	_logo_tex = load("res://assets/graphics/tg_main_title.png")
-	_sefirot_tex = load("res://assets/graphics/tg_sefirot_title_2.png")
+	_sefirot_tex = load("res://assets/graphics/tg_sefirot_title_6.png")
+	_menu_font = load("res://assets/fonts/NotoSansMono-Medium.ttf")
 
 
 func on_enter(context: Dictionary = {}) -> void:
@@ -34,40 +38,92 @@ func on_enter(context: Dictionary = {}) -> void:
 
 
 func on_exit() -> void:
+	if _menu_tween:
+		_menu_tween.kill()
+		_menu_tween = null
+	for label in _menu_labels:
+		label.queue_free()
+	_menu_labels.clear()
 	grid.clear_gfx_shader()
 	_setup_gen = -1
 	super.on_exit()
 
 
-func _build_menu_texture() -> ImageTexture:
-	## Render menu items as white-on-transparent using the glyph atlas.
-	var cw: int = grid.g_cell_width
-	var ch: int = grid.g_cell_height
-	var atlas_img: Image = grid.get_gfx_atlas().get_image()
+func _setup_menu_labels() -> void:
+	## Create or reposition native Label nodes for crisp menu text.
+	var vp_w: float = float(grid.cols * grid.cell_width)
+	var vp_h: float = float(grid.rows * grid.cell_height)
+	var font_size: int = clampi(int(vp_h * 0.025), 14, 28)
+	var pad_h: float = float(font_size) * 0.5
+	var pad_v: float = float(font_size) * 0.25
 
-	var lines: PackedStringArray = []
-	var max_len: int = 0
+	var texts: PackedStringArray = []
+	var max_w: float = 0
 	for item in MENU_ITEMS:
-		var line: String = "[ " + item + " ]"
-		lines.append(line)
-		max_len = maxi(max_len, line.length())
+		var text: String = item
+		texts.append(text)
+		max_w = maxf(max_w, _menu_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
 
-	var row_h: int = ch * 2  # double-spaced rows
-	var img_w: int = max_len * cw
-	var img_h: int = lines.size() * row_h
-	var img: Image = Image.create(img_w, img_h, false, Image.FORMAT_RGBA8)
+	var padded_w: float = max_w + pad_h * 2.0
+	var line_h: float = _menu_font.get_height(font_size)
+	var padded_h: float = line_h + pad_v * 2.0
+	var gap: float = float(font_size)
+	var slot_w: float = padded_w + gap
+	var total_w: float = slot_w * float(texts.size()) - gap
+	var start_x: float = (vp_w - total_w) / 2.0
+	var y_pos: float = vp_h * 0.82
 
-	for row in range(lines.size()):
-		var line: String = lines[row]
-		var x_off: int = (max_len - line.length()) * cw / 2
-		for ci in range(line.length()):
-			var gi: int = grid._char_map.get(line[ci], 0)
-			var ax: int = gi % 16
-			var ay: int = gi / 16
-			img.blit_rect(atlas_img, Rect2i(ax * cw, ay * ch, cw, ch),
-				Vector2i(x_off + ci * cw, row * row_h + (row_h - ch) / 2))
+	if _menu_labels.is_empty():
+		for i in range(texts.size()):
+			var label := Label.new()
+			label.text = texts[i]
+			label.add_theme_font_override("font", _menu_font)
+			label.add_theme_font_size_override("font_size", font_size)
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			label.position = Vector2(start_x + float(i) * slot_w, y_pos)
+			label.size = Vector2(padded_w, padded_h)
+			label.pivot_offset = Vector2(padded_w / 2.0, padded_h / 2.0)
+			_menu_labels.append(label)
+			grid.add_child(label)
+	else:
+		for i in range(_menu_labels.size()):
+			var label: Label = _menu_labels[i]
+			label.add_theme_font_size_override("font_size", font_size)
+			label.position = Vector2(start_x + float(i) * slot_w, y_pos)
+			label.size = Vector2(padded_w, padded_h)
+			label.pivot_offset = Vector2(padded_w / 2.0, padded_h / 2.0)
 
-	return ImageTexture.create_from_image(img)
+	_update_menu_colors()
+
+
+func _update_menu_colors() -> void:
+	if _menu_tween:
+		_menu_tween.kill()
+	_menu_tween = grid.create_tween().set_parallel(true)
+
+	for i in range(_menu_labels.size()):
+		var label: Label = _menu_labels[i]
+		var selected: bool = (i == _menu_selection)
+		var color: Color = Color(0.90, 1.0, 0.95) if selected else Color(0.30, 0.33, 0.38)
+
+		label.add_theme_color_override("font_color", color)
+
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Color.BLACK
+		bg.border_color = color
+		bg.border_width_left = 1
+		bg.border_width_right = 1
+		bg.border_width_top = 1
+		bg.border_width_bottom = 1
+		bg.content_margin_left = label.size.x * 0.05
+		bg.content_margin_right = label.size.x * 0.05
+		bg.content_margin_top = label.size.y * 0.1
+		bg.content_margin_bottom = label.size.y * 0.1
+		label.add_theme_stylebox_override("normal", bg)
+
+		var target_scale := Vector2(1.15, 1.15) if selected else Vector2.ONE
+		_menu_tween.tween_property(label, "scale", target_scale, 0.12) \
+			.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 
 
 func _setup_shader() -> bool:
@@ -127,25 +183,8 @@ func _setup_shader() -> bool:
 		float(logo_bw * block_w) / vp_w, float(logo_bh * block_h) / vp_h
 	))
 
-	# ── Menu: centered horizontally, lower portion, block-snapped ──
-	_menu_tex = _build_menu_texture()
-	var menu_cw: int = grid.g_cell_width
-	var menu_ch: int = grid.g_cell_height
-	var menu_max_len: int = 0
-	for item in MENU_ITEMS:
-		menu_max_len = maxi(menu_max_len, ("[ " + item + " ]").length())
-	var menu_img_aspect: float = float(menu_max_len * menu_cw) / float(MENU_ITEMS.size() * menu_ch * 2)
-	var menu_bw: int = int(round(float(block_cols) * 0.35))
-	var menu_bh: int = int(round(float(menu_bw) * float(block_w) / (menu_img_aspect * float(block_h))))
-	var menu_x: int = (block_cols - menu_bw) / 2
-	var menu_y: int = int(round(float(block_rows) * 0.68))
-	grid.set_gfx_shader_param("menu_texture", _menu_tex)
-	grid.set_gfx_shader_param("menu_rect", Vector4(
-		float(menu_x * block_w) / vp_w, float(menu_y * block_h) / vp_h,
-		float(menu_bw * block_w) / vp_w, float(menu_bh * block_h) / vp_h
-	))
-	grid.set_gfx_shader_param("menu_items", MENU_ITEMS.size())
-	grid.set_gfx_shader_param("menu_selection", _menu_selection)
+	# ── Menu: native Label nodes (crisp TTF, no shader processing) ──
+	_setup_menu_labels()
 
 	_setup_gen = grid.atlas_generation
 	return true
@@ -183,12 +222,12 @@ func draw(_d_cols: int, _d_rows: int) -> void:
 
 func handle_input(action: String) -> void:
 	match action:
-		"move_up":
+		"move_left", "move_up":
 			_menu_selection = (_menu_selection - 1 + MENU_ITEMS.size()) % MENU_ITEMS.size()
-			grid.set_gfx_shader_param("menu_selection", _menu_selection)
-		"move_down":
+			_update_menu_colors()
+		"move_right", "move_down":
 			_menu_selection = (_menu_selection + 1) % MENU_ITEMS.size()
-			grid.set_gfx_shader_param("menu_selection", _menu_selection)
+			_update_menu_colors()
 		"interact":
 			_select_menu_item()
 

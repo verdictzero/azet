@@ -29,15 +29,6 @@ uniform vec4 sefirot_rect;  // UV-space: x, y, w, h
 uniform sampler2D logo_texture : filter_linear, repeat_disable;
 uniform vec4 logo_rect;
 
-// Menu (Z+1, topmost raster layer)
-uniform sampler2D menu_texture : filter_linear, repeat_disable;
-uniform vec4 menu_rect;
-uniform int menu_selection;
-uniform int menu_items;
-
-const vec3 MENU_SEL = vec3(0.90, 1.0, 0.95);
-const vec3 MENU_DIM = vec3(0.30, 0.33, 0.38);
-
 // 8x8 Bayer dithering matrix (normalized 0..1)
 const float BAYER[64] = {
 	 0.0/64.0, 32.0/64.0,  8.0/64.0, 40.0/64.0,  2.0/64.0, 34.0/64.0, 10.0/64.0, 42.0/64.0,
@@ -84,20 +75,6 @@ void fragment() {
 
 	vec4 out_color = vec4(0.0);
 	bool hit = false;
-
-	// ── Z+1: Menu (topmost, fullblock + dither12) ──
-	if (menu_rect.z > 0.0) {
-		vec2 muv = (blk_center_uv - menu_rect.xy) / menu_rect.zw;
-		if (muv.x >= 0.0 && muv.x <= 1.0 && muv.y >= 0.0 && muv.y <= 1.0) {
-			vec4 m = texture(menu_texture, muv);
-			if (m.a > 0.1) {
-				int row = clamp(int(floor(muv.y * float(menu_items))), 0, menu_items - 1);
-				vec3 color = (row == menu_selection) ? MENU_SEL : MENU_DIM;
-				out_color = vec4(dither12(color * m.a, blk), 1.0);
-				hit = true;
-			}
-		}
-	}
 
 	// ── Z-1: Logo (fullblock + dither12) ──
 	if (logo_rect.z > 0.0) {
