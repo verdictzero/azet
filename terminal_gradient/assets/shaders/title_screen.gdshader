@@ -30,12 +30,12 @@ uniform sampler2D logo_texture : filter_linear, repeat_disable;
 uniform vec4 logo_rect;
 
 // Golden wash applied to everything except the logo
-uniform vec3 tint_color = vec3(1.00, 0.78, 0.35);
+uniform vec3 tint_color = vec3(0.96, 0.79, 0.45);
 uniform float tint_strength : hint_range(0.0, 1.0) = 0.55;
 
 // ── Particle layer (procedural, drifts up from bottom) ──
 const int PARTICLE_COUNT = 22;
-const int CRUMBS_PER_PARTICLE = 10;
+const int CRUMBS_PER_PARTICLE = 20;
 // Light direction matching the sefirot graphic: lower-right.
 // Normalized vector pointing TOWARD the light source.
 const vec2 PARTICLE_LIGHT_DIR = vec2(0.7071, 0.7071);
@@ -100,8 +100,10 @@ vec2 hash21(float p) {
 
 // Evaluate one rock chunk at `pos` with directional shading and an
 // irregular non-circular outline. Source-over accumulates into the layer.
+// `angle` rotates the silhouette wobble (so the rock appears to spin)
+// while the lighting stays in world space.
 void eval_chunk(
-	vec2 frag_px, vec2 pos, float size, float seed, float alpha_mul,
+	vec2 frag_px, vec2 pos, float size, float seed, float alpha_mul, float angle,
 	inout vec3 accum, inout float a_accum
 ) {
 	if (a_accum >= 0.99) return;
@@ -114,11 +116,17 @@ void eval_chunk(
 	float r = sqrt(max(r2, 1e-6));
 	vec2 nrm = d2 / r;
 
+	// Rotated normal used only for the silhouette wobble — gives the chunk
+	// a spinning appearance. Lighting below uses the unrotated `nrm`.
+	float ca = cos(angle);
+	float sa = sin(angle);
+	vec2 rnrm = vec2(nrm.x * ca - nrm.y * sa, nrm.x * sa + nrm.y * ca);
+
 	// Irregular rocky outline via overlapping low-frequency wobbles.
 	float wobble =
-		  sin(nrm.x * 5.3 + seed * 1.3) * 0.18
-		+ sin(nrm.y * 7.1 - seed * 0.7) * 0.12
-		+ sin((nrm.x - nrm.y) * 6.5 + seed * 2.7) * 0.10;
+		  sin(rnrm.x * 5.3 + seed * 1.3) * 0.18
+		+ sin(rnrm.y * 7.1 - seed * 0.7) * 0.12
+		+ sin((rnrm.x - rnrm.y) * 6.5 + seed * 2.7) * 0.10;
 	float er = size * (0.82 + wobble);
 
 	// Hard rock edge with sub-pixel anti-alias.
@@ -163,9 +171,14 @@ vec4 particle_layer(vec2 frag_px) {
 		float salt = fi * 13.37 + cycle * 71.0;
 		vec2  r1   = hash21(salt);
 		vec2  r2   = hash21(salt + 5.0);
+		vec2  r3   = hash21(salt + 9.0);
 
 		float spawn_x = r1.x * grid_pixel_size.x;
 		float size    = mix(5.0, 11.0, r1.y);    // px radius
+
+		// Per-cycle random rotation: signed angular velocity + initial phase.
+		float main_ang_vel = (r3.x - 0.5) * 1.6;   // ±0.8 rad/s, slow tumble
+		float main_angle0  = r3.y * 6.2832;
 
 		// Vertical progress 0 (bottom) → 1 (top). Linear straight-up rise.
 		float local_t = fract(t_abs / lifetime);
@@ -177,7 +190,8 @@ vec4 particle_layer(vec2 frag_px) {
 				  * (1.0 - smoothstep(0.88, 1.0, local_t));
 
 		// Main rock chunk at the head.
-		eval_chunk(frag_px, head, size, salt, env, accum, a_accum);
+		float main_angle = main_angle0 + main_ang_vel * local_t * lifetime;
+		eval_chunk(frag_px, head, size, salt, env, main_angle, accum, a_accum);
 
 		// ── Falling, decaying sub-particles ──
 		// Each sub spawns at a deterministic moment in the main's cycle,
@@ -193,7 +207,12 @@ vec4 particle_layer(vec2 frag_px) {
 			// Per-sub random properties (re-shuffled every main respawn).
 			vec2 sub_r1 = hash21(salt + 41.0 + kf * 13.0);
 			vec2 sub_r2 = hash21(salt + 73.0 + kf * 17.0);
+			vec2 sub_r3 = hash21(salt + 109.0 + kf * 19.0);
 			float sub_life = mix(1.6, 3.4, sub_r1.x);
+
+			// Per-crumb tumble: faster than the main chunks.
+			float sub_ang_vel = (sub_r3.x - 0.5) * 4.0; // ±2 rad/s
+			float sub_angle0  = sub_r3.y * 6.2832;
 
 			// How long this sub has existed (in seconds).
 			float sub_age = (local_t - spawn_local_t) * lifetime;
@@ -222,7 +241,8 @@ vec4 particle_layer(vec2 frag_px) {
 
 			float cs = size * mix(0.30, 0.55, sub_r2.y);
 
-			eval_chunk(frag_px, cp, cs, salt + kf * 7.3, decay * env, accum, a_accum);
+			float sub_angle = sub_angle0 + sub_ang_vel * sub_age;
+			eval_chunk(frag_px, cp, cs, salt + kf * 7.3, decay * env, sub_angle, accum, a_accum);
 		}
 	}
 
@@ -259,7 +279,9 @@ void fragment() {
 		if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
 			vec4 s = texture(sefirot_texture, suv);
 			if (s.a > 0.5) {
-				out_color = vec4(dither12(s.rgb, blk), 1.0);
+				// Desaturate to luminance so the global gold wash takes hold
+				float slum = dot(s.rgb, vec3(0.299, 0.587, 0.114));
+				out_color = vec4(dither12(vec3(slum), blk), 1.0);
 				hit = true;
 			}
 		}
@@ -311,7 +333,12 @@ void fragment() {
 		// ── Z-2.5: Particles drifting up, in front of fire, behind sefirot/logo ──
 		vec4 p = particle_layer(blk_center_uv * grid_pixel_size);
 		if (p.a > 0.0) {
-			vec3 dithered = dither12(p.rgb / max(p.a, 1e-4), blk);
+			// Desaturate to luminance so the global gold wash can re-tint
+			// these — the saturated violet palette would otherwise resist
+			// the mix and read as purple through the wash.
+			vec3 raw = p.rgb / max(p.a, 1e-4);
+			float plum = dot(raw, vec3(0.299, 0.587, 0.114));
+			vec3 dithered = dither12(vec3(plum), blk);
 			out_color.rgb = mix(out_color.rgb, dithered, p.a);
 		}
 	}
