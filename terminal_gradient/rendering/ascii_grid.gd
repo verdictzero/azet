@@ -119,7 +119,9 @@ var world_rows: int:
 
 func _ready() -> void:
 	if font == null:
-		font = ThemeDB.fallback_font
+		# Primary mono + card-suit/math fallback chain. See core/fonts.gd
+		# for why this is load-through-FontLibrary instead of a scene ref.
+		font = FontLibrary.primary()
 	_default_fg = Constants.COLORS.BRIGHT_WHITE
 	_default_bg = Constants.COLORS.BLACK
 	_grass_noise = PerlinNoise.new(SeededRNG.new(42))
@@ -561,6 +563,20 @@ func tint_gfx_cell(col: int, row: int, tint: Color, alpha: float) -> void:
 	var idx: int = _gi(col, row)
 	_g_fg[idx] = _g_fg[idx].lerp(tint, alpha)
 	_g_bg[idx] = _g_bg[idx].lerp(tint, alpha)
+
+
+func tint_gfx_cell_weighted(col: int, row: int, tint: Color,
+		fg_alpha: float, bg_alpha: float) -> void:
+	## Tint fg and bg of a gfx cell with independent alphas. Used by the
+	## overworld god-ray pass so bright sunbeams can brighten character
+	## pixels strongly without washing out dark tile backgrounds.
+	if row < 0 or row >= g_rows or col < 0 or col >= g_cols:
+		return
+	var idx: int = _gi(col, row)
+	if fg_alpha > 0.0:
+		_g_fg[idx] = _g_fg[idx].lerp(tint, fg_alpha)
+	if bg_alpha > 0.0:
+		_g_bg[idx] = _g_bg[idx].lerp(tint, bg_alpha)
 
 
 func get_text_char(col: int, row: int) -> String:

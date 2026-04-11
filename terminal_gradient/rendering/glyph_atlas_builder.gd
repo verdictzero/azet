@@ -13,8 +13,14 @@ const MAX_GLYPHS: int = ATLAS_COLS * ATLAS_ROWS  # 256
 static var CHARSET: PackedStringArray = _build_charset()
 
 static func _build_charset() -> PackedStringArray:
+	## CHARSET NOTES:
+	## 1. Index 0 must be space — treated as "empty" / transparent.
+	## 2. Card suits ♠♣♥♦ live in NotoSansSymbols2, not NotoSansMono;
+	##    FontLibrary.primary() chains them as fallbacks so draw_char
+	##    still resolves them even though the primary font lacks them.
+	## 3. Atlas layout is 16x16 = 256 slots. Adding glyphs here is fine
+	##    up to that limit.
 	var chars: PackedStringArray = []
-	# Index 0 = space (used as default/empty)
 	var s: String = " !\"#$%&'()*+,-./0123456789:;<=>?@"
 	s += "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`"
 	s += "abcdefghijklmnopqrstuvwxyz{|}~"
@@ -23,15 +29,32 @@ static func _build_charset() -> PackedStringArray:
 	# Block elements
 	s += "█▓▒░▀▄▐▌"
 	# Geometric shapes + symbols
-	s += "■□▪▫●○◆◇▲▼◄►"
-	# Card suits / faces / misc
-	s += "♦♣♠♥☺☻☼"
+	s += "■□▪▫●○◆◇▲▼◄►△▽"
+	# Card suits / faces / misc  (SUITS ARE CRITICAL for overworld trees)
+	s += "♦♣♠♥☺☻☼◘◙"
 	# Arrows
 	s += "↕↨↑↓→←↔"
 	# Mathematical / punctuation
 	s += "·∙•°±²³µ¶¸¹º»¼½¾¿×÷"
-	s += "★✦✧✿❀✻≈∽≡∞†‡※⌂"
+	s += "★✦✧✿❀✻≈∽≡∞†‡※⌂∩⌒ı❆"
 	s += "‼§∟▬"
+	# ── NEW: glyphs unlocked by the Symbols2 / Math fallback chain ──
+	# Weather (future overworld TOD/weather system)
+	s += "☀☁☂☃☄"
+	# Celestial (day/night, planet map markers)
+	s += "☉☽☾"
+	# Mechanical / tech (facility tiles, power/anomaly markers)
+	s += "⚙⚡⌬⌘⌖"
+	# Patterned squares (colony hull panels, damaged floor, grates)
+	s += "▣▤▥▦▧▨▩"
+	# Chess pieces (boss / named NPC icons)
+	s += "♔♕♖♗♘♙"
+	# Dice faces (random-event markers, chance nodes)
+	s += "⚀⚁⚂⚃⚄⚅"
+	# Shamrock (bushes / small plants, visually distinct from ♣ tree tops)
+	s += "☘"
+	# Sine wave (alt water char for slow streams vs rapids ~)
+	s += "∿"
 
 	for ch in s:
 		chars.append(ch)

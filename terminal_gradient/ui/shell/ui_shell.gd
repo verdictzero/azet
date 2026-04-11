@@ -70,7 +70,7 @@ var background_color: Color = OPAQUE_BLACK
 
 func _init(ascii_grid: AsciiGrid) -> void:
 	grid = ascii_grid
-	_menu_font = load("res://assets/fonts/NotoSansMono-Medium.ttf")
+	_menu_font = FontLibrary.primary()
 
 
 # ── Public API ──────────────────────────────────────

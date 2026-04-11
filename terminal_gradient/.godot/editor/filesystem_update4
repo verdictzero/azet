@@ -1,3 +1,4 @@
+res://rendering/ascii_grid.gd
+res://rendering/glyph_atlas_builder.gd
 res://ui/screens/title_screen.gd
-res://ui/screens/ui_shell_demo_screen.gd
 res://ui/shell/ui_shell.gd
