@@ -7,14 +7,13 @@ extends BaseScreen
 
 const NUM_SEEDS: int = 10
 const FIRE_CHARSET: Array[String] = [" ", ".", "\u00B7", ":", "\u2219", "\u2591", "\u2592", "\u2593"]
-const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG"]
+const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG", "UI SHELL"]
 
 var _title_shader: Shader
 var _logo_tex: Texture2D
 var _sefirot_tex: Texture2D
 var _menu_font: Font
 var _menu_labels: Array[Label] = []
-var _menu_tween: Tween
 var _menu_selection: int = 0
 var _setup_gen: int = -1
 var _full_cols: int = 0
@@ -38,9 +37,6 @@ func on_enter(context: Dictionary = {}) -> void:
 
 
 func on_exit() -> void:
-	if _menu_tween:
-		_menu_tween.kill()
-		_menu_tween = null
 	for label in _menu_labels:
 		label.queue_free()
 	_menu_labels.clear()
@@ -97,33 +93,8 @@ func _setup_menu_labels() -> void:
 
 
 func _update_menu_colors() -> void:
-	if _menu_tween:
-		_menu_tween.kill()
-	_menu_tween = grid.create_tween().set_parallel(true)
-
 	for i in range(_menu_labels.size()):
-		var label: Label = _menu_labels[i]
-		var selected: bool = (i == _menu_selection)
-		var color: Color = Color(0.90, 1.0, 0.95) if selected else Color(0.30, 0.33, 0.38)
-
-		label.add_theme_color_override("font_color", color)
-
-		var bg := StyleBoxFlat.new()
-		bg.bg_color = Color.BLACK
-		bg.border_color = color
-		bg.border_width_left = 1
-		bg.border_width_right = 1
-		bg.border_width_top = 1
-		bg.border_width_bottom = 1
-		bg.content_margin_left = label.size.x * 0.05
-		bg.content_margin_right = label.size.x * 0.05
-		bg.content_margin_top = label.size.y * 0.1
-		bg.content_margin_bottom = label.size.y * 0.1
-		label.add_theme_stylebox_override("normal", bg)
-
-		var target_scale := Vector2(1.15, 1.15) if selected else Vector2.ONE
-		_menu_tween.tween_property(label, "scale", target_scale, 0.12) \
-			.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+		MenuButtonStyle.apply(_menu_labels[i], i == _menu_selection)
 
 
 func _setup_shader() -> bool:
@@ -238,3 +209,4 @@ func _select_menu_item() -> void:
 		1: request_action("continue_game")
 		2: request_action("open_settings")
 		3: request_action("debug_start")
+		4: request_action("ui_shell_demo")

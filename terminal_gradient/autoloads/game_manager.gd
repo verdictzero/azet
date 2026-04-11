@@ -41,6 +41,7 @@ enum State {
 	ENGINEERING_SPACE,
 	FIRE_DEMO,
 	TITLE_SCREEN,
+	UI_SHELL_DEMO,
 }
 
 var current_state: State = State.PREAMBLE
@@ -75,6 +76,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.MENU, MainMenuScreen.new(ascii_grid))
 	ui_manager.register_screen(State.FIRE_DEMO, FireDemoScreen.new(ascii_grid))
 	ui_manager.register_screen(State.TITLE_SCREEN, TitleScreen.new(ascii_grid))
+	ui_manager.register_screen(State.UI_SHELL_DEMO, UIShellDemoScreen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -169,5 +171,9 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.SETTINGS)
 		"open_help":
 			set_state(State.HELP)
+		"ui_shell_demo":
+			set_state(State.UI_SHELL_DEMO)
+		"goto_title":
+			set_state(State.TITLE_SCREEN)
 		_:
 			push_warning("GameManager: Unhandled screen action '%s'" % action_name)
