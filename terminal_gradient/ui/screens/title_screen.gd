@@ -10,6 +10,7 @@ const FIRE_CHARSET: Array[String] = [" ", ".", "\u00B7", ":", "\u2219", "\u2591"
 const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG", "UI SHELL"]
 
 var _title_shader: Shader
+var _particle_shader: Shader
 var _logo_tex: Texture2D
 var _sefirot_tex: Texture2D
 var _menu_font: Font
@@ -20,11 +21,15 @@ var _full_cols: int = 0
 var _full_rows: int = 0
 var _sef_base_rect: Vector4 = Vector4.ZERO
 var _sef_bob_range: float = 0.0
+var _particle_subviewport: SubViewport
+var _particle_rect: ColorRect
+var _particle_mat: ShaderMaterial
 
 
 func _init(ascii_grid: AsciiGrid) -> void:
 	super._init(ascii_grid)
 	_title_shader = load("res://assets/shaders/title_screen.gdshader")
+	_particle_shader = load("res://assets/shaders/title_particles.gdshader")
 	_logo_tex = load("res://assets/graphics/tg_main_title.png")
 	_sefirot_tex = load("res://assets/graphics/tg_sefirot_title_6.png")
 	_menu_font = load("res://assets/fonts/NotoSansMono-Medium.ttf")
@@ -40,6 +45,11 @@ func on_exit() -> void:
 	for label in _menu_labels:
 		label.queue_free()
 	_menu_labels.clear()
+	if _particle_subviewport:
+		_particle_subviewport.queue_free()
+		_particle_subviewport = null
+		_particle_rect = null
+		_particle_mat = null
 	grid.clear_gfx_shader()
 	_setup_gen = -1
 	super.on_exit()
@@ -97,6 +107,31 @@ func _update_menu_colors() -> void:
 		MenuButtonStyle.apply(_menu_labels[i], i == _menu_selection)
 
 
+func _setup_particle_subviewport(vp_w: int, vp_h: int, block_cols: int, block_rows: int) -> void:
+	## Lazily creates the SubViewport + ColorRect that runs the particle
+	## shader at block resolution, and (re)sizes it to match the current
+	## block grid. The SubViewport texture is sampled by the main shader.
+	if _particle_subviewport == null:
+		_particle_subviewport = SubViewport.new()
+		_particle_subviewport.transparent_bg = true
+		_particle_subviewport.disable_3d = true
+		_particle_subviewport.gui_disable_input = true
+		_particle_subviewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		_particle_mat = ShaderMaterial.new()
+		_particle_mat.shader = _particle_shader
+		_particle_rect = ColorRect.new()
+		_particle_rect.material = _particle_mat
+		_particle_rect.color = Color.WHITE
+		_particle_rect.position = Vector2.ZERO
+		_particle_subviewport.add_child(_particle_rect)
+		grid.add_child(_particle_subviewport)
+
+	_particle_subviewport.size = Vector2i(block_cols, block_rows)
+	_particle_rect.size = Vector2(block_cols, block_rows)
+	_particle_mat.set_shader_parameter("grid_pixel_size", Vector2(vp_w, vp_h))
+	_particle_mat.set_shader_parameter("time", grid.frame_time_sec)
+
+
 func _setup_shader() -> bool:
 	var atlas: ImageTexture = grid.get_gfx_atlas()
 	if atlas == null:
@@ -127,6 +162,13 @@ func _setup_shader() -> bool:
 
 	var block_cols: int = int(vp_w) / block_w
 	var block_rows: int = int(vp_h) / block_h
+
+	# ── Particle SubViewport: render the rock-chunk field at block
+	# resolution (~1/50× full viewport) and feed it to the main shader as
+	# a texture. Without this, the 22-particle × 10-crumb evaluation runs
+	# per pixel and tanks the framerate on low-end GPUs. ──
+	_setup_particle_subviewport(int(vp_w), int(vp_h), block_cols, block_rows)
+	grid.set_gfx_shader_param("particle_buffer", _particle_subviewport.get_texture())
 
 	# ── Sefirot: 85% height, centered, block-snapped ──
 	var sef_aspect: float = 420.0 / 760.0
@@ -182,6 +224,10 @@ func draw(_d_cols: int, _d_rows: int) -> void:
 
 	grid.set_gfx_shader_param("seeds", seed_arr)
 	grid.set_gfx_shader_param("time", now)
+
+	# Drive the particle subviewport's animation clock.
+	if _particle_mat:
+		_particle_mat.set_shader_parameter("time", now)
 
 	# Sefirot: subtle float up/down
 	var bob: float = sin(now * 0.5) * _sef_bob_range

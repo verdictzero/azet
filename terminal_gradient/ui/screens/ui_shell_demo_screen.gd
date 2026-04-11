@@ -11,6 +11,7 @@ const DEMO_MODES: Array[String] = [
 	"GRID 3x3",
 	"GRID 4x4",
 	"MIXED",
+	"FIRE NOISE",
 ]
 
 # Right-side stage area; left 25% is the permanent menu pane.
@@ -73,6 +74,8 @@ func _rebuild() -> void:
 			panes.append_array(_layout_grid_4x4_mixed())
 		5:
 			panes.append_array(_layout_mixed())
+		6:
+			panes.append_array(_layout_fire_noise())
 	_shell.set_panes(panes)
 
 
@@ -116,6 +119,14 @@ func _text_pane(rect: Rect2, title: String, text: String) -> UIShell.Pane:
 	p.content_type = UIShell.ContentType.TEXT
 	p.title = title
 	p.text = text
+	return p
+
+
+func _fire_pane(rect: Rect2, title: String) -> UIShell.Pane:
+	var p := UIShell.Pane.new()
+	p.rect = rect
+	p.content_type = UIShell.ContentType.FIRE
+	p.title = title
 	return p
 
 
@@ -227,6 +238,37 @@ func _layout_grid_4x4_mixed() -> Array[UIShell.Pane]:
 	panes[idx_text].title = "TEXT"
 	panes[idx_text].text = "Mixed TTF cell."
 	return panes
+
+
+func _layout_fire_noise() -> Array[UIShell.Pane]:
+	# Top: full-width fire pane on its own. Bottom: split with an ASCII
+	# pane next to a smaller fire pane so you can see how the procedural
+	# background composes alongside other content types.
+	var top_rect := Rect2(STAGE_RECT.position.x, STAGE_RECT.position.y,
+			STAGE_RECT.size.x, STAGE_RECT.size.y * 0.55)
+	var bottom_y: float = STAGE_RECT.position.y + STAGE_RECT.size.y * 0.55
+	var bottom_h: float = STAGE_RECT.size.y * 0.45
+	var bottom_l := Rect2(STAGE_RECT.position.x, bottom_y,
+			STAGE_RECT.size.x * 0.5, bottom_h)
+	var bottom_r := Rect2(STAGE_RECT.position.x + STAGE_RECT.size.x * 0.5, bottom_y,
+			STAGE_RECT.size.x * 0.5, bottom_h)
+	var ascii_lines: Array[String] = [
+		"",
+		"  Voronoi-glyph fire layer",
+		"  extracted from the title",
+		"  screen as a reusable pane",
+		"  background.",
+		"",
+		"  Each pane animates its own",
+		"  seeds + time uniforms,",
+		"  scaled to the pane's own",
+		"  glyph-cell dimensions.",
+	]
+	return [
+		_fire_pane(top_rect, "FIRE NOISE - FULL"),
+		_ascii_pane(bottom_l, "ASCII", ascii_lines),
+		_fire_pane(bottom_r, "FIRE NOISE - HALF"),
+	]
 
 
 func _layout_mixed() -> Array[UIShell.Pane]:

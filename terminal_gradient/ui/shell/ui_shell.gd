@@ -13,8 +13,13 @@ extends RefCounted
 ## when `set_panes()` is called.
 
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
+const PaneFireShader: Shader = preload("res://assets/shaders/pane_fire.gdshader")
 
-enum ContentType { ASCII, RASTER, TEXT, MENU }
+# Glyphs the fire shader cycles through, lightest to densest.
+const FIRE_CHARSET: Array[String] = [" ", ".", "\u00B7", ":", "\u2219", "\u2591", "\u2592", "\u2593"]
+const FIRE_NUM_SEEDS: int = 10
+
+enum ContentType { ASCII, RASTER, TEXT, MENU, FIRE }
 
 const BORDER_FG: Color = Color(0.55, 0.60, 0.72)
 # IMPORTANT: ascii_grid.gdshader treats (space char + pure black bg) as
@@ -86,6 +91,8 @@ func set_panes(panes: Array[Pane]) -> void:
 				var built: Dictionary = _build_menu_nodes(pane)
 				nodes = built.get("nodes", [])
 				bases = built.get("bases", [])
+			ContentType.FIRE:
+				nodes = _build_fire_nodes(pane)
 			# ASCII has no persistent nodes; redrawn each frame in draw().
 		_pane_nodes.append(nodes)
 		_menu_base_positions.append(bases)
@@ -125,6 +132,8 @@ func draw(_cols: int, _rows: int) -> void:
 						label_text, TITLE_FG, BORDER_BG)
 		if pane.content_type == ContentType.ASCII:
 			_draw_ascii_pane(pane, _inner_cell_rect(pane, outer))
+		elif pane.content_type == ContentType.FIRE:
+			_animate_fire_pane(i)
 
 
 func clear() -> void:
@@ -242,6 +251,80 @@ func _build_raster_nodes(pane: Pane) -> Array:
 	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	tr.size = fit_size
 	return [holder]
+
+
+func _build_fire_nodes(pane: Pane) -> Array:
+	## Procedural Voronoi-glyph fire pane. Owns its own ColorRect +
+	## ShaderMaterial; uniforms are pushed every frame from draw().
+	var rect_px: Rect2 = _pane_inner_pixel_rect(pane)
+	if rect_px.size.x <= 0.0 or rect_px.size.y <= 0.0:
+		return []
+	var atlas: ImageTexture = grid.get_gfx_atlas()
+	if atlas == null:
+		return []
+
+	var rect := ColorRect.new()
+	rect.position = rect_px.position
+	rect.size = rect_px.size
+	rect.color = Color.WHITE
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var mat := ShaderMaterial.new()
+	mat.shader = PaneFireShader
+	mat.set_shader_parameter("rect_size_px", rect_px.size)
+	mat.set_shader_parameter("cell_size",
+			Vector2(float(grid.g_cell_width), float(grid.g_cell_height)))
+	var pane_glyph_cols: int = maxi(1, int(rect_px.size.x) / grid.g_cell_width)
+	var pane_glyph_rows: int = maxi(1, int(rect_px.size.y) / grid.g_cell_height)
+	mat.set_shader_parameter("grid_cols", pane_glyph_cols)
+	mat.set_shader_parameter("grid_rows", pane_glyph_rows)
+	mat.set_shader_parameter("glyph_atlas", atlas)
+	mat.set_shader_parameter("atlas_cols", GlyphAtlasBuilder.ATLAS_COLS)
+	mat.set_shader_parameter("atlas_rows", GlyphAtlasBuilder.ATLAS_ROWS)
+
+	var glyph_indices := PackedInt32Array()
+	glyph_indices.resize(FIRE_CHARSET.size())
+	for i in range(FIRE_CHARSET.size()):
+		glyph_indices[i] = grid._char_map.get(FIRE_CHARSET[i], 0)
+	mat.set_shader_parameter("fire_glyphs", glyph_indices)
+
+	rect.material = mat
+	grid.add_child(rect)
+	return [rect]
+
+
+func _animate_fire_pane(pane_index: int) -> void:
+	## Push the animated `seeds` + `time` uniforms for one fire pane.
+	## Mirrors title_screen.gd's seed motion, scaled to the pane's own
+	## glyph-cell dimensions so the Voronoi cells fill the available area.
+	if pane_index < 0 or pane_index >= _pane_nodes.size():
+		return
+	var nodes: Array = _pane_nodes[pane_index]
+	if nodes.is_empty():
+		return
+	var rect: ColorRect = nodes[0]
+	var mat: ShaderMaterial = rect.material
+	if mat == null:
+		return
+	var pane_glyph_cols: int = maxi(1, int(rect.size.x) / grid.g_cell_width)
+	var pane_glyph_rows: int = maxi(1, int(rect.size.y) / grid.g_cell_height)
+	var half_cols: float = float(pane_glyph_cols) / 2.0
+	var half_rows: float = float(pane_glyph_rows) / 2.0
+	var now: float = grid.frame_time_sec
+	var seed_arr := PackedVector2Array()
+	seed_arr.resize(FIRE_NUM_SEEDS)
+	for s in range(FIRE_NUM_SEEDS):
+		var sf: float = float(s)
+		seed_arr[s] = Vector2(
+			half_cols
+				+ sin(now * 0.45 + sf * 2.09) * (float(pane_glyph_cols) * 0.4)
+				+ sin(now * 0.26 + sf * 1.3) * (float(pane_glyph_cols) * 0.15),
+			half_rows
+				+ cos(now * 0.375 + sf * 1.88) * (half_rows * 0.8)
+				+ cos(now * 0.195 + sf * 0.9) * (half_rows * 0.3)
+		)
+	mat.set_shader_parameter("seeds", seed_arr)
+	mat.set_shader_parameter("time", now)
 
 
 func _build_text_nodes(pane: Pane) -> Array:
