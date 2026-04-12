@@ -16,6 +16,9 @@ const SUN_DX: float = 0.7071
 const SUN_DY: float = 0.7071
 const IS_DAY: bool = true
 
+# Master lighting switch. When false, shadow/AO/god-ray passes are skipped.
+const ENABLE_LIGHTING: bool = false
+
 # ── Shadow pass (js/main.js:6510-6570) ──
 # The legacy caps shadow alpha at 0.8125 and forest interior darkening at
 # 0.12. In our rendering pipeline that combination collapses dark-palette
@@ -204,7 +207,10 @@ func _draw_world() -> void:
 	# down to 1× world_cols×world_rows.
 	_prefetch_viewport_tiles(vw, vh)
 
-	_build_shadow_buffer(vw, vh)
+	if ENABLE_LIGHTING:
+		_build_shadow_buffer(vw, vh)
+	else:
+		_clear_light_buffers(vw, vh)
 
 	var t_sec: float = grid.frame_time_sec
 
@@ -267,8 +273,9 @@ func _draw_world() -> void:
 			_darken_world_cell(wx_off, wy_off, a)
 
 	# Pass 4: god rays — computed on unshadowed cells, cached over frames.
-	_update_god_rays(vw, vh)
-	_apply_god_rays()
+	if ENABLE_LIGHTING:
+		_update_god_rays(vw, vh)
+		_apply_god_rays()
 
 	# Pass 5: time-of-day tint overlay. Static midday → no-op.
 	_apply_time_tint(vw, vh)
@@ -395,6 +402,21 @@ static func _brighten(c: Color, amount: float) -> Color:
 
 
 # ── Shadow pass ─────────────────────────────────────
+
+func _clear_light_buffers(vw: int, vh: int) -> void:
+	## When lighting is disabled, keep the shadow/highlight buffers sized
+	## and zeroed so Pass 2/3 find nothing to darken.
+	var total: int = vw * vh
+	if _shadow_w != vw or _shadow_h != vh or _shadow_buf.size() != total:
+		_shadow_buf = PackedFloat32Array()
+		_shadow_buf.resize(total)
+		_highlight_buf = PackedFloat32Array()
+		_highlight_buf.resize(total)
+		_shadow_w = vw
+		_shadow_h = vh
+	_shadow_buf.fill(0.0)
+	_highlight_buf.fill(0.0)
+
 
 func _build_shadow_buffer(vw: int, vh: int) -> void:
 	## Cast shadows from tall tiles in the sun direction, accumulating alpha

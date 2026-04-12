@@ -18,9 +18,10 @@ const CHUNK_SIZE: int = 32
 const TERRAIN_SCALE: float = 0.02
 
 # ── Feature flags (trickle content back on by flipping these) ──
-# When false, _terrain_from_noise only produces GRASSLAND (still with
-# the prox gradient so it doesn't look flat). Rivers and bridges are
-# skipped entirely. Section walls always render regardless.
+# When ENABLE_GRASS and ENABLE_WALLS are both false, every tile is
+# VOID_SPACE → the whole world renders as the circuitry background.
+const ENABLE_WALLS: bool = false
+const ENABLE_GRASS: bool = false
 const ENABLE_RIVERS: bool = false
 const ENABLE_BRIDGES: bool = false
 const ENABLE_BUSHES: bool = false
@@ -195,17 +196,25 @@ func _generate_chunk(cx: int, cy: int) -> Array:
 
 func _generate_tile(wx: int, wy: int) -> Dictionary:
 	# Section walls on the left and right edges of the section (7-thick).
-	var wall_dist: int = -1
-	if wx < WALL_THICKNESS:
-		wall_dist = wx
-	elif wx >= section_width_tiles - WALL_THICKNESS:
-		wall_dist = section_width_tiles - 1 - wx
-	if wall_dist >= 0:
-		return _make_wall_tile(wall_dist)
+	if ENABLE_WALLS:
+		var wall_dist: int = -1
+		if wx < WALL_THICKNESS:
+			wall_dist = wx
+		elif wx >= section_width_tiles - WALL_THICKNESS:
+			wall_dist = section_width_tiles - 1 - wx
+		if wall_dist >= 0:
+			return _make_wall_tile(wall_dist)
+
+	# When grass is off, the whole habitat is void/circuitry. Make
+	# in-bounds void walkable so the player can still move around —
+	# out-of-bounds is still blocked by the coord check in is_walkable.
+	if not ENABLE_GRASS:
+		return OverworldTiles.make(
+			OverworldTiles.VOID_SPACE, " ", Color.BLACK, Color.BLACK, true
+		)
 
 	# Rivers (with cylindrical Y wrap consideration — rivers use the
-	# wrapped coord so they loop smoothly). Gated by ENABLE_RIVERS so we
-	# can strip the habitat down to bare grassland during feature bring-up.
+	# wrapped coord so they loop smoothly).
 	if ENABLE_RIVERS:
 		var river_dist: float = _get_river_distance(wx, wy)
 		if river_dist <= float(RIVER_HALF_WIDTH):

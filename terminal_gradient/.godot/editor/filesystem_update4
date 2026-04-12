@@ -1,4 +1,6 @@
-res://rendering/ascii_grid.gd
-res://ui/screens/overworld_demo_screen.gd
-res://core/overworld_tiles.gd
 res://core/overworld_world.gd
+res://rendering/ascii_grid.gd
+res://core/constants.gd
+res://core/overworld_tiles.gd
+res://ui/screens/overworld_demo_screen.gd
+res://autoloads/game_manager.gd

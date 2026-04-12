@@ -35,11 +35,16 @@ var g_origin_y: int = 0
 # title screen; this flag keeps the data-texture pipeline but grows the
 # gfx grid to viewport size.
 var _gfx_fills_viewport: bool = false
+var _base_g_cell_width: int = 0
+var _base_g_cell_height: int = 0
 
 const TILE_DENSITY := 6
+# Active density — set to TILE_DENSITY/2 by set_gfx_fills_viewport for overworld perf.
+var active_tile_density: int = TILE_DENSITY
 
 # --- GPU rendering ---
 var _char_map: Dictionary = {}  # String -> int (glyph index)
+var _gi_table: PackedInt32Array = PackedInt32Array()  # Unicode codepoint → glyph index (O(1) lookup)
 
 # Text buffer data textures
 var _t_data_img: Image
@@ -75,9 +80,11 @@ var _t_bg_b: PackedColorArray
 var _g_chars_a: PackedStringArray
 var _g_fg_a: PackedColorArray
 var _g_bg_a: PackedColorArray
+var _g_gi_a: PackedInt32Array
 var _g_chars_b: PackedStringArray
 var _g_fg_b: PackedColorArray
 var _g_bg_b: PackedColorArray
+var _g_gi_b: PackedInt32Array
 
 # Active references (point to A or B)
 var _t_chars: PackedStringArray
@@ -90,9 +97,11 @@ var _t_prev_bg: PackedColorArray
 var _g_chars: PackedStringArray
 var _g_fg: PackedColorArray
 var _g_bg: PackedColorArray
+var _g_gi: PackedInt32Array
 var _g_prev_chars: PackedStringArray
 var _g_prev_fg: PackedColorArray
 var _g_prev_bg: PackedColorArray
+var _g_prev_gi: PackedInt32Array
 
 var _using_set_a: bool = true
 
@@ -100,6 +109,11 @@ var _using_set_a: bool = true
 var _dirty: bool = true
 var _force_full_redraw: bool = true
 var _has_gfx: bool = false
+var _has_text: bool = false
+# When true, the gfx/text rects stay hidden regardless of buffer state.
+# Sprite-based screens (new overworld) set this so their own nodes render
+# uncovered by the ASCII layers.
+var _hide_default_layers: bool = false
 
 # Frame timing
 var frame_time: float = 0.0
@@ -120,9 +134,9 @@ var _default_bg: Color
 
 # Viewport dimensions in world tiles
 var world_cols: int:
-	get: return g_cols / TILE_DENSITY
+	get: return g_cols / active_tile_density
 var world_rows: int:
-	get: return g_rows / TILE_DENSITY
+	get: return g_rows / active_tile_density
 
 
 func _ready() -> void:
@@ -178,6 +192,9 @@ func _resize() -> void:
 	g_cell_height = int(ceilf(float(g_font_size) * 1.35))
 	if g_cell_width < 1:
 		g_cell_width = int(float(g_font_size) * 0.6)
+	_base_g_cell_width = g_cell_width
+	_base_g_cell_height = g_cell_height
+	active_tile_density = TILE_DENSITY
 
 	var vp_pixel_w: int
 	var vp_pixel_h: int
@@ -225,6 +242,19 @@ func _build_atlas() -> void:
 	)
 
 	_char_map = text_result.char_map
+
+	# Build fast glyph-index lookup table indexed by Unicode code point.
+	# Replaces per-frame _char_map.get() dictionary lookups (O(hash+compare))
+	# with a direct array index (O(1)) in the upload loop.
+	var max_cp: int = 0
+	for ch in _char_map:
+		var cp: int = ch.unicode_at(0)
+		if cp > max_cp:
+			max_cp = cp
+	_gi_table.resize(max_cp + 1)
+	_gi_table.fill(0)
+	for ch in _char_map:
+		_gi_table[ch.unicode_at(0)] = _char_map[ch]
 
 	_custom_gfx_shader = false
 	_gfx_fullscreen = false
@@ -323,9 +353,11 @@ func _allocate_buffers() -> void:
 	_g_chars_a = _make_string_array(g_size, " ")
 	_g_fg_a = _make_color_array(g_size, _default_fg)
 	_g_bg_a = _make_color_array(g_size, _default_bg)
+	_g_gi_a = _make_int_array(g_size, 0)
 	_g_chars_b = _make_string_array(g_size, " ")
 	_g_fg_b = _make_color_array(g_size, _default_fg)
 	_g_bg_b = _make_color_array(g_size, _default_bg)
+	_g_gi_b = _make_int_array(g_size, 0)
 
 	_using_set_a = true
 	_apply_buffer_refs()
@@ -345,6 +377,13 @@ static func _make_color_array(size: int, fill: Color) -> PackedColorArray:
 	return arr
 
 
+static func _make_int_array(size: int, fill: int) -> PackedInt32Array:
+	var arr := PackedInt32Array()
+	arr.resize(size)
+	arr.fill(fill)
+	return arr
+
+
 # ── Frame lifecycle ──────────────────────────────
 
 func begin_frame() -> void:
@@ -356,7 +395,9 @@ func begin_frame() -> void:
 	_g_chars.fill(" ")
 	_g_fg.fill(_default_fg)
 	_g_bg.fill(_default_bg)
+	_g_gi.fill(0)
 	_has_gfx = false
+	_has_text = false
 
 
 func end_frame(force_full_redraw: bool = false) -> void:
@@ -374,9 +415,13 @@ func end_frame(force_full_redraw: bool = false) -> void:
 	if _dirty:
 		_upload_data_textures()
 
-	_gfx_rect.visible = _has_gfx or _custom_gfx_shader
-	# Hide text layer when fullscreen custom shader covers everything
-	_text_rect.visible = not (_custom_gfx_shader and _gfx_fullscreen)
+	if _hide_default_layers:
+		_gfx_rect.visible = false
+		_text_rect.visible = false
+	else:
+		_gfx_rect.visible = _has_gfx or _custom_gfx_shader
+		# Hide text layer when fullscreen custom shader covers everything
+		_text_rect.visible = not (_custom_gfx_shader and _gfx_fullscreen)
 
 	_using_set_a = not _using_set_a
 	_apply_buffer_refs()
@@ -386,13 +431,25 @@ func _apply_buffer_refs() -> void:
 	if _using_set_a:
 		_t_chars = _t_chars_a; _t_fg = _t_fg_a; _t_bg = _t_bg_a
 		_t_prev_chars = _t_chars_b; _t_prev_fg = _t_fg_b; _t_prev_bg = _t_bg_b
-		_g_chars = _g_chars_a; _g_fg = _g_fg_a; _g_bg = _g_bg_a
-		_g_prev_chars = _g_chars_b; _g_prev_fg = _g_fg_b; _g_prev_bg = _g_bg_b
+		_g_chars = _g_chars_a; _g_fg = _g_fg_a; _g_bg = _g_bg_a; _g_gi = _g_gi_a
+		_g_prev_chars = _g_chars_b; _g_prev_fg = _g_fg_b; _g_prev_bg = _g_bg_b; _g_prev_gi = _g_gi_b
 	else:
 		_t_chars = _t_chars_b; _t_fg = _t_fg_b; _t_bg = _t_bg_b
 		_t_prev_chars = _t_chars_a; _t_prev_fg = _t_fg_a; _t_prev_bg = _t_bg_a
-		_g_chars = _g_chars_b; _g_fg = _g_fg_b; _g_bg = _g_bg_b
-		_g_prev_chars = _g_chars_a; _g_prev_fg = _g_fg_a; _g_prev_bg = _g_bg_a
+		_g_chars = _g_chars_b; _g_fg = _g_fg_b; _g_bg = _g_bg_b; _g_gi = _g_gi_b
+		_g_prev_chars = _g_chars_a; _g_prev_fg = _g_fg_a; _g_prev_bg = _g_bg_a; _g_prev_gi = _g_gi_a
+
+
+func set_default_layers_hidden(hidden: bool) -> void:
+	## Hide/show the ASCII text + gfx rects. Used by sprite-based screens
+	## (e.g. new overworld) that render their own nodes over the SubViewport.
+	_hide_default_layers = hidden
+	if _text_rect:
+		_text_rect.visible = not hidden
+	if _gfx_rect and not hidden:
+		_gfx_rect.visible = _has_gfx or _custom_gfx_shader
+	elif _gfx_rect:
+		_gfx_rect.visible = false
 
 
 func invalidate() -> void:
@@ -413,17 +470,18 @@ func _upload_data_textures() -> void:
 	## Build data textures from cell arrays and upload to GPU.
 	## Skip text buffer upload when fullscreen custom shader covers it.
 
-	if not (_custom_gfx_shader and _gfx_fullscreen):
+	if _has_text and not (_custom_gfx_shader and _gfx_fullscreen):
 		var t_size: int = cols * rows
 		var t_data := PackedByteArray()
 		t_data.resize(t_size * 4)
 		var t_bg_data := PackedByteArray()
 		t_bg_data.resize(t_size * 4)
 
+		var gi_tbl: PackedInt32Array = _gi_table
 		var offset: int = 0
 		for idx in range(t_size):
 			var ch: String = _t_chars[idx]
-			var gi: int = _char_map.get(ch, 0)
+			var gi: int = gi_tbl[ch.unicode_at(0)] if ch.length() > 0 else 0
 			var fg: Color = _t_fg[idx]
 			var bg: Color = _t_bg[idx]
 			t_data[offset] = gi
@@ -448,10 +506,10 @@ func _upload_data_textures() -> void:
 		var g_bg_d := PackedByteArray()
 		g_bg_d.resize(g_size * 4)
 
+		var gi_buf: PackedInt32Array = _g_gi
 		var offset: int = 0
 		for idx in range(g_size):
-			var ch: String = _g_chars[idx]
-			var gi: int = _char_map.get(ch, 0)
+			var gi: int = gi_buf[idx]
 			var fg: Color = _g_fg[idx]
 			var bg: Color = _g_bg[idx]
 			g_data[offset] = gi
@@ -488,6 +546,7 @@ func set_char(col: int, row: int, ch: String, fg: Color = Color.TRANSPARENT, bg:
 	_t_chars[idx] = ch
 	_t_fg[idx] = fg if fg != Color.TRANSPARENT else _default_fg
 	_t_bg[idx] = bg if bg != Color.TRANSPARENT else _default_bg
+	_has_text = true
 
 
 func set_gfx_char(col: int, row: int, ch: String, fg: Color = Color.TRANSPARENT, bg: Color = Color.TRANSPARENT) -> void:
@@ -495,6 +554,8 @@ func set_gfx_char(col: int, row: int, ch: String, fg: Color = Color.TRANSPARENT,
 		return
 	var idx: int = _gi(col, row)
 	_g_chars[idx] = ch
+	var cp: int = ch.unicode_at(0) if ch.length() > 0 else 0
+	_g_gi[idx] = _gi_table[cp] if cp < _gi_table.size() else 0
 	_g_fg[idx] = fg if fg != Color.TRANSPARENT else _default_fg
 	_g_bg[idx] = bg if bg != Color.TRANSPARENT else _default_bg
 	_has_gfx = true
@@ -513,6 +574,7 @@ func draw_string_at(col: int, row: int, text: String, fg: Color = Color.TRANSPAR
 		_t_chars[idx] = text[i]
 		_t_fg[idx] = actual_fg
 		_t_bg[idx] = actual_bg
+	_has_text = true
 
 
 func draw_box(x: int, y: int, w: int, h: int, fg: Color = Color.TRANSPARENT, bg: Color = Color.TRANSPARENT) -> void:
@@ -559,8 +621,8 @@ func draw_world_tile(wx_off: int, wy_off: int, expanded: Dictionary) -> void:
 	##   1. Whole tile in bounds → inline writes to the _g_* arrays,
 	##      skipping the per-cell bounds check and set_gfx_char dispatch.
 	##   2. Partially clipped tile → fall back to set_gfx_char.
-	var base_c: int = wx_off * TILE_DENSITY
-	var base_r: int = wy_off * TILE_DENSITY
+	var base_c: int = wx_off * active_tile_density
+	var base_r: int = wy_off * active_tile_density
 	var rows_n: int = expanded.chars.size()
 	if rows_n == 0:
 		return
@@ -574,6 +636,7 @@ func draw_world_tile(wx_off: int, wy_off: int, expanded: Dictionary) -> void:
 		var chars_arr: Array = expanded.chars
 		var fgs_arr: Array = expanded.fgs
 		var bgs_arr: Array = expanded.bgs
+		var gi_tbl: PackedInt32Array = _gi_table
 		for dy in range(rows_n):
 			var row_c: Array = chars_arr[dy]
 			var row_f: Array = fgs_arr[dy]
@@ -581,7 +644,9 @@ func draw_world_tile(wx_off: int, wy_off: int, expanded: Dictionary) -> void:
 			var base_idx: int = (base_r + dy) * g_cols + base_c
 			for dx in range(cols_n):
 				var idx: int = base_idx + dx
-				_g_chars[idx] = row_c[dx]
+				var ch_s: String = row_c[dx]
+				_g_chars[idx] = ch_s
+				_g_gi[idx] = gi_tbl[ch_s.unicode_at(0)]
 				_g_fg[idx] = row_f[dx]
 				_g_bg[idx] = row_b[dx]
 		_has_gfx = true
@@ -597,10 +662,49 @@ func draw_world_tile(wx_off: int, wy_off: int, expanded: Dictionary) -> void:
 			set_gfx_char(base_c + dx, base_r + dy, row[dx], fg_row[dx], bg_row[dx])
 
 
+func draw_world_tile_darkened(wx_off: int, wy_off: int, expanded: Dictionary,
+		fg_darken: float, bg_darken: float) -> void:
+	## Like draw_world_tile but multiplies fg/bg by (1-darken) inline.
+	## Folds shadow + forest-interior darkening into the tile blit so the
+	## overworld avoids a separate tint pass (saves ~15k Color.lerp/frame).
+	var base_c: int = wx_off * active_tile_density
+	var base_r: int = wy_off * active_tile_density
+	var rows_n: int = expanded.chars.size()
+	if rows_n == 0:
+		return
+	var cols_n: int = (expanded.chars[0] as Array).size()
+	if (base_c < 0 or base_r < 0
+			or base_c + cols_n > g_cols
+			or base_r + rows_n > g_rows):
+		draw_world_tile(wx_off, wy_off, expanded)
+		return
+	var fg_m: float = 1.0 - fg_darken
+	var bg_m: float = 1.0 - bg_darken
+	var chars_arr: Array = expanded.chars
+	var fgs_arr: Array = expanded.fgs
+	var bgs_arr: Array = expanded.bgs
+	var gi_tbl: PackedInt32Array = _gi_table
+	for dy in range(rows_n):
+		var row_c: Array = chars_arr[dy]
+		var row_f: Array = fgs_arr[dy]
+		var row_b: Array = bgs_arr[dy]
+		var base_idx: int = (base_r + dy) * g_cols + base_c
+		for dx in range(cols_n):
+			var idx: int = base_idx + dx
+			var ch_s: String = row_c[dx]
+			_g_chars[idx] = ch_s
+			_g_gi[idx] = gi_tbl[ch_s.unicode_at(0)]
+			var f: Color = row_f[dx]
+			_g_fg[idx] = Color(f.r * fg_m, f.g * fg_m, f.b * fg_m)
+			var b: Color = row_b[dx]
+			_g_bg[idx] = Color(b.r * bg_m, b.g * bg_m, b.b * bg_m)
+	_has_gfx = true
+
+
 func draw_entity_char(wx_off: int, wy_off: int, ch: String, fg: Color, bg: Color = Color.TRANSPARENT) -> void:
 	set_gfx_char(
-		wx_off * TILE_DENSITY + TILE_DENSITY / 2,
-		wy_off * TILE_DENSITY + TILE_DENSITY / 2,
+		wx_off * active_tile_density + active_tile_density / 2,
+		wy_off * active_tile_density + active_tile_density / 2,
 		ch, fg, bg if bg != Color.TRANSPARENT else _default_bg
 	)
 
@@ -740,8 +844,6 @@ func set_gfx_fills_viewport(enabled: bool) -> void:
 		vp_pixel_h = (rows - Constants.hud_total()) * cell_height
 		g_origin_x = cell_width
 		g_origin_y = Constants.viewport_top() * cell_height
-	# Ceil to avoid the same sub-cell gap that the text-rect fix
-	# addresses in _resize. Matches the ceili pattern used above.
 	g_cols = maxi(1, ceili(float(vp_pixel_w) / float(g_cell_width)))
 	g_rows = maxi(1, ceili(float(vp_pixel_h) / float(g_cell_height)))
 
@@ -750,9 +852,11 @@ func set_gfx_fills_viewport(enabled: bool) -> void:
 	_g_chars_a = _make_string_array(g_size, " ")
 	_g_fg_a = _make_color_array(g_size, _default_fg)
 	_g_bg_a = _make_color_array(g_size, _default_bg)
+	_g_gi_a = _make_int_array(g_size, 0)
 	_g_chars_b = _make_string_array(g_size, " ")
 	_g_fg_b = _make_color_array(g_size, _default_fg)
 	_g_bg_b = _make_color_array(g_size, _default_bg)
+	_g_gi_b = _make_int_array(g_size, 0)
 	_apply_buffer_refs()
 
 	# Recreate gfx data textures at the new dimensions.

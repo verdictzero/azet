@@ -56,6 +56,12 @@ var transition_timer: float = 0.0
 var transition_duration: float = 0.3
 var _transitioning: bool = false
 
+# FPS overlay (F3)
+var _show_fps: bool = false
+var _fps_accum: float = 0.0
+var _fps_frame_count: int = 0
+var _fps_display: int = 0
+
 # References
 var ascii_grid: AsciiGrid
 var ui_manager: UIManager
@@ -127,10 +133,35 @@ func _process(delta: float) -> void:
 		if action != "":
 			ui_manager.handle_active_input(action)
 
+	# FPS tracking (runs whether or not the counter is visible so the
+	# reading is warm the instant the user presses F3)
+	_fps_accum += delta
+	_fps_frame_count += 1
+	if _fps_accum >= 0.5:
+		_fps_display = roundi(float(_fps_frame_count) / _fps_accum)
+		_fps_accum = 0.0
+		_fps_frame_count = 0
+
 	# Render frame
 	ascii_grid.begin_frame()
 	ui_manager.draw_active()
+	if _show_fps:
+		_draw_fps_overlay()
 	ascii_grid.end_frame(_transitioning)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_fps"):
+		_show_fps = not _show_fps
+		get_viewport().set_input_as_handled()
+
+
+func _draw_fps_overlay() -> void:
+	var text: String = " FPS:%d " % _fps_display
+	var fg: Color = Constants.COLORS.BRIGHT_GREEN
+	var bg := Color(0.02, 0.02, 0.02, 1.0)
+	for i in range(text.length()):
+		ascii_grid.set_char(i, 0, text[i], fg, bg)
 
 
 func is_gameplay_state() -> bool:
