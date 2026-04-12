@@ -7,7 +7,7 @@ extends BaseScreen
 
 const NUM_SEEDS: int = 10
 const FIRE_CHARSET: Array[String] = [" ", ".", "\u00B7", ":", "\u2219", "\u2591", "\u2592", "\u2593"]
-const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG", "UI SHELL", "OVERWORLD"]
+const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG", "UI SHELL", "TEST"]
 
 var _title_shader: Shader
 var _particle_shader: Shader
@@ -256,4 +256,4 @@ func _select_menu_item() -> void:
 		2: request_action("open_settings")
 		3: request_action("debug_start")
 		4: request_action("ui_shell_demo")
-		5: request_action("overworld_demo")
+		5: request_action("test_screen")

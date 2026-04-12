@@ -11,7 +11,7 @@ enum State {
 	CHAR_CREATE,
 	LOADING,
 	WORLD_GEN_PAUSE,
-	OVERWORLD,
+	TEST,
 	LOCATION,
 	DUNGEON,
 	COMBAT,
@@ -83,7 +83,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.FIRE_DEMO, FireDemoScreen.new(ascii_grid))
 	ui_manager.register_screen(State.TITLE_SCREEN, TitleScreen.new(ascii_grid))
 	ui_manager.register_screen(State.UI_SHELL_DEMO, UIShellDemoScreen.new(ascii_grid))
-	ui_manager.register_screen(State.OVERWORLD, OverworldDemoScreen.new(ascii_grid))
+	ui_manager.register_screen(State.TEST, TestScreen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -166,7 +166,7 @@ func _draw_fps_overlay() -> void:
 
 func is_gameplay_state() -> bool:
 	return current_state in [
-		State.OVERWORLD, State.LOCATION, State.DUNGEON,
+		State.LOCATION, State.DUNGEON,
 		State.COMBAT, State.DIALOGUE, State.SHOP,
 	]
 
@@ -205,8 +205,8 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.HELP)
 		"ui_shell_demo":
 			set_state(State.UI_SHELL_DEMO)
-		"overworld_demo":
-			set_state(State.OVERWORLD)
+		"test_screen":
+			set_state(State.TEST)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:
