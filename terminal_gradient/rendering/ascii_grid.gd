@@ -13,6 +13,11 @@ extends Node2D
 # Font settings
 @export var font_size: int = 16
 @export var font: Font
+## Baked font-atlas name (key in tools/bake_glyph_atlases.gd FONT_PATHS, e.g.
+## "primary", "runic", "cuneiform"). Runtime loads the PNG via
+## FontAtlasCache. On cache miss we fall back to live-rasterizing `font`.
+@export var text_font_name: String = "primary"
+@export var gfx_font_name: String = "primary"
 
 var cell_width: int = 0
 var cell_height: int = 0
@@ -234,38 +239,113 @@ func _measure_char_width(size: int) -> float:
 # ── Atlas building (async) ─────────────────────────
 
 func _build_atlas() -> void:
-	var text_result: Dictionary = await GlyphAtlasBuilder.build_atlas(
-		font, font_size, cell_width, cell_height, self
-	)
-	var gfx_result: Dictionary = await GlyphAtlasBuilder.build_atlas(
-		font, g_font_size, g_cell_width, g_cell_height, self
-	)
+	# Prefer pre-baked atlases from FontAtlasCache (zero-cost load of a PNG).
+	# Fall back to live SubViewport rasterization when the cache is missing,
+	# stale, or the requested entry wasn't baked — keeps the dev loop
+	# working when someone tweaks CHARSET without rebaking, and preserves
+	# the original behavior if `assets/glyph_atlases/` hasn't been
+	# generated yet.
+	var text_tex: Texture2D = null
+	var gfx_tex: Texture2D = null
 
-	_char_map = text_result.char_map
+	var text_baked: Dictionary = FontAtlasCache.get_atlas(text_font_name, font_size)
+	if not text_baked.is_empty() and _atlas_cell_dims_match(text_baked, cell_width, cell_height):
+		text_tex = text_baked.texture
+	else:
+		if not text_baked.is_empty():
+			# Dims mismatch — log and fall through to live rasterization so
+			# the grid still renders with the wrong-but-correct-size atlas.
+			push_warning("[AsciiGrid] baked text atlas '%s_%d' has cell %dx%d but grid needs %dx%d; live-rasterizing" % [
+				text_font_name, font_size, text_baked.cell_w, text_baked.cell_h, cell_width, cell_height
+			])
+		var text_result: Dictionary = await GlyphAtlasBuilder.build_atlas(
+			font, font_size, cell_width, cell_height, self
+		)
+		text_tex = text_result.texture
 
-	# Build fast glyph-index lookup table indexed by Unicode code point.
-	# Replaces per-frame _char_map.get() dictionary lookups (O(hash+compare))
-	# with a direct array index (O(1)) in the upload loop.
-	var max_cp: int = 0
-	for ch in _char_map:
-		var cp: int = ch.unicode_at(0)
-		if cp > max_cp:
-			max_cp = cp
-	_gi_table.resize(max_cp + 1)
-	_gi_table.fill(0)
-	for ch in _char_map:
-		_gi_table[ch.unicode_at(0)] = _char_map[ch]
+	var gfx_baked: Dictionary = FontAtlasCache.get_atlas(gfx_font_name, g_font_size)
+	if not gfx_baked.is_empty() and _atlas_cell_dims_match(gfx_baked, g_cell_width, g_cell_height):
+		gfx_tex = gfx_baked.texture
+	else:
+		if not gfx_baked.is_empty():
+			push_warning("[AsciiGrid] baked gfx atlas '%s_%d' has cell %dx%d but grid needs %dx%d; live-rasterizing" % [
+				gfx_font_name, g_font_size, gfx_baked.cell_w, gfx_baked.cell_h, g_cell_width, g_cell_height
+			])
+		var gfx_result: Dictionary = await GlyphAtlasBuilder.build_atlas(
+			font, g_font_size, g_cell_width, g_cell_height, self
+		)
+		gfx_tex = gfx_result.texture
+
+	# char_map / gi_table are CHARSET-derived, identical across every
+	# baked font. Build once from the shared source so set_font_atlas()
+	# can swap the `glyph_atlas` uniform without touching these.
+	_char_map = FontAtlasCache.get_char_map()
+	_gi_table = FontAtlasCache.get_gi_table()
 
 	_custom_gfx_shader = false
 	_gfx_fullscreen = false
-	_setup_render_rects(text_result.texture, gfx_result.texture)
+	_setup_render_rects(text_tex, gfx_tex)
 	atlas_generation += 1
 	_atlas_ready = true
 	_force_full_redraw = true
 	_dirty = true
 
 
-func _setup_render_rects(text_atlas: ImageTexture, gfx_atlas: ImageTexture) -> void:
+static func _atlas_cell_dims_match(baked: Dictionary, cw: int, ch: int) -> bool:
+	return int(baked.get("cell_w", -1)) == cw and int(baked.get("cell_h", -1)) == ch
+
+
+## Swap the baked atlas bound to one of the rendering buffers at runtime.
+## `target` must be &"text" or &"gfx". `font_name` is a key from
+## tools/bake_glyph_atlases.gd FONT_PATHS (e.g. "runic", "cuneiform").
+## Cheap: only rebinds the `glyph_atlas` shader uniform — char_map and
+## gi_table are CHARSET-derived and shared across every baked font.
+## Rejects the swap if the baked atlas's cell dims don't match the
+## grid's current cell dims (different cell size would require full
+## re-layout, which is out of scope).
+func set_font_atlas(target: StringName, font_name: String) -> bool:
+	if not _atlas_ready:
+		push_warning("[AsciiGrid] set_font_atlas called before atlas was ready")
+		return false
+
+	var mat: ShaderMaterial = null
+	var cw: int = 0
+	var ch: int = 0
+	var size: int = 0
+	if target == &"text":
+		mat = _text_mat
+		cw = cell_width
+		ch = cell_height
+		size = font_size
+		text_font_name = font_name
+	elif target == &"gfx":
+		mat = _gfx_mat
+		cw = g_cell_width
+		ch = g_cell_height
+		size = g_font_size
+		gfx_font_name = font_name
+	else:
+		push_error("[AsciiGrid] set_font_atlas target must be &\"text\" or &\"gfx\" (got %s)" % target)
+		return false
+
+	var baked: Dictionary = FontAtlasCache.get_atlas(font_name, size)
+	if baked.is_empty():
+		push_error("[AsciiGrid] no baked atlas for '%s_%d' — run tools/bake_glyph_atlases.gd" % [font_name, size])
+		return false
+	if not _atlas_cell_dims_match(baked, cw, ch):
+		push_error("[AsciiGrid] baked atlas '%s_%d' cell %dx%d doesn't match grid %dx%d; refusing swap" % [
+			font_name, size, baked.cell_w, baked.cell_h, cw, ch
+		])
+		return false
+
+	mat.set_shader_parameter("glyph_atlas", baked.texture)
+	atlas_generation += 1
+	_force_full_redraw = true
+	_dirty = true
+	return true
+
+
+func _setup_render_rects(text_atlas: Texture2D, gfx_atlas: Texture2D) -> void:
 	# Clean up old rects if they exist
 	if _text_rect:
 		_text_rect.queue_free()
@@ -749,7 +829,7 @@ func get_text_char(col: int, row: int) -> String:
 
 var _custom_gfx_shader: bool = false
 
-func set_gfx_shader(shader: Shader, atlas_tex: ImageTexture = null) -> void:
+func set_gfx_shader(shader: Shader, atlas_tex: Texture2D = null) -> void:
 	## Replace the gfx rect's shader with a custom one.
 	## The custom shader is responsible for its own rendering (no data texture uploads).
 	if not _atlas_ready or _gfx_rect == null:
@@ -770,8 +850,11 @@ func set_gfx_shader_param(param: String, value: Variant) -> void:
 		_gfx_mat.set_shader_parameter(param, value)
 
 
-func get_gfx_atlas() -> ImageTexture:
+func get_gfx_atlas() -> Texture2D:
 	## Return the gfx glyph atlas texture for use by custom shaders.
+	## Returns a Texture2D (ImageTexture for live-rasterized atlases,
+	## CompressedTexture2D for baked-PNG atlases loaded via
+	## FontAtlasCache).
 	if _gfx_mat:
 		return _gfx_mat.get_shader_parameter("glyph_atlas")
 	return null

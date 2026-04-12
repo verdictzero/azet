@@ -259,7 +259,7 @@ func _build_fire_nodes(pane: Pane) -> Array:
 	var rect_px: Rect2 = _pane_inner_pixel_rect(pane)
 	if rect_px.size.x <= 0.0 or rect_px.size.y <= 0.0:
 		return []
-	var atlas: ImageTexture = grid.get_gfx_atlas()
+	var atlas: Texture2D = grid.get_gfx_atlas()
 	if atlas == null:
 		return []
 
