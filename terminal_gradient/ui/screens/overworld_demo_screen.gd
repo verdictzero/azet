@@ -71,6 +71,17 @@ var _highlight_buf: PackedFloat32Array
 var _shadow_w: int = 0
 var _shadow_h: int = 0
 
+# ── Per-frame viewport tile cache ──
+# Populated once per frame by _prefetch_viewport_tiles. Draw / shadow /
+# god-ray passes all read from this instead of hitting _world.get_tile.
+var _vp_tiles: Array = []
+
+# ── Shadow cache state ──
+# Shadow buffer is only rebuilt when camera moves or viewport resizes;
+# static-camera frames reuse the cached alpha values.
+var _shadow_cached_cam_x: int = 2147483647
+var _shadow_cached_cam_y: int = 2147483647
+
 # ── God ray cache ──
 # Flat array of quadruples: [wx_off, wy_off, intensity, ray_t, ...]
 const INF_INT: int = -2147483648
@@ -114,11 +125,17 @@ func _init(ascii_grid: AsciiGrid) -> void:
 
 func on_enter(context: Dictionary = {}) -> void:
 	super.on_enter(context)
+	# Fill the entire SubViewport with the gfx buffer — no HUD chrome,
+	# no top bar, no bottom message log. Overworld becomes edge-to-edge.
+	# AsciiGrid reallocates its gfx buffers to the new dimensions, so
+	# world_cols / world_rows both grow.
+	grid.set_gfx_fills_viewport(true)
 	_center_camera_on_player()
 	_invalidate_god_rays()
 
 
 func on_exit() -> void:
+	grid.set_gfx_fills_viewport(false)
 	super.on_exit()
 
 
@@ -161,65 +178,13 @@ func _center_camera_on_player() -> void:
 
 # ── Drawing ─────────────────────────────────────────
 
-func draw(cols: int, rows: int) -> void:
-	_draw_hud_chrome(cols, rows)
-	_draw_top_bar(cols)
-	_draw_footer(cols, rows)
-
+func draw(_cols: int, _rows: int) -> void:
+	# Fullscreen mode — no HUD chrome, no top bar, no footer. The gfx
+	# buffer fills the entire SubViewport (see set_gfx_fills_viewport in
+	# on_enter). Text buffer stays at its transparent default so nothing
+	# is drawn over the gfx layer.
 	_draw_world()
 	_draw_player()
-
-
-func _draw_hud_chrome(cols: int, rows: int) -> void:
-	## HUD strip + side borders painted opaque (FF palette above the shader's
-	## 0.01 transparency threshold). Viewport interior stays at the
-	## transparent-default black so the gfx buffer shows through.
-	var fg: Color = Constants.COLORS.FF_BORDER
-	var bg: Color = Constants.COLORS.FF_BLUE_DARK
-	var top: int = Constants.viewport_top()    # 3
-	var bot: int = Constants.hud_bottom()      # 9
-
-	grid.fill_region(0, 0, cols, top, " ", fg, bg)
-	grid.fill_region(0, rows - bot, cols, bot, " ", fg, bg)
-	var mid_h: int = rows - top - bot
-	if mid_h > 0:
-		grid.fill_region(0, top, 1, mid_h, " ", fg, bg)
-		grid.fill_region(cols - 1, top, 1, mid_h, " ", fg, bg)
-
-	grid.set_char(0, 0, Constants.BOX_TL, fg, bg)
-	grid.set_char(cols - 1, 0, Constants.BOX_TR, fg, bg)
-	grid.set_char(0, rows - 1, Constants.BOX_BL, fg, bg)
-	grid.set_char(cols - 1, rows - 1, Constants.BOX_BR, fg, bg)
-	for c in range(1, cols - 1):
-		grid.set_char(c, 0, Constants.BOX_H, fg, bg)
-		grid.set_char(c, rows - 1, Constants.BOX_H, fg, bg)
-	for r in range(1, rows - 1):
-		grid.set_char(0, r, Constants.BOX_V, fg, bg)
-		grid.set_char(cols - 1, r, Constants.BOX_V, fg, bg)
-	for c in range(cols):
-		grid.set_char(c, top - 1, Constants.BOX_H, fg, bg)
-		grid.set_char(c, rows - bot, Constants.BOX_H, fg, bg)
-
-
-func _draw_top_bar(cols: int) -> void:
-	var title: String = "OVERWORLD"
-	var x: int = maxi(2, (cols - title.length()) / 2)
-	grid.draw_string_at(x, 1, title,
-		Constants.COLORS.BRIGHT_WHITE, Constants.COLORS.FF_BLUE_DARK)
-	var pos: String = "x=%d y=%d" % [_player_x, _player_y]
-	grid.draw_string_at(2, 1, pos,
-		Constants.COLORS.BRIGHT_YELLOW, Constants.COLORS.FF_BLUE_DARK)
-	var sect: String = "HABITAT RING"
-	grid.draw_string_at(cols - sect.length() - 2, 1, sect,
-		Constants.COLORS.BRIGHT_CYAN, Constants.COLORS.FF_BLUE_DARK)
-
-
-func _draw_footer(cols: int, rows: int) -> void:
-	var hint: String = "WASD/arrows move  ·  walls block E/W  ·  Y wraps  ·  ESC back"
-	var y: int = rows - 2
-	var x: int = maxi(2, (cols - hint.length()) / 2)
-	grid.draw_string_at(x, y, hint,
-		Constants.COLORS.BRIGHT_BLACK, Constants.COLORS.FF_BLUE_DARK)
 
 
 func _draw_world() -> void:
@@ -228,54 +193,76 @@ func _draw_world() -> void:
 	if vw <= 0 or vh <= 0:
 		return
 
+	# PERF: force every frame to skip end_frame()'s buffer-diff check.
+	# The overworld always animates so the diff check never finds
+	# "nothing changed" — burning CPU comparing PackedArrays for nothing.
+	grid.invalidate()
+
+	# PERF: fetch every visible tile ONCE per frame and share the
+	# results across the draw, shadow, and god-ray passes. Cuts the
+	# per-frame chunk lookup count from ~3-4× world_cols×world_rows
+	# down to 1× world_cols×world_rows.
+	_prefetch_viewport_tiles(vw, vh)
+
 	_build_shadow_buffer(vw, vh)
 
 	var t_sec: float = grid.frame_time_sec
 
-	# Pass 1: tile expansion + animated center overdraw.
+	# Pass 1: tile blit (pre-expanded) + animated center overdraw.
+	var D: int = Constants.TILE_DENSITY
+	var anim_offset: int = D / 2 - 1  # top-left corner of the 2x2 center block
 	for wy_off in range(vh):
+		var row: Array = _vp_tiles[wy_off]
 		for wx_off in range(vw):
-			var wx: int = _cam_x + wx_off
-			var wy: int = _cam_y + wy_off
-			var tile: Dictionary = _world.get_tile(wx, wy)
+			var tile: Dictionary = row[wx_off]
+			var type: String = tile.type
 
-			if tile.type == OverworldTiles.VOID_SPACE:
+			if type == OverworldTiles.VOID_SPACE:
 				# Beyond the habitat — paint the circuitry background.
-				# Each world tile uses one circuit char expanded 3x3.
+				var wx: int = _cam_x + wx_off
+				var wy: int = _cam_y + wy_off
 				var circuit: Dictionary = Circuitry.get_cell(wx, wy, t_sec)
 				_draw_uniform_tile(wx_off, wy_off,
 					circuit.char, circuit.fg, circuit.bg)
 				continue
 
-			var expanded: Dictionary = OverworldTiles.expand(tile, wx, wy)
-			grid.draw_world_tile(wx_off, wy_off, expanded)
+			# PERF: tile.expanded is pre-computed at chunk gen time.
+			# draw_world_tile blits 36 cells via a fast in-bounds path.
+			grid.draw_world_tile(wx_off, wy_off, tile.expanded)
 
-			var anim_char: String = _animated_char(tile, wx, wy, t_sec)
-			var anim_fg: Color = _animated_color(tile, wx, wy, t_sec)
-			grid.draw_entity_char(wx_off, wy_off, anim_char, anim_fg, tile.bg)
+			if _type_is_animated(type):
+				var wx2: int = _cam_x + wx_off
+				var wy2: int = _cam_y + wy_off
+				var anim_char: String = _animated_char(tile, wx2, wy2, t_sec)
+				var anim_fg: Color = _animated_color(tile, wx2, wy2, t_sec)
+				var c0: int = wx_off * D + anim_offset
+				var r0: int = wy_off * D + anim_offset
+				for dr in range(2):
+					for dc in range(2):
+						grid.set_gfx_char(
+							c0 + dc, r0 + dr, anim_char, anim_fg, tile.bg
+						)
 
-	# Pass 2: shadow buffer → darken each world cell's 3x3 block.
-	# Skip cells where the underlying tile is VOID_SPACE so the circuitry
-	# pulse stays at its native brightness.
+	# Pass 2: shadow buffer → darken each world cell's block. Uses the
+	# prefetched tile lookup to skip VOID_SPACE cells cheaply.
 	for wy_off in range(vh):
+		var row2: Array = _vp_tiles[wy_off]
 		for wx_off in range(vw):
 			var a: float = _shadow_buf[wy_off * vw + wx_off]
 			if a <= 0.001:
 				continue
-			var t: Dictionary = _world.get_tile(_cam_x + wx_off, _cam_y + wy_off)
-			if t.type == OverworldTiles.VOID_SPACE:
+			if (row2[wx_off] as Dictionary).type == OverworldTiles.VOID_SPACE:
 				continue
 			_darken_world_cell(wx_off, wy_off, a)
 
-	# Pass 3: forest-interior darkening (depth highlight buffer). Same
-	# VOID_SPACE skip as pass 2.
+	# Pass 3: forest-interior darkening.
 	for wy_off in range(vh):
+		var row3: Array = _vp_tiles[wy_off]
 		for wx_off in range(vw):
 			var a: float = _highlight_buf[wy_off * vw + wx_off]
 			if a <= 0.001:
 				continue
-			var t: Dictionary = _world.get_tile(_cam_x + wx_off, _cam_y + wy_off)
-			if t.type == OverworldTiles.VOID_SPACE:
+			if (row3[wx_off] as Dictionary).type == OverworldTiles.VOID_SPACE:
 				continue
 			_darken_world_cell(wx_off, wy_off, a)
 
@@ -283,22 +270,64 @@ func _draw_world() -> void:
 	_update_god_rays(vw, vh)
 	_apply_god_rays()
 
-	# Pass 5: time-of-day tint overlay. Static midday for now → near-zero
-	# alpha, so this is effectively a no-op. Left in place for future TOD.
+	# Pass 5: time-of-day tint overlay. Static midday → no-op.
 	_apply_time_tint(vw, vh)
 
 
+func _prefetch_viewport_tiles(vw: int, vh: int) -> void:
+	## Populate _vp_tiles[wy_off][wx_off] with the visible tile dicts.
+	## Reuses row arrays across frames to avoid allocation churn.
+	while _vp_tiles.size() < vh:
+		_vp_tiles.append([])
+	for wy_off in range(vh):
+		var row: Array = _vp_tiles[wy_off]
+		row.resize(vw)
+		var wy: int = _cam_y + wy_off
+		for wx_off in range(vw):
+			row[wx_off] = _world.get_tile(_cam_x + wx_off, wy)
+
+
 func _draw_player() -> void:
+	## Draw the player as a 5-cell halo cluster: a bright ◆ at the tile
+	## center plus 4 dim ◆ at the cardinal neighbors. A single-cell icon
+	## was near-invisible at TILE_DENSITY=6 (1/36 of a tile); the halo
+	## pulls the player out as a clear focal point.
 	var px: int = _player_x - _cam_x
 	var py: int = _player_y - _cam_y
 	if px < 0 or px >= grid.world_cols or py < 0 or py >= grid.world_rows:
 		return
-	# Rainbow glow — mirrors GlowManager.getGlowColor('PLAYER', …) from the
-	# legacy, which cycles hue around the HSV wheel at ~0.5 Hz.
 	var t: float = grid.frame_time_sec
 	var hue: float = fmod(t * 0.5, 1.0)
-	var glow: Color = Color.from_hsv(hue, 0.35, 1.0)
-	grid.draw_entity_char(px, py, "◆", glow, Color.BLACK)
+	var bright: Color = Color.from_hsv(hue, 0.35, 1.0)
+	var dim: Color = Color.from_hsv(hue, 0.30, 0.70)
+	var D: int = Constants.TILE_DENSITY
+	var cx: int = px * D + D / 2
+	var cy: int = py * D + D / 2
+	grid.set_gfx_char(cx, cy, "◆", bright, Color.BLACK)
+	grid.set_gfx_char(cx, cy - 1, "◆", dim, Color.BLACK)
+	grid.set_gfx_char(cx, cy + 1, "◆", dim, Color.BLACK)
+	grid.set_gfx_char(cx - 1, cy, "◆", dim, Color.BLACK)
+	grid.set_gfx_char(cx + 1, cy, "◆", dim, Color.BLACK)
+
+
+func _type_is_animated(type: String) -> bool:
+	## True for tile types whose characters the animator rewrites every
+	## frame (grass wind, water ripples, tree sway). Used to gate the
+	## 2x2 center overdraw in Pass 1.
+	return (
+		type == OverworldTiles.GRASSLAND
+		or type == OverworldTiles.MEADOW
+		or type == OverworldTiles.TALL_GRASS
+		or type == OverworldTiles.FIELD
+		or type == OverworldTiles.OUTER_SHORE
+		or type == OverworldTiles.INNER_SHORE
+		or type == OverworldTiles.RIVER_WATER
+		or type == OverworldTiles.SHALLOWS
+		or type == OverworldTiles.MEDIUM_WATER
+		or type == OverworldTiles.FOREST
+		or type == OverworldTiles.DEEP_FOREST
+		or type == OverworldTiles.SPARSE_TREES
+	)
 
 
 # ── Animation ───────────────────────────────────────
@@ -372,8 +401,21 @@ func _build_shadow_buffer(vw: int, vh: int) -> void:
 	## into _shadow_buf. Also populate _highlight_buf with forest-interior
 	## directional darkening (depth lookup backward along the sun direction).
 	## Ports js/main.js:6518-6566.
+	##
+	## PERF: Early-return when the camera is static and the viewport size
+	## hasn't changed. Shadows depend purely on (cam_x, cam_y, vw, vh) —
+	## none of those change between player moves, so we can reuse the
+	## cached buffers and skip the whole double loop.
 	var total: int = vw * vh
-	if _shadow_w != vw or _shadow_h != vh or _shadow_buf.size() != total:
+	var needs_realloc: bool = (
+		_shadow_w != vw or _shadow_h != vh or _shadow_buf.size() != total
+	)
+	if (not needs_realloc
+			and _shadow_cached_cam_x == _cam_x
+			and _shadow_cached_cam_y == _cam_y):
+		return
+
+	if needs_realloc:
 		_shadow_buf = PackedFloat32Array()
 		_shadow_buf.resize(total)
 		_highlight_buf = PackedFloat32Array()
@@ -387,10 +429,9 @@ func _build_shadow_buffer(vw: int, vh: int) -> void:
 	var inv_max_ray: float = 1.0 / float(MAX_RAY_LEN)
 
 	for wy_off in range(vh):
+		var row: Array = _vp_tiles[wy_off]
 		for wx_off in range(vw):
-			var wx: int = _cam_x + wx_off
-			var wy: int = _cam_y + wy_off
-			var tile: Dictionary = _world.get_tile(wx, wy)
+			var tile: Dictionary = row[wx_off]
 			var type: String = tile.type
 			var h: int = OverworldTiles.height(type)
 			if h <= 0:
@@ -416,6 +457,8 @@ func _build_shadow_buffer(vw: int, vh: int) -> void:
 			# to 5 steps counting consecutive occluders. If we have any
 			# depth, darken the current cell.
 			var depth: int = 0
+			var wx: int = _cam_x + wx_off
+			var wy: int = _cam_y + wy_off
 			for d in range(1, FOREST_DARKEN_DEPTH_MAX + 1):
 				var cx: int = wx - int(round(SUN_DX * float(d)))
 				var cy: int = wy - int(round(SUN_DY * float(d)))
@@ -425,8 +468,13 @@ func _build_shadow_buffer(vw: int, vh: int) -> void:
 				else:
 					break
 			if depth > 0:
-				var darken: float = minf(FOREST_DARKEN_MAX, float(depth) * FOREST_DARKEN_STEP)
+				var darken: float = minf(
+					FOREST_DARKEN_MAX, float(depth) * FOREST_DARKEN_STEP
+				)
 				_highlight_buf[wy_off * vw + wx_off] = darken
+
+	_shadow_cached_cam_x = _cam_x
+	_shadow_cached_cam_y = _cam_y
 
 
 func _draw_uniform_tile(wx_off: int, wy_off: int, ch: String, fg: Color, bg: Color) -> void:

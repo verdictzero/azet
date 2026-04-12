@@ -1,2 +1,0 @@
-﻿41877
-/snap/godot-4/21/godot-4

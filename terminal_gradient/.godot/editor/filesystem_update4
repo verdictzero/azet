@@ -1,4 +1,4 @@
 res://rendering/ascii_grid.gd
-res://rendering/glyph_atlas_builder.gd
-res://ui/screens/title_screen.gd
-res://ui/shell/ui_shell.gd
+res://ui/screens/overworld_demo_screen.gd
+res://core/overworld_tiles.gd
+res://core/overworld_world.gd

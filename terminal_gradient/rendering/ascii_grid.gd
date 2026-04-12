@@ -28,7 +28,15 @@ var g_rows: int = 0
 var g_origin_x: int = 0
 var g_origin_y: int = 0
 
-const TILE_DENSITY := 3
+# When true, the gfx buffer covers the entire SubViewport instead of being
+# inset inside the HUD frame. Overworld-style screens use this to render
+# edge-to-edge. Toggle via set_gfx_fills_viewport(). Distinct from
+# `_gfx_fullscreen` which is the custom-shader escape hatch used by the
+# title screen; this flag keeps the data-texture pipeline but grows the
+# gfx grid to viewport size.
+var _gfx_fills_viewport: bool = false
+
+const TILE_DENSITY := 6
 
 # --- GPU rendering ---
 var _char_map: Dictionary = {}  # String -> int (glyph index)
@@ -152,8 +160,14 @@ func _resize() -> void:
 	if cell_height < 1:
 		cell_height = font_size
 
-	cols = int(vp_size.x) / cell_width
-	rows = int(vp_size.y) / cell_height
+	# Ceil, not floor, so the text rect fully covers the SubViewport.
+	# Floor leaves a gap of up to (cell_width - 1) px on the right and
+	# (cell_height - 1) px on the bottom — at 1280×720 with cell_height=22
+	# that's 16 px of gray default-clear strip at the bottom. Ceiling
+	# gives one extra cell that slightly overshoots the viewport, which
+	# the SubViewport clips cleanly.
+	cols = ceili(float(vp_size.x) / float(cell_width))
+	rows = ceili(float(vp_size.y) / float(cell_height))
 	cols = clampi(cols, 30, 160)
 	var min_rows: int = Constants.hud_total() + 5
 	if rows < min_rows:
@@ -165,12 +179,23 @@ func _resize() -> void:
 	if g_cell_width < 1:
 		g_cell_width = int(float(g_font_size) * 0.6)
 
-	var vp_pixel_w: int = (cols - 2) * cell_width
-	var vp_pixel_h: int = (rows - Constants.hud_total()) * cell_height
-	g_cols = maxi(1, vp_pixel_w / g_cell_width)
-	g_rows = maxi(1, vp_pixel_h / g_cell_height)
-	g_origin_x = cell_width
-	g_origin_y = Constants.viewport_top() * cell_height
+	var vp_pixel_w: int
+	var vp_pixel_h: int
+	if _gfx_fills_viewport:
+		vp_pixel_w = cols * cell_width
+		vp_pixel_h = rows * cell_height
+		g_origin_x = 0
+		g_origin_y = 0
+	else:
+		vp_pixel_w = (cols - 2) * cell_width
+		vp_pixel_h = (rows - Constants.hud_total()) * cell_height
+		g_origin_x = cell_width
+		g_origin_y = Constants.viewport_top() * cell_height
+	# Ceil for the same reason as cols/rows above — avoids a sub-cell
+	# gap at the inset's right/bottom edge if g_cell_width doesn't
+	# divide vp_pixel_w cleanly.
+	g_cols = maxi(1, ceili(float(vp_pixel_w) / float(g_cell_width)))
+	g_rows = maxi(1, ceili(float(vp_pixel_h) / float(g_cell_height)))
 
 	_allocate_buffers()
 	_create_data_textures()
@@ -529,16 +554,47 @@ func draw_separator(y: int, fg: Color = Color.TRANSPARENT) -> void:
 
 
 func draw_world_tile(wx_off: int, wy_off: int, expanded: Dictionary) -> void:
+	## PERF hot path. The overworld calls this ~420 times per frame. Two
+	## fast paths:
+	##   1. Whole tile in bounds → inline writes to the _g_* arrays,
+	##      skipping the per-cell bounds check and set_gfx_char dispatch.
+	##   2. Partially clipped tile → fall back to set_gfx_char.
 	var base_c: int = wx_off * TILE_DENSITY
 	var base_r: int = wy_off * TILE_DENSITY
-	for dy in range(TILE_DENSITY):
-		for dx in range(TILE_DENSITY):
-			set_gfx_char(
-				base_c + dx, base_r + dy,
-				expanded.chars[dy][dx],
-				expanded.fgs[dy][dx],
-				expanded.bgs[dy][dx]
-			)
+	var rows_n: int = expanded.chars.size()
+	if rows_n == 0:
+		return
+	var first_row: Array = expanded.chars[0]
+	var cols_n: int = first_row.size()
+
+	# Fast path: whole tile fits inside [0, g_cols) × [0, g_rows).
+	if (base_c >= 0 and base_r >= 0
+			and base_c + cols_n <= g_cols
+			and base_r + rows_n <= g_rows):
+		var chars_arr: Array = expanded.chars
+		var fgs_arr: Array = expanded.fgs
+		var bgs_arr: Array = expanded.bgs
+		for dy in range(rows_n):
+			var row_c: Array = chars_arr[dy]
+			var row_f: Array = fgs_arr[dy]
+			var row_b: Array = bgs_arr[dy]
+			var base_idx: int = (base_r + dy) * g_cols + base_c
+			for dx in range(cols_n):
+				var idx: int = base_idx + dx
+				_g_chars[idx] = row_c[dx]
+				_g_fg[idx] = row_f[dx]
+				_g_bg[idx] = row_b[dx]
+		_has_gfx = true
+		return
+
+	# Slow path — partially clipped.
+	for dy in range(rows_n):
+		var row: Array = expanded.chars[dy]
+		var fg_row: Array = expanded.fgs[dy]
+		var bg_row: Array = expanded.bgs[dy]
+		var cn: int = row.size()
+		for dx in range(cn):
+			set_gfx_char(base_c + dx, base_r + dy, row[dx], fg_row[dx], bg_row[dx])
 
 
 func draw_entity_char(wx_off: int, wy_off: int, ch: String, fg: Color, bg: Color = Color.TRANSPARENT) -> void:
@@ -658,3 +714,66 @@ func clear_gfx_shader() -> void:
 	_gfx_mat.set_shader_parameter("cell_bg", _g_bg_tex)
 	_gfx_mat.set_shader_parameter("atlas_cols", GlyphAtlasBuilder.ATLAS_COLS)
 	_gfx_mat.set_shader_parameter("atlas_rows", GlyphAtlasBuilder.ATLAS_ROWS)
+
+
+func set_gfx_fills_viewport(enabled: bool) -> void:
+	## Toggle fullscreen data-texture gfx mode. When enabled, the gfx rect
+	## covers the entire viewport (instead of the interior of the HUD
+	## frame) and the gfx data buffers are reallocated to match. When
+	## disabled, the gfx rect returns to the default HUD-inset position
+	## and size. Unlike set_gfx_fullscreen (custom-shader path), this
+	## keeps the default data-texture pipeline — draw_world_tile etc.
+	## still work. Does NOT rebuild the atlas, so the toggle is fast.
+	if _gfx_fills_viewport == enabled:
+		return
+	_gfx_fills_viewport = enabled
+
+	var vp_pixel_w: int
+	var vp_pixel_h: int
+	if enabled:
+		vp_pixel_w = cols * cell_width
+		vp_pixel_h = rows * cell_height
+		g_origin_x = 0
+		g_origin_y = 0
+	else:
+		vp_pixel_w = (cols - 2) * cell_width
+		vp_pixel_h = (rows - Constants.hud_total()) * cell_height
+		g_origin_x = cell_width
+		g_origin_y = Constants.viewport_top() * cell_height
+	# Ceil to avoid the same sub-cell gap that the text-rect fix
+	# addresses in _resize. Matches the ceili pattern used above.
+	g_cols = maxi(1, ceili(float(vp_pixel_w) / float(g_cell_width)))
+	g_rows = maxi(1, ceili(float(vp_pixel_h) / float(g_cell_height)))
+
+	# Reallocate gfx buffers (text buffer is untouched).
+	var g_size: int = g_rows * g_cols
+	_g_chars_a = _make_string_array(g_size, " ")
+	_g_fg_a = _make_color_array(g_size, _default_fg)
+	_g_bg_a = _make_color_array(g_size, _default_bg)
+	_g_chars_b = _make_string_array(g_size, " ")
+	_g_fg_b = _make_color_array(g_size, _default_fg)
+	_g_bg_b = _make_color_array(g_size, _default_bg)
+	_apply_buffer_refs()
+
+	# Recreate gfx data textures at the new dimensions.
+	_g_data_img = Image.create(g_cols, g_rows, false, Image.FORMAT_RGBA8)
+	_g_bg_img = Image.create(g_cols, g_rows, false, Image.FORMAT_RGBA8)
+	_g_data_tex = ImageTexture.create_from_image(_g_data_img)
+	_g_bg_tex = ImageTexture.create_from_image(_g_bg_img)
+
+	# Reposition/resize the gfx rect and push new shader uniforms.
+	if _gfx_rect and _gfx_mat:
+		_gfx_rect.position = Vector2(g_origin_x, g_origin_y)
+		_gfx_rect.size = Vector2(g_cols * g_cell_width, g_rows * g_cell_height)
+		_gfx_mat.set_shader_parameter("grid_cols", g_cols)
+		_gfx_mat.set_shader_parameter("grid_rows", g_rows)
+		_gfx_mat.set_shader_parameter("cell_size", Vector2(g_cell_width, g_cell_height))
+		_gfx_mat.set_shader_parameter(
+			"grid_pixel_size",
+			Vector2(g_cols * g_cell_width, g_rows * g_cell_height)
+		)
+		_gfx_mat.set_shader_parameter("cell_data", _g_data_tex)
+		_gfx_mat.set_shader_parameter("cell_bg", _g_bg_tex)
+
+	_force_full_redraw = true
+	_dirty = true

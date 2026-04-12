@@ -17,6 +17,19 @@ extends RefCounted
 const CHUNK_SIZE: int = 32
 const TERRAIN_SCALE: float = 0.02
 
+# ── Feature flags (trickle content back on by flipping these) ──
+# When false, _terrain_from_noise only produces GRASSLAND (still with
+# the prox gradient so it doesn't look flat). Rivers and bridges are
+# skipped entirely. Section walls always render regardless.
+const ENABLE_RIVERS: bool = false
+const ENABLE_BRIDGES: bool = false
+const ENABLE_BUSHES: bool = false
+const ENABLE_SPARSE_TREES: bool = false
+const ENABLE_FOREST: bool = false
+const ENABLE_DEEP_FOREST: bool = false
+const ENABLE_BOULDER_FIELD: bool = false
+const ENABLE_MOUNTAINS: bool = false    # gates MOUNTAIN_BASE, MOUNTAIN, HIGH_PEAK
+
 # Section dimensions — single lush habitat (js/world.js:490-491).
 const HABITAT_WIDTH_CHUNKS: int = 128   # ~4096 tiles E-W
 const HABITAT_WRAP_CHUNKS: int = 512    # ~16384 tiles N-S (cylindrical wrap)
@@ -49,8 +62,12 @@ var seed_val: int
 var section_width_tiles: int
 var section_height_tiles: int
 
-# Chunk cache keyed by "cx,cy"
+# Chunk cache keyed by "cx,cy" with an LRU eviction list. Caps memory
+# growth during long sessions — at 32×32 pre-expanded tiles per chunk
+# the cache is the single biggest memory cost.
+const MAX_CACHED_CHUNKS: int = 256
 var _chunks: Dictionary = {}
+var _chunk_lru: Array[String] = []
 
 # Noise fields
 var _height_noise: PerlinNoise
@@ -127,15 +144,27 @@ func _chunk_key(cx: int, cy: int) -> String:
 func _get_or_build_chunk(cx: int, cy: int) -> Array:
 	var key: String = _chunk_key(cx, cy)
 	if _chunks.has(key):
+		# Move to MRU tail; LRU head gets evicted on overflow.
+		_chunk_lru.erase(key)
+		_chunk_lru.append(key)
 		return _chunks[key]
 	var chunk: Array = _generate_chunk(cx, cy)
 	_chunks[key] = chunk
+	_chunk_lru.append(key)
+	while _chunks.size() > MAX_CACHED_CHUNKS:
+		var old_key: String = _chunk_lru.pop_front()
+		_chunks.erase(old_key)
 	return chunk
 
 
 func _generate_chunk(cx: int, cy: int) -> Array:
 	## Build a CHUNK_SIZE × CHUNK_SIZE tile grid at (cx, cy).
-	## Mirrors js/world.js:1300-1356 (habitat branch only).
+	##
+	## PERF: after the tile set is finalized (generation + bridge pass),
+	## pre-compute each tile's 6x6 expansion and stash it on the tile
+	## dict. This moves tile expansion from per-frame to per-chunk-gen,
+	## eliminating ~45k array allocations per frame and dropping
+	## OverworldTiles.expand() out of the hot path.
 	var tiles: Array = []
 	var ox: int = cx * CHUNK_SIZE
 	var oy: int = cy * CHUNK_SIZE
@@ -145,10 +174,20 @@ func _generate_chunk(cx: int, cy: int) -> Array:
 			row.append(_generate_tile(ox + lx, oy + ly))
 		tiles.append(row)
 
-	# Post-process: place bridges where rivers cross spans. The legacy does
-	# this via `_placeBridgeLocations` which scans for 3..9-wide water runs
-	# and drops a plank road across.
-	_place_bridges(cx, cy, tiles)
+	# Post-process: place bridges where rivers cross spans. Gated by
+	# ENABLE_BRIDGES (and implicitly by ENABLE_RIVERS — no water spans
+	# means nothing to bridge).
+	if ENABLE_BRIDGES and ENABLE_RIVERS:
+		_place_bridges(cx, cy, tiles)
+
+	# Pre-expand every tile for the render hot path.
+	for ly in range(CHUNK_SIZE):
+		var wy: int = oy + ly
+		var row: Array = tiles[ly]
+		for lx in range(CHUNK_SIZE):
+			var tile: Dictionary = row[lx]
+			tile["expanded"] = OverworldTiles.expand(tile, ox + lx, wy)
+
 	return tiles
 
 
@@ -165,24 +204,41 @@ func _generate_tile(wx: int, wy: int) -> Dictionary:
 		return _make_wall_tile(wall_dist)
 
 	# Rivers (with cylindrical Y wrap consideration — rivers use the
-	# wrapped coord so they loop smoothly).
-	var river_dist: float = _get_river_distance(wx, wy)
-	if river_dist <= float(RIVER_HALF_WIDTH):
-		return _water_tile(wx, wy, river_dist)
-	if river_dist <= float(RIVER_HALF_WIDTH + 1):
-		return _inner_shore_tile(wx, wy)
-	if river_dist <= float(RIVER_HALF_WIDTH + RIVER_SHORE_WIDTH):
-		return _outer_shore_tile(wx, wy)
+	# wrapped coord so they loop smoothly). Gated by ENABLE_RIVERS so we
+	# can strip the habitat down to bare grassland during feature bring-up.
+	if ENABLE_RIVERS:
+		var river_dist: float = _get_river_distance(wx, wy)
+		if river_dist <= float(RIVER_HALF_WIDTH):
+			return _water_tile(wx, wy, river_dist)
+		if river_dist <= float(RIVER_HALF_WIDTH + 1):
+			return _inner_shore_tile(wx, wy)
+		if river_dist <= float(RIVER_HALF_WIDTH + RIVER_SHORE_WIDTH):
+			return _outer_shore_tile(wx, wy)
 
 	# Base habitat terrain.
 	return _terrain_from_noise(wx, wy)
 
 
 func _terrain_from_noise(wx: int, wy: int) -> Dictionary:
-	## Exact port of js/world.js:266-285 _terrainFromNoise for the lush
-	## habitat. h drives the biome band; d jitters the grassland prox
-	## gradient. Moisture, temperature, and anomaly noises exist in the
-	## legacy for non-lush biomes but are unused in this path.
+	## Elevation-ring terrain generator. Every band beyond the base
+	## GRASSLAND is gated behind a feature flag so the demo can trickle
+	## content back in one tier at a time. Current default: only the
+	## GRASSLAND base rings are produced, giving a flat green habitat
+	## bounded by the east/west section walls.
+	##
+	## Ring order (when all flags enabled):
+	##   h <  0.42   GRASSLAND                            always on
+	##   h <  0.48   BUSH              → ENABLE_BUSHES
+	##   h <  0.54   SPARSE_TREES      → ENABLE_SPARSE_TREES
+	##   h <  0.62   FOREST            → ENABLE_FOREST
+	##   h <  0.70   DEEP_FOREST       → ENABLE_DEEP_FOREST
+	##   h <  0.74   BOULDER_FIELD     → ENABLE_BOULDER_FIELD
+	##   h <  0.80   MOUNTAIN_BASE     → ENABLE_MOUNTAINS
+	##   h <  0.86   MOUNTAIN          → ENABLE_MOUNTAINS
+	##   h >= 0.86   HIGH_PEAK         → ENABLE_MOUNTAINS
+	## When a higher band is gated off, its range is folded back into the
+	## previous enabled band — so with nothing but ENABLE_BUSHES, a
+	## mountain peak becomes a bush patch instead of a bare GRASSLAND dot.
 	var h: float = (_height_noise.fbm(
 		float(wx) * TERRAIN_SCALE, float(wy) * TERRAIN_SCALE, 6
 	) + 1.0) * 0.5
@@ -190,41 +246,72 @@ func _terrain_from_noise(wx: int, wy: int) -> Dictionary:
 		float(wx) * TERRAIN_SCALE * 2.0, float(wy) * TERRAIN_SCALE * 2.0, 3
 	) + 1.0) * 0.5
 
-	# GRASSLAND (h < 0.55) — lush vivid green → muted yellow-green near forest.
-	if h < 0.55:
-		var prox: float = clampf(h / 0.55, 0.0, 1.0)
+	# GRASSLAND base ring — always enabled. Uses a prox gradient so the
+	# terrain still has visible variation even without other biomes.
+	if h < 0.42 or not (
+		ENABLE_BUSHES or ENABLE_SPARSE_TREES or ENABLE_FOREST
+		or ENABLE_DEEP_FOREST or ENABLE_BOULDER_FIELD or ENABLE_MOUNTAINS
+	):
+		var prox: float = clampf(h / 0.42, 0.0, 1.0)
 		prox = clampf(prox + (d - 0.5) * 0.15, 0.0, 1.0)
 		var fg: Color = _lerp_color(Color("#33dd44"), Color("#99aa33"), prox)
 		var bg: Color = _lerp_color(Color("#0a2210"), Color("#1a1a08"), prox)
 		return OverworldTiles.make(OverworldTiles.GRASSLAND, ".", fg, bg)
 
-	# FOREST (h 0.55 - 0.62).
-	if h < 0.62:
+	if h < 0.48 and ENABLE_BUSHES:
+		return OverworldTiles.make(
+			OverworldTiles.BUSH, "☘",
+			Color("#2fb050"), Color("#0d1e0a")
+		)
+
+	if h < 0.54 and ENABLE_SPARSE_TREES:
+		return OverworldTiles.make(
+			OverworldTiles.SPARSE_TREES, "♣",
+			Color("#2cb82c"), Color("#0a1a0a")
+		)
+
+	if h < 0.62 and ENABLE_FOREST:
 		return OverworldTiles.make(
 			OverworldTiles.FOREST, "♣",
 			Color("#22AA22"), Color("#0a1a0a")
 		)
 
-	# DEEP_FOREST (h 0.62 - 0.70). Uses ♣ (clubs) so all tree tops render
-	# with the same glyph — deep forest is just denser and darker-green.
-	if h < 0.70:
+	if h < 0.70 and ENABLE_DEEP_FOREST:
 		return OverworldTiles.make(
 			OverworldTiles.DEEP_FOREST, "♣",
 			Color("#116611"), Color("#060f06")
 		)
 
-	# MOUNTAIN_BASE (h 0.70 - 0.82) — dense shade-block terrain.
-	if h < 0.82:
+	if h < 0.74 and ENABLE_BOULDER_FIELD:
 		return OverworldTiles.make(
-			OverworldTiles.MOUNTAIN_BASE, "▓",
-			Color("#AAAAAA"), Color("#333333")
+			OverworldTiles.BOULDER_FIELD, "▓",
+			Color("#8a8a95"), Color("#2a2825")
 		)
 
-	# MOUNTAIN (h > 0.82) — peak with outlined triangles.
-	return OverworldTiles.make(
-		OverworldTiles.MOUNTAIN, "△",
-		Color("#BBBBBB"), Color("#444444")
-	)
+	if ENABLE_MOUNTAINS:
+		if h < 0.80:
+			return OverworldTiles.make(
+				OverworldTiles.MOUNTAIN_BASE, "▓",
+				Color("#AAAAAA"), Color("#333333")
+			)
+		if h < 0.86:
+			return OverworldTiles.make(
+				OverworldTiles.MOUNTAIN, "△",
+				Color("#BBBBBB"), Color("#444444")
+			)
+		return OverworldTiles.make(
+			OverworldTiles.HIGH_PEAK, "▲",
+			Color("#E8ECFF"), Color("#22283a")
+		)
+
+	# Fall-through: feature disabled at this elevation → GRASSLAND.
+	# Keeps the band above the grassland threshold rendering as plain
+	# grass instead of leaving tiles undefined.
+	var g_prox: float = clampf(h / 0.42, 0.0, 1.0)
+	g_prox = clampf(g_prox + (d - 0.5) * 0.15, 0.0, 1.0)
+	var g_fg: Color = _lerp_color(Color("#33dd44"), Color("#99aa33"), g_prox)
+	var g_bg: Color = _lerp_color(Color("#0a2210"), Color("#1a1a08"), g_prox)
+	return OverworldTiles.make(OverworldTiles.GRASSLAND, ".", g_fg, g_bg)
 
 
 # ── Rivers ──
@@ -297,34 +384,45 @@ func _outer_shore_tile(wx: int, wy: int) -> Dictionary:
 
 
 # ── Bridges ──
-# Scan each chunk row for water spans up to 9 wide and drop a plank bridge
-# once every ~14 tiles of Y distance. Simpler than the legacy
-# `_placeBridgeLocations` but visually equivalent in this demo.
+# Rivers run east-west, so each vertical water span (within a column) is
+# 3-7 tiles tall — the river width plus shallows. A vertical bridge is a
+# 1-tile-wide, multi-tile-tall plank strip that lets the player cross
+# south↔north. Placement is deterministic per wx via `(wx * 31 + 7) % 14`
+# so bridges line up across chunk boundaries. Within a chunk we dedupe
+# by river band (8-tile buckets) so two adjacent eligible columns don't
+# double-bridge the same river.
 
 func _place_bridges(cx: int, cy: int, tiles: Array) -> void:
 	var ox: int = cx * CHUNK_SIZE
-	var oy: int = cy * CHUNK_SIZE
-	for ly in range(CHUNK_SIZE):
-		var wy: int = oy + ly
-		# Only place bridges on every ~14th row (deterministic by wy).
-		if (wy * 31 + 7) % 14 != 0:
+	var used_bands: Dictionary = {}
+	for lx in range(CHUNK_SIZE):
+		var wx: int = ox + lx
+		if (wx * 31 + 7) % 14 != 0:
 			continue
-		# Find the first contiguous water span in this row (inside chunk bounds).
-		var lx: int = 0
-		while lx < CHUNK_SIZE:
+		# Walk this column top-to-bottom, bridge the first vertical water
+		# span we find (rivers are spaced 125 tiles apart, so only one
+		# span per chunk typically).
+		var ly: int = 0
+		while ly < CHUNK_SIZE:
 			if _is_water_type(tiles[ly][lx].type):
-				var start: int = lx
-				while lx < CHUNK_SIZE and _is_water_type(tiles[ly][lx].type):
-					lx += 1
-				var end: int = lx - 1
-				# Replace the water run with bridge planks.
-				for bx in range(start, end + 1):
-					tiles[ly][bx] = OverworldTiles.make(
-						OverworldTiles.BRIDGE, "=",
+				var start: int = ly
+				while ly < CHUNK_SIZE and _is_water_type(tiles[ly][lx].type):
+					ly += 1
+				var end: int = ly - 1
+				var span: int = end - start + 1
+				if span < 3:
+					break
+				var band_key: int = ((start + end) / 2) / 8
+				if used_bands.has(band_key):
+					break
+				used_bands[band_key] = true
+				for by in range(start, end + 1):
+					tiles[by][lx] = OverworldTiles.make(
+						OverworldTiles.BRIDGE, "║",
 						Color("#aa6622"), Color("#221100")
 					)
 				break
-			lx += 1
+			ly += 1
 
 
 func _is_water_type(type: String) -> bool:
@@ -340,13 +438,18 @@ func _is_water_type(type: String) -> bool:
 func _make_wall_tile(wall_dist: int) -> Dictionary:
 	var d: int = clampi(wall_dist, 0, WALL_GRADIENT.size() - 1)
 	var grad: Dictionary = WALL_GRADIENT[d]
-	return OverworldTiles.make(
+	var tile: Dictionary = OverworldTiles.make(
 		OverworldTiles.SECTION_WALL,
 		grad.char,
 		Color(grad.fg),
 		Color(grad.bg),
 		false
 	)
+	# Stash the gradient index so OverworldTiles.expand() can pick the
+	# matching WALL_6x6_LEVELS variant (bright outer panels → dark inner
+	# shade fades). See overworld_tiles.gd expand() SECTION_WALL branch.
+	tile["wall_level"] = d
+	return tile
 
 
 # ── Helpers ──

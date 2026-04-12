@@ -57,5 +57,7 @@ const BOX_BR := "╯"
 const BOX_H := "─"
 const BOX_V := "│"
 
-# Tile density (each world tile = NxN graphics cells)
-const TILE_DENSITY := 3
+# Tile density (each world tile = NxN graphics cells).
+# Set to 6 for the detailed overworld art so each world tile has 36 cells
+# to paint with. Must stay in lockstep with AsciiGrid.TILE_DENSITY.
+const TILE_DENSITY := 6
