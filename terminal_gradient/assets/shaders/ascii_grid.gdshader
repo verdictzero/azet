@@ -17,6 +17,18 @@ uniform sampler2D glyph_atlas : filter_nearest, repeat_disable;
 uniform int atlas_cols; // 16
 uniform int atlas_rows; // 16
 
+// FUTURE(per-cell-font): today the whole grid shares one font atlas
+// (swappable at runtime via AsciiGrid.set_font_atlas). To mix fonts in
+// one grid without reshaping cell_data:
+//   1. Promote `glyph_atlas` above to `sampler2DArray` (layer = font slot).
+//   2. Add a parallel data texture `uniform sampler2D cell_font` where
+//      R8 stores the font-slot index (0..N-1). Do NOT steal bits from
+//      cell_data — fg RGB needs all 24 bits.
+//   3. Sample cell_font, use its R as the array layer in the glyph_atlas
+//      lookup below.
+// FontAtlasCache.pack_array(font_names, size) -> Texture2DArray would
+// assemble the array from the existing per-font baked PNGs.
+
 void fragment() {
 	// Convert UV to pixel position within this rect
 	vec2 pixel_pos = UV * grid_pixel_size;

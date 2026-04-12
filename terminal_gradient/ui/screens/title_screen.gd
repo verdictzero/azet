@@ -133,7 +133,7 @@ func _setup_particle_subviewport(vp_w: int, vp_h: int, block_cols: int, block_ro
 
 
 func _setup_shader() -> bool:
-	var atlas: ImageTexture = grid.get_gfx_atlas()
+	var atlas: Texture2D = grid.get_gfx_atlas()
 	if atlas == null:
 		return false
 
