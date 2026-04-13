@@ -106,6 +106,37 @@ func is_walkable(x: int, y: int) -> bool:
 	return get_biome(x, y) != Biome.RIVER
 
 
+func get_height(x: int, y: int) -> float:
+	## Per-tile height used by the lighting / shadow pass in
+	## assets/shaders/ascii_grid.gdshader. Pure function of (biome, detail),
+	## so no persistent tile store is needed.
+	##   ~0.0   = flat ground (grass, dirt)
+	##   >0     = occluders that cast shadows (trees, buildings)
+	##   <0     = indents that sit below ground level (rivers, pits)
+	## FUTURE: buildings placed on top of the procedural biome pass should
+	## override this with e.g. 3.0; excavated pits with e.g. -0.6.
+	var b: int = get_biome(x, y)
+	var d: float = get_detail(x, y)
+	match b:
+		Biome.RIVER:
+			return -0.4
+		Biome.FLOODLAND:
+			return -0.15
+		Biome.DEEP_FOREST:
+			return 2.2 + d * 0.4
+		Biome.FOREST:
+			if d > 0.3:
+				return 1.8
+			elif d > -0.1:
+				return 1.2
+			else:
+				return 0.05
+		Biome.DIRT:
+			return 0.0
+		_:
+			return 0.02 if d > 0.1 else 0.0
+
+
 # ── Internal ──────────────────────────────────────
 
 func _river_ridge(x: int, y: int) -> float:

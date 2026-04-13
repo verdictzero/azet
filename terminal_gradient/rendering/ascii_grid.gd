@@ -47,6 +47,12 @@ const TILE_DENSITY := 6
 # Active density — set to TILE_DENSITY/2 by set_gfx_fills_viewport for overworld perf.
 var active_tile_density: int = TILE_DENSITY
 
+# Height encoding for _g_height*. 128 = ground level. 1 byte step ≈ 1/32 of
+# a world-space height unit, giving ±4 units range — plenty for trees,
+# buildings, and pits at tile scale.
+const HEIGHT_ZERO: int = 128
+const HEIGHT_SCALE: float = 32.0
+
 # --- GPU rendering ---
 var _char_map: Dictionary = {}  # String -> int (glyph index)
 var _gi_table: PackedInt32Array = PackedInt32Array()  # Unicode codepoint → glyph index (O(1) lookup)
@@ -62,6 +68,11 @@ var _g_data_img: Image
 var _g_bg_img: Image
 var _g_data_tex: ImageTexture
 var _g_bg_tex: ImageTexture
+# Per-cell height (R8). Feeds the lighting/shadow/god-ray pass in
+# assets/shaders/ascii_grid.gdshader. 128 = ground level; < 128 are pits
+# and rivers, > 128 are occluders (trees, buildings).
+var _g_height_img: Image
+var _g_height_tex: ImageTexture
 
 # Child TextureRects with shader materials
 var _text_rect: ColorRect
@@ -86,10 +97,12 @@ var _g_chars_a: PackedStringArray
 var _g_fg_a: PackedColorArray
 var _g_bg_a: PackedColorArray
 var _g_gi_a: PackedInt32Array
+var _g_height_a: PackedByteArray  # per-cell height, 128 = h=0, ±4 units @ ~0.03 res
 var _g_chars_b: PackedStringArray
 var _g_fg_b: PackedColorArray
 var _g_bg_b: PackedColorArray
 var _g_gi_b: PackedInt32Array
+var _g_height_b: PackedByteArray
 
 # Active references (point to A or B)
 var _t_chars: PackedStringArray
@@ -103,10 +116,12 @@ var _g_chars: PackedStringArray
 var _g_fg: PackedColorArray
 var _g_bg: PackedColorArray
 var _g_gi: PackedInt32Array
+var _g_height: PackedByteArray
 var _g_prev_chars: PackedStringArray
 var _g_prev_fg: PackedColorArray
 var _g_prev_bg: PackedColorArray
 var _g_prev_gi: PackedInt32Array
+var _g_prev_height: PackedByteArray
 
 var _using_set_a: bool = true
 
@@ -364,6 +379,9 @@ func _setup_render_rects(text_atlas: Texture2D, gfx_atlas: Texture2D) -> void:
 	_text_mat.set_shader_parameter("grid_pixel_size", Vector2(pixel_w, pixel_h))
 	_text_mat.set_shader_parameter("cell_data", _t_data_tex)
 	_text_mat.set_shader_parameter("cell_bg", _t_bg_tex)
+	# Text layer bypasses lighting (sun_intensity/moon_intensity stay 0 by
+	# default) but the uniform must still be bound to a valid sampler.
+	_text_mat.set_shader_parameter("cell_height", _g_height_tex)
 	_text_mat.set_shader_parameter("glyph_atlas", text_atlas)
 	_text_mat.set_shader_parameter("atlas_cols", GlyphAtlasBuilder.ATLAS_COLS)
 	_text_mat.set_shader_parameter("atlas_rows", GlyphAtlasBuilder.ATLAS_ROWS)
@@ -381,6 +399,7 @@ func _setup_render_rects(text_atlas: Texture2D, gfx_atlas: Texture2D) -> void:
 	_gfx_mat.set_shader_parameter("grid_pixel_size", Vector2(gfx_pixel_w, gfx_pixel_h))
 	_gfx_mat.set_shader_parameter("cell_data", _g_data_tex)
 	_gfx_mat.set_shader_parameter("cell_bg", _g_bg_tex)
+	_gfx_mat.set_shader_parameter("cell_height", _g_height_tex)
 	_gfx_mat.set_shader_parameter("glyph_atlas", gfx_atlas)
 	_gfx_mat.set_shader_parameter("atlas_cols", GlyphAtlasBuilder.ATLAS_COLS)
 	_gfx_mat.set_shader_parameter("atlas_rows", GlyphAtlasBuilder.ATLAS_ROWS)
@@ -416,6 +435,10 @@ func _create_data_textures() -> void:
 	_g_bg_img = Image.create(g_cols, g_rows, false, Image.FORMAT_RGBA8)
 	_g_data_tex = ImageTexture.create_from_image(_g_data_img)
 	_g_bg_tex = ImageTexture.create_from_image(_g_bg_img)
+	# Per-cell height, single channel, 128 = ground level.
+	_g_height_img = Image.create(g_cols, g_rows, false, Image.FORMAT_R8)
+	_g_height_img.fill(Color8(HEIGHT_ZERO, HEIGHT_ZERO, HEIGHT_ZERO, 255))
+	_g_height_tex = ImageTexture.create_from_image(_g_height_img)
 
 
 # ── Buffer allocation ────────────────────────────
@@ -434,10 +457,12 @@ func _allocate_buffers() -> void:
 	_g_fg_a = _make_color_array(g_size, _default_fg)
 	_g_bg_a = _make_color_array(g_size, _default_bg)
 	_g_gi_a = _make_int_array(g_size, 0)
+	_g_height_a = _make_byte_array(g_size, HEIGHT_ZERO)
 	_g_chars_b = _make_string_array(g_size, " ")
 	_g_fg_b = _make_color_array(g_size, _default_fg)
 	_g_bg_b = _make_color_array(g_size, _default_bg)
 	_g_gi_b = _make_int_array(g_size, 0)
+	_g_height_b = _make_byte_array(g_size, HEIGHT_ZERO)
 
 	_using_set_a = true
 	_apply_buffer_refs()
@@ -464,6 +489,13 @@ static func _make_int_array(size: int, fill: int) -> PackedInt32Array:
 	return arr
 
 
+static func _make_byte_array(size: int, fill: int) -> PackedByteArray:
+	var arr := PackedByteArray()
+	arr.resize(size)
+	arr.fill(fill)
+	return arr
+
+
 # ── Frame lifecycle ──────────────────────────────
 
 func begin_frame() -> void:
@@ -476,6 +508,7 @@ func begin_frame() -> void:
 	_g_fg.fill(_default_fg)
 	_g_bg.fill(_default_bg)
 	_g_gi.fill(0)
+	_g_height.fill(HEIGHT_ZERO)
 	_has_gfx = false
 	_has_text = false
 
@@ -511,13 +544,13 @@ func _apply_buffer_refs() -> void:
 	if _using_set_a:
 		_t_chars = _t_chars_a; _t_fg = _t_fg_a; _t_bg = _t_bg_a
 		_t_prev_chars = _t_chars_b; _t_prev_fg = _t_fg_b; _t_prev_bg = _t_bg_b
-		_g_chars = _g_chars_a; _g_fg = _g_fg_a; _g_bg = _g_bg_a; _g_gi = _g_gi_a
-		_g_prev_chars = _g_chars_b; _g_prev_fg = _g_fg_b; _g_prev_bg = _g_bg_b; _g_prev_gi = _g_gi_b
+		_g_chars = _g_chars_a; _g_fg = _g_fg_a; _g_bg = _g_bg_a; _g_gi = _g_gi_a; _g_height = _g_height_a
+		_g_prev_chars = _g_chars_b; _g_prev_fg = _g_fg_b; _g_prev_bg = _g_bg_b; _g_prev_gi = _g_gi_b; _g_prev_height = _g_height_b
 	else:
 		_t_chars = _t_chars_b; _t_fg = _t_fg_b; _t_bg = _t_bg_b
 		_t_prev_chars = _t_chars_a; _t_prev_fg = _t_fg_a; _t_prev_bg = _t_bg_a
-		_g_chars = _g_chars_b; _g_fg = _g_fg_b; _g_bg = _g_bg_b; _g_gi = _g_gi_b
-		_g_prev_chars = _g_chars_a; _g_prev_fg = _g_fg_a; _g_prev_bg = _g_bg_a; _g_prev_gi = _g_gi_a
+		_g_chars = _g_chars_b; _g_fg = _g_fg_b; _g_bg = _g_bg_b; _g_gi = _g_gi_b; _g_height = _g_height_b
+		_g_prev_chars = _g_chars_a; _g_prev_fg = _g_fg_a; _g_prev_bg = _g_bg_a; _g_prev_gi = _g_gi_a; _g_prev_height = _g_height_a
 
 
 func set_default_layers_hidden(hidden: bool) -> void:
@@ -540,6 +573,8 @@ func _buffers_differ() -> bool:
 	if _t_chars != _t_prev_chars or _t_fg != _t_prev_fg or _t_bg != _t_prev_bg:
 		return true
 	if _g_chars != _g_prev_chars or _g_fg != _g_prev_fg or _g_bg != _g_prev_bg:
+		return true
+	if _g_height != _g_prev_height:
 		return true
 	return false
 
@@ -606,6 +641,13 @@ func _upload_data_textures() -> void:
 		_g_bg_img = Image.create_from_data(g_cols, g_rows, false, Image.FORMAT_RGBA8, g_bg_d)
 		_g_data_tex.update(_g_data_img)
 		_g_bg_tex.update(_g_bg_img)
+
+		# Height texture — piggybacks on the gfx upload so the lighting
+		# pass stays in sync with the visuals. PackedByteArray layout is
+		# already R8-compatible, no per-cell copy needed.
+		if _g_height != _g_prev_height:
+			_g_height_img = Image.create_from_data(g_cols, g_rows, false, Image.FORMAT_R8, _g_height)
+			_g_height_tex.update(_g_height_img)
 
 	_dirty = false
 
@@ -805,6 +847,32 @@ func tint_gfx_cell(col: int, row: int, tint: Color, alpha: float) -> void:
 	_g_bg[idx] = _g_bg[idx].lerp(tint, alpha)
 
 
+func set_gfx_cell_height(col: int, row: int, h: float) -> void:
+	## Write per-cell height for the lighting/shadow pass. `h` is in
+	## world-space units: ~0 = ground, positive = occluders that cast
+	## shadows (trees, buildings), negative = pits/rivers. Values are
+	## packed into a single byte via HEIGHT_SCALE (see header).
+	if row < 0 or row >= g_rows or col < 0 or col >= g_cols:
+		return
+	var b: int = clampi(int(round(h * HEIGHT_SCALE)) + HEIGHT_ZERO, 0, 255)
+	_g_height[_gi(col, row)] = b
+
+
+func set_lighting_uniforms(sun_dir: Vector2, moon_dir: Vector2,
+		sun_intensity: float, moon_intensity: float, day_factor: float) -> void:
+	## Push per-frame lighting state to the gfx shader. Cheap: 5 uniform
+	## writes, no texture upload, no array traversal. Safe to call every
+	## frame even when the static-camera skip bails on redraws — the
+	## shader reads these uniforms on its next render pass regardless.
+	if _gfx_mat == null:
+		return
+	_gfx_mat.set_shader_parameter("sun_dir", sun_dir)
+	_gfx_mat.set_shader_parameter("moon_dir", moon_dir)
+	_gfx_mat.set_shader_parameter("sun_intensity", sun_intensity)
+	_gfx_mat.set_shader_parameter("moon_intensity", moon_intensity)
+	_gfx_mat.set_shader_parameter("day_factor", day_factor)
+
+
 func tint_gfx_cell_weighted(col: int, row: int, tint: Color,
 		fg_alpha: float, bg_alpha: float) -> void:
 	## Tint fg and bg of a gfx cell with independent alphas. Used by the
@@ -936,10 +1004,12 @@ func set_gfx_fills_viewport(enabled: bool) -> void:
 	_g_fg_a = _make_color_array(g_size, _default_fg)
 	_g_bg_a = _make_color_array(g_size, _default_bg)
 	_g_gi_a = _make_int_array(g_size, 0)
+	_g_height_a = _make_byte_array(g_size, HEIGHT_ZERO)
 	_g_chars_b = _make_string_array(g_size, " ")
 	_g_fg_b = _make_color_array(g_size, _default_fg)
 	_g_bg_b = _make_color_array(g_size, _default_bg)
 	_g_gi_b = _make_int_array(g_size, 0)
+	_g_height_b = _make_byte_array(g_size, HEIGHT_ZERO)
 	_apply_buffer_refs()
 
 	# Recreate gfx data textures at the new dimensions.
@@ -947,6 +1017,9 @@ func set_gfx_fills_viewport(enabled: bool) -> void:
 	_g_bg_img = Image.create(g_cols, g_rows, false, Image.FORMAT_RGBA8)
 	_g_data_tex = ImageTexture.create_from_image(_g_data_img)
 	_g_bg_tex = ImageTexture.create_from_image(_g_bg_img)
+	_g_height_img = Image.create(g_cols, g_rows, false, Image.FORMAT_R8)
+	_g_height_img.fill(Color8(HEIGHT_ZERO, HEIGHT_ZERO, HEIGHT_ZERO, 255))
+	_g_height_tex = ImageTexture.create_from_image(_g_height_img)
 
 	# Reposition/resize the gfx rect and push new shader uniforms.
 	if _gfx_rect and _gfx_mat:
@@ -961,6 +1034,9 @@ func set_gfx_fills_viewport(enabled: bool) -> void:
 		)
 		_gfx_mat.set_shader_parameter("cell_data", _g_data_tex)
 		_gfx_mat.set_shader_parameter("cell_bg", _g_bg_tex)
+		_gfx_mat.set_shader_parameter("cell_height", _g_height_tex)
+	if _text_mat:
+		_text_mat.set_shader_parameter("cell_height", _g_height_tex)
 
 	_force_full_redraw = true
 	_dirty = true

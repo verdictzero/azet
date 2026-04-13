@@ -116,6 +116,11 @@ func handle_input(action: String) -> void:
 			_try_move(-1, 0)
 		"move_right":
 			_try_move(1, 0)
+		"advance_hour":
+			# Debug scrub: nudge the day/night cycle so the user can
+			# eyeball shadow direction without waiting 30 real seconds
+			# per game hour. Bound from InputMgr if the action exists.
+			TimeMgr.advance(1)
 		"cancel":
 			request_action("goto_title")
 
@@ -134,13 +139,26 @@ func draw(_cols: int, _rows: int) -> void:
 	if vw <= 0 or vh <= 0:
 		return
 
+	# Lighting uniforms — push every frame so the sun continues to sweep
+	# across the sky even when the player stands still and the cell data
+	# upload is skipped. This is 5 uniform writes; effectively free.
+	grid.set_lighting_uniforms(
+		TimeMgr.get_sun_direction(),
+		TimeMgr.get_moon_direction(),
+		TimeMgr.get_sun_intensity(),
+		TimeMgr.get_moon_intensity(),
+		TimeMgr.get_day_factor(),
+	)
+
 	# Camera strictly follows the player — no smoothing, no bounds.
 	_cam_x = _player_x - vw / 2
 	_cam_y = _player_y - vh / 2
 
 	# Static-camera skip: nothing to do. The gfx buffer still holds the
 	# previous frame's data, and end_frame()'s A/B diff will skip the
-	# GPU upload since we don't touch any cells.
+	# GPU upload since we don't touch any cells. The shader re-reads the
+	# lighting uniforms above on every redraw regardless, so day/night
+	# still animates visually while the player is idle.
 	if (_cam_x == _last_cam_x and _cam_y == _last_cam_y
 			and vw == _last_vw and vh == _last_vh):
 		return
@@ -163,35 +181,47 @@ func draw(_cols: int, _rows: int) -> void:
 			var glyph: String
 			var fg: Color
 			var bg: Color
+			# Height feeds the shader's shadow/god-ray pass. Inlined here
+			# (rather than calling world.get_height) so we don't pay a
+			# second biome/detail sample — we already have both.
+			var h: float = 0.0
 			if biome == B_RIVER:
 				glyph = "≈" if d > 0.25 else ("~" if d > -0.25 else " ")
 				fg = _c_river_fg if d > 0.0 else _c_river_fg_alt
 				bg = _c_river_bg
+				h = -0.4
 			elif biome == B_FLOOD:
 				glyph = "," if d > 0.0 else "."
 				fg = _c_flood_fg
 				bg = _c_flood_bg
+				h = -0.15
 			elif biome == B_DEEP:
 				glyph = "♣" if d > -0.1 else "♠"
 				fg = _c_deep_forest_fg
 				bg = _c_deep_forest_bg
+				h = 2.2 + d * 0.4
 			elif biome == B_FOR:
 				if d > 0.3:
 					glyph = "♣"
+					h = 1.8
 				elif d > -0.1:
 					glyph = "♠"
+					h = 1.2
 				else:
 					glyph = "\""
+					h = 0.05
 				fg = _c_forest_fg
 				bg = _c_forest_bg
 			elif biome == B_DIRT:
 				glyph = "·" if d > 0.0 else ","
 				fg = _c_dirt_fg
 				bg = _c_dirt_bg
+				# h = 0 (flat)
 			else:
 				# Grassland
 				if d > 0.3:
 					glyph = "\""
+					h = 0.02
 				elif d > -0.1:
 					glyph = ","
 				else:
@@ -199,6 +229,7 @@ func draw(_cols: int, _rows: int) -> void:
 				fg = _c_grass_fg if d > 0.1 else _c_grass_fg_alt
 				bg = _c_grass_bg
 			g.set_gfx_char(col, row, glyph, fg, bg)
+			g.set_gfx_cell_height(col, row, h)
 
 	var px: int = _player_x - _cam_x
 	var py: int = _player_y - _cam_y

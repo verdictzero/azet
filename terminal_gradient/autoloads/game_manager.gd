@@ -119,6 +119,10 @@ func _process(delta: float) -> void:
 	if ascii_grid == null:
 		return
 
+	# Advance the day/night clock. TimeMgr.paused (menus/cutscenes) gates
+	# the accumulator internally, so this is safe to call unconditionally.
+	TimeMgr.update_real_time(delta)
+
 	# Update transition
 	if _transitioning:
 		transition_timer -= delta
