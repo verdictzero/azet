@@ -7,7 +7,7 @@ extends BaseScreen
 
 const NUM_SEEDS: int = 10
 const FIRE_CHARSET: Array[String] = [" ", ".", "\u00B7", ":", "\u2219", "\u2591", "\u2592", "\u2593"]
-const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG", "UI SHELL"]
+const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG"]
 
 var _title_shader: Shader
 var _particle_shader: Shader
@@ -24,6 +24,10 @@ var _sef_bob_range: float = 0.0
 var _particle_subviewport: SubViewport
 var _particle_rect: ColorRect
 var _particle_mat: ShaderMaterial
+var _reject_tween: Tween
+var _flash_tween: Tween
+var _reject_label: Label
+var _reject_base_x: float
 
 
 func _init(ascii_grid: AsciiGrid) -> void:
@@ -42,6 +46,14 @@ func on_enter(context: Dictionary = {}) -> void:
 
 
 func on_exit() -> void:
+	if _reject_tween:
+		_reject_tween.kill()
+		_reject_tween = null
+	if _flash_tween:
+		_flash_tween.kill()
+		_flash_tween = null
+	grid.modulate = Color.WHITE
+	_reject_label = null
 	for label in _menu_labels:
 		label.queue_free()
 	_menu_labels.clear()
@@ -251,8 +263,41 @@ func handle_input(action: String) -> void:
 
 func _select_menu_item() -> void:
 	match _menu_selection:
-		0: request_action("new_game")
-		1: request_action("continue_game")
-		2: request_action("open_settings")
-		3: request_action("debug_start")
-		4: request_action("ui_shell_demo")
+		0: _reject_menu_item()
+		1: _reject_menu_item()
+		2: _reject_menu_item()
+		3: request_action("open_debug_menu")
+
+
+func _reject_menu_item() -> void:
+	## Shake the selected label and flash the screen red for stub options.
+	# Restore any previously shaking label
+	if _reject_label and is_instance_valid(_reject_label):
+		_reject_label.position.x = _reject_base_x
+
+	var label: Label = _menu_labels[_menu_selection]
+	_reject_label = label
+	_reject_base_x = label.position.x
+
+	if _reject_tween:
+		_reject_tween.kill()
+	_reject_tween = grid.create_tween()
+	var amp: float = 12.0
+	var step: float = 0.025
+	var cycles: int = 7
+	for i in range(cycles):
+		var direction: float = -1.0 if i % 2 == 0 else 1.0
+		var decay: float = 1.0 - (float(i) / float(cycles))
+		_reject_tween.tween_property(label, "position:x",
+			_reject_base_x + amp * direction * decay, step)
+	_reject_tween.tween_property(label, "position:x", _reject_base_x, step)
+	_reject_tween.tween_callback(func(): _reject_label = null)
+
+	# Red flash via grid modulate
+	if _flash_tween:
+		_flash_tween.kill()
+	grid.modulate = Color.WHITE
+	_flash_tween = grid.create_tween()
+	_flash_tween.tween_property(grid, "modulate", Color(1.5, 0.4, 0.4), 0.02)
+	_flash_tween.tween_property(grid, "modulate", Color.WHITE, 0.13) \
+		.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)

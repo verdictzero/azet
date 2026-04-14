@@ -77,6 +77,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.FIRE_DEMO, FireDemoScreen.new(ascii_grid))
 	ui_manager.register_screen(State.TITLE_SCREEN, TitleScreen.new(ascii_grid))
 	ui_manager.register_screen(State.UI_SHELL_DEMO, UIShellDemoScreen.new(ascii_grid))
+	ui_manager.register_screen(State.DEBUG_MENU, DebugMenuScreen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -173,6 +174,10 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.HELP)
 		"ui_shell_demo":
 			set_state(State.UI_SHELL_DEMO)
+		"open_debug_menu", "goto_debug_menu":
+			set_state(State.DEBUG_MENU)
+		"open_fire_demo":
+			set_state(State.FIRE_DEMO)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:

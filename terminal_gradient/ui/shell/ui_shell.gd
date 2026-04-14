@@ -65,6 +65,9 @@ var _pane_nodes: Array = []
 # selection-offset tween knows where to slide back to.
 var _menu_base_positions: Array = []
 var _menu_tween: Tween
+var _reject_active: bool = false
+var _reject_start_time: float = 0.0
+var _reject_tween: Tween
 var background_color: Color = OPAQUE_BLACK
 
 
@@ -77,6 +80,7 @@ func _init(ascii_grid: AsciiGrid) -> void:
 
 func set_panes(panes: Array[Pane]) -> void:
 	## Replace the entire pane list. Rebuilds Labels and TextureRects.
+	_kill_reject()
 	_clear_nodes()
 	_panes = panes
 	for pane in _panes:
@@ -113,6 +117,16 @@ func set_menu_selection(pane_index: int, selected: int) -> void:
 func draw(_cols: int, _rows: int) -> void:
 	## Render border + ASCII content into the text buffer. Call every frame
 	## from the host screen's draw().
+	# Red flash during reject animation
+	if _reject_active:
+		var elapsed: float = grid.frame_time_sec - _reject_start_time
+		var flash_duration: float = 0.15
+		if elapsed < flash_duration:
+			var t: float = elapsed / flash_duration
+			var intensity: float = (1.0 - t) * (1.0 - t)
+			background_color = OPAQUE_BLACK.lerp(Color(0.4, 0.02, 0.02), intensity)
+		else:
+			background_color = OPAQUE_BLACK
 	# Black canvas under everything so unused cells don't show the default
 	# FF blue and box interiors stay clean.
 	grid.fill_region(0, 0, grid.cols, grid.rows, " ", background_color, background_color)
@@ -141,6 +155,7 @@ func clear() -> void:
 	if _menu_tween:
 		_menu_tween.kill()
 		_menu_tween = null
+	_kill_reject()
 	_clear_nodes()
 	_panes.clear()
 
@@ -429,3 +444,46 @@ func _restyle_menus() -> void:
 				var target := base_pos + (Vector2(MENU_SELECT_OFFSET_PX, 0.0) if selected else Vector2.ZERO)
 				_menu_tween.tween_property(label, "position", target, MENU_TWEEN_DURATION) \
 					.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+
+
+func reject_selection(pane_index: int, item_index: int) -> void:
+	## Trigger a violent shake + red flash on a menu item to indicate rejection.
+	_reject_active = true
+	_reject_start_time = grid.frame_time_sec
+	if pane_index < 0 or pane_index >= _pane_nodes.size():
+		return
+	var labels: Array = _pane_nodes[pane_index]
+	var bases: Array = _menu_base_positions[pane_index] if pane_index < _menu_base_positions.size() else []
+	if item_index < 0 or item_index >= labels.size() or item_index >= bases.size():
+		return
+	var label: Label = labels[item_index]
+	var base_pos: Vector2 = bases[item_index]
+	var pane: Pane = _panes[pane_index]
+	var selected_pos: Vector2 = base_pos + (Vector2(MENU_SELECT_OFFSET_PX, 0.0) if item_index == pane.menu_selected else Vector2.ZERO)
+	if _reject_tween:
+		_reject_tween.kill()
+	_reject_tween = grid.create_tween()
+	var amp: float = 12.0
+	var step: float = 0.025
+	var cycles: int = 7
+	for i in range(cycles):
+		var direction: float = -1.0 if i % 2 == 0 else 1.0
+		var decay: float = 1.0 - (float(i) / float(cycles))
+		var offset: float = amp * direction * decay
+		_reject_tween.tween_property(label, "position",
+			selected_pos + Vector2(offset, 0.0), step)
+	_reject_tween.tween_property(label, "position", selected_pos, step)
+	_reject_tween.tween_callback(_end_reject)
+
+
+func _end_reject() -> void:
+	_reject_active = false
+	background_color = OPAQUE_BLACK
+
+
+func _kill_reject() -> void:
+	if _reject_tween:
+		_reject_tween.kill()
+		_reject_tween = null
+	_reject_active = false
+	background_color = OPAQUE_BLACK

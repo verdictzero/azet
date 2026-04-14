@@ -49,8 +49,10 @@ func handle_input(action: String) -> void:
 		"move_down":
 			_selection = (_selection + 1) % DEMO_MODES.size()
 			_rebuild()
+		"interact":
+			pass
 		"cancel":
-			request_action("goto_title")
+			request_action("goto_debug_menu")
 
 
 func draw(cols: int, rows: int) -> void:

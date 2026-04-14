@@ -54,6 +54,11 @@ func _setup_shader() -> bool:
 	return true
 
 
+func handle_input(action: String) -> void:
+	if action == "cancel":
+		request_action("goto_debug_menu")
+
+
 func draw(_d_cols: int, _d_rows: int) -> void:
 	# Re-setup if atlas was rebuilt (resize)
 	if _setup_gen != grid.atlas_generation:
