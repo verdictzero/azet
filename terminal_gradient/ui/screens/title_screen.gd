@@ -7,7 +7,7 @@ extends BaseScreen
 
 const NUM_SEEDS: int = 10
 const FIRE_CHARSET: Array[String] = [" ", ".", "\u00B7", ":", "\u2219", "\u2591", "\u2592", "\u2593"]
-const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG", "UI SHELL"]
+const MENU_ITEMS: Array[String] = ["NEW GAME", "CONTINUE", "OPTIONS", "DEBUG", "UI SHELL", "TEST"]
 
 var _title_shader: Shader
 var _particle_shader: Shader
@@ -32,7 +32,7 @@ func _init(ascii_grid: AsciiGrid) -> void:
 	_particle_shader = load("res://assets/shaders/title_particles.gdshader")
 	_logo_tex = load("res://assets/graphics/tg_main_title.png")
 	_sefirot_tex = load("res://assets/graphics/tg_sefirot_title_6.png")
-	_menu_font = load("res://assets/fonts/NotoSansMono-Medium.ttf")
+	_menu_font = FontLibrary.menu()
 
 
 func on_enter(context: Dictionary = {}) -> void:
@@ -133,7 +133,7 @@ func _setup_particle_subviewport(vp_w: int, vp_h: int, block_cols: int, block_ro
 
 
 func _setup_shader() -> bool:
-	var atlas: ImageTexture = grid.get_gfx_atlas()
+	var atlas: Texture2D = grid.get_gfx_atlas()
 	if atlas == null:
 		return false
 
@@ -256,3 +256,4 @@ func _select_menu_item() -> void:
 		2: request_action("open_settings")
 		3: request_action("debug_start")
 		4: request_action("ui_shell_demo")
+		5: request_action("test_screen")

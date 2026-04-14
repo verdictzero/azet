@@ -11,7 +11,7 @@ enum State {
 	CHAR_CREATE,
 	LOADING,
 	WORLD_GEN_PAUSE,
-	OVERWORLD,
+	TEST,
 	LOCATION,
 	DUNGEON,
 	COMBAT,
@@ -56,6 +56,12 @@ var transition_timer: float = 0.0
 var transition_duration: float = 0.3
 var _transitioning: bool = false
 
+# FPS overlay (F3)
+var _show_fps: bool = false
+var _fps_accum: float = 0.0
+var _fps_frame_count: int = 0
+var _fps_display: int = 0
+
 # References
 var ascii_grid: AsciiGrid
 var ui_manager: UIManager
@@ -77,6 +83,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.FIRE_DEMO, FireDemoScreen.new(ascii_grid))
 	ui_manager.register_screen(State.TITLE_SCREEN, TitleScreen.new(ascii_grid))
 	ui_manager.register_screen(State.UI_SHELL_DEMO, UIShellDemoScreen.new(ascii_grid))
+	ui_manager.register_screen(State.TEST, TestScreen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -112,6 +119,10 @@ func _process(delta: float) -> void:
 	if ascii_grid == null:
 		return
 
+	# Advance the day/night clock. TimeMgr.paused (menus/cutscenes) gates
+	# the accumulator internally, so this is safe to call unconditionally.
+	TimeMgr.update_real_time(delta)
+
 	# Update transition
 	if _transitioning:
 		transition_timer -= delta
@@ -126,15 +137,40 @@ func _process(delta: float) -> void:
 		if action != "":
 			ui_manager.handle_active_input(action)
 
+	# FPS tracking (runs whether or not the counter is visible so the
+	# reading is warm the instant the user presses F3)
+	_fps_accum += delta
+	_fps_frame_count += 1
+	if _fps_accum >= 0.5:
+		_fps_display = roundi(float(_fps_frame_count) / _fps_accum)
+		_fps_accum = 0.0
+		_fps_frame_count = 0
+
 	# Render frame
 	ascii_grid.begin_frame()
 	ui_manager.draw_active()
+	if _show_fps:
+		_draw_fps_overlay()
 	ascii_grid.end_frame(_transitioning)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_fps"):
+		_show_fps = not _show_fps
+		get_viewport().set_input_as_handled()
+
+
+func _draw_fps_overlay() -> void:
+	var text: String = " FPS:%d " % _fps_display
+	var fg: Color = Constants.COLORS.BRIGHT_GREEN
+	var bg := Color(0.02, 0.02, 0.02, 1.0)
+	for i in range(text.length()):
+		ascii_grid.set_char(i, 0, text[i], fg, bg)
 
 
 func is_gameplay_state() -> bool:
 	return current_state in [
-		State.OVERWORLD, State.LOCATION, State.DUNGEON,
+		State.LOCATION, State.DUNGEON,
 		State.COMBAT, State.DIALOGUE, State.SHOP,
 	]
 
@@ -173,6 +209,8 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.HELP)
 		"ui_shell_demo":
 			set_state(State.UI_SHELL_DEMO)
+		"test_screen":
+			set_state(State.TEST)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:
