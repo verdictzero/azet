@@ -42,6 +42,7 @@ enum State {
 	FIRE_DEMO,
 	TITLE_SCREEN,
 	UI_SHELL_DEMO,
+	TERRAIN_DEMO,
 }
 
 var current_state: State = State.PREAMBLE
@@ -78,6 +79,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.TITLE_SCREEN, TitleScreen.new(ascii_grid))
 	ui_manager.register_screen(State.UI_SHELL_DEMO, UIShellDemoScreen.new(ascii_grid))
 	ui_manager.register_screen(State.DEBUG_MENU, DebugMenuScreen.new(ascii_grid))
+	ui_manager.register_screen(State.TERRAIN_DEMO, TerrainDemoScreen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -119,6 +121,7 @@ func _process(delta: float) -> void:
 		if transition_timer <= 0.0:
 			transition_timer = 0.0
 			_transitioning = false
+			InputMgr.clear_actions()
 			EventBus.transition_completed.emit()
 
 	# Process input (skip during transitions)
@@ -178,6 +181,8 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.DEBUG_MENU)
 		"open_fire_demo":
 			set_state(State.FIRE_DEMO)
+		"open_terrain_demo":
+			set_state(State.TERRAIN_DEMO)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:
