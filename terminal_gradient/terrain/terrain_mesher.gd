@@ -37,6 +37,18 @@ static func build_flat_chunk_mesh(chunk_x: int, chunk_z: int) -> ArrayMesh:
 	return st.commit()
 
 
+static func build_ball(diameter: float, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var s := SphereMesh.new()
+	s.radius = diameter * 0.5
+	s.height = diameter
+	s.radial_segments = 12
+	s.rings = 6
+	mi.mesh = s
+	mi.material_override = mat
+	return mi
+
+
 static func build_billboard(tex: Texture2D, world_height: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var tex_size: Vector2 = tex.get_size()

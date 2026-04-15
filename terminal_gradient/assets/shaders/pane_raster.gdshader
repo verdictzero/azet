@@ -24,5 +24,5 @@ void fragment() {
 		discard;
 	}
 
-	COLOR = vec4(dither4(s.rgb, blk), 1.0);
+	COLOR = vec4(dither8_2x2(s.rgb, blk), 1.0);
 }

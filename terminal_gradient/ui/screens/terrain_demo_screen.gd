@@ -8,33 +8,17 @@ extends BaseScreen
 const CHUNK_SIZE: float = 64.0
 const RENDER_DISTANCE: int = 3
 const CAM_LERP: float = 0.1
-const ORTHO_SIZE: float = 40.0
-const CAM_PITCH_DEG: float = -45.0
+const ORTHO_SIZE: float = 22.0
+const CAM_PITCH_DEG: float = -30.0
 const CAM_DIST: float = 80.0
 
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
-
-const GROUND_TEX: Texture2D = preload("res://assets/biomes/new_meadow/TERRAIN_new_meadow_grass_checkered_v5.png")
-
-const TREE_1: Texture2D = preload("res://assets/biomes/new_meadow/TREE_new_meadow_tree_1.png")
-const TREE_2: Texture2D = preload("res://assets/biomes/new_meadow/TREE_new_meadow_tree_2.png")
-const TREE_3: Texture2D = preload("res://assets/biomes/new_meadow/TREE_new_meadow_tree_3.png")
-const BUSH_1: Texture2D = preload("res://assets/biomes/new_meadow/BUSH_new_meadow_bush_1.png")
-const BUSH_2: Texture2D = preload("res://assets/biomes/new_meadow/BUSH_new_meadow_bush_2.png")
-const BUSH_3: Texture2D = preload("res://assets/biomes/new_meadow/BUSH_new_meadow_bush_3.png")
-const BUSH_4: Texture2D = preload("res://assets/biomes/new_meadow/BUSH_new_meadow_bush_4.png")
-const FERN_1: Texture2D = preload("res://assets/biomes/new_meadow/FERN_fern_1_inter.png")
-const FERN_2: Texture2D = preload("res://assets/biomes/new_meadow/FERN_fern_2_inter.png")
-const FERN_3: Texture2D = preload("res://assets/biomes/new_meadow/FERN_fern_3_inter.png")
-const FERN_4: Texture2D = preload("res://assets/biomes/new_meadow/FERN_fern_4_inter.png")
-const GRASS_1: Texture2D = preload("res://assets/biomes/new_meadow/GRASS_new_meadow_grass_1.png")
-const GRASS_2: Texture2D = preload("res://assets/biomes/new_meadow/GRASS_new_meadow_grass_2.png")
-const GRASS_TALL_1: Texture2D = preload("res://assets/biomes/new_meadow/GRASS_new_meadow_grass_tall_1.png")
-const FLOWER_1: Texture2D = preload("res://assets/biomes/new_meadow/FLOWER_new_meadow_flower_1.png")
-const FLOWER_2: Texture2D = preload("res://assets/biomes/new_meadow/FLOWER_new_meadow_flower_2.png")
+const ToonSolidShader: Shader = preload("res://assets/shaders/toon_solid.gdshader")
+const GROUND_TEX: Texture2D = preload("res://assets/biomes/test/test_grass_alt.png")
 
 var _ring_layers: Array = []
 var _ground_material: StandardMaterial3D
+var _layer_materials: Array = []
 
 var _viewport: SubViewport
 var _texture_rect: TextureRect
@@ -48,13 +32,13 @@ var _hud_label: Label
 func _init(ascii_grid: AsciiGrid) -> void:
 	super._init(ascii_grid)
 	_ring_layers = [
-		{"textures": [TREE_1],                      "inner": 17.0, "outer": 22.0, "world_h": 8.0, "count": 8},
-		{"textures": [TREE_2],                      "inner": 13.0, "outer": 18.0, "world_h": 6.0, "count": 10},
-		{"textures": [TREE_3],                      "inner": 9.0,  "outer": 14.0, "world_h": 4.0, "count": 10},
-		{"textures": [BUSH_1, BUSH_2, BUSH_3, BUSH_4], "inner": 6.0,  "outer": 10.0, "world_h": 1.8, "count": 14},
-		{"textures": [FERN_1, FERN_2, FERN_3, FERN_4], "inner": 4.0,  "outer": 7.0,  "world_h": 1.0, "count": 16},
-		{"textures": [GRASS_1, GRASS_2, GRASS_TALL_1], "inner": 2.0,  "outer": 5.0,  "world_h": 0.8, "count": 22},
-		{"textures": [FLOWER_1, FLOWER_2],          "inner": 0.0,  "outer": 3.0,  "world_h": 0.9, "count": 18},
+		{"color": Color(0.10, 0.30, 0.10), "inner": 17.0, "outer": 22.0, "diameter": 5.0, "count": 8},
+		{"color": Color(0.14, 0.38, 0.14), "inner": 13.0, "outer": 18.0, "diameter": 4.0, "count": 10},
+		{"color": Color(0.18, 0.46, 0.18), "inner": 9.0,  "outer": 14.0, "diameter": 3.0, "count": 10},
+		{"color": Color(0.25, 0.55, 0.22), "inner": 6.0,  "outer": 10.0, "diameter": 1.6, "count": 14},
+		{"color": Color(0.35, 0.62, 0.25), "inner": 4.0,  "outer": 7.0,  "diameter": 1.0, "count": 16},
+		{"color": Color(0.50, 0.70, 0.30), "inner": 2.0,  "outer": 5.0,  "diameter": 0.7, "count": 22},
+		{"color": Color(0.90, 0.80, 0.30), "inner": 0.0,  "outer": 3.0,  "diameter": 0.5, "count": 18},
 	]
 
 
@@ -82,8 +66,9 @@ func draw(cols: int, rows: int) -> void:
 		var pz: float = _player.global_position.z
 		var cx: int = int(floor(px / CHUNK_SIZE))
 		var cz: int = int(floor(pz / CHUNK_SIZE))
-		_hud_label.text = "Chunk (%d,%d)  %d chunks  [ESC] Back" % [
-			cx, cz, _active_chunks.size()]
+		var fps: int = int(Engine.get_frames_per_second())
+		_hud_label.text = "FPS %d  Chunk (%d,%d)  %d chunks  [ESC] Back" % [
+			fps, cx, cz, _active_chunks.size()]
 
 
 # ── World setup ────────────────────────────────────
@@ -119,16 +104,28 @@ func _build_world() -> void:
 	light.light_color = Color("#fff4e0")
 	light.shadow_enabled = true
 	light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	light.directional_shadow_max_distance = 120.0
+	light.directional_shadow_max_distance = 80.0
 	light.shadow_bias = 0.15
 	light.shadow_normal_bias = 2.0
 	scene.add_child(light)
+
+	RenderingServer.directional_shadow_atlas_set_size(2048, false)
+	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW)
+	RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_HARD)
 
 	_ground_material = StandardMaterial3D.new()
 	_ground_material.albedo_texture = GROUND_TEX
 	_ground_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	_ground_material.uv1_scale = Vector3(8.0, 8.0, 1.0)
 	_ground_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+
+	_layer_materials.clear()
+	for layer in _ring_layers:
+		var mat := ShaderMaterial.new()
+		mat.shader = ToonSolidShader
+		mat.set_shader_parameter("albedo", layer.color)
+		mat.set_shader_parameter("toon_bands", 3.0)
+		_layer_materials.append(mat)
 
 	_chunk_container = Node3D.new()
 	_chunk_container.name = "Chunks"
@@ -188,6 +185,7 @@ func _cleanup() -> void:
 	if _viewport: _viewport.queue_free(); _viewport = null
 	_player = null; _camera = null; _chunk_container = null
 	_ground_material = null
+	_layer_materials.clear()
 
 
 # ── Chunk management ───────────────────────────────
@@ -244,21 +242,21 @@ func _spawn_glades(parent: Node3D, key: Vector2i) -> void:
 	for g in range(n_glades):
 		var gx: float = ox + margin + rng.randf() * (CHUNK_SIZE - margin * 2.0)
 		var gz: float = oz + margin + rng.randf() * (CHUNK_SIZE - margin * 2.0)
-		for layer in _ring_layers:
-			var textures: Array = layer.textures
+		for li in range(_ring_layers.size()):
+			var layer: Dictionary = _ring_layers[li]
+			var mat: ShaderMaterial = _layer_materials[li]
 			var inner_r: float = layer.inner
 			var outer_r: float = layer.outer
-			var world_h: float = layer.world_h
+			var diameter: float = layer.diameter
 			var count: int = layer.count
 			for i in range(count):
 				var theta: float = rng.randf() * TAU
 				var r: float = lerp(inner_r, outer_r, rng.randf())
 				var wx: float = gx + cos(theta) * r
 				var wz: float = gz + sin(theta) * r
-				var tex: Texture2D = textures[rng.randi() % textures.size()]
-				var sprite: MeshInstance3D = TerrainMesher.build_billboard(tex, world_h)
-				sprite.position = Vector3(wx, world_h * 0.5, wz)
-				parent.add_child(sprite)
+				var ball: MeshInstance3D = TerrainMesher.build_ball(diameter, mat)
+				ball.position = Vector3(wx, diameter * 0.5, wz)
+				parent.add_child(ball)
 
 
 # ── Camera ─────────────────────────────────────────
