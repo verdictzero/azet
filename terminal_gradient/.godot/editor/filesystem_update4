@@ -1,3 +1,7 @@
+res://assets/shaders/dither.gdshaderinc
+res://assets/shaders/pane_raster.gdshader
+res://ui/screens/terrain_demo_screen.gd
+res://terrain/terrain_player.gd
 res://ui/screens/title_screen.gd
-res://ui/screens/ui_shell_demo_screen.gd
 res://ui/shell/ui_shell.gd
+res://terrain/terrain_mesher.gd

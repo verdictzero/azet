@@ -164,9 +164,9 @@ func _setup_shader() -> bool:
 		glyph_indices[i] = grid._char_map.get(FIRE_CHARSET[i], 0)
 	grid.set_gfx_shader_param("fire_glyphs", glyph_indices)
 
-	# Raster image grid: fullblock 1:2 cells (2x density)
+	# Raster image grid: fullblock 1:1 square cells
 	var block_w: int = maxi(1, grid.g_cell_width / 2)
-	var block_h: int = block_w * 2
+	var block_h: int = block_w
 	grid.set_gfx_shader_param("block_size", Vector2(block_w, block_h))
 
 	var vp_w: float = float(_full_cols * grid.g_cell_width)

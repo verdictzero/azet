@@ -26,3 +26,33 @@ vec3 dither12(vec3 color, vec2 cell) {
 	vec3 f = (color - lo) / s;
 	return lo + s * step(vec3(t), f);
 }
+
+vec3 dither32(vec3 color, vec2 cell) {
+	int bx = int(mod(cell.x, 8.0));
+	int by = int(mod(cell.y, 8.0));
+	float t = BAYER[by * 8 + bx];
+	float s = 1.0 / 31.0;
+	vec3 lo = floor(color / s) * s;
+	vec3 f = (color - lo) / s;
+	return lo + s * step(vec3(t), f);
+}
+
+vec3 dither8(vec3 color, vec2 cell) {
+	int bx = int(mod(cell.x, 8.0));
+	int by = int(mod(cell.y, 8.0));
+	float t = BAYER[by * 8 + bx];
+	float s = 1.0 / 7.0;
+	vec3 lo = floor(color / s) * s;
+	vec3 f = (color - lo) / s;
+	return lo + s * step(vec3(t), f);
+}
+
+vec3 dither4(vec3 color, vec2 cell) {
+	int bx = int(mod(cell.x, 8.0));
+	int by = int(mod(cell.y, 8.0));
+	float t = BAYER[by * 8 + bx];
+	float s = 1.0 / 3.0;
+	vec3 lo = floor(color / s) * s;
+	vec3 f = (color - lo) / s;
+	return lo + s * step(vec3(t), f);
+}

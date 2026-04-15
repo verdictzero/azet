@@ -8,7 +8,7 @@ shader_type canvas_item;
 // must update `rect_size_px` whenever its bounds change.
 
 uniform vec2 rect_size_px = vec2(256.0, 256.0);
-uniform vec2 block_size = vec2(8.0, 16.0);
+uniform vec2 block_size = vec2(8.0, 8.0);
 
 void fragment() {
 	// Local pixel position inside the rect.
@@ -24,5 +24,5 @@ void fragment() {
 		discard;
 	}
 
-	COLOR = vec4(dither12(s.rgb, blk), 1.0);
+	COLOR = vec4(dither4(s.rgb, blk), 1.0);
 }

@@ -251,12 +251,8 @@ func _build_raster_nodes(pane: Pane) -> Array:
 	var mat := ShaderMaterial.new()
 	mat.shader = PaneRasterShader
 	mat.set_shader_parameter("rect_size_px", fit_size)
-	# Match the title screen exactly (title_screen.gd:_setup_shader): the
-	# raster block is half a gfx cell wide and twice that tall, giving the
-	# 1:2 fullblock aesthetic regardless of the host pane's size or the
-	# surrounding text-cell density.
 	var block_w: int = maxi(1, grid.g_cell_width / 2)
-	var block_h: int = block_w * 2
+	var block_h: int = block_w
 	mat.set_shader_parameter("block_size", Vector2(float(block_w), float(block_h)))
 	tr.material = mat
 

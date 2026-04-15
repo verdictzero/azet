@@ -1,24 +1,40 @@
 class_name TerrainDemoScreen
 extends BaseScreen
-## Procedural chunk-based 3D terrain rendered inside a SubViewport.
-## Displays as a fullscreen texture over the AsciiGrid.
+## Flat meadow terrain with billboard-sprite vegetation arranged in
+## concentric rings around per-chunk glade centers. Rendered into a
+## SubViewport and displayed over the AsciiGrid via the raster/dither
+## shader.
 
 const CHUNK_SIZE: float = 64.0
 const RENDER_DISTANCE: int = 3
 const CAM_LERP: float = 0.1
-const ORTHO_SIZE: float = 80.0
-
-enum Biome { GRASSLAND, DESERT, HIGHLANDS }
-
-const BIOME_CONFIG := {
-	Biome.GRASSLAND: {"color_a": Color("#3a6630"), "color_b": Color("#5a9848"), "color_peak": Color("#7ac060"), "height_scale": 8.0, "plants": ["grass_tuft", "oak_tree"], "density": 25},
-	Biome.DESERT:    {"color_a": Color("#b89850"), "color_b": Color("#8a7040"), "color_peak": Color("#d8c890"), "height_scale": 5.0, "plants": ["cactus", "dry_shrub"], "density": 15},
-	Biome.HIGHLANDS: {"color_a": Color("#585850"), "color_b": Color("#484038"), "color_peak": Color("#908878"), "height_scale": 22.0, "plants": ["pine_tree", "alpine_shrub"], "density": 18},
-}
+const ORTHO_SIZE: float = 40.0
+const CAM_PITCH_DEG: float = -45.0
+const CAM_DIST: float = 80.0
 
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
 
-var _biome_textures: Dictionary = {}
+const GROUND_TEX: Texture2D = preload("res://assets/biomes/new_meadow/TERRAIN_new_meadow_grass_checkered_v5.png")
+
+const TREE_1: Texture2D = preload("res://assets/biomes/new_meadow/TREE_new_meadow_tree_1.png")
+const TREE_2: Texture2D = preload("res://assets/biomes/new_meadow/TREE_new_meadow_tree_2.png")
+const TREE_3: Texture2D = preload("res://assets/biomes/new_meadow/TREE_new_meadow_tree_3.png")
+const BUSH_1: Texture2D = preload("res://assets/biomes/new_meadow/BUSH_new_meadow_bush_1.png")
+const BUSH_2: Texture2D = preload("res://assets/biomes/new_meadow/BUSH_new_meadow_bush_2.png")
+const BUSH_3: Texture2D = preload("res://assets/biomes/new_meadow/BUSH_new_meadow_bush_3.png")
+const BUSH_4: Texture2D = preload("res://assets/biomes/new_meadow/BUSH_new_meadow_bush_4.png")
+const FERN_1: Texture2D = preload("res://assets/biomes/new_meadow/FERN_fern_1_inter.png")
+const FERN_2: Texture2D = preload("res://assets/biomes/new_meadow/FERN_fern_2_inter.png")
+const FERN_3: Texture2D = preload("res://assets/biomes/new_meadow/FERN_fern_3_inter.png")
+const FERN_4: Texture2D = preload("res://assets/biomes/new_meadow/FERN_fern_4_inter.png")
+const GRASS_1: Texture2D = preload("res://assets/biomes/new_meadow/GRASS_new_meadow_grass_1.png")
+const GRASS_2: Texture2D = preload("res://assets/biomes/new_meadow/GRASS_new_meadow_grass_2.png")
+const GRASS_TALL_1: Texture2D = preload("res://assets/biomes/new_meadow/GRASS_new_meadow_grass_tall_1.png")
+const FLOWER_1: Texture2D = preload("res://assets/biomes/new_meadow/FLOWER_new_meadow_flower_1.png")
+const FLOWER_2: Texture2D = preload("res://assets/biomes/new_meadow/FLOWER_new_meadow_flower_2.png")
+
+var _ring_layers: Array = []
+var _ground_material: StandardMaterial3D
 
 var _viewport: SubViewport
 var _texture_rect: TextureRect
@@ -26,26 +42,20 @@ var _camera: Camera3D
 var _player: CharacterBody3D
 var _chunk_container: Node3D
 var _active_chunks: Dictionary = {}
-var _height_noise: FastNoiseLite
-var _biome_noise: FastNoiseLite
 var _hud_label: Label
 
 
 func _init(ascii_grid: AsciiGrid) -> void:
 	super._init(ascii_grid)
-	_height_noise = FastNoiseLite.new()
-	_height_noise.seed = 42
-	_height_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_height_noise.fractal_octaves = 4
-	_height_noise.frequency = 0.004
-	_height_noise.fractal_gain = 0.5
-	_biome_noise = FastNoiseLite.new()
-	_biome_noise.seed = 42
-	_biome_noise.fractal_type = FastNoiseLite.FRACTAL_NONE
-	_biome_noise.frequency = 0.0015
-	# Bake per-biome noise textures synchronously (guaranteed ready)
-	for biome in Biome.values():
-		_biome_textures[biome] = _bake_biome_texture(BIOME_CONFIG[biome])
+	_ring_layers = [
+		{"textures": [TREE_1],                      "inner": 17.0, "outer": 22.0, "world_h": 8.0, "count": 8},
+		{"textures": [TREE_2],                      "inner": 13.0, "outer": 18.0, "world_h": 6.0, "count": 10},
+		{"textures": [TREE_3],                      "inner": 9.0,  "outer": 14.0, "world_h": 4.0, "count": 10},
+		{"textures": [BUSH_1, BUSH_2, BUSH_3, BUSH_4], "inner": 6.0,  "outer": 10.0, "world_h": 1.8, "count": 14},
+		{"textures": [FERN_1, FERN_2, FERN_3, FERN_4], "inner": 4.0,  "outer": 7.0,  "world_h": 1.0, "count": 16},
+		{"textures": [GRASS_1, GRASS_2, GRASS_TALL_1], "inner": 2.0,  "outer": 5.0,  "world_h": 0.8, "count": 22},
+		{"textures": [FLOWER_1, FLOWER_2],          "inner": 0.0,  "outer": 3.0,  "world_h": 0.9, "count": 18},
+	]
 
 
 func on_enter(context: Dictionary = {}) -> void:
@@ -72,8 +82,8 @@ func draw(cols: int, rows: int) -> void:
 		var pz: float = _player.global_position.z
 		var cx: int = int(floor(px / CHUNK_SIZE))
 		var cz: int = int(floor(pz / CHUNK_SIZE))
-		_hud_label.text = "Chunk (%d,%d)  %s  %d chunks  [ESC] Back" % [
-			cx, cz, Biome.keys()[_get_biome(px, pz)], _active_chunks.size()]
+		_hud_label.text = "Chunk (%d,%d)  %d chunks  [ESC] Back" % [
+			cx, cz, _active_chunks.size()]
 
 
 # ── World setup ────────────────────────────────────
@@ -81,7 +91,6 @@ func draw(cols: int, rows: int) -> void:
 func _build_world() -> void:
 	var full_w: int = grid.cols * grid.cell_width
 	var full_h: int = grid.rows * grid.cell_height
-	# Render at half resolution for the chunky pixel look
 	_viewport = SubViewport.new()
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.handle_input_locally = false
@@ -95,14 +104,15 @@ func _build_world() -> void:
 
 	var world_env := WorldEnvironment.new()
 	var env := Environment.new()
-	env.ambient_light_color = Color("#888888")
-	env.ambient_light_energy = 0.7
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color("#1a1a2e")
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color("#b8c4d8")
+	env.ambient_light_energy = 1.4
+	env.ambient_light_sky_contribution = 0.0
 	world_env.environment = env
 	scene.add_child(world_env)
 
-	# Low sun for long shadows
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-20, 45, 0)
 	light.light_energy = 1.3
@@ -114,11 +124,16 @@ func _build_world() -> void:
 	light.shadow_normal_bias = 2.0
 	scene.add_child(light)
 
+	_ground_material = StandardMaterial3D.new()
+	_ground_material.albedo_texture = GROUND_TEX
+	_ground_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	_ground_material.uv1_scale = Vector3(8.0, 8.0, 1.0)
+	_ground_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+
 	_chunk_container = Node3D.new()
 	_chunk_container.name = "Chunks"
 	scene.add_child(_chunk_container)
 
-	# Player
 	_player = CharacterBody3D.new()
 	_player.name = "Player"
 	_player.set_script(preload("res://terrain/terrain_player.gd"))
@@ -128,10 +143,7 @@ func _build_world() -> void:
 	col.shape = cap
 	_player.add_child(col)
 	scene.add_child(_player)
-	_player.height_noise = _height_noise
-	_player.biome_noise = _biome_noise
 
-	# Camera
 	_camera = Camera3D.new()
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	_camera.size = ORTHO_SIZE
@@ -139,7 +151,6 @@ func _build_world() -> void:
 	_camera.current = true
 	scene.add_child(_camera)
 
-	# Viewport texture display with raster dither shader
 	_texture_rect = TextureRect.new()
 	_texture_rect.texture = _viewport.get_texture()
 	_texture_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -151,12 +162,11 @@ func _build_world() -> void:
 	raster_mat.shader = PaneRasterShader
 	raster_mat.set_shader_parameter("rect_size_px", Vector2(full_w, full_h))
 	var block_w: int = maxi(1, grid.g_cell_width / 2)
-	var block_h: int = block_w * 2
+	var block_h: int = block_w
 	raster_mat.set_shader_parameter("block_size", Vector2(float(block_w), float(block_h)))
 	_texture_rect.material = raster_mat
 	grid.add_child(_texture_rect)
 
-	# HUD overlay
 	_hud_label = Label.new()
 	_hud_label.position = Vector2(10, 10)
 	_hud_label.add_theme_font_size_override("font_size", 14)
@@ -177,6 +187,7 @@ func _cleanup() -> void:
 	if _texture_rect: _texture_rect.queue_free(); _texture_rect = null
 	if _viewport: _viewport.queue_free(); _viewport = null
 	_player = null; _camera = null; _chunk_container = null
+	_ground_material = null
 
 
 # ── Chunk management ───────────────────────────────
@@ -208,98 +219,57 @@ func _update_chunks() -> void:
 
 
 func _load_chunk(key: Vector2i) -> void:
-	var cx: float = (float(key.x) + 0.5) * CHUNK_SIZE
-	var cz: float = (float(key.y) + 0.5) * CHUNK_SIZE
-	var biome: Biome = _get_biome(cx, cz)
-	var config: Dictionary = BIOME_CONFIG[biome]
-
 	var chunk := Node3D.new()
 
-	var mesh: ArrayMesh = TerrainMesher.build_chunk_mesh(key.x, key.y, _height_noise, config.height_scale)
+	var mesh: ArrayMesh = TerrainMesher.build_flat_chunk_mesh(key.x, key.y)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = config.color_a
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	if _biome_textures.has(biome) and _biome_textures[biome] != null:
-		mat.albedo_texture = _biome_textures[biome]
-	mi.material_override = mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	mi.material_override = _ground_material
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	chunk.add_child(mi)
 
-	_spawn_vegetation(chunk, key.x, key.y, config)
+	_spawn_glades(chunk, key)
 	_chunk_container.add_child(chunk)
 	_active_chunks[key] = chunk
 
 
-func _spawn_vegetation(parent: Node3D, cx: int, cz: int, config: Dictionary) -> void:
+func _spawn_glades(parent: Node3D, key: Vector2i) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = cx * 100003 + cz
-	var plants: Array = config.plants
-	for i in range(config.density):
-		var wx: float = float(cx) * CHUNK_SIZE + rng.randf() * CHUNK_SIZE
-		var wz: float = float(cz) * CHUNK_SIZE + rng.randf() * CHUNK_SIZE
-		var y: float = _height_at(wx, wz)
-		var plant: Node3D = _build_plant(plants[rng.randi() % plants.size()], rng)
-		plant.position = Vector3(wx, y, wz)
-		parent.add_child(plant)
+	rng.seed = key.x * 100003 + key.y
+	var n_glades: int = rng.randi_range(1, 3)
+	var margin: float = 8.0  # glades may extend past the edge; neighbours fill in
+	var ox: float = float(key.x) * CHUNK_SIZE
+	var oz: float = float(key.y) * CHUNK_SIZE
+
+	for g in range(n_glades):
+		var gx: float = ox + margin + rng.randf() * (CHUNK_SIZE - margin * 2.0)
+		var gz: float = oz + margin + rng.randf() * (CHUNK_SIZE - margin * 2.0)
+		for layer in _ring_layers:
+			var textures: Array = layer.textures
+			var inner_r: float = layer.inner
+			var outer_r: float = layer.outer
+			var world_h: float = layer.world_h
+			var count: int = layer.count
+			for i in range(count):
+				var theta: float = rng.randf() * TAU
+				var r: float = lerp(inner_r, outer_r, rng.randf())
+				var wx: float = gx + cos(theta) * r
+				var wz: float = gz + sin(theta) * r
+				var tex: Texture2D = textures[rng.randi() % textures.size()]
+				var sprite: MeshInstance3D = TerrainMesher.build_billboard(tex, world_h)
+				sprite.position = Vector3(wx, world_h * 0.5, wz)
+				parent.add_child(sprite)
 
 
-func _build_plant(t: String, rng: RandomNumberGenerator) -> Node3D:
-	match t:
-		"grass_tuft":   return TerrainMesher.build_grass_tuft(rng)
-		"oak_tree":     return TerrainMesher.build_oak_tree(rng)
-		"cactus":       return TerrainMesher.build_cactus(rng)
-		"dry_shrub":    return TerrainMesher.build_dry_shrub(rng)
-		"pine_tree":    return TerrainMesher.build_pine_tree(rng)
-		"alpine_shrub": return TerrainMesher.build_alpine_shrub(rng)
-	return Node3D.new()
-
-
-# ── Helpers ────────────────────────────────────────
-
-func _bake_biome_texture(config: Dictionary) -> ImageTexture:
-	## Generate a colored noise texture synchronously for one biome.
-	var coarse := FastNoiseLite.new()
-	coarse.seed = 7
-	coarse.frequency = 0.3
-	coarse.fractal_type = FastNoiseLite.FRACTAL_FBM
-	coarse.fractal_octaves = 3
-	var fine := FastNoiseLite.new()
-	fine.seed = 13
-	fine.frequency = 1.5
-	fine.fractal_type = FastNoiseLite.FRACTAL_FBM
-	fine.fractal_octaves = 2
-	var sz: int = 256
-	var img := Image.create(sz, sz, false, Image.FORMAT_RGB8)
-	var ca: Color = config.color_a
-	var cb: Color = config.color_b
-	for y in range(sz):
-		for x in range(sz):
-			var nc: float = (coarse.get_noise_2d(float(x), float(y)) + 1.0) * 0.5
-			var nf: float = (fine.get_noise_2d(float(x), float(y)) + 1.0) * 0.5
-			var c: Color = ca.lerp(cb, nc)
-			var br: float = 0.85 + nf * 0.3
-			img.set_pixel(x, y, Color(c.r * br, c.g * br, c.b * br))
-	img.generate_mipmaps()
-	return ImageTexture.create_from_image(img)
-
-
-func _get_biome(wx: float, wz: float) -> Biome:
-	var val: float = _biome_noise.get_noise_2d(wx, wz)
-	if val < -0.33: return Biome.DESERT
-	elif val < 0.33: return Biome.GRASSLAND
-	else: return Biome.HIGHLANDS
-
-
-func _height_at(wx: float, wz: float) -> float:
-	var config: Dictionary = BIOME_CONFIG[_get_biome(wx, wz)]
-	return _height_noise.get_noise_2d(wx, wz) * config.height_scale
-
+# ── Camera ─────────────────────────────────────────
 
 func _update_camera() -> void:
 	if _camera == null or _player == null:
 		return
-	var tp: Vector3 = _player.global_position + Vector3(0.0, 80.0, 0.0)
+	var pitch: float = deg_to_rad(CAM_PITCH_DEG)
+	# Place camera behind player along -forward, so the player stays at the
+	# view center regardless of pitch. Forward = (0, sin(pitch), -cos(pitch)).
+	var offset := Vector3(0.0, -sin(pitch), cos(pitch)) * CAM_DIST
+	var tp: Vector3 = _player.global_position + offset
 	_camera.global_position = _camera.global_position.lerp(tp, CAM_LERP)
-	_camera.rotation_degrees = Vector3(-90, 0, 0)
+	_camera.rotation_degrees = Vector3(CAM_PITCH_DEG, 0, 0)
