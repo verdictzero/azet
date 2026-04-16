@@ -9,6 +9,8 @@ shader_type canvas_item;
 
 uniform vec2 rect_size_px = vec2(256.0, 256.0);
 uniform vec2 block_size = vec2(8.0, 8.0);
+uniform vec2 uv_shift = vec2(0.0);
+uniform vec2 dither_offset = vec2(0.0);
 
 void fragment() {
 	// Local pixel position inside the rect.
@@ -16,7 +18,7 @@ void fragment() {
 
 	// Snap to fullblock cells: one texel sample per (block_w x block_h).
 	vec2 blk = floor(px / block_size);
-	vec2 blk_center_uv = (blk + 0.5) * block_size / rect_size_px;
+	vec2 blk_center_uv = (blk + 0.5) * block_size / rect_size_px + uv_shift;
 	blk_center_uv = clamp(blk_center_uv, vec2(0.0), vec2(1.0));
 
 	vec4 s = texture(TEXTURE, blk_center_uv);
@@ -24,5 +26,5 @@ void fragment() {
 		discard;
 	}
 
-	COLOR = vec4(dither8_2x2(s.rgb, blk), 1.0);
+	COLOR = vec4(dither8_2x2(s.rgb, blk + dither_offset), 1.0);
 }
