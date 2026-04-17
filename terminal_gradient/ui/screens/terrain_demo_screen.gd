@@ -150,6 +150,12 @@ func _build_world() -> void:
 	_tree_outline_material = ShaderMaterial.new()
 	_tree_outline_material.shader = ToonOutlineShader
 	_tree_outline_material.set_shader_parameter("outline_color", Color(0.12, 0.12, 0.12, 1.0))
+	# Outlines must mirror the foliage wind exactly, or the inverted-hull shell
+	# detaches from the swaying mesh. Both bush and tree outlines share the
+	# same world-space wind params — the shader's world-Y mask handles mesh-
+	# specific anchoring naturally.
+	_set_wind_params(_outline_material)
+	_set_wind_params(_tree_outline_material)
 	# Final widths are set after _block_w is known; shared across all toon passes.
 
 	_layer_materials.clear()
@@ -158,6 +164,7 @@ func _build_world() -> void:
 		mat.shader = ToonSolidShader
 		mat.set_shader_parameter("albedo", layer.color)
 		mat.set_shader_parameter("toon_bands", 3.0)
+		_set_wind_params(mat)
 		mat.next_pass = _outline_material
 		_layer_materials.append(mat)
 
@@ -336,6 +343,25 @@ func _spawn_blob_shadow(parent: Node3D, pos: Vector3, size: float, mat: ShaderMa
 const MODEL_Y_MAX_APPROX: float = 5.5
 const FOLIAGE_DARKEN_BOTTOM: float = 0.75
 const TRUNK_DARKEN_TOP: float = 0.5
+# Wind is a single global phase field sampled per-vertex in world space:
+#   phase = TIME * WIND_SPEED + wpos.x * freq.x + wpos.z * freq.y
+# TIME is the shared shader clock, so all materials tick together. Low
+# WIND_SPATIAL_FREQ means long wavelength — the whole meadow rolls in unison
+# with a slight traveling-wave lag, instead of looking like per-tree noise.
+# WIND_STRENGTH is in world meters; the world-Y mask anchors low vertices.
+const WIND_STRENGTH: float = 0.2
+const WIND_SPEED: float = 0.8
+const WIND_MASK_Y_MIN: float = 0.4
+const WIND_MASK_Y_MAX: float = 5.0
+const WIND_SPATIAL_FREQ: Vector2 = Vector2(0.07, 0.05)
+
+
+func _set_wind_params(mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("wind_strength", WIND_STRENGTH)
+	mat.set_shader_parameter("wind_speed", WIND_SPEED)
+	mat.set_shader_parameter("wind_mask_y_min", WIND_MASK_Y_MIN)
+	mat.set_shader_parameter("wind_mask_y_max", WIND_MASK_Y_MAX)
+	mat.set_shader_parameter("wind_spatial_freq", WIND_SPATIAL_FREQ)
 
 func _apply_toon_to_tree(node: Node, tree_scale: float = 1.0) -> void:
 	for child in node.get_children():
@@ -364,6 +390,9 @@ func _apply_toon_to_tree(node: Node, tree_scale: float = 1.0) -> void:
 			elif albedo.r > albedo.g * 1.05 and albedo.r > albedo.b * 1.05:
 				toon.set_shader_parameter("darken_top", TRUNK_DARKEN_TOP)
 			toon.set_shader_parameter("albedo", albedo)
+			# Same wind for trunk + foliage; world-Y mask keeps trunk bases
+			# anchored and the outline pass (tree_outline_material) mirrors.
+			_set_wind_params(toon)
 			toon.next_pass = _tree_outline_material
 			child.material_override = toon
 		_apply_toon_to_tree(child, tree_scale)
