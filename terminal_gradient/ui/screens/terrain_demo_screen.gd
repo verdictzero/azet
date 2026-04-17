@@ -123,7 +123,7 @@ func _build_world() -> void:
 	scene.add_child(world_env)
 
 	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-45, 90, 0)
+	light.rotation_degrees = Vector3(-45, 75, 0)
 	light.light_energy = 1.3
 	light.light_color = Color("#fff4e0")
 	light.shadow_enabled = false
