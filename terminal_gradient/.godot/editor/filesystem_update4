@@ -1,2 +1,4 @@
-res://assets/shaders/toon_solid.gdshader
 res://ui/screens/terrain_demo_screen.gd
+res://assets/shaders/toon_outline.gdshader
+res://assets/shaders/toon_solid.gdshader
+res://assets/shaders/toon_tree.gdshader
