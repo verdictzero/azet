@@ -14,6 +14,7 @@ const CAM_DIST: float = 80.0
 
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
 const ToonSolidShader: Shader = preload("res://assets/shaders/toon_solid.gdshader")
+const ToonTreeShader: Shader = preload("res://assets/shaders/toon_tree.gdshader")
 const ToonOutlineShader: Shader = preload("res://assets/shaders/toon_outline.gdshader")
 const BlobShadowShader: Shader = preload("res://assets/shaders/blob_shadow.gdshader")
 const GROUND_TEX: Texture2D = preload("res://assets/biomes/test/new_meadow_grass_checkered_v5.png")
@@ -24,13 +25,15 @@ const TREE_SCALE_FACTOR: float = 0.25
 # relative to object footprint.
 const BLOB_SHADOW_Y: float = 0.05
 const TREE_SHADOW_SIZE_MULT: float = 12.0
-const BALL_SHADOW_SIZE_MULT: float = 6.6
+const BALL_SHADOW_SIZE_MULT: float = 3.0
 
 var _ring_layers: Array = []
 var _ground_material: StandardMaterial3D
 var _layer_materials: Array = []
 var _outline_material: ShaderMaterial
+var _tree_outline_material: ShaderMaterial
 var _blob_shadow_material: ShaderMaterial
+var _bush_shadow_material: ShaderMaterial
 var _blob_shadow_mesh: PlaneMesh
 
 var _viewport: SubViewport
@@ -50,9 +53,9 @@ var _full_h: int = 1
 func _init(ascii_grid: AsciiGrid) -> void:
 	super._init(ascii_grid)
 	_ring_layers = [
-		{"color": Color(0.10, 0.30, 0.10), "inner": 17.0, "outer": 22.0, "diameter": 5.0, "count": 2},
-		{"color": Color(0.14, 0.38, 0.14), "inner": 13.0, "outer": 18.0, "diameter": 4.0, "count": 3},
-		{"color": Color(0.18, 0.46, 0.18), "inner": 9.0,  "outer": 14.0, "diameter": 3.0, "count": 3},
+		{"color": Color(0.10, 0.30, 0.10), "inner": 20.0, "outer": 26.0, "diameter": 5.0, "count": 1},
+		{"color": Color(0.14, 0.38, 0.14), "inner": 15.0, "outer": 21.0, "diameter": 4.0, "count": 2},
+		{"color": Color(0.18, 0.46, 0.18), "inner": 10.0, "outer": 16.0, "diameter": 3.0, "count": 2},
 		{"color": Color(0.25, 0.55, 0.22), "inner": 6.0,  "outer": 10.0, "diameter": 1.6, "count": 14},
 		{"color": Color(0.35, 0.62, 0.25), "inner": 4.0,  "outer": 7.0,  "diameter": 1.0, "count": 16},
 		{"color": Color(0.50, 0.70, 0.30), "inner": 2.0,  "outer": 5.0,  "diameter": 0.7, "count": 22},
@@ -120,7 +123,7 @@ func _build_world() -> void:
 	scene.add_child(world_env)
 
 	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-20, 45, 0)
+	light.rotation_degrees = Vector3(-45, 90, 0)
 	light.light_energy = 1.3
 	light.light_color = Color("#fff4e0")
 	light.shadow_enabled = false
@@ -129,6 +132,9 @@ func _build_world() -> void:
 	_blob_shadow_material = ShaderMaterial.new()
 	_blob_shadow_material.shader = BlobShadowShader
 	_blob_shadow_material.set_shader_parameter("color", Color(0.0, 0.0, 0.0, 0.92))
+	_bush_shadow_material = ShaderMaterial.new()
+	_bush_shadow_material.shader = BlobShadowShader
+	_bush_shadow_material.set_shader_parameter("color", Color(0.0, 0.0, 0.0, 0.45))
 	_blob_shadow_mesh = PlaneMesh.new()
 	_blob_shadow_mesh.size = Vector2.ONE
 
@@ -141,7 +147,10 @@ func _build_world() -> void:
 	_outline_material = ShaderMaterial.new()
 	_outline_material.shader = ToonOutlineShader
 	_outline_material.set_shader_parameter("outline_color", Color(0.18, 0.18, 0.18, 1.0))
-	# Final width is set after _block_w is known; shared across all toon passes.
+	_tree_outline_material = ShaderMaterial.new()
+	_tree_outline_material.shader = ToonOutlineShader
+	_tree_outline_material.set_shader_parameter("outline_color", Color(0.12, 0.12, 0.12, 1.0))
+	# Final widths are set after _block_w is known; shared across all toon passes.
 
 	_layer_materials.clear()
 	for layer in _ring_layers:
@@ -193,6 +202,7 @@ func _build_world() -> void:
 	var wppx: float = (2.0 * ORTHO_SIZE) / vp_h
 	var block_world: float = wppx * maxf(1.0, float(_block_h) * 0.5)
 	_outline_material.set_shader_parameter("outline_width", block_world * 0.7)
+	_tree_outline_material.set_shader_parameter("outline_width", block_world * 0.7)
 	_texture_rect.material = _raster_mat
 	grid.add_child(_texture_rect)
 
@@ -220,7 +230,9 @@ func _cleanup() -> void:
 	_raster_mat = null
 	_layer_materials.clear()
 	_outline_material = null
+	_tree_outline_material = null
 	_blob_shadow_material = null
+	_bush_shadow_material = null
 	_blob_shadow_mesh = null
 
 
@@ -270,7 +282,7 @@ func _load_chunk(key: Vector2i) -> void:
 func _spawn_glades(parent: Node3D, key: Vector2i) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = key.x * 100003 + key.y
-	var n_glades: int = rng.randi_range(1, 3)
+	var n_glades: int = rng.randi_range(1, 2)
 	var margin: float = 8.0  # glades may extend past the edge; neighbours fill in
 	var ox: float = float(key.x) * CHUNK_SIZE
 	var oz: float = float(key.y) * CHUNK_SIZE
@@ -285,8 +297,13 @@ func _spawn_glades(parent: Node3D, key: Vector2i) -> void:
 			var outer_r: float = layer.outer
 			var diameter: float = layer.diameter
 			var count: int = layer.count
+			# Angular distribution: evenly spaced slots around the ring with a
+			# random start offset (so layers don't radiate from the same seam)
+			# and ±35% of step jitter per slot. Keeps trees from clumping/gapping.
+			var theta_start: float = rng.randf() * TAU
+			var step: float = TAU / float(max(count, 1))
 			for i in range(count):
-				var theta: float = rng.randf() * TAU
+				var theta: float = theta_start + float(i) * step + (rng.randf() - 0.5) * step * 0.35
 				var r: float = lerp(inner_r, outer_r, rng.randf())
 				var wx: float = gx + cos(theta) * r
 				var wz: float = gz + sin(theta) * r
@@ -296,27 +313,31 @@ func _spawn_glades(parent: Node3D, key: Vector2i) -> void:
 					tree.scale = Vector3(sc, sc, sc)
 					tree.position = Vector3(wx, 0.0, wz)
 					tree.rotation.y = rng.randf() * TAU
-					_apply_toon_to_tree(tree)
+					_apply_toon_to_tree(tree, sc)
 					parent.add_child(tree)
 					_spawn_blob_shadow(parent, Vector3(wx, BLOB_SHADOW_Y, wz), sc * TREE_SHADOW_SIZE_MULT)
 				else:
 					var ball: MeshInstance3D = TerrainMesher.build_ball(diameter, mat)
 					ball.position = Vector3(wx, diameter * 0.5, wz)
 					parent.add_child(ball)
-					_spawn_blob_shadow(parent, Vector3(wx, BLOB_SHADOW_Y, wz), diameter * BALL_SHADOW_SIZE_MULT)
+					_spawn_blob_shadow(parent, Vector3(wx, BLOB_SHADOW_Y, wz), diameter * BALL_SHADOW_SIZE_MULT, _bush_shadow_material)
 
 
-func _spawn_blob_shadow(parent: Node3D, pos: Vector3, size: float) -> void:
+func _spawn_blob_shadow(parent: Node3D, pos: Vector3, size: float, mat: ShaderMaterial = null) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = _blob_shadow_mesh
-	mi.material_override = _blob_shadow_material
+	mi.material_override = mat if mat != null else _blob_shadow_material
 	mi.position = pos
 	mi.scale = Vector3(size, 1.0, size)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
 
 
-func _apply_toon_to_tree(node: Node) -> void:
+const MODEL_Y_MAX_APPROX: float = 5.5
+const FOLIAGE_DARKEN_BOTTOM: float = 0.75
+const TRUNK_DARKEN_TOP: float = 0.5
+
+func _apply_toon_to_tree(node: Node, tree_scale: float = 1.0) -> void:
 	for child in node.get_children():
 		if child is MeshInstance3D:
 			var src: Material = child.get_active_material(0)
@@ -324,12 +345,28 @@ func _apply_toon_to_tree(node: Node) -> void:
 			if src is StandardMaterial3D:
 				albedo = src.albedo_color
 			var toon := ShaderMaterial.new()
-			toon.shader = ToonSolidShader
-			toon.set_shader_parameter("albedo", albedo)
+			toon.shader = ToonTreeShader
 			toon.set_shader_parameter("toon_bands", 3.0)
-			toon.next_pass = _outline_material
+			# World-space vertical gradient, range scaled with the tree so small
+			# and big trees both cover the full gradient from base to canopy.
+			# Foliage (green-dominant albedo): darker at bottom, authored green at top.
+			# Trunk (red-dominant albedo): lighter at base, darkens toward the foliage.
+			var y_max: float = tree_scale * MODEL_Y_MAX_APPROX
+			toon.set_shader_parameter("grad_y_min", 0.0)
+			toon.set_shader_parameter("grad_y_max", y_max)
+			if albedo.g > albedo.r * 1.05 and albedo.g > albedo.b * 1.05:
+				# Remap authored meadow-green into dark fir territory: blend toward
+				# a blue-leaning fir base, then multiplicatively darken. Preserves
+				# any per-section variation the GLB authored while unifying the tone.
+				var fir_base := Color(0.06, 0.20, 0.09)
+				albedo = albedo.lerp(fir_base, 0.6) * 0.80
+				toon.set_shader_parameter("darken_bottom", FOLIAGE_DARKEN_BOTTOM)
+			elif albedo.r > albedo.g * 1.05 and albedo.r > albedo.b * 1.05:
+				toon.set_shader_parameter("darken_top", TRUNK_DARKEN_TOP)
+			toon.set_shader_parameter("albedo", albedo)
+			toon.next_pass = _tree_outline_material
 			child.material_override = toon
-		_apply_toon_to_tree(child)
+		_apply_toon_to_tree(child, tree_scale)
 
 
 # ── Camera ─────────────────────────────────────────

@@ -1,8 +1,9 @@
 shader_type spatial;
 
-// Flat solid albedo with toon (stepped NdotL) lighting. Intended for the
-// billboard-replacement spheres in the terrain demo so the dither pass has
-// hard banded shading to work with.
+// Flat solid albedo with toon (stepped NdotL) lighting. Used by the
+// ring-layer bushes in the terrain demo — the dither pass has hard banded
+// shading to work with. Pine trees use toon_tree.gdshader (adds a vertical
+// gradient) so this stays minimal.
 
 uniform vec3 albedo : source_color = vec3(0.2, 0.5, 0.2);
 uniform float toon_bands = 3.0;
