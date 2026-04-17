@@ -15,6 +15,9 @@ const CAM_DIST: float = 80.0
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
 const ToonSolidShader: Shader = preload("res://assets/shaders/toon_solid.gdshader")
 const GROUND_TEX: Texture2D = preload("res://assets/biomes/test/new_meadow_grass_checkered_v5.png")
+const PineTreeScene: PackedScene = preload("res://assets/models/pine_tree_0.glb")
+const TREE_DIAMETER_MIN: float = 3.0
+const TREE_SCALE_FACTOR: float = 0.25
 
 var _ring_layers: Array = []
 var _ground_material: StandardMaterial3D
@@ -37,9 +40,9 @@ var _full_h: int = 1
 func _init(ascii_grid: AsciiGrid) -> void:
 	super._init(ascii_grid)
 	_ring_layers = [
-		{"color": Color(0.10, 0.30, 0.10), "inner": 17.0, "outer": 22.0, "diameter": 5.0, "count": 8},
-		{"color": Color(0.14, 0.38, 0.14), "inner": 13.0, "outer": 18.0, "diameter": 4.0, "count": 10},
-		{"color": Color(0.18, 0.46, 0.18), "inner": 9.0,  "outer": 14.0, "diameter": 3.0, "count": 10},
+		{"color": Color(0.10, 0.30, 0.10), "inner": 17.0, "outer": 22.0, "diameter": 5.0, "count": 2},
+		{"color": Color(0.14, 0.38, 0.14), "inner": 13.0, "outer": 18.0, "diameter": 4.0, "count": 3},
+		{"color": Color(0.18, 0.46, 0.18), "inner": 9.0,  "outer": 14.0, "diameter": 3.0, "count": 3},
 		{"color": Color(0.25, 0.55, 0.22), "inner": 6.0,  "outer": 10.0, "diameter": 1.6, "count": 14},
 		{"color": Color(0.35, 0.62, 0.25), "inner": 4.0,  "outer": 7.0,  "diameter": 1.0, "count": 16},
 		{"color": Color(0.50, 0.70, 0.30), "inner": 2.0,  "outer": 5.0,  "diameter": 0.7, "count": 22},
@@ -263,9 +266,33 @@ func _spawn_glades(parent: Node3D, key: Vector2i) -> void:
 				var r: float = lerp(inner_r, outer_r, rng.randf())
 				var wx: float = gx + cos(theta) * r
 				var wz: float = gz + sin(theta) * r
-				var ball: MeshInstance3D = TerrainMesher.build_ball(diameter, mat)
-				ball.position = Vector3(wx, diameter * 0.5, wz)
-				parent.add_child(ball)
+				if diameter >= TREE_DIAMETER_MIN:
+					var tree: Node3D = PineTreeScene.instantiate()
+					var sc: float = diameter * TREE_SCALE_FACTOR * lerp(0.3, 2.5, rng.randf())
+					tree.scale = Vector3(sc, sc, sc)
+					tree.position = Vector3(wx, 0.0, wz)
+					tree.rotation.y = rng.randf() * TAU
+					_apply_toon_to_tree(tree)
+					parent.add_child(tree)
+				else:
+					var ball: MeshInstance3D = TerrainMesher.build_ball(diameter, mat)
+					ball.position = Vector3(wx, diameter * 0.5, wz)
+					parent.add_child(ball)
+
+
+func _apply_toon_to_tree(node: Node) -> void:
+	for child in node.get_children():
+		if child is MeshInstance3D:
+			var src: Material = child.get_active_material(0)
+			var albedo := Color.WHITE
+			if src is StandardMaterial3D:
+				albedo = src.albedo_color
+			var toon := ShaderMaterial.new()
+			toon.shader = ToonSolidShader
+			toon.set_shader_parameter("albedo", albedo)
+			toon.set_shader_parameter("toon_bands", 3.0)
+			child.material_override = toon
+		_apply_toon_to_tree(child)
 
 
 # ── Camera ─────────────────────────────────────────
