@@ -14,14 +14,24 @@ const CAM_DIST: float = 80.0
 
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
 const ToonSolidShader: Shader = preload("res://assets/shaders/toon_solid.gdshader")
+const ToonOutlineShader: Shader = preload("res://assets/shaders/toon_outline.gdshader")
+const BlobShadowShader: Shader = preload("res://assets/shaders/blob_shadow.gdshader")
 const GROUND_TEX: Texture2D = preload("res://assets/biomes/test/new_meadow_grass_checkered_v5.png")
 const PineTreeScene: PackedScene = preload("res://assets/models/pine_tree_0.glb")
 const TREE_DIAMETER_MIN: float = 3.0
 const TREE_SCALE_FACTOR: float = 0.25
+# Blob shadows ride just above the ground to avoid z-fight with it. Scales
+# relative to object footprint.
+const BLOB_SHADOW_Y: float = 0.05
+const TREE_SHADOW_SIZE_MULT: float = 12.0
+const BALL_SHADOW_SIZE_MULT: float = 6.6
 
 var _ring_layers: Array = []
 var _ground_material: StandardMaterial3D
 var _layer_materials: Array = []
+var _outline_material: ShaderMaterial
+var _blob_shadow_material: ShaderMaterial
+var _blob_shadow_mesh: PlaneMesh
 
 var _viewport: SubViewport
 var _texture_rect: TextureRect
@@ -113,16 +123,14 @@ func _build_world() -> void:
 	light.rotation_degrees = Vector3(-20, 45, 0)
 	light.light_energy = 1.3
 	light.light_color = Color("#fff4e0")
-	light.shadow_enabled = true
-	light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	light.directional_shadow_max_distance = 80.0
-	light.shadow_bias = 0.15
-	light.shadow_normal_bias = 2.0
+	light.shadow_enabled = false
 	scene.add_child(light)
 
-	RenderingServer.directional_shadow_atlas_set_size(2048, false)
-	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW)
-	RenderingServer.positional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_HARD)
+	_blob_shadow_material = ShaderMaterial.new()
+	_blob_shadow_material.shader = BlobShadowShader
+	_blob_shadow_material.set_shader_parameter("color", Color(0.0, 0.0, 0.0, 0.92))
+	_blob_shadow_mesh = PlaneMesh.new()
+	_blob_shadow_mesh.size = Vector2.ONE
 
 	_ground_material = StandardMaterial3D.new()
 	_ground_material.albedo_texture = GROUND_TEX
@@ -130,12 +138,18 @@ func _build_world() -> void:
 	_ground_material.uv1_scale = Vector3(8.0, 8.0, 1.0)
 	_ground_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 
+	_outline_material = ShaderMaterial.new()
+	_outline_material.shader = ToonOutlineShader
+	_outline_material.set_shader_parameter("outline_color", Color(0.18, 0.18, 0.18, 1.0))
+	# Final width is set after _block_w is known; shared across all toon passes.
+
 	_layer_materials.clear()
 	for layer in _ring_layers:
 		var mat := ShaderMaterial.new()
 		mat.shader = ToonSolidShader
 		mat.set_shader_parameter("albedo", layer.color)
 		mat.set_shader_parameter("toon_bands", 3.0)
+		mat.next_pass = _outline_material
 		_layer_materials.append(mat)
 
 	_chunk_container = Node3D.new()
@@ -172,6 +186,13 @@ func _build_world() -> void:
 	_block_w = maxi(1, grid.g_cell_width / 2)
 	_block_h = _block_w
 	_raster_mat.set_shader_parameter("block_size", Vector2(float(_block_w), float(_block_h)))
+
+	# Outline width in world units: a touch under one chunky block, using the
+	# camera math from _update_camera (wppx * block_h * 0.5) as the unit.
+	var vp_h: float = float(_viewport.size.y)
+	var wppx: float = (2.0 * ORTHO_SIZE) / vp_h
+	var block_world: float = wppx * maxf(1.0, float(_block_h) * 0.5)
+	_outline_material.set_shader_parameter("outline_width", block_world * 0.7)
 	_texture_rect.material = _raster_mat
 	grid.add_child(_texture_rect)
 
@@ -198,6 +219,9 @@ func _cleanup() -> void:
 	_ground_material = null
 	_raster_mat = null
 	_layer_materials.clear()
+	_outline_material = null
+	_blob_shadow_material = null
+	_blob_shadow_mesh = null
 
 
 # ── Chunk management ───────────────────────────────
@@ -274,10 +298,22 @@ func _spawn_glades(parent: Node3D, key: Vector2i) -> void:
 					tree.rotation.y = rng.randf() * TAU
 					_apply_toon_to_tree(tree)
 					parent.add_child(tree)
+					_spawn_blob_shadow(parent, Vector3(wx, BLOB_SHADOW_Y, wz), sc * TREE_SHADOW_SIZE_MULT)
 				else:
 					var ball: MeshInstance3D = TerrainMesher.build_ball(diameter, mat)
 					ball.position = Vector3(wx, diameter * 0.5, wz)
 					parent.add_child(ball)
+					_spawn_blob_shadow(parent, Vector3(wx, BLOB_SHADOW_Y, wz), diameter * BALL_SHADOW_SIZE_MULT)
+
+
+func _spawn_blob_shadow(parent: Node3D, pos: Vector3, size: float) -> void:
+	var mi := MeshInstance3D.new()
+	mi.mesh = _blob_shadow_mesh
+	mi.material_override = _blob_shadow_material
+	mi.position = pos
+	mi.scale = Vector3(size, 1.0, size)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
 
 
 func _apply_toon_to_tree(node: Node) -> void:
@@ -291,6 +327,7 @@ func _apply_toon_to_tree(node: Node) -> void:
 			toon.shader = ToonSolidShader
 			toon.set_shader_parameter("albedo", albedo)
 			toon.set_shader_parameter("toon_bands", 3.0)
+			toon.next_pass = _outline_material
 			child.material_override = toon
 		_apply_toon_to_tree(child)
 
