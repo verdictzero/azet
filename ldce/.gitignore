@@ -1,9 +1,0 @@
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# Godot 4
-godot/.godot/
-godot/export.cfg
-godot/export_presets.cfg
