@@ -12,6 +12,7 @@ const SPRITE_HEIGHT_M: float = 3.6
 const WIDTH_SCALE: float = 0.9
 
 const PlayerSpriteShader: Shader = preload("res://assets/shaders/player_sprite.gdshader")
+const PlayerXrayOutlineShader: Shader = preload("res://assets/shaders/player_xray_outline.gdshader")
 const PlayerSpriteTex: Texture2D = preload("res://assets/sprites/player/tg_player_char_sprite.png")
 const BlobShadowShader: Shader = preload("res://assets/shaders/blob_shadow.gdshader")
 
@@ -22,8 +23,16 @@ const SHADOW_ALPHA: float = 0.55
 enum Facing { DOWN = 0, LEFT = 1, RIGHT = 2, UP = 3 }
 
 var move_speed: float = 7.5
+# When false, the walk-cycle frame swap is discrete — no cross-fade between
+# consecutive frames (mix_t is held at 0). Pixel-art-style stepped animation.
+# Default true preserves v1 demo's smooth cross-fade.
+var tween_frames: bool = true
 
 var _mat: ShaderMaterial
+# Optional second material/mesh that paints a tinted silhouette of the player
+# with depth_test_disabled. Built lazily by enable_xray_outline() so screens
+# that don't want it (v1 demo) pay zero cost.
+var _xray_mat: ShaderMaterial = null
 var _facing: int = Facing.DOWN
 var _anim_time: float = 0.0
 
@@ -68,7 +77,7 @@ func _update_anim(delta: float, moving: bool) -> void:
 		var idx_b: int = (idx_a + 1) % n
 		col_a = WALK_PATTERN[idx_a]
 		col_b = WALK_PATTERN[idx_b]
-		t = phase - floor(phase)
+		t = phase - floor(phase) if tween_frames else 0.0
 	else:
 		_anim_time = 0.0
 		col_a = 1
@@ -81,9 +90,15 @@ func _apply_frames(col_a: int, col_b: int, t: float) -> void:
 	if _mat == null:
 		return
 	var row_v: float = float(_facing) / float(VFRAMES)
-	_mat.set_shader_parameter("frame_a", Vector2(float(col_a) / float(HFRAMES), row_v))
-	_mat.set_shader_parameter("frame_b", Vector2(float(col_b) / float(HFRAMES), row_v))
+	var fa := Vector2(float(col_a) / float(HFRAMES), row_v)
+	var fb := Vector2(float(col_b) / float(HFRAMES), row_v)
+	_mat.set_shader_parameter("frame_a", fa)
+	_mat.set_shader_parameter("frame_b", fb)
 	_mat.set_shader_parameter("mix_t", t)
+	if _xray_mat != null:
+		_xray_mat.set_shader_parameter("frame_a", fa)
+		_xray_mat.set_shader_parameter("frame_b", fb)
+		_xray_mat.set_shader_parameter("mix_t", t)
 
 
 func _build_sprite() -> void:
@@ -107,6 +122,46 @@ func _build_sprite() -> void:
 	mi.mesh = q
 	mi.material_override = _mat
 	mi.position = Vector3(0.0, -GROUND_Y, 0.0)
+	add_child(mi)
+
+
+# Opt-in: build a second silhouette mesh that draws first with depth_test off,
+# painting a tinted player shape that only remains visible where the main
+# (depth-tested) sprite gets occluded. Cheap; no per-frame compute beyond an
+# extra draw call. Must be called after _ready so _build_sprite already wired
+# the underlying QuadMesh and ShaderMaterial.
+func enable_xray_outline(color: Color = Color(0.55, 0.85, 1.0, 0.28)) -> void:
+	if _xray_mat != null:
+		return
+	# Force the main sprite to write ALPHA=1.0. Without this, sub-1 alpha at
+	# soft sprite edges lets the xray color bleed through when the player is
+	# unoccluded — visible as a constant tint halo.
+	if _mat != null:
+		_mat.set_shader_parameter("force_opaque_alpha", true)
+	var aspect: float = FRAME_PX.x / FRAME_PX.y
+	var q := QuadMesh.new()
+	q.size = Vector2(SPRITE_HEIGHT_M * aspect * WIDTH_SCALE, SPRITE_HEIGHT_M)
+	q.center_offset = Vector3(0.0, SPRITE_HEIGHT_M * 0.5, 0.0)
+
+	_xray_mat = ShaderMaterial.new()
+	_xray_mat.shader = PlayerXrayOutlineShader
+	# render_priority lower than the main sprite (which is 1) so this draws
+	# first within the transparent queue. Main sprite then over-paints where
+	# its depth-test passes; the silhouette shows through where it fails.
+	_xray_mat.render_priority = 0
+	_xray_mat.set_shader_parameter("tex", PlayerSpriteTex)
+	_xray_mat.set_shader_parameter("frame_size", Vector2(1.0 / float(HFRAMES), 1.0 / float(VFRAMES)))
+	_xray_mat.set_shader_parameter("frame_a", Vector2(1.0 / float(HFRAMES), 0.0))
+	_xray_mat.set_shader_parameter("frame_b", Vector2(1.0 / float(HFRAMES), 0.0))
+	_xray_mat.set_shader_parameter("mix_t", 0.0)
+	_xray_mat.set_shader_parameter("outline_color", color)
+
+	var mi := MeshInstance3D.new()
+	mi.name = "PlayerXrayOutline"
+	mi.mesh = q
+	mi.material_override = _xray_mat
+	mi.position = Vector3(0.0, -GROUND_Y, 0.0)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 
 

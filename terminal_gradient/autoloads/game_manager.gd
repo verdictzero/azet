@@ -43,6 +43,7 @@ enum State {
 	TITLE_SCREEN,
 	UI_SHELL_DEMO,
 	TERRAIN_DEMO,
+	TERRAIN_DEMO_2,
 }
 
 var current_state: State = State.PREAMBLE
@@ -80,6 +81,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.UI_SHELL_DEMO, UIShellDemoScreen.new(ascii_grid))
 	ui_manager.register_screen(State.DEBUG_MENU, DebugMenuScreen.new(ascii_grid))
 	ui_manager.register_screen(State.TERRAIN_DEMO, TerrainDemoScreen.new(ascii_grid))
+	ui_manager.register_screen(State.TERRAIN_DEMO_2, TerrainDemo2Screen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -183,6 +185,8 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.FIRE_DEMO)
 		"open_terrain_demo":
 			set_state(State.TERRAIN_DEMO)
+		"open_terrain_demo_2":
+			set_state(State.TERRAIN_DEMO_2)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:

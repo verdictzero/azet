@@ -12,6 +12,12 @@ uniform vec2 frame_a = vec2(0.0);                // normalized origin of current
 uniform vec2 frame_b = vec2(0.0);                // normalized origin of next frame
 uniform float mix_t : hint_range(0.0, 1.0) = 0.0;
 uniform float alpha_cut : hint_range(0.0, 1.0) = 0.05;
+// When true, every kept fragment writes ALPHA=1.0 instead of the texture's
+// alpha value. Used in v2 alongside the x-ray outline pass: the outline is
+// drawn behind the player with depth-test off, and a fully-opaque main sprite
+// then covers it cleanly wherever the player isn't occluded. Default false
+// preserves the v1 sprite blend exactly.
+uniform bool force_opaque_alpha = false;
 
 void vertex() {
 	vec3 scale = vec3(
@@ -54,5 +60,5 @@ void fragment() {
 		discard;
 	}
 	ALBEDO = c.rgb;
-	ALPHA = c.a;
+	ALPHA = force_opaque_alpha ? 1.0 : c.a;
 }

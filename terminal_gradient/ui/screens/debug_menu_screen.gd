@@ -4,17 +4,18 @@ extends BaseScreen
 ## Stub items that have no screen yet trigger a violent shake + red flash.
 
 const MENU_ITEMS: Array[String] = [
-	"FIRE DEMO", "UI SHELL DEMO", "TERRAIN DEMO",
+	"FIRE DEMO", "UI SHELL DEMO", "TERRAIN DEMO", "TERRAIN DEMO 2",
 ]
 
 const MENU_ACTIONS: Array[String] = [
-	"open_fire_demo", "ui_shell_demo", "open_terrain_demo",
+	"open_fire_demo", "ui_shell_demo", "open_terrain_demo", "open_terrain_demo_2",
 ]
 
 const MENU_DESCRIPTIONS: Array[String] = [
 	"Full-screen Voronoi fire shader demo. 100% GPU-driven with 10 animated seed points.",
 	"UIShell pane layout demo. Exercises every content type: ASCII, raster, text, menu, fire.",
-	"Procedural chunk-based 3D terrain with biomes, vegetation, and top-down orthographic camera. WASD to move.",
+	"TERRAIN DEMO",
+	"TERRAIN DEMO 2",
 ]
 
 var _shell: UIShell
