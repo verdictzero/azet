@@ -12,7 +12,10 @@ extends BaseScreen
 ##   a   = dither-fade amount     (trees)
 
 const CHUNK_SIZE: float = 64.0
-const RENDER_DISTANCE: int = 3
+# Chunks are loaded by intersecting the camera's ground-plane frustum
+# footprint against chunk AABBs. This margin is added to all four sides so
+# there's always a buffer chunk ready when the player moves.
+const CHUNK_LOAD_MARGIN: float = 16.0
 const CAM_LERP: float = 0.1
 const ORTHO_SIZE: float = 11.0
 const CAM_PITCH_DEG: float = -30.0
@@ -25,18 +28,65 @@ const BlobShadowShader: Shader = preload("res://assets/shaders/blob_shadow.gdsha
 const GROUND_TEX: Texture2D = preload("res://assets/biomes/test/new_meadow_grass_checkered_v5.png")
 const PineTreeScene: PackedScene = preload("res://assets/models/pine_tree_0.glb")
 const PineBushScene: PackedScene = preload("res://assets/models/pine_bush_0.glb")
+const FernScene: PackedScene = preload("res://assets/models/fern_0.glb")
 
 const TREE_SCALE_FACTOR: float = 0.25
 const BUSH_SCALE_FACTOR: float = 0.4
 const BUSH_SHADOW_SIZE_MULT: float = 2.0
 const BUSH_MODEL_Y_MAX_APPROX: float = 1.5
+
+# Ferns cluster tightly around each tree trunk — low ground cover ringing
+# the base of every pine. Lighter green than bushes, share the same shader
+# pipeline, and respond to player contact with a weaker push impulse.
+const FERN_SCALE_MIN: float = 0.264
+const FERN_SCALE_MAX: float = 0.462
+const FERN_MODEL_Y_MAX_APPROX: float = 0.6
+const FERN_PER_TREE_MIN: int = 3
+const FERN_PER_TREE_MAX: int = 7
+const FERN_CLUSTER_INNER_MULT: float = 0.35  # of tree canopy radius
+const FERN_CLUSTER_OUTER_MULT: float = 1.4
+const FERN_TRUNK_AVOID_MULT: float = 0.22
+const FERN_PUSH_STRENGTH: float = 0.15
+const FERN_PUSH_RADIUS: float = 1.2
+# Fern shadow is a small, soft disc. Multiplier is larger than the bush's
+# because the fern's "scale" variable is already tiny (0.26–0.46), so a
+# direct size would barely read as a shadow.
+const FERN_SHADOW_SIZE_MULT: float = 4.0
+# Ferns need their own (lower + tighter) wind-mask window because their
+# world-Y extent is ~0.15–0.28 m — below the default mask floor of 0.4 —
+# so the shared wind params would leave them completely static. Wind
+# amplitude is also smaller to suit a much shorter plant.
+const FERN_WIND_STRENGTH: float = 0.07
+const FERN_WIND_MASK_Y_MIN: float = -0.1
+const FERN_WIND_MASK_Y_MAX: float = 0.35
+
+# Bush clusters sit in glade clearings — open spots between tree rings — so
+# they read as clumps of undergrowth in the open rather than hedgerows
+# underneath every trunk.
+const BUSH_CLEARING_MIN_CLUSTERS: int = 2
+const BUSH_CLEARING_MAX_CLUSTERS: int = 4
+# Search radius extends past the outermost tree ring (~30m) so the edges of
+# the glade — genuinely open ground — are also valid clearings.
+const BUSH_CLEARING_MAX_SEARCH_R: float = 34.0
+# Minimum clearance the cluster centre needs from any tree centre, in
+# multiples of that tree's layer diameter. Loosened from 1.2 so clusters fit
+# in the gaps *between* tree rings, not only in fully open clearings.
+const BUSH_CLEARING_TREE_AVOID_MULT: float = 0.65
+const BUSH_CLEARING_PLACEMENT_ATTEMPTS: int = 32
+# Player-contact push modelled as an attack + decay impulse rather than
+# steady-state proximity, so a bush deforms quickly as the player walks into
+# it and snaps back to rest even while the player is still overlapping it.
+#   push_amount accumulates whenever proximity rises (player approaching)
+#   push_amount decays exponentially every frame
 const BUSH_PUSH_RADIUS: float = 1.8
-const BUSH_PUSH_STRENGTH: float = 0.7
+const BUSH_PUSH_STRENGTH: float = 0.28
+const BUSH_PUSH_ATTACK: float = 1.4
+const BUSH_PUSH_DECAY_RATE: float = 7.0  # per-second, higher = faster snap-back
 const BLOB_SHADOW_Y: float = 0.05
 const TREE_SHADOW_SIZE_MULT: float = 12.0
 
-const TREE_FADE_RADIUS: float = 2.5
-const TREE_FADE_Z_BACK: float = 1.5
+const TREE_FADE_RADIUS: float = 4.5
+const TREE_FADE_Z_BACK: float = 3.0
 const TREE_FADE_MAX: float = 0.85
 const TREE_MIN_DIST_MULT: float = 1.1
 const BUSH_MIN_DIST_MULT: float = 0.3
@@ -68,6 +118,7 @@ var _ring_layers: Array = []
 # so MultiMesh doesn't help), outline next_pass, and the ground.
 var _ground_material: StandardMaterial3D
 var _tree_outline_material: ShaderMaterial
+var _fern_outline_material: ShaderMaterial
 var _blob_shadow_material: ShaderMaterial
 var _bush_shadow_material: ShaderMaterial
 var _blob_shadow_mesh: PlaneMesh
@@ -84,12 +135,14 @@ var _blob_shadow_mesh: PlaneMesh
 # tree per frame.
 var _tree_mesh: ArrayMesh
 var _bush_foliage_mesh: ArrayMesh
+var _fern_foliage_mesh: ArrayMesh
 var _terrain_base_mesh: ArrayMesh
 
 # Shared toon materials — reused across every instance of each mesh type.
 var _tree_trunk_material: ShaderMaterial
 var _tree_foliage_material: ShaderMaterial
 var _bush_foliage_material: ShaderMaterial
+var _fern_foliage_material: ShaderMaterial
 
 # Global terrain MultiMeshInstance3D — one instance per active chunk.
 var _terrain_mm_instance: MultiMeshInstance3D
@@ -100,13 +153,15 @@ var _camera: Camera3D
 var _player: CharacterBody3D
 var _chunk_container: Node3D
 
-# Per-chunk state. Each entry holds the chunk's container node, two vegetation
-# MultiMeshInstance3Ds (one for trees, one for bushes), and the per-instance
-# lookup tables we need to update fade/push each frame.
+# Per-chunk state. Each entry holds the chunk's container node, three
+# vegetation MultiMeshInstance3Ds (trees / bushes / ferns) and the
+# per-instance lookup tables we need to update fade/push each frame.
 #   {"node": Node3D, "terrain_idx": int,
 #    "mm_tree": MultiMeshInstance3D, "mm_bush": MultiMeshInstance3D,
-#    "trees": Array[{xz, idx}],
-#    "bushes": Array[{xz, basis_inv, idx}]}
+#    "mm_fern": MultiMeshInstance3D,
+#    "trees":  Array[{xz, idx}],
+#    "bushes": Array[{xz, basis_inv, idx, push_amount, prev_proximity}],
+#    "ferns":  Array[{xz, basis_inv, idx, push_amount, prev_proximity}]}
 var _chunks_state: Dictionary = {}
 
 var _hud_label: Label
@@ -167,7 +222,11 @@ func _build_world() -> void:
 	_full_w = full_w
 	_full_h = full_h
 	_viewport = SubViewport.new()
-	_viewport.msaa_3d = Viewport.MSAA_4X
+	# MSAA 4× quadruples fragment shading cost on an already-busy forest.
+	# With the raster/dither pass snapping the output to chunky blocks, the
+	# visible benefit of 4× is small; 2× keeps edges clean for roughly half
+	# the GPU cost.
+	_viewport.msaa_3d = Viewport.MSAA_2X
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.handle_input_locally = false
 	_viewport.transparent_bg = false
@@ -216,6 +275,14 @@ func _build_world() -> void:
 	_tree_outline_material.set_shader_parameter("outline_color", Color(0.12, 0.12, 0.12, 1.0))
 	_set_wind_params(_tree_outline_material)
 
+	# Ferns need a separate outline with their own (lower) wind mask so the
+	# inverted-hull silhouette stays glued to the fern body. Outline shaders
+	# must mirror their body's wind block exactly or the shell detaches.
+	_fern_outline_material = ShaderMaterial.new()
+	_fern_outline_material.shader = ToonOutlineShader
+	_fern_outline_material.set_shader_parameter("outline_color", Color(0.12, 0.12, 0.12, 1.0))
+	_apply_fern_wind_params(_fern_outline_material)
+
 	_build_mesh_catalog()
 	_build_shared_materials()
 
@@ -260,6 +327,7 @@ func _build_world() -> void:
 	var wppx: float = (2.0 * ORTHO_SIZE) / vp_h
 	var block_world: float = wppx * maxf(1.0, float(_block_h) * 0.5)
 	_tree_outline_material.set_shader_parameter("outline_width", block_world * 0.7)
+	_fern_outline_material.set_shader_parameter("outline_width", block_world * 0.5)
 	_texture_rect.material = _raster_mat
 	grid.add_child(_texture_rect)
 
@@ -287,15 +355,18 @@ func _cleanup() -> void:
 	_ground_material = null
 	_raster_mat = null
 	_tree_outline_material = null
+	_fern_outline_material = null
 	_blob_shadow_material = null
 	_bush_shadow_material = null
 	_blob_shadow_mesh = null
 	_tree_mesh = null
 	_bush_foliage_mesh = null
+	_fern_foliage_mesh = null
 	_terrain_base_mesh = null
 	_tree_trunk_material = null
 	_tree_foliage_material = null
 	_bush_foliage_material = null
+	_fern_foliage_material = null
 	_terrain_mm_instance = null
 
 
@@ -304,6 +375,7 @@ func _cleanup() -> void:
 func _build_mesh_catalog() -> void:
 	_tree_mesh = _bake_tree_mesh()
 	_bush_foliage_mesh = _bake_mesh_from_template(PineBushScene, [])
+	_fern_foliage_mesh = _bake_mesh_from_template(FernScene, [])
 	_terrain_base_mesh = _build_terrain_local_mesh()
 
 
@@ -441,17 +513,33 @@ func _build_shared_materials() -> void:
 	_set_wind_params(_tree_foliage_material)
 	_tree_foliage_material.next_pass = _tree_outline_material
 
-	# Bushes use the same remapped green but a shorter gradient span so the
-	# whole plant covers the dark-bottom → bright-top curve at its own height.
+	# Bushes use a lighter variant of the tree-foliage green so they read
+	# visually as undergrowth rather than blending into the tree silhouettes.
+	# Gradient span is shorter so the whole bush covers the dark-bottom →
+	# bright-top curve at its own height.
+	var bush_albedo := foliage_albedo * 1.35
+	# Ferns are lighter still — they sit at ground level so the eye picks
+	# them up as a separate layer even in shadow.
+	var fern_albedo := foliage_albedo * 1.75
 	_bush_foliage_material = ShaderMaterial.new()
 	_bush_foliage_material.shader = ToonTreeShader
-	_bush_foliage_material.set_shader_parameter("albedo", foliage_albedo)
+	_bush_foliage_material.set_shader_parameter("albedo", bush_albedo)
 	_bush_foliage_material.set_shader_parameter("toon_bands", 3.0)
 	_bush_foliage_material.set_shader_parameter("model_y_max", BUSH_MODEL_Y_MAX_APPROX)
 	_bush_foliage_material.set_shader_parameter("darken_top", 0.0)
 	_bush_foliage_material.set_shader_parameter("darken_bottom", FOLIAGE_DARKEN_BOTTOM)
 	_set_wind_params(_bush_foliage_material)
 	_bush_foliage_material.next_pass = _tree_outline_material
+
+	_fern_foliage_material = ShaderMaterial.new()
+	_fern_foliage_material.shader = ToonTreeShader
+	_fern_foliage_material.set_shader_parameter("albedo", fern_albedo)
+	_fern_foliage_material.set_shader_parameter("toon_bands", 3.0)
+	_fern_foliage_material.set_shader_parameter("model_y_max", FERN_MODEL_Y_MAX_APPROX)
+	_fern_foliage_material.set_shader_parameter("darken_top", 0.0)
+	_fern_foliage_material.set_shader_parameter("darken_bottom", FOLIAGE_DARKEN_BOTTOM)
+	_apply_fern_wind_params(_fern_foliage_material)
+	_fern_foliage_material.next_pass = _fern_outline_material
 
 	# Attach materials per-surface directly on the shared meshes. With no
 	# `material_override` on the MultiMeshInstance3D, Godot picks these up
@@ -462,6 +550,8 @@ func _build_shared_materials() -> void:
 		_tree_mesh.surface_set_material(1, _tree_foliage_material)
 	if _bush_foliage_mesh != null and _bush_foliage_mesh.get_surface_count() >= 1:
 		_bush_foliage_mesh.surface_set_material(0, _bush_foliage_material)
+	if _fern_foliage_mesh != null and _fern_foliage_mesh.get_surface_count() >= 1:
+		_fern_foliage_mesh.surface_set_material(0, _fern_foliage_material)
 
 
 func _set_wind_params(mat: ShaderMaterial) -> void:
@@ -469,6 +559,16 @@ func _set_wind_params(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("wind_speed", WIND_SPEED)
 	mat.set_shader_parameter("wind_mask_y_min", WIND_MASK_Y_MIN)
 	mat.set_shader_parameter("wind_mask_y_max", WIND_MASK_Y_MAX)
+	mat.set_shader_parameter("wind_spatial_freq", WIND_SPATIAL_FREQ)
+
+
+# Apply fern-specific wind: lower mask window so the whole plant sways, and a
+# smaller amplitude so tiny ferns don't displace a full plant-length.
+func _apply_fern_wind_params(mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("wind_strength", FERN_WIND_STRENGTH)
+	mat.set_shader_parameter("wind_speed", WIND_SPEED)
+	mat.set_shader_parameter("wind_mask_y_min", FERN_WIND_MASK_Y_MIN)
+	mat.set_shader_parameter("wind_mask_y_max", FERN_WIND_MASK_Y_MAX)
 	mat.set_shader_parameter("wind_spatial_freq", WIND_SPATIAL_FREQ)
 
 
@@ -505,17 +605,31 @@ func _rebuild_terrain_mm() -> void:
 # ── Chunk management ───────────────────────────────
 
 func _update_chunks() -> void:
-	if _player == null:
+	if _player == null or _viewport == null:
 		return
 	var px: float = _player.global_position.x
 	var pz: float = _player.global_position.z
-	var ccx: int = int(floor(px / CHUNK_SIZE))
-	var ccz: int = int(floor(pz / CHUNK_SIZE))
+
+	# Ortho camera ground-plane footprint, centred on the player. Camera has
+	# no yaw, so X maps 1:1; Y (screen) maps to Z (ground) through the pitch,
+	# giving `ORTHO_SIZE / cos(pitch)` of Z coverage. Much smaller than a 7×7
+	# RENDER_DISTANCE box — typically 1–4 chunks vs 49.
+	var vp_w: float = float(_viewport.size.x)
+	var vp_h: float = float(_viewport.size.y)
+	var aspect: float = vp_w / maxf(vp_h, 1.0)
+	var pitch: float = deg_to_rad(CAM_PITCH_DEG)
+	var half_x: float = ORTHO_SIZE * 0.5 * aspect
+	var half_z: float = ORTHO_SIZE * 0.5 / maxf(cos(pitch), 0.1)
+
+	var cx_min: int = int(floor((px - half_x - CHUNK_LOAD_MARGIN) / CHUNK_SIZE))
+	var cx_max: int = int(floor((px + half_x + CHUNK_LOAD_MARGIN) / CHUNK_SIZE))
+	var cz_min: int = int(floor((pz - half_z - CHUNK_LOAD_MARGIN) / CHUNK_SIZE))
+	var cz_max: int = int(floor((pz + half_z + CHUNK_LOAD_MARGIN) / CHUNK_SIZE))
 
 	var desired: Dictionary = {}
-	for dx in range(-RENDER_DISTANCE, RENDER_DISTANCE + 1):
-		for dz in range(-RENDER_DISTANCE, RENDER_DISTANCE + 1):
-			desired[Vector2i(ccx + dx, ccz + dz)] = true
+	for cx in range(cx_min, cx_max + 1):
+		for cz in range(cz_min, cz_max + 1):
+			desired[Vector2i(cx, cz)] = true
 
 	var changed: bool = false
 	for key: Vector2i in desired:
@@ -549,15 +663,19 @@ func _load_chunk(key: Vector2i) -> void:
 	rng.seed = key.x * 100003 + key.y
 	var tree_positions: Array[Dictionary] = []
 	var bush_positions: Array[Dictionary] = []
-	_collect_glades(rng, key, tree_positions, bush_positions)
+	var fern_positions: Array[Dictionary] = []
+	_collect_glades(rng, key, tree_positions, bush_positions, fern_positions)
 
 	var tree_count: int = tree_positions.size()
 	var bush_count: int = bush_positions.size()
+	var fern_count: int = fern_positions.size()
 
 	var mm_tree := _make_vegetation_mmi(_tree_mesh, tree_count)
 	var mm_bush := _make_vegetation_mmi(_bush_foliage_mesh, bush_count)
+	var mm_fern := _make_vegetation_mmi(_fern_foliage_mesh, fern_count)
 	chunk.add_child(mm_tree)
 	chunk.add_child(mm_bush)
+	chunk.add_child(mm_fern)
 
 	var tree_entries: Array[Dictionary] = []
 	for i in tree_count:
@@ -568,7 +686,7 @@ func _load_chunk(key: Vector2i) -> void:
 		_spawn_blob_shadow(chunk,
 			Vector3(t.xz.x, BLOB_SHADOW_Y, t.xz.y),
 			t.scale * TREE_SHADOW_SIZE_MULT)
-		tree_entries.append({"xz": t.xz, "idx": i})
+		tree_entries.append({"xz": t.xz, "idx": i, "last_fade": 0.0})
 
 	var bush_entries: Array[Dictionary] = []
 	for i in bush_count:
@@ -578,15 +696,39 @@ func _load_chunk(key: Vector2i) -> void:
 		_spawn_blob_shadow(chunk,
 			Vector3(b.xz.x, BLOB_SHADOW_Y, b.xz.y),
 			b.scale * BUSH_SHADOW_SIZE_MULT, _bush_shadow_material)
-		bush_entries.append({"xz": b.xz, "basis_inv": b.basis_inv, "idx": i})
+		bush_entries.append({
+			"xz": b.xz,
+			"basis_inv": b.basis_inv,
+			"idx": i,
+			"push_amount": 0.0,
+			"prev_proximity": 0.0,
+		})
+
+	var fern_entries: Array[Dictionary] = []
+	for i in fern_count:
+		var f: Dictionary = fern_positions[i]
+		mm_fern.multimesh.set_instance_transform(i, f.xform)
+		mm_fern.multimesh.set_instance_custom_data(i, Color(0, 0, 0, 0))
+		_spawn_blob_shadow(chunk,
+			Vector3(f.xz.x, BLOB_SHADOW_Y, f.xz.y),
+			f.scale * FERN_SHADOW_SIZE_MULT, _bush_shadow_material)
+		fern_entries.append({
+			"xz": f.xz,
+			"basis_inv": f.basis_inv,
+			"idx": i,
+			"push_amount": 0.0,
+			"prev_proximity": 0.0,
+		})
 
 	_chunks_state[key] = {
 		"node": chunk,
 		"terrain_idx": -1,
 		"mm_tree": mm_tree,
 		"mm_bush": mm_bush,
+		"mm_fern": mm_fern,
 		"trees": tree_entries,
 		"bushes": bush_entries,
+		"ferns": fern_entries,
 	}
 
 
@@ -608,7 +750,8 @@ func _make_vegetation_mmi(mesh: ArrayMesh, count: int) -> MultiMeshInstance3D:
 # ── Position generation (no visuals, just xforms) ──
 
 func _collect_glades(rng: RandomNumberGenerator, key: Vector2i,
-		tree_out: Array[Dictionary], bush_out: Array[Dictionary]) -> void:
+		tree_out: Array[Dictionary], bush_out: Array[Dictionary],
+		fern_out: Array[Dictionary]) -> void:
 	var n_glades: int = rng.randi_range(1, 2)
 	var margin: float = 8.0
 	var ox: float = float(key.x) * CHUNK_SIZE
@@ -646,60 +789,119 @@ func _collect_glades(rng: RandomNumberGenerator, key: Vector2i,
 				var xform := _make_world_xform(Vector2(wx, wz), sc, ry)
 				tree_out.append({"xz": Vector2(wx, wz), "scale": sc, "xform": xform})
 				placed.append({"x": wx, "z": wz, "diameter": diameter})
-				_collect_bushes_around_tree(rng, Vector2(wx, wz), sc, placed, bush_out)
+				_collect_ferns_around_tree(rng, Vector2(wx, wz), sc, placed, fern_out)
+		# After all trees (and their fern rings) are placed for this glade,
+		# look for open gaps between tree rings and drop bush clusters there.
+		_collect_bushes_in_clearing(rng, gx, gz, placed, bush_out)
 
 
-func _collect_bushes_around_tree(rng: RandomNumberGenerator, tree_xz: Vector2,
-		tree_sc: float, placed: Array[Dictionary], bush_out: Array[Dictionary]) -> void:
+# Tight fern ring hugging a single tree's canopy footprint. Ferns are small
+# enough that we allow them to overlap each other freely; we only reject
+# placements that'd land inside a tree trunk.
+func _collect_ferns_around_tree(rng: RandomNumberGenerator, tree_xz: Vector2,
+		tree_sc: float, placed: Array[Dictionary], fern_out: Array[Dictionary]) -> void:
 	var canopy_r: float = tree_sc * 1.8
-	# Only ~half of trees seed a bush cluster — avoids every trunk looking
-	# like it has a hedge.
-	if rng.randf() > 0.55:
-		return
-	var cluster_theta: float = rng.randf() * TAU
-	var cluster_r: float = lerp(canopy_r * 1.3, canopy_r * 3.5, rng.randf())
-	var cx: float = tree_xz.x + cos(cluster_theta) * cluster_r
-	var cz: float = tree_xz.y + sin(cluster_theta) * cluster_r
-
-	# Within-cluster overlap is allowed (tight packing), so stage in
-	# `cluster_placed` and only merge into `placed` after the cluster closes.
-	var cluster_placed: Array[Dictionary] = []
-	var bush_count: int = rng.randi_range(2, 3)
-	for i in range(bush_count):
-		var offset_dist: float
-		var size_t: float  # 0 = largest (center), 1 = smallest (fringe)
-		if i == 0:
-			offset_dist = 0.0
-			size_t = 0.0
-		else:
-			offset_dist = rng.randf_range(0.2, 0.7)
-			size_t = lerp(0.3, 1.0, rng.randf())
-		var offset_angle: float = rng.randf() * TAU
-		var bwx: float = cx + cos(offset_angle) * offset_dist
-		var bwz: float = cz + sin(offset_angle) * offset_dist
-		var diameter: float = lerp(2.8, 1.0, size_t)
+	var inner_r: float = canopy_r * FERN_CLUSTER_INNER_MULT
+	var outer_r: float = canopy_r * FERN_CLUSTER_OUTER_MULT
+	var count: int = rng.randi_range(FERN_PER_TREE_MIN, FERN_PER_TREE_MAX)
+	for i in range(count):
+		var theta: float = rng.randf() * TAU
+		var r: float = lerp(inner_r, outer_r, rng.randf())
+		var fwx: float = tree_xz.x + cos(theta) * r
+		var fwz: float = tree_xz.y + sin(theta) * r
 		var too_close: bool = false
 		for p: Dictionary in placed:
-			var min_dist: float = maxf(diameter, p.diameter) * BUSH_MIN_DIST_MULT
-			var ddx: float = p.x - bwx
-			var ddz: float = p.z - bwz
+			if p.diameter < 3.0:
+				continue  # only dodge trunks, not sibling ferns
+			var min_dist: float = p.diameter * FERN_TRUNK_AVOID_MULT
+			var ddx: float = p.x - fwx
+			var ddz: float = p.z - fwz
 			if ddx * ddx + ddz * ddz < min_dist * min_dist:
 				too_close = true
 				break
 		if too_close:
 			continue
-		var bsc: float = diameter * BUSH_SCALE_FACTOR * lerp(0.85, 1.25, rng.randf())
-		var bry: float = rng.randf() * TAU
-		var xform := _make_world_xform(Vector2(bwx, bwz), bsc, bry)
-		bush_out.append({
-			"xz": Vector2(bwx, bwz),
-			"scale": bsc,
+		var fsc: float = lerp(FERN_SCALE_MIN, FERN_SCALE_MAX, rng.randf())
+		var fry: float = rng.randf() * TAU
+		var xform := _make_world_xform(Vector2(fwx, fwz), fsc, fry)
+		fern_out.append({
+			"xz": Vector2(fwx, fwz),
+			"scale": fsc,
 			"xform": xform,
 			"basis_inv": xform.basis.inverse(),
 		})
-		cluster_placed.append({"x": bwx, "z": bwz, "diameter": diameter})
-	for cb in cluster_placed:
-		placed.append(cb)
+
+
+# Find open clearings between the tree rings and drop bush clusters there.
+# The ring layout always leaves 0–2m in the middle and gaps between the
+# inner and outer rings; the reject-sample loop picks a point far enough
+# from any trunk to feel like "open ground".
+func _collect_bushes_in_clearing(rng: RandomNumberGenerator, gx: float, gz: float,
+		placed: Array[Dictionary], bush_out: Array[Dictionary]) -> void:
+	var cluster_count: int = rng.randi_range(
+		BUSH_CLEARING_MIN_CLUSTERS, BUSH_CLEARING_MAX_CLUSTERS)
+	for _c in range(cluster_count):
+		var cx: float = 0.0
+		var cz: float = 0.0
+		var found: bool = false
+		for _try in range(BUSH_CLEARING_PLACEMENT_ATTEMPTS):
+			var theta: float = rng.randf() * TAU
+			var r: float = sqrt(rng.randf()) * BUSH_CLEARING_MAX_SEARCH_R
+			cx = gx + cos(theta) * r
+			cz = gz + sin(theta) * r
+			var ok: bool = true
+			for p: Dictionary in placed:
+				if p.diameter < 3.0:
+					continue
+				var min_dist: float = p.diameter * BUSH_CLEARING_TREE_AVOID_MULT
+				var ddx: float = p.x - cx
+				var ddz: float = p.z - cz
+				if ddx * ddx + ddz * ddz < min_dist * min_dist:
+					ok = false
+					break
+			if ok:
+				found = true
+				break
+		if not found:
+			continue  # crowded glade; skip this cluster rather than crowd a trunk
+
+		var cluster_placed: Array[Dictionary] = []
+		var bush_count: int = rng.randi_range(3, 5)
+		for i in range(bush_count):
+			var offset_dist: float
+			var size_t: float  # 0 = largest (centre), 1 = smallest (fringe)
+			if i == 0:
+				offset_dist = 0.0
+				size_t = 0.0
+			else:
+				offset_dist = rng.randf_range(0.5, 1.8)
+				size_t = lerp(0.3, 1.0, rng.randf())
+			var offset_angle: float = rng.randf() * TAU
+			var bwx: float = cx + cos(offset_angle) * offset_dist
+			var bwz: float = cz + sin(offset_angle) * offset_dist
+			var diameter: float = lerp(2.8, 1.0, size_t)
+			var too_close: bool = false
+			for p: Dictionary in placed:
+				var min_dist: float = maxf(diameter, p.diameter) * BUSH_MIN_DIST_MULT
+				var ddx: float = p.x - bwx
+				var ddz: float = p.z - bwz
+				if ddx * ddx + ddz * ddz < min_dist * min_dist:
+					too_close = true
+					break
+			if too_close:
+				continue
+			var bsc: float = diameter * BUSH_SCALE_FACTOR * lerp(0.85, 1.25, rng.randf())
+			var bry: float = rng.randf() * TAU
+			var xform := _make_world_xform(Vector2(bwx, bwz), bsc, bry)
+			bush_out.append({
+				"xz": Vector2(bwx, bwz),
+				"scale": bsc,
+				"xform": xform,
+				"basis_inv": xform.basis.inverse(),
+			})
+			cluster_placed.append({"x": bwx, "z": bwz, "diameter": diameter})
+		for cb in cluster_placed:
+			placed.append(cb)
 
 
 static func _make_world_xform(xz: Vector2, sc: float, ry: float) -> Transform3D:
@@ -751,11 +953,41 @@ func _update_tree_fades() -> void:
 	if _player == null:
 		return
 	var ppos := Vector2(_player.global_position.x, _player.global_position.z)
-	for state: Dictionary in _chunks_state.values():
+	# Chunk-level cutoff: a tree at the chunk's farthest corner is still
+	# capped at `chunk_half_diag + TREE_FADE_RADIUS` from the player, so any
+	# chunk beyond that can be skipped wholesale.
+	var chunk_half_diag: float = CHUNK_SIZE * 0.7071
+	var cutoff: float = chunk_half_diag + TREE_FADE_RADIUS
+	var cutoff_sq: float = cutoff * cutoff
+	var fade_r_sq: float = TREE_FADE_RADIUS * TREE_FADE_RADIUS
+	for key: Vector2i in _chunks_state:
+		var center := Vector2(
+			(float(key.x) + 0.5) * CHUNK_SIZE,
+			(float(key.y) + 0.5) * CHUNK_SIZE)
+		if (center - ppos).length_squared() > cutoff_sq:
+			continue
+		var state: Dictionary = _chunks_state[key]
 		var mm: MultiMesh = state.mm_tree.multimesh
 		for tree: Dictionary in state.trees:
-			var fade: float = _compute_tree_fade(tree.xz, ppos)
+			# Per-tree early-out: beyond the radius the fade is 0. Only write
+			# the cleared value once (when transitioning from faded to zero)
+			# and then skip future frames while still out of range.
+			var tdx: float = tree.xz.x - ppos.x
+			var tdz: float = tree.xz.y - ppos.y
+			var td_sq: float = tdx * tdx + tdz * tdz
+			if td_sq >= fade_r_sq:
+				if tree.last_fade != 0.0:
+					mm.set_instance_custom_data(tree.idx, Color(0.0, 0.0, 0.0, 0.0))
+					tree.last_fade = 0.0
+				continue
+			var td: float = sqrt(td_sq)
+			var fade: float = 0.0
+			if tdz >= -TREE_FADE_Z_BACK:
+				fade = (1.0 - td / TREE_FADE_RADIUS) * TREE_FADE_MAX
+			if absf(fade - float(tree.last_fade)) < 0.002:
+				continue
 			mm.set_instance_custom_data(tree.idx, Color(0.0, 0.0, 0.0, fade))
+			tree.last_fade = fade
 
 
 func _update_bush_push() -> void:
@@ -763,19 +995,69 @@ func _update_bush_push() -> void:
 		return
 	var px: float = _player.global_position.x
 	var pz: float = _player.global_position.z
-	for state: Dictionary in _chunks_state.values():
-		var mm: MultiMesh = state.mm_bush.multimesh
-		for bush: Dictionary in state.bushes:
-			var dx: float = bush.xz.x - px
-			var dz: float = bush.xz.y - pz
-			var d_sq: float = dx * dx + dz * dz
-			var pl: Vector3 = Vector3.ZERO
-			if d_sq < BUSH_PUSH_RADIUS * BUSH_PUSH_RADIUS and d_sq > 1e-6:
-				var d: float = sqrt(d_sq)
-				var strength: float = (1.0 - d / BUSH_PUSH_RADIUS) * BUSH_PUSH_STRENGTH
-				var push_world := Vector3(dx / d, 0.0, dz / d) * strength
-				pl = bush.basis_inv * push_world
-			mm.set_instance_custom_data(bush.idx, Color(pl.x, pl.y, pl.z, 0.0))
+	var delta: float = _player.get_process_delta_time()
+	var decay: float = exp(-delta * BUSH_PUSH_DECAY_RATE)
+	# Chunk-level cutoff using whichever radius is larger (bush's), plus the
+	# chunk's half-diagonal. Anything farther has no live push contribution
+	# and all entries in it have decayed to rest.
+	var chunk_half_diag: float = CHUNK_SIZE * 0.7071
+	var max_r: float = maxf(BUSH_PUSH_RADIUS, FERN_PUSH_RADIUS)
+	var cutoff: float = chunk_half_diag + max_r
+	var cutoff_sq: float = cutoff * cutoff
+	var ppos := Vector2(px, pz)
+	for key: Vector2i in _chunks_state:
+		var center := Vector2(
+			(float(key.x) + 0.5) * CHUNK_SIZE,
+			(float(key.y) + 0.5) * CHUNK_SIZE)
+		if (center - ppos).length_squared() > cutoff_sq:
+			continue
+		var state: Dictionary = _chunks_state[key]
+		_update_push_entries(state.mm_bush.multimesh, state.bushes,
+			px, pz, decay, BUSH_PUSH_RADIUS, BUSH_PUSH_STRENGTH)
+		_update_push_entries(state.mm_fern.multimesh, state.ferns,
+			px, pz, decay, FERN_PUSH_RADIUS, FERN_PUSH_STRENGTH)
+
+
+# Generic attack-decay push update for a MultiMesh of plants keyed by XZ.
+# Each entry is a Dictionary with `xz` / `basis_inv` / `idx` / `push_amount`
+# / `prev_proximity` fields (mutated in place).
+func _update_push_entries(mm: MultiMesh, entries: Array[Dictionary],
+		px: float, pz: float, decay: float, radius: float, strength: float) -> void:
+	var r_sq: float = radius * radius
+	const REST_EPS: float = 0.004
+	for entry: Dictionary in entries:
+		var dx: float = entry.xz.x - px
+		var dz: float = entry.xz.y - pz
+		var d_sq: float = dx * dx + dz * dz
+
+		# At-rest + far: entry already has zero push applied, and player is
+		# outside the radius so there's no contribution to accumulate. Skip
+		# the entire compute + RenderingServer write.
+		if d_sq > r_sq and entry.push_amount < REST_EPS and entry.prev_proximity == 0.0:
+			continue
+
+		var proximity: float = 0.0
+		if d_sq < r_sq:
+			proximity = 1.0 - sqrt(d_sq) / radius
+
+		var delta_p: float = proximity - entry.prev_proximity
+		if delta_p > 0.0:
+			entry.push_amount = minf(1.0, entry.push_amount + delta_p * BUSH_PUSH_ATTACK)
+		entry.prev_proximity = proximity
+		entry.push_amount *= decay
+
+		var pl: Vector3 = Vector3.ZERO
+		var above_rest: bool = entry.push_amount > REST_EPS
+		if above_rest and d_sq > 1e-6:
+			var inv_d: float = 1.0 / sqrt(d_sq)
+			var amp: float = float(entry.push_amount) * strength
+			var push_world: Vector3 = Vector3(dx * inv_d, 0.0, dz * inv_d) * amp
+			pl = entry.basis_inv * push_world
+		else:
+			# Below the rest threshold: snap to zero so next frame we can
+			# enter the fast skip path.
+			entry.push_amount = 0.0
+		mm.set_instance_custom_data(entry.idx, Color(pl.x, pl.y, pl.z, 0.0))
 
 
 # ── Camera ─────────────────────────────────────────
