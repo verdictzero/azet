@@ -84,9 +84,40 @@ const FERN_WIND_MASK_Y_MAX: float = 0.35
 # underneath every trunk.
 const BUSH_CLEARING_MIN_CLUSTERS: int = 2
 const BUSH_CLEARING_MAX_CLUSTERS: int = 4
-# Search radius extends past the outermost tree ring (~30m) so the edges of
-# the glade — genuinely open ground — are also valid clearings.
-const BUSH_CLEARING_MAX_SEARCH_R: float = 34.0
+# Search radius clamped to the outermost tree ring in the v2 tight-cluster
+# layout, so bush clusters stay inside the same forest-patch island that
+# spawned the glade rather than drifting into adjacent meadow.
+const BUSH_CLEARING_MAX_SEARCH_R: float = 10.0
+# Vegetation noise bands:
+#   n < VEG_EDGE_N_MIN          → meadow, no vegetation
+#   VEG_EDGE_N_MIN ≤ n < INT    → forest edge, ferns only (undergrowth fringe)
+#   n ≥ VEG_INTERIOR_N_MIN      → forest interior, dense trees + bushes
+# VEG_EDGE_N_MIN is threshold + 1.5*softness (matches the shader's fully-
+# forest texel start). VEG_INTERIOR_N_MIN sits higher so there's a fern
+# band of appreciable width around each forest patch.
+const VEG_INTERIOR_N_MIN: float = 0.56
+# Trees: jittered-grid scatter over the chunk. 5m cells × ~144 cells / chunk,
+# gated to interior-band, then min-dist rejected. Yields dense clumps.
+const TREE_GRID_CELL: float = 5.0
+const TREE_JITTER: float = 2.2
+const TREE_DIAMETER_MIN: float = 3.0
+const TREE_DIAMETER_MAX: float = 5.5
+const TREE_MIN_DIST: float = 4.5
+# Ferns: finer jittered grid over the edge band. No min-dist (small meshes,
+# overlap is fine), only a trunk-avoid against placed trees.
+const FERN_GRID_CELL: float = 1.6
+const FERN_JITTER: float = 0.6
+# Bush clusters: N anchor points per chunk at random interior forest picks.
+# Each anchor drops BUSH_PER_CLUSTER tightly-packed bushes within radius.
+const BUSH_CLUSTER_COUNT_MIN: int = 4
+const BUSH_CLUSTER_COUNT_MAX: int = 8
+const BUSH_CLUSTER_PLACEMENT_ATTEMPTS: int = 16
+const BUSH_CLUSTER_RADIUS: float = 2.2
+const BUSH_PER_CLUSTER_MIN: int = 3
+const BUSH_PER_CLUSTER_MAX: int = 6
+# Toggle to emit per-chunk veg placement diagnostics via print(). Flip to
+# false before committing to avoid console spam at runtime.
+const DEBUG_LOG_VEGETATION: bool = true
 # Minimum clearance the cluster centre needs from any tree centre, in
 # multiples of that tree's layer diameter. Loosened from 1.2 so clusters fit
 # in the gaps *between* tree rings, not only in fully open clearings.
@@ -184,6 +215,12 @@ var _chunk_container: Node3D
 var _chunks_state: Dictionary = {}
 
 var _hud_label: Label
+# Last chunk's vegetation totals, written by _collect_glades. Shown on the
+# HUD so spawn density is visible live while moving without console-diving.
+var _last_log_chunk: Vector2i = Vector2i(0, 0)
+var _last_log_trees: int = 0
+var _last_log_bushes: int = 0
+var _last_log_ferns: int = 0
 var _raster_mat: ShaderMaterial
 var _block_w: int = 1
 var _block_h: int = 1
@@ -193,16 +230,10 @@ var _full_h: int = 1
 
 func _init(ascii_grid: AsciiGrid) -> void:
 	super._init(ascii_grid)
-	# Per-glade tree counts: 20 → 25 (+25%). Splat-noise gating still trims
-	# further: only positions whose splat-noise value exceeds the gate
-	# (threshold + 1.5×softness) actually spawn.
-	_ring_layers = [
-		{"inner": 24.0, "outer": 30.0, "diameter": 5.5, "count": 4},
-		{"inner": 18.0, "outer": 24.0, "diameter": 4.5, "count": 5},
-		{"inner": 12.0, "outer": 18.0, "diameter": 4.0, "count": 5},
-		{"inner": 6.0,  "outer": 12.0, "diameter": 3.5, "count": 6},
-		{"inner": 2.0,  "outer": 6.0,  "diameter": 3.0, "count": 5},
-	]
+	# v2 no longer uses glade rings — vegetation is scattered across the
+	# whole chunk and banded by splat noise value. `_ring_layers` left
+	# empty so any lingering accessor gets a safe no-op rather than null.
+	_ring_layers = []
 
 
 func on_enter(context: Dictionary = {}) -> void:
@@ -234,8 +265,10 @@ func draw(cols: int, rows: int) -> void:
 		var cx: int = int(floor(px / CHUNK_SIZE))
 		var cz: int = int(floor(pz / CHUNK_SIZE))
 		var fps: int = int(Engine.get_frames_per_second())
-		_hud_label.text = "FPS %d  Chunk (%d,%d)  %d chunks  [ESC] Back" % [
-			fps, cx, cz, _chunks_state.size()]
+		_hud_label.text = "FPS %d  Chunk (%d,%d)  %d chunks  [ESC] Back\nLast chunk (%d,%d): trees=%d bushes=%d ferns=%d" % [
+			fps, cx, cz, _chunks_state.size(),
+			_last_log_chunk.x, _last_log_chunk.y,
+			_last_log_trees, _last_log_bushes, _last_log_ferns]
 
 
 # ── World setup ────────────────────────────────────
@@ -863,59 +896,122 @@ static func _is_forest(wx: float, wz: float) -> bool:
 func _collect_glades(rng: RandomNumberGenerator, key: Vector2i,
 		tree_out: Array[Dictionary], bush_out: Array[Dictionary],
 		fern_out: Array[Dictionary]) -> void:
-	var n_glades: int = rng.randi_range(1, 2)
-	var margin: float = 8.0
+	# Scatter-based vegetation (not glades). Forest is partitioned into two
+	# noise bands:
+	#   edge (gate .. INTERIOR)  → ferns fringe the forest patches
+	#   interior (≥ INTERIOR)    → dense trees + bush clusters
+	# Both use jittered-grid sampling over the whole chunk; no glade anchors.
 	var ox: float = float(key.x) * CHUNK_SIZE
 	var oz: float = float(key.y) * CHUNK_SIZE
+	var margin: float = 2.0
+	var origin_x: float = ox + margin
+	var origin_z: float = oz + margin
+	var span: float = CHUNK_SIZE - margin * 2.0
+	var edge_gate: float = GROUND_NOISE_THRESHOLD + GROUND_NOISE_SOFTNESS * 1.5
 
-	for g in range(n_glades):
-		var gx: float = ox + margin + rng.randf() * (CHUNK_SIZE - margin * 2.0)
-		var gz: float = oz + margin + rng.randf() * (CHUNK_SIZE - margin * 2.0)
-		# Glade-center gate: if the picked centre falls in meadow territory
-		# (splat noise below threshold), skip this glade entirely. Some chunks
-		# will end up empty — that's intentional; the meadow strips between
-		# forest patches should be free of vegetation.
-		if not _is_forest(gx, gz):
+	# ── Tree scatter (interior band) ──────────────
+	var placed_trees: Array[Dictionary] = []
+	var tree_candidates: int = 0
+	var tree_rej_band: int = 0
+	var tree_rej_near: int = 0
+	var tree_cells: int = int(ceil(span / TREE_GRID_CELL))
+	for gi in range(tree_cells):
+		for gj in range(tree_cells):
+			tree_candidates += 1
+			var base_x: float = origin_x + (float(gi) + 0.5) * TREE_GRID_CELL
+			var base_z: float = origin_z + (float(gj) + 0.5) * TREE_GRID_CELL
+			var wx: float = base_x + (rng.randf() - 0.5) * TREE_JITTER * 2.0
+			var wz: float = base_z + (rng.randf() - 0.5) * TREE_JITTER * 2.0
+			var nval: float = _splat_fbm(wx * GROUND_NOISE_FREQ, wz * GROUND_NOISE_FREQ)
+			if nval < VEG_INTERIOR_N_MIN:
+				tree_rej_band += 1
+				continue
+			var too_close: bool = false
+			for p: Dictionary in placed_trees:
+				var ddx: float = p.x - wx
+				var ddz: float = p.z - wz
+				if ddx * ddx + ddz * ddz < TREE_MIN_DIST * TREE_MIN_DIST:
+					too_close = true
+					break
+			if too_close:
+				tree_rej_near += 1
+				continue
+			var diameter: float = lerp(TREE_DIAMETER_MIN, TREE_DIAMETER_MAX, rng.randf())
+			var sc: float = diameter * TREE_SCALE_FACTOR * lerp(0.8, 1.6, rng.randf())
+			var ry: float = rng.randf() * TAU
+			var xform := _make_world_xform(Vector2(wx, wz), sc, ry)
+			tree_out.append({"xz": Vector2(wx, wz), "scale": sc, "xform": xform})
+			placed_trees.append({"x": wx, "z": wz, "diameter": diameter})
+
+	# ── Fern scatter (edge band) ──────────────────
+	var fern_candidates: int = 0
+	var fern_rej_band: int = 0
+	var fern_rej_trunk: int = 0
+	var fern_cells: int = int(ceil(span / FERN_GRID_CELL))
+	for gi in range(fern_cells):
+		for gj in range(fern_cells):
+			fern_candidates += 1
+			var base_x: float = origin_x + (float(gi) + 0.5) * FERN_GRID_CELL
+			var base_z: float = origin_z + (float(gj) + 0.5) * FERN_GRID_CELL
+			var wx: float = base_x + (rng.randf() - 0.5) * FERN_JITTER * 2.0
+			var wz: float = base_z + (rng.randf() - 0.5) * FERN_JITTER * 2.0
+			var nval: float = _splat_fbm(wx * GROUND_NOISE_FREQ, wz * GROUND_NOISE_FREQ)
+			# Edge band: above gate but below interior (tree) threshold.
+			if nval < edge_gate or nval >= VEG_INTERIOR_N_MIN:
+				fern_rej_band += 1
+				continue
+			var near_trunk: bool = false
+			for p: Dictionary in placed_trees:
+				var min_dist: float = p.diameter * FERN_TRUNK_AVOID_MULT
+				var ddx: float = p.x - wx
+				var ddz: float = p.z - wz
+				if ddx * ddx + ddz * ddz < min_dist * min_dist:
+					near_trunk = true
+					break
+			if near_trunk:
+				fern_rej_trunk += 1
+				continue
+			var fsc: float = lerp(FERN_SCALE_MIN, FERN_SCALE_MAX, rng.randf())
+			var fry: float = rng.randf() * TAU
+			var xform := _make_world_xform(Vector2(wx, wz), fsc, fry)
+			fern_out.append({
+				"xz": Vector2(wx, wz),
+				"scale": fsc,
+				"xform": xform,
+				"basis_inv": xform.basis.inverse(),
+			})
+
+	# ── Bush clusters (interior band) ─────────────
+	var bush_cluster_count: int = rng.randi_range(BUSH_CLUSTER_COUNT_MIN, BUSH_CLUSTER_COUNT_MAX)
+	var bush_clusters_placed: int = 0
+	for _c in range(bush_cluster_count):
+		var cx: float = 0.0
+		var cz: float = 0.0
+		var found: bool = false
+		for _try in range(BUSH_CLUSTER_PLACEMENT_ATTEMPTS):
+			cx = origin_x + rng.randf() * span
+			cz = origin_z + rng.randf() * span
+			var nval: float = _splat_fbm(cx * GROUND_NOISE_FREQ, cz * GROUND_NOISE_FREQ)
+			if nval >= VEG_INTERIOR_N_MIN:
+				found = true
+				break
+		if not found:
 			continue
-		var placed: Array[Dictionary] = []
-		for li in range(_ring_layers.size()):
-			var layer: Dictionary = _ring_layers[li]
-			var inner_r: float = layer.inner
-			var outer_r: float = layer.outer
-			var diameter: float = layer.diameter
-			var count: int = layer.count
-			var theta_start: float = rng.randf() * TAU
-			var step: float = TAU / float(max(count, 1))
-			for i in range(count):
-				var theta: float = theta_start + float(i) * step + (rng.randf() - 0.5) * step * 0.35
-				var r: float = lerp(inner_r, outer_r, rng.randf())
-				var wx: float = gx + cos(theta) * r
-				var wz: float = gz + sin(theta) * r
-				var too_close: bool = false
-				for p: Dictionary in placed:
-					var min_dist: float = maxf(diameter, p.diameter) * TREE_MIN_DIST_MULT
-					var ddx: float = p.x - wx
-					var ddz: float = p.z - wz
-					if ddx * ddx + ddz * ddz < min_dist * min_dist:
-						too_close = true
-						break
-				if too_close:
-					continue
-				# Per-tree splat gate: even a forest-centred glade can spill
-				# into meadow at its outer rings, so reject any individual
-				# tree whose XZ isn't in forest. Naturally produces ragged
-				# forest-edge silhouettes that match the splat boundary.
-				if not _is_forest(wx, wz):
-					continue
-				var sc: float = diameter * TREE_SCALE_FACTOR * lerp(0.8, 1.6, rng.randf())
-				var ry: float = rng.randf() * TAU
-				var xform := _make_world_xform(Vector2(wx, wz), sc, ry)
-				tree_out.append({"xz": Vector2(wx, wz), "scale": sc, "xform": xform})
-				placed.append({"x": wx, "z": wz, "diameter": diameter})
-				_collect_ferns_around_tree(rng, Vector2(wx, wz), sc, placed, fern_out)
-		# After all trees (and their fern rings) are placed for this glade,
-		# look for open gaps between tree rings and drop bush clusters there.
-		_collect_bushes_in_clearing(rng, gx, gz, placed, bush_out)
+		bush_clusters_placed += 1
+		_spawn_bush_cluster(rng, cx, cz, placed_trees, bush_out)
+
+	if DEBUG_LOG_VEGETATION:
+		print("[veg] chunk=(%d,%d) trees=%d/%d (rej_band=%d rej_near=%d) ferns=%d/%d (rej_band=%d rej_trunk=%d) bush_clusters=%d/%d bushes=%d"
+			% [key.x, key.y, placed_trees.size(), tree_candidates,
+				tree_rej_band, tree_rej_near,
+				fern_out.size(), fern_candidates,
+				fern_rej_band, fern_rej_trunk,
+				bush_clusters_placed, bush_cluster_count, bush_out.size()])
+
+	_last_log_chunk = key
+	_last_log_trees = tree_out.size()
+	_last_log_bushes = bush_out.size()
+	_last_log_ferns = fern_out.size()
 
 
 # Tight fern ring hugging a single tree's canopy footprint. Ferns are small
@@ -957,82 +1053,61 @@ func _collect_ferns_around_tree(rng: RandomNumberGenerator, tree_xz: Vector2,
 		})
 
 
-# Find open clearings between the tree rings and drop bush clusters there.
-# The ring layout always leaves 0–2m in the middle and gaps between the
-# inner and outer rings; the reject-sample loop picks a point far enough
-# from any trunk to feel like "open ground".
-func _collect_bushes_in_clearing(rng: RandomNumberGenerator, gx: float, gz: float,
-		placed: Array[Dictionary], bush_out: Array[Dictionary]) -> void:
-	var cluster_count: int = rng.randi_range(
-		BUSH_CLEARING_MIN_CLUSTERS, BUSH_CLEARING_MAX_CLUSTERS)
-	for _c in range(cluster_count):
-		var cx: float = 0.0
-		var cz: float = 0.0
-		var found: bool = false
-		for _try in range(BUSH_CLEARING_PLACEMENT_ATTEMPTS):
-			var theta: float = rng.randf() * TAU
-			var r: float = sqrt(rng.randf()) * BUSH_CLEARING_MAX_SEARCH_R
-			cx = gx + cos(theta) * r
-			cz = gz + sin(theta) * r
-			# Reject candidates that fall into meadow up-front so we don't
-			# burn 3-5 per-bush gate failures on a clearly-doomed cluster.
-			if not _is_forest(cx, cz):
-				continue
-			var ok: bool = true
-			for p: Dictionary in placed:
-				if p.diameter < 3.0:
-					continue
-				var min_dist: float = p.diameter * BUSH_CLEARING_TREE_AVOID_MULT
-				var ddx: float = p.x - cx
-				var ddz: float = p.z - cz
-				if ddx * ddx + ddz * ddz < min_dist * min_dist:
-					ok = false
-					break
-			if ok:
-				found = true
+# Drop a tight bush cluster centred at (cx, cz). The anchor has already been
+# verified to fall in the forest interior band; here we just ring out
+# BUSH_PER_CLUSTER bushes around it. First bush sits on the anchor at full
+# size; the rest are smaller and offset to form a lumpy clump silhouette.
+func _spawn_bush_cluster(rng: RandomNumberGenerator, cx: float, cz: float,
+		placed_trees: Array[Dictionary], bush_out: Array[Dictionary]) -> void:
+	var bush_count: int = rng.randi_range(BUSH_PER_CLUSTER_MIN, BUSH_PER_CLUSTER_MAX)
+	var cluster_placed: Array[Dictionary] = []
+	for i in range(bush_count):
+		var offset_dist: float
+		var size_t: float  # 0 = largest (centre), 1 = smallest (fringe)
+		if i == 0:
+			offset_dist = 0.0
+			size_t = 0.0
+		else:
+			offset_dist = rng.randf_range(0.4, BUSH_CLUSTER_RADIUS)
+			size_t = lerp(0.3, 1.0, rng.randf())
+		var offset_angle: float = rng.randf() * TAU
+		var bwx: float = cx + cos(offset_angle) * offset_dist
+		var bwz: float = cz + sin(offset_angle) * offset_dist
+		var diameter: float = lerp(2.1, 1.0, size_t)
+		# Don't land on a tree trunk.
+		var on_trunk: bool = false
+		for p: Dictionary in placed_trees:
+			var min_dist: float = maxf(diameter, p.diameter) * BUSH_MIN_DIST_MULT
+			var ddx: float = p.x - bwx
+			var ddz: float = p.z - bwz
+			if ddx * ddx + ddz * ddz < min_dist * min_dist:
+				on_trunk = true
 				break
-		if not found:
-			continue  # crowded glade; skip this cluster rather than crowd a trunk
-
-		var cluster_placed: Array[Dictionary] = []
-		var bush_count: int = rng.randi_range(4, 6)
-		for i in range(bush_count):
-			var offset_dist: float
-			var size_t: float  # 0 = largest (centre), 1 = smallest (fringe)
-			if i == 0:
-				offset_dist = 0.0
-				size_t = 0.0
-			else:
-				offset_dist = rng.randf_range(0.5, 1.8)
-				size_t = lerp(0.3, 1.0, rng.randf())
-			var offset_angle: float = rng.randf() * TAU
-			var bwx: float = cx + cos(offset_angle) * offset_dist
-			var bwz: float = cz + sin(offset_angle) * offset_dist
-			var diameter: float = lerp(2.1, 1.0, size_t)
-			var too_close: bool = false
-			for p: Dictionary in placed:
-				var min_dist: float = maxf(diameter, p.diameter) * BUSH_MIN_DIST_MULT
-				var ddx: float = p.x - bwx
-				var ddz: float = p.z - bwz
-				if ddx * ddx + ddz * ddz < min_dist * min_dist:
-					too_close = true
-					break
-			if too_close:
-				continue
-			if not _is_forest(bwx, bwz):
-				continue
-			var bsc: float = diameter * BUSH_SCALE_FACTOR * lerp(0.85, 1.25, rng.randf())
-			var bry: float = rng.randf() * TAU
-			var xform := _make_world_xform(Vector2(bwx, bwz), bsc, bry)
-			bush_out.append({
-				"xz": Vector2(bwx, bwz),
-				"scale": bsc,
-				"xform": xform,
-				"basis_inv": xform.basis.inverse(),
-			})
-			cluster_placed.append({"x": bwx, "z": bwz, "diameter": diameter})
-		for cb in cluster_placed:
-			placed.append(cb)
+		if on_trunk:
+			continue
+		# Overlap check against sibling bushes.
+		var sibling_collides: bool = false
+		for cb: Dictionary in cluster_placed:
+			var min_d: float = maxf(diameter, cb.diameter) * BUSH_MIN_DIST_MULT
+			var ddx: float = cb.x - bwx
+			var ddz: float = cb.z - bwz
+			if ddx * ddx + ddz * ddz < min_d * min_d:
+				sibling_collides = true
+				break
+		if sibling_collides:
+			continue
+		if not _is_forest(bwx, bwz):
+			continue
+		var bsc: float = diameter * BUSH_SCALE_FACTOR * lerp(0.85, 1.25, rng.randf())
+		var bry: float = rng.randf() * TAU
+		var xform := _make_world_xform(Vector2(bwx, bwz), bsc, bry)
+		bush_out.append({
+			"xz": Vector2(bwx, bwz),
+			"scale": bsc,
+			"xform": xform,
+			"basis_inv": xform.basis.inverse(),
+		})
+		cluster_placed.append({"x": bwx, "z": bwz, "diameter": diameter})
 
 
 static func _make_world_xform(xz: Vector2, sc: float, ry: float) -> Transform3D:
