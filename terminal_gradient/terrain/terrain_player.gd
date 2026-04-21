@@ -3,6 +3,14 @@ extends CharacterBody3D
 ## Uses a custom spatial shader to cross-fade between consecutive walk frames.
 
 const GROUND_Y: float = 0.9
+# Gravity + GROUND_Y-as-floor prep: the demo terrain has no physics collider
+# (it's render-only), so we can't rely on CharacterBody3D's built-in is_on_floor
+# detection for the meadow. Instead, gravity pulls Y down each frame and a
+# hard clamp treats GROUND_Y as an invisible floor plane. When the player
+# stands on top of a rock (or any other collider), `is_on_floor()` returns
+# true, Y velocity zeroes, and the clamp is inactive — leaving room for
+# walk-over-rocks behaviour to be wired up later without a player rewrite.
+const GRAVITY: float = 28.0
 const ANIM_FPS: float = 9.0
 const WALK_PATTERN: PackedInt32Array = [1, 0, 1, 2]
 const HFRAMES: int = 3
@@ -52,9 +60,19 @@ func _physics_process(delta: float) -> void:
 	var dir := Vector3(mx, 0.0, mz).normalized()
 	velocity.x = dir.x * move_speed
 	velocity.z = dir.z * move_speed
-	velocity.y = 0.0
+	# Vertical: gravity accumulates unless we're grounded on a real collider
+	# or at the invisible GROUND_Y floor. Keeps the door open for step-up /
+	# walk-on-rock behaviour — when future rock colliders give the player
+	# a surface to stand on, is_on_floor() starts returning true and the
+	# clamp below becomes inert.
+	if is_on_floor() or position.y <= GROUND_Y:
+		velocity.y = 0.0
+	else:
+		velocity.y -= GRAVITY * delta
 	move_and_slide()
-	position.y = GROUND_Y
+	if position.y < GROUND_Y:
+		position.y = GROUND_Y
+		velocity.y = 0.0
 	_update_anim(delta, moving)
 
 

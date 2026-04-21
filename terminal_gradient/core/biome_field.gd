@@ -37,7 +37,8 @@ static func fbm(px: float, pz: float) -> float:
 	var a: float = 0.5
 	var x: float = px
 	var z: float = pz
-	for _i in 4:
+	# 6 octaves — must stay matched to terrain_splat.gdshader's fbm.
+	for _i in 6:
 		v += a * value_noise(x, z)
 		x *= 2.03
 		z *= 2.03
@@ -45,8 +46,23 @@ static func fbm(px: float, pz: float) -> float:
 	return v
 
 
-static func sample_world(wx: float, wz: float, config: BiomeConfig) -> float:
+# Apply the same domain-warp the shader does: perturb the sample coordinate
+# with two independent value-noise lookups before evaluating the main FBM.
+# Must stay byte-identical to the shader branch in terrain_splat.gdshader so
+# vegetation placement aligns with the visible splat.
+static func _warp_then_fbm(wx: float, wz: float, config: BiomeConfig) -> float:
+	var amp: float = config.warp_amp
+	if amp > 0.0:
+		var wf: float = config.warp_freq
+		var warp_x: float = value_noise(wx * wf + 7.3, wz * wf + 11.1) - 0.5
+		var warp_z: float = value_noise(wx * wf + 23.7, wz * wf + 37.3) - 0.5
+		wx += warp_x * amp
+		wz += warp_z * amp
 	return fbm(wx * config.noise_freq, wz * config.noise_freq)
+
+
+static func sample_world(wx: float, wz: float, config: BiomeConfig) -> float:
+	return _warp_then_fbm(wx, wz, config)
 
 
 # ── Per-chunk density grid ────────────────────────────────
@@ -64,7 +80,7 @@ static func bake_chunk_density_grid(origin_x: float, origin_z: float,
 		var wz: float = origin_z + float(iz) * step
 		for ix in grid_n:
 			var wx: float = origin_x + float(ix) * step
-			out[iz * grid_n + ix] = fbm(wx * config.noise_freq, wz * config.noise_freq)
+			out[iz * grid_n + ix] = _warp_then_fbm(wx, wz, config)
 	return out
 
 
