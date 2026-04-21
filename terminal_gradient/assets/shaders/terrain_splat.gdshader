@@ -1,9 +1,9 @@
 shader_type spatial;
 render_mode unshaded;
 
-// World-space splat-mapped terrain. Two albedo textures blended by an FBM
-// value-noise field sampled in world XZ — so the boundary between meadow and
-// forest floor is continuous across chunk seams (no per-chunk reset).
+// World-space splat-mapped terrain. Pine-forest floor is the default; meadow
+// pockets are cut out where an FBM field crosses the threshold. Sampled in
+// world XZ so the meadow/forest boundary is continuous across chunk seams.
 //
 // Both textures tile by world meters per tile, not by mesh UV, for the same
 // reason: switching chunk size / mesh UV layout shouldn't shift the pattern.
@@ -12,9 +12,12 @@ uniform sampler2D meadow_tex : source_color, filter_nearest_mipmap_anisotropic;
 uniform sampler2D forest_tex : source_color, filter_nearest_mipmap_anisotropic;
 uniform float meadow_world_per_tile = 6.4;
 uniform float forest_world_per_tile = 6.4;
-uniform float noise_freq = 0.025;
-uniform float noise_threshold : hint_range(0.0, 1.0) = 0.45;
-uniform float noise_softness : hint_range(0.001, 0.5) = 0.12;
+// Defaults only bite if the owning material forgets to set the uniform —
+// the real values live in `core/biome_config_default.tres` and are pushed
+// into the material at build time by `TerrainDemo2Screen._build_world`.
+uniform float noise_freq = 0.06;
+uniform float noise_threshold : hint_range(0.0, 1.0) = 0.55;
+uniform float noise_softness : hint_range(0.001, 0.5) = 0.03;
 
 varying vec3 v_world_pos;
 
@@ -56,5 +59,6 @@ void fragment() {
 	vec3 forest = texture(forest_tex, wxz / forest_world_per_tile).rgb;
 	float n = fbm(wxz * noise_freq);
 	float t = smoothstep(noise_threshold - noise_softness, noise_threshold + noise_softness, n);
-	ALBEDO = mix(meadow, forest, t);
+	// Forest is the default; `t` rises where meadow pockets form.
+	ALBEDO = mix(forest, meadow, t);
 }
