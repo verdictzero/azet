@@ -28,6 +28,12 @@ const CAM_PITCH_DEG: float = -30.0
 const CAM_DIST: float = 80.0
 
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
+const PaneRasterLutShader: Shader = preload("res://assets/shaders/pane_raster_lut.gdshader")
+# LUT-palette post-fx: build a sega-cube palette LUT once and use the LUT
+# variant of the raster shader. Flip to false to revert to the plain
+# grayscale-dither shader bit-identically.
+const USE_LUT_DITHER: bool = true
+const PALETTE_HEX_PATH: String = "res://assets/palettes/sega-cube.hex"
 const ToonTreeShader: Shader = preload("res://assets/shaders/toon_tree.gdshader")
 const ToonOutlineShader: Shader = preload("res://assets/shaders/toon_outline.gdshader")
 const BlobShadowShader: Shader = preload("res://assets/shaders/blob_shadow.gdshader")
@@ -49,6 +55,11 @@ const BIOME_GRID_N: int = 33
 const PineTreeScene: PackedScene = preload("res://assets/models/pine_tree_0.glb")
 const PineBushScene: PackedScene = preload("res://assets/models/pine_bush_0.glb")
 const FernScene: PackedScene = preload("res://assets/models/fern_0.glb")
+const RockScene: PackedScene = preload("res://assets/models/rock_0.glb")
+const RockMatcapShader: Shader = preload("res://assets/shaders/rock_matcap.gdshader")
+# Rocks share the same matcap as the bushes + ferns — all ground-level
+# clutter pulls from a single sphere so the scene's lighting reads uniform.
+const ROCK_MATCAP_TEX: Texture2D = preload("res://assets/matcap/matcap_2.png")
 
 const TREE_SCALE_FACTOR: float = 0.25
 const BUSH_SCALE_FACTOR: float = 0.4
@@ -109,6 +120,56 @@ const BUSH_ANCHOR_FERN_MIN_DIST: float = 3.5
 const BUSH_CLUSTER_RADIUS: float = 2.2
 const BUSH_PER_CLUSTER_MIN: int = 4
 const BUSH_PER_CLUSTER_MAX: int = 8
+# Rock clusters: 2–4 per chunk at random anchors (no biome gate; rocks live
+# in meadow and forest alike). Each cluster is three concentric rings of
+# progressively smaller stones.
+const ROCK_CLUSTERS_PER_CHUNK_MIN: int = 2
+const ROCK_CLUSTERS_PER_CHUNK_MAX: int = 4
+const ROCK_CLUSTER_ANCHOR_MARGIN: float = 3.0
+# Centre tier: 1–3 large rocks clustered tight around the anchor.
+const ROCK_LARGE_COUNT_MIN: int = 1
+const ROCK_LARGE_COUNT_MAX: int = 3
+const ROCK_LARGE_RING_R_INNER: float = 0.0
+const ROCK_LARGE_RING_R_OUTER: float = 1.4
+const ROCK_LARGE_SCALE_MIN: float = 1.5
+const ROCK_LARGE_SCALE_MAX: float = 2.5
+# Middle tier: 4–8 medium rocks ringing the centre.
+const ROCK_MED_COUNT_MIN: int = 4
+const ROCK_MED_COUNT_MAX: int = 8
+const ROCK_MED_RING_R_INNER: float = 1.5
+const ROCK_MED_RING_R_OUTER: float = 3.0
+const ROCK_MED_SCALE_MIN: float = 0.8
+const ROCK_MED_SCALE_MAX: float = 1.5
+# Outer tier: 8–16 small rocks spattered around the edge.
+const ROCK_SMALL_COUNT_MIN: int = 8
+const ROCK_SMALL_COUNT_MAX: int = 16
+const ROCK_SMALL_RING_R_INNER: float = 3.0
+const ROCK_SMALL_RING_R_OUTER: float = 5.5
+const ROCK_SMALL_SCALE_MIN: float = 0.35
+const ROCK_SMALL_SCALE_MAX: float = 0.75
+# Random tilt off vertical, in radians — a small wobble so rocks don't all
+# sit axis-aligned. Full Y rotation is always random.
+const ROCK_TILT_MAX: float = 0.25
+# Avoidance clearances when placing rocks near existing vegetation. Values
+# are multiples of the plant's own scale/diameter. A rock placement is
+# rejected if (rock_avoid_radius + plant_radius) exceeds the XZ distance.
+const ROCK_AVOID_TREE_MULT: float = 0.9
+const ROCK_AVOID_BUSH_MULT: float = 0.7
+const ROCK_AVOID_FERN_MULT: float = 0.5
+const ROCK_PLACEMENT_ATTEMPTS: int = 8
+# Anchor (cluster centre) clearance — uses the large-rock outer radius so
+# the whole cluster lands in open-ish ground, not butted against a tree.
+const ROCK_ANCHOR_CLEARANCE: float = 2.0
+# Rocks below this scale skip colliders so the player walks through them
+# (pebbles underfoot, not obstacles). Medium + large rocks block laterally
+# via a squat cylinder sized smaller than the visible rock.
+const ROCK_COLLIDER_MIN_SCALE: float = 0.8
+const ROCK_COLLIDER_RADIUS_MULT: float = 0.35
+const ROCK_COLLIDER_HEIGHT_MULT: float = 0.45
+# Blob shadow under each rock. Uses the darker tree-weight shadow material
+# rather than the bush one, and sized larger so rocks anchor visually to
+# the ground even at small instance scales.
+const ROCK_SHADOW_SIZE_MULT: float = 2.6
 # Toggle to emit per-chunk veg placement diagnostics via print(). Flip to
 # false before committing to avoid console spam at runtime.
 const DEBUG_LOG_VEGETATION: bool = true
@@ -178,6 +239,8 @@ var _blob_shadow_mesh: PlaneMesh
 # only spend one set_instance_transform + one set_instance_custom_data per
 # tree per frame.
 var _tree_mesh: ArrayMesh
+var _rock_mesh: ArrayMesh
+var _rock_material: ShaderMaterial
 var _bush_foliage_mesh: ArrayMesh
 var _fern_foliage_mesh: ArrayMesh
 var _terrain_base_mesh: ArrayMesh
@@ -216,6 +279,9 @@ var _last_log_trees: int = 0
 var _last_log_bushes: int = 0
 var _last_log_ferns: int = 0
 var _raster_mat: ShaderMaterial
+# Cached LUT texture — built once on first demo entry. Re-entering the demo
+# reuses the cached texture.
+var _palette_lut: ImageTexture3D = null
 var _block_w: int = 1
 var _block_h: int = 1
 var _full_w: int = 1
@@ -322,6 +388,8 @@ func _build_world() -> void:
 	_ground_material.set_shader_parameter("noise_freq", _biome_config.noise_freq)
 	_ground_material.set_shader_parameter("noise_threshold", _biome_config.meadow_threshold)
 	_ground_material.set_shader_parameter("noise_softness", _biome_config.meadow_softness)
+	_ground_material.set_shader_parameter("warp_freq", _biome_config.warp_freq)
+	_ground_material.set_shader_parameter("warp_amp", _biome_config.warp_amp)
 
 	_tree_outline_material = ShaderMaterial.new()
 	_tree_outline_material.shader = ToonOutlineShader
@@ -375,11 +443,26 @@ func _build_world() -> void:
 	_texture_rect.stretch_mode = TextureRect.STRETCH_SCALE
 	_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_raster_mat = ShaderMaterial.new()
-	_raster_mat.shader = PaneRasterShader
+	if USE_LUT_DITHER:
+		_raster_mat.shader = PaneRasterLutShader
+		if _palette_lut == null:
+			var pal: PackedColorArray = PaletteUtil.load_hex_palette(PALETTE_HEX_PATH)
+			_palette_lut = PaletteUtil.build_palette_lut_3d(pal)
+		if _palette_lut != null:
+			_raster_mat.set_shader_parameter("palette_lut", _palette_lut)
+		_raster_mat.set_shader_parameter("palette_dither_strength", 0.08)
+	else:
+		_raster_mat.shader = PaneRasterShader
 	_raster_mat.set_shader_parameter("rect_size_px", Vector2(full_w, full_h))
 	_block_w = maxi(1, grid.g_cell_width / 2)
 	_block_h = _block_w
 	_raster_mat.set_shader_parameter("block_size", Vector2(float(_block_w), float(_block_h)))
+	# Post-fx film-grain: block-level noise injected before the dither pass.
+	# Cheap (one hash per raster block, time-quantised), subtle but visible
+	# enough to shimmer the dither.
+	_raster_mat.set_shader_parameter("noise_strength", 0.02)
+	_raster_mat.set_shader_parameter("noise_time_hz", 20.0)
+	_raster_mat.set_shader_parameter("noise_cell_mult", 2.0)
 
 	var vp_h: float = float(_viewport.size.y)
 	var wppx: float = (2.0 * ORTHO_SIZE) / vp_h
@@ -421,11 +504,13 @@ func _cleanup() -> void:
 	_tree_mesh = null
 	_bush_foliage_mesh = null
 	_fern_foliage_mesh = null
+	_rock_mesh = null
 	_terrain_base_mesh = null
 	_tree_trunk_material = null
 	_tree_foliage_material = null
 	_bush_foliage_material = null
 	_fern_foliage_material = null
+	_rock_material = null
 	_terrain_mm_instance = null
 
 
@@ -435,6 +520,7 @@ func _build_mesh_catalog() -> void:
 	_tree_mesh = _bake_tree_mesh()
 	_bush_foliage_mesh = _bake_mesh_from_template(PineBushScene, [])
 	_fern_foliage_mesh = _bake_mesh_from_template(FernScene, [])
+	_rock_mesh = _bake_mesh_from_template(RockScene, [])
 	_terrain_base_mesh = _build_terrain_local_mesh()
 
 
@@ -617,6 +703,17 @@ func _build_shared_materials() -> void:
 	if _fern_foliage_mesh != null and _fern_foliage_mesh.get_surface_count() >= 1:
 		_fern_foliage_mesh.surface_set_material(0, _fern_foliage_material)
 
+	# Rock material: unlit matcap + world-oriented gradient. One surface,
+	# one material — every rock instance in a chunk shares this via the rock
+	# MultiMeshInstance3D leaving material_override unset.
+	_rock_material = ShaderMaterial.new()
+	_rock_material.shader = RockMatcapShader
+	_rock_material.set_shader_parameter("matcap", ROCK_MATCAP_TEX)
+	_rock_material.set_shader_parameter("tint", Color(0.55, 0.55, 0.55))
+	_rock_material.set_shader_parameter("matcap_tint_strength", 1.0)
+	if _rock_mesh != null and _rock_mesh.get_surface_count() >= 1:
+		_rock_mesh.surface_set_material(0, _rock_material)
+
 
 func _set_wind_params(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("wind_strength", WIND_STRENGTH)
@@ -737,15 +834,23 @@ func _load_chunk(key: Vector2i) -> void:
 	var tree_positions: Array[Dictionary] = []
 	var bush_positions: Array[Dictionary] = []
 	var fern_positions: Array[Dictionary] = []
+	var rock_positions: Array[Dictionary] = []
 	_collect_glades(rng, key, density_grid, tree_positions, bush_positions, fern_positions)
+	_collect_rocks(rng, key, tree_positions, bush_positions, fern_positions, rock_positions)
 
 	var tree_count: int = tree_positions.size()
 	var bush_count: int = bush_positions.size()
 	var fern_count: int = fern_positions.size()
+	var rock_count: int = rock_positions.size()
 
 	var mm_tree := _make_vegetation_mmi(_tree_mesh, tree_count)
 	var mm_bush := _make_vegetation_mmi(_bush_foliage_mesh, bush_count)
 	var mm_fern := _make_vegetation_mmi(_fern_foliage_mesh, fern_count)
+	# Rocks: same MMI shape as vegetation but no per-instance custom data —
+	# no wind, no push, no dither-fade. Leaves material_override unset so the
+	# per-surface rock material on _rock_mesh is used for all instances.
+	var mm_rock := _make_rock_mmi(_rock_mesh, rock_count)
+	var mm_rock_shadow := _make_shadow_mmi(_blob_shadow_material, rock_count)
 	# Shadow MultiMeshes: one per veg type, sharing the unit-quad shadow mesh
 	# with per-instance transforms encoding world position + scale. Trees use
 	# the dark material, bushes/ferns the light material.
@@ -755,9 +860,19 @@ func _load_chunk(key: Vector2i) -> void:
 	chunk.add_child(mm_tree)
 	chunk.add_child(mm_bush)
 	chunk.add_child(mm_fern)
+	chunk.add_child(mm_rock)
 	chunk.add_child(mm_tree_shadow)
 	chunk.add_child(mm_bush_shadow)
 	chunk.add_child(mm_fern_shadow)
+	chunk.add_child(mm_rock_shadow)
+
+	for i in rock_count:
+		var r: Dictionary = rock_positions[i]
+		mm_rock.multimesh.set_instance_transform(i, r.xform)
+		mm_rock_shadow.multimesh.set_instance_transform(i, _shadow_xform(
+			r.xz, r.scale * ROCK_SHADOW_SIZE_MULT))
+		if r.has_collider:
+			_spawn_rock_collider(chunk, Vector3(r.xz.x, 0.0, r.xz.y), r.scale)
 
 	var tree_entries: Array[Dictionary] = []
 	for i in tree_count:
@@ -805,9 +920,11 @@ func _load_chunk(key: Vector2i) -> void:
 		"mm_tree": mm_tree,
 		"mm_bush": mm_bush,
 		"mm_fern": mm_fern,
+		"mm_rock": mm_rock,
 		"mm_tree_shadow": mm_tree_shadow,
 		"mm_bush_shadow": mm_bush_shadow,
 		"mm_fern_shadow": mm_fern_shadow,
+		"mm_rock_shadow": mm_rock_shadow,
 		"trees": tree_entries,
 		"bushes": bush_entries,
 		"ferns": fern_entries,
@@ -821,6 +938,21 @@ func _make_vegetation_mmi(mesh: ArrayMesh, count: int) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
+	mm.mesh = mesh
+	mm.instance_count = maxi(count, 0)
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mmi
+
+
+# Rock MMI: same shape as vegetation but no per-instance custom data (rocks
+# don't participate in wind / push / fade). Kept separate so the toggle is
+# explicit at the callsite rather than via a bool flag.
+func _make_rock_mmi(mesh: ArrayMesh, count: int) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = false
 	mm.mesh = mesh
 	mm.instance_count = maxi(count, 0)
 	var mmi := MultiMeshInstance3D.new()
@@ -1016,6 +1148,120 @@ func _collect_ferns_around_tree(rng: RandomNumberGenerator, tree_xz: Vector2,
 		})
 
 
+# Rock clusters: three concentric tiers of rocks around random anchor points
+# in the chunk. Anchors aren't biome-gated (rocks belong in meadow + forest
+# alike), but each rock placement is rejected if it would overlap an
+# already-placed tree / bush / fern. Rotations fully randomised (Y spin +
+# small tilt on X/Z); scales spread per tier for natural-looking piles.
+#
+# Each output dict carries `has_collider` so `_load_chunk` knows whether to
+# spawn a StaticBody3D. Small rocks skip colliders so the player walks
+# through them as visual ground clutter.
+func _collect_rocks(rng: RandomNumberGenerator, key: Vector2i,
+		tree_positions: Array[Dictionary],
+		bush_positions: Array[Dictionary],
+		fern_positions: Array[Dictionary],
+		rock_out: Array[Dictionary]) -> void:
+	var ox: float = float(key.x) * CHUNK_SIZE
+	var oz: float = float(key.y) * CHUNK_SIZE
+	var margin: float = ROCK_CLUSTER_ANCHOR_MARGIN
+	var span: float = CHUNK_SIZE - margin * 2.0
+
+	# Flatten vegetation into a single avoid list with per-entry radii.
+	var avoid: Array[Dictionary] = []
+	for t: Dictionary in tree_positions:
+		avoid.append({"x": t.xz.x, "z": t.xz.y, "r": float(t.scale) * ROCK_AVOID_TREE_MULT})
+	for b: Dictionary in bush_positions:
+		avoid.append({"x": b.xz.x, "z": b.xz.y, "r": float(b.scale) * ROCK_AVOID_BUSH_MULT})
+	for f: Dictionary in fern_positions:
+		avoid.append({"x": f.xz.x, "z": f.xz.y, "r": float(f.scale) * ROCK_AVOID_FERN_MULT})
+
+	var cluster_count: int = rng.randi_range(
+		ROCK_CLUSTERS_PER_CHUNK_MIN, ROCK_CLUSTERS_PER_CHUNK_MAX)
+	for _c in cluster_count:
+		# Anchor: try a few positions; accept the first one far from any
+		# vegetation. Fail open — if we can't find a clear spot, we skip
+		# this cluster rather than plant it on top of a tree.
+		var cx: float = 0.0
+		var cz: float = 0.0
+		var anchor_ok: bool = false
+		for _try in ROCK_PLACEMENT_ATTEMPTS:
+			cx = ox + margin + rng.randf() * span
+			cz = oz + margin + rng.randf() * span
+			if _rock_pos_clear(cx, cz, ROCK_ANCHOR_CLEARANCE, avoid):
+				anchor_ok = true
+				break
+		if not anchor_ok:
+			continue
+
+		_append_rock_ring(rng, cx, cz,
+			ROCK_LARGE_COUNT_MIN, ROCK_LARGE_COUNT_MAX,
+			ROCK_LARGE_RING_R_INNER, ROCK_LARGE_RING_R_OUTER,
+			ROCK_LARGE_SCALE_MIN, ROCK_LARGE_SCALE_MAX,
+			avoid, rock_out)
+		_append_rock_ring(rng, cx, cz,
+			ROCK_MED_COUNT_MIN, ROCK_MED_COUNT_MAX,
+			ROCK_MED_RING_R_INNER, ROCK_MED_RING_R_OUTER,
+			ROCK_MED_SCALE_MIN, ROCK_MED_SCALE_MAX,
+			avoid, rock_out)
+		_append_rock_ring(rng, cx, cz,
+			ROCK_SMALL_COUNT_MIN, ROCK_SMALL_COUNT_MAX,
+			ROCK_SMALL_RING_R_INNER, ROCK_SMALL_RING_R_OUTER,
+			ROCK_SMALL_SCALE_MIN, ROCK_SMALL_SCALE_MAX,
+			avoid, rock_out)
+
+
+# Rejection sampler: returns true if (wx, wz) is at least `self_r` from every
+# entry's (x, z) plus that entry's own `r`. Linear scan — vegetation counts
+# per chunk are ≤ a few hundred so this is cheap.
+static func _rock_pos_clear(wx: float, wz: float, self_r: float,
+		avoid: Array[Dictionary]) -> bool:
+	for e: Dictionary in avoid:
+		var dx: float = float(e.x) - wx
+		var dz: float = float(e.z) - wz
+		var min_d: float = self_r + float(e.r)
+		if dx * dx + dz * dz < min_d * min_d:
+			return false
+	return true
+
+
+func _append_rock_ring(rng: RandomNumberGenerator, cx: float, cz: float,
+		count_min: int, count_max: int,
+		r_inner: float, r_outer: float,
+		scale_min: float, scale_max: float,
+		avoid: Array[Dictionary],
+		rock_out: Array[Dictionary]) -> void:
+	var count: int = rng.randi_range(count_min, count_max)
+	for _i in count:
+		var placed: bool = false
+		for _try in ROCK_PLACEMENT_ATTEMPTS:
+			var theta: float = rng.randf() * TAU
+			var r: float = lerp(r_inner, r_outer, sqrt(rng.randf()))
+			var wx: float = cx + cos(theta) * r
+			var wz: float = cz + sin(theta) * r
+			var sc: float = lerp(scale_min, scale_max, rng.randf())
+			# Own clearance scales with rock size so a big rock pushes
+			# further from vegetation than a small pebble does.
+			if not _rock_pos_clear(wx, wz, sc * 0.6, avoid):
+				continue
+			var ry: float = rng.randf() * TAU
+			var tilt_x: float = (rng.randf() - 0.5) * 2.0 * ROCK_TILT_MAX
+			var tilt_z: float = (rng.randf() - 0.5) * 2.0 * ROCK_TILT_MAX
+			var basis := Basis.from_euler(Vector3(tilt_x, ry, tilt_z)) \
+				.scaled(Vector3(sc, sc, sc))
+			var xform := Transform3D(basis, Vector3(wx, 0.0, wz))
+			rock_out.append({
+				"xz": Vector2(wx, wz),
+				"scale": sc,
+				"xform": xform,
+				"has_collider": sc >= ROCK_COLLIDER_MIN_SCALE,
+			})
+			placed = true
+			break
+		if not placed:
+			continue
+
+
 # Drop a tight clump of bushes around an open-ground anchor at (cx, cz).
 # Callers verify the anchor is clear of trees, ferns, and meadow; here we
 # just pack BUSH_PER_CLUSTER bushes around it. First bush sits dead-centre
@@ -1092,6 +1338,25 @@ func _spawn_tree_trunk_collider(parent: Node3D, tree_pos: Vector3, tree_sc: floa
 	col.shape = shape
 	body.add_child(col)
 	body.position = tree_pos + Vector3(0.0, tree_sc * 0.8, 0.0)
+	parent.add_child(body)
+
+
+# Rock collider: squat cylinder at the base of the rock. Deliberately shorter
+# and narrower than the visible mesh so the player (a capsule pinned to
+# GROUND_Y) slides around the rock's footprint but the rock's visible upper
+# silhouette can still overlap the camera-facing side of the player — reads
+# as walking past/over the stone rather than into a hard wall. Only spawned
+# for rocks with `has_collider == true` (scale ≥ ROCK_COLLIDER_MIN_SCALE);
+# small rocks are collider-free so the player walks through them entirely.
+func _spawn_rock_collider(parent: Node3D, rock_pos: Vector3, rock_sc: float) -> void:
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = rock_sc * ROCK_COLLIDER_RADIUS_MULT
+	shape.height = rock_sc * ROCK_COLLIDER_HEIGHT_MULT
+	col.shape = shape
+	body.add_child(col)
+	body.position = rock_pos + Vector3(0.0, rock_sc * ROCK_COLLIDER_HEIGHT_MULT * 0.5, 0.0)
 	parent.add_child(body)
 
 
