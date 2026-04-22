@@ -22,6 +22,33 @@ const CHUNK_LOAD_MARGIN: float = 16.0
 # pop in as their tops cross the screen edge before their ground XZ enters the
 # footprint. 2.0 doubles the selection box in both axes.
 const CHUNK_FOOTPRINT_OVERSCAN: float = 2.0
+
+# ── Zone layout ────────────────────────────────────
+# World = grid of zones, each zone = N×N chunks with a half-chunk-wide
+# border of dense forest + invisible wall around its perimeter, and a
+# single open corridor through the middle chunk of each edge connecting
+# it to the neighbouring zone.
+const ZONE_CHUNKS_PER_SIDE: int = 7
+const ZONE_EDGE_MID_INDEX: int = 3      # (ZONE_CHUNKS_PER_SIDE - 1) / 2
+const ZONE_BORDER_STRIP_M: float = 32.0 # half a chunk
+const ZONE_CORRIDOR_WIDTH_M: float = 8.0
+const ZONE_WALL_HEIGHT_M: float = 4.0
+# Temporary debug visual — paints each border wall as a tinted translucent
+# box so zone geometry is visible in-game. Set to false to ship invisible.
+const DEBUG_SHOW_BORDER_WALLS: bool = false
+const DEBUG_SHOW_CORRIDOR_TRIGGERS: bool = false
+# Border-tree scatter: tighter grid + relaxed min-distance so the canopy
+# reads as an unbroken wall. Meadow cull is skipped so meadow noise can't
+# punch a hole in the perimeter.
+const ZONE_BORDER_TREE_CELL: float = 3.5
+const ZONE_BORDER_TREE_JITTER: float = 0.85
+const ZONE_BORDER_TREE_MIN_DIST: float = 3.5
+# Edge bitmask — returned by `_chunk_edges` / `_is_exit_chunk`.
+const ZONE_EDGE_W: int = 1
+const ZONE_EDGE_E: int = 2
+const ZONE_EDGE_N: int = 4
+const ZONE_EDGE_S: int = 8
+
 const CAM_LERP: float = 0.1
 const ORTHO_SIZE: float = 11.0
 const CAM_PITCH_DEG: float = -30.0
@@ -422,6 +449,10 @@ func _build_world() -> void:
 	col.shape = cap
 	_player.add_child(col)
 	scene.add_child(_player)
+	# Spawn at zone (0, 0) centre so the player starts inside a playable
+	# interior rather than trapped inside the NW-corner chunk's border walls.
+	var zone_centre: float = float(ZONE_CHUNKS_PER_SIDE) * CHUNK_SIZE * 0.5
+	_player.position = Vector3(zone_centre, 0.9, zone_centre)
 	# v2 replaces the per-tree dither-on-occlude with an x-ray silhouette of
 	# the player visible only where the main sprite gets depth-occluded.
 	_player.enable_xray_outline()
@@ -836,6 +867,16 @@ func _load_chunk(key: Vector2i) -> void:
 	var fern_positions: Array[Dictionary] = []
 	var rock_positions: Array[Dictionary] = []
 	_collect_glades(rng, key, density_grid, tree_positions, bush_positions, fern_positions)
+	# Outer-ring chunks of each zone get an extra dense-canopy pass over
+	# their half-chunk-wide border strip (minus any corridor gap). Runs
+	# before rock collection so rocks dodge the thickened tree wall, and
+	# appended directly to `tree_positions` so trunk colliders, shadows,
+	# and the tree MultiMesh all pick them up with no extra bookkeeping.
+	var chunk_edges: int = _chunk_edges(_chunk_local(key))
+	if chunk_edges != 0:
+		var border_rng := RandomNumberGenerator.new()
+		border_rng.seed = key.x * 100003 + key.y + 0xB0DE
+		_collect_border_trees(border_rng, key, chunk_edges, tree_positions)
 	_collect_rocks(rng, key, tree_positions, bush_positions, fern_positions, rock_positions)
 
 	var tree_count: int = tree_positions.size()
@@ -913,6 +954,9 @@ func _load_chunk(key: Vector2i) -> void:
 			"push_amount": 0.0,
 			"prev_proximity": 0.0,
 		})
+
+	if chunk_edges != 0:
+		_spawn_zone_border_walls(chunk, key, chunk_edges)
 
 	_chunks_state[key] = {
 		"node": chunk,
@@ -1358,6 +1402,271 @@ func _spawn_rock_collider(parent: Node3D, rock_pos: Vector3, rock_sc: float) -> 
 	body.add_child(col)
 	body.position = rock_pos + Vector3(0.0, rock_sc * ROCK_COLLIDER_HEIGHT_MULT * 0.5, 0.0)
 	parent.add_child(body)
+
+
+# ── Zone layout ────────────────────────────────────
+
+static func _chunk_zone(key: Vector2i) -> Vector2i:
+	return Vector2i(
+		floori(float(key.x) / float(ZONE_CHUNKS_PER_SIDE)),
+		floori(float(key.y) / float(ZONE_CHUNKS_PER_SIDE)))
+
+
+static func _chunk_local(key: Vector2i) -> Vector2i:
+	var zone := _chunk_zone(key)
+	return Vector2i(
+		key.x - zone.x * ZONE_CHUNKS_PER_SIDE,
+		key.y - zone.y * ZONE_CHUNKS_PER_SIDE)
+
+
+static func _chunk_edges(local: Vector2i) -> int:
+	var m: int = 0
+	if local.x == 0:
+		m |= ZONE_EDGE_W
+	if local.x == ZONE_CHUNKS_PER_SIDE - 1:
+		m |= ZONE_EDGE_E
+	if local.y == 0:
+		m |= ZONE_EDGE_N
+	if local.y == ZONE_CHUNKS_PER_SIDE - 1:
+		m |= ZONE_EDGE_S
+	return m
+
+
+# Middle-of-edge chunks carry a corridor. Only one edge ever qualifies for
+# a given chunk — exit coords are (mid, 0), (0, mid), (mid, last), (last, mid)
+# and are never corners — so the return value is a single edge bit, or 0.
+static func _is_exit_edge(local: Vector2i) -> int:
+	if local.x == ZONE_EDGE_MID_INDEX and local.y == 0:
+		return ZONE_EDGE_N
+	if local.x == ZONE_EDGE_MID_INDEX and local.y == ZONE_CHUNKS_PER_SIDE - 1:
+		return ZONE_EDGE_S
+	if local.y == ZONE_EDGE_MID_INDEX and local.x == 0:
+		return ZONE_EDGE_W
+	if local.y == ZONE_EDGE_MID_INDEX and local.x == ZONE_CHUNKS_PER_SIDE - 1:
+		return ZONE_EDGE_E
+	return 0
+
+
+# Axis-aligned rectangle (world XZ) of the half-chunk-wide strip along each
+# outer edge of this chunk. Corner chunks return two rects whose 32×32 overlap
+# is deduped by the scatter's min-distance test.
+static func _border_rects_for_edges(key: Vector2i, edges: int) -> Array[Rect2]:
+	var ox: float = float(key.x) * CHUNK_SIZE
+	var oz: float = float(key.y) * CHUNK_SIZE
+	var rects: Array[Rect2] = []
+	if edges & ZONE_EDGE_W:
+		rects.append(Rect2(Vector2(ox, oz), Vector2(ZONE_BORDER_STRIP_M, CHUNK_SIZE)))
+	if edges & ZONE_EDGE_E:
+		rects.append(Rect2(Vector2(ox + CHUNK_SIZE - ZONE_BORDER_STRIP_M, oz),
+			Vector2(ZONE_BORDER_STRIP_M, CHUNK_SIZE)))
+	if edges & ZONE_EDGE_N:
+		rects.append(Rect2(Vector2(ox, oz), Vector2(CHUNK_SIZE, ZONE_BORDER_STRIP_M)))
+	if edges & ZONE_EDGE_S:
+		rects.append(Rect2(Vector2(ox, oz + CHUNK_SIZE - ZONE_BORDER_STRIP_M),
+			Vector2(CHUNK_SIZE, ZONE_BORDER_STRIP_M)))
+	return rects
+
+
+# Rect covering the corridor opening (world XZ) for exit chunks, or an empty
+# Rect2 for interior / corner / non-exit border chunks.
+static func _corridor_rect_for_chunk(key: Vector2i) -> Rect2:
+	var exit_edge: int = _is_exit_edge(_chunk_local(key))
+	if exit_edge == 0:
+		return Rect2()
+	var ox: float = float(key.x) * CHUNK_SIZE
+	var oz: float = float(key.y) * CHUNK_SIZE
+	var half: float = ZONE_CORRIDOR_WIDTH_M * 0.5
+	var cx: float = ox + CHUNK_SIZE * 0.5
+	var cz: float = oz + CHUNK_SIZE * 0.5
+	if exit_edge == ZONE_EDGE_N:
+		return Rect2(Vector2(cx - half, oz),
+			Vector2(ZONE_CORRIDOR_WIDTH_M, ZONE_BORDER_STRIP_M))
+	if exit_edge == ZONE_EDGE_S:
+		return Rect2(Vector2(cx - half, oz + CHUNK_SIZE - ZONE_BORDER_STRIP_M),
+			Vector2(ZONE_CORRIDOR_WIDTH_M, ZONE_BORDER_STRIP_M))
+	if exit_edge == ZONE_EDGE_W:
+		return Rect2(Vector2(ox, cz - half),
+			Vector2(ZONE_BORDER_STRIP_M, ZONE_CORRIDOR_WIDTH_M))
+	# ZONE_EDGE_E
+	return Rect2(Vector2(ox + CHUNK_SIZE - ZONE_BORDER_STRIP_M, cz - half),
+		Vector2(ZONE_BORDER_STRIP_M, ZONE_CORRIDOR_WIDTH_M))
+
+
+# Dense tree scatter over each outer-strip rect of a zone-boundary chunk.
+# Ignores the biome field so meadow noise can't punch a hole in the wall;
+# rejects candidates that fall inside the corridor rect of an exit chunk;
+# respects a relaxed min-distance against every tree already placed so the
+# canopy reads unbroken but individual crowns don't stack.
+func _collect_border_trees(rng: RandomNumberGenerator, key: Vector2i, edges: int,
+		tree_out: Array[Dictionary]) -> void:
+	var rects := _border_rects_for_edges(key, edges)
+	var corridor := _corridor_rect_for_chunk(key)
+	var has_corridor: bool = corridor.size.x > 0.0
+	var min_dist_sq: float = ZONE_BORDER_TREE_MIN_DIST * ZONE_BORDER_TREE_MIN_DIST
+	for rect: Rect2 in rects:
+		var cx_count: int = int(ceil(rect.size.x / ZONE_BORDER_TREE_CELL))
+		var cz_count: int = int(ceil(rect.size.y / ZONE_BORDER_TREE_CELL))
+		for gi in cx_count:
+			for gj in cz_count:
+				var bx: float = rect.position.x + (float(gi) + 0.5) * ZONE_BORDER_TREE_CELL
+				var bz: float = rect.position.y + (float(gj) + 0.5) * ZONE_BORDER_TREE_CELL
+				var wx: float = bx + (rng.randf() - 0.5) * ZONE_BORDER_TREE_JITTER * 2.0
+				var wz: float = bz + (rng.randf() - 0.5) * ZONE_BORDER_TREE_JITTER * 2.0
+				# Jitter can push outside the rect — clamp so trees stay
+				# inside the 32 m strip and don't spill into the zone interior.
+				wx = clampf(wx, rect.position.x, rect.position.x + rect.size.x)
+				wz = clampf(wz, rect.position.y, rect.position.y + rect.size.y)
+				if has_corridor and corridor.has_point(Vector2(wx, wz)):
+					continue
+				var too_close: bool = false
+				for p: Dictionary in tree_out:
+					var ddx: float = p.xz.x - wx
+					var ddz: float = p.xz.y - wz
+					if ddx * ddx + ddz * ddz < min_dist_sq:
+						too_close = true
+						break
+				if too_close:
+					continue
+				var diameter: float = lerp(TREE_DIAMETER_MIN, TREE_DIAMETER_MAX, rng.randf())
+				var sc: float = diameter * TREE_SCALE_FACTOR * lerp(0.8, 1.6, rng.randf())
+				var ry: float = rng.randf() * TAU
+				var xform := _make_world_xform(Vector2(wx, wz), sc, ry)
+				tree_out.append({"xz": Vector2(wx, wz), "scale": sc, "xform": xform})
+
+
+# Tall box-shape collider along each outer edge of a zone-boundary chunk.
+# For exit chunks the wall is split into two flanks with a corridor-width
+# gap so the player can walk through into the neighbouring zone.
+func _spawn_zone_border_walls(parent: Node3D, key: Vector2i, edges: int) -> void:
+	var ox: float = float(key.x) * CHUNK_SIZE
+	var oz: float = float(key.y) * CHUNK_SIZE
+	var exit_edge: int = _is_exit_edge(_chunk_local(key))
+	if exit_edge != 0:
+		_spawn_zone_corridor_trigger(parent, key, exit_edge)
+	var half_thick: float = ZONE_BORDER_STRIP_M * 0.5
+	var half_h: float = ZONE_WALL_HEIGHT_M * 0.5
+	var side_len: float = (CHUNK_SIZE - ZONE_CORRIDOR_WIDTH_M) * 0.5
+	if edges & ZONE_EDGE_W:
+		_spawn_edge_wall_segment(parent, ox + half_thick, oz, true,
+			exit_edge == ZONE_EDGE_W, half_h, side_len)
+	if edges & ZONE_EDGE_E:
+		_spawn_edge_wall_segment(parent, ox + CHUNK_SIZE - half_thick, oz, true,
+			exit_edge == ZONE_EDGE_E, half_h, side_len)
+	if edges & ZONE_EDGE_N:
+		_spawn_edge_wall_segment(parent, oz + half_thick, ox, false,
+			exit_edge == ZONE_EDGE_N, half_h, side_len)
+	if edges & ZONE_EDGE_S:
+		_spawn_edge_wall_segment(parent, oz + CHUNK_SIZE - half_thick, ox, false,
+			exit_edge == ZONE_EDGE_S, half_h, side_len)
+
+
+# along_is_z: true for W/E walls (strip runs along Z), false for N/S. `perp`
+# is the strip's centre on the perpendicular axis; `along_base` is the chunk
+# origin on the edge axis.
+func _spawn_edge_wall_segment(parent: Node3D, perp: float, along_base: float,
+		along_is_z: bool, has_gap: bool, half_h: float, side_len: float) -> void:
+	var size_full: Vector3
+	var size_side: Vector3
+	if along_is_z:
+		size_full = Vector3(ZONE_BORDER_STRIP_M, ZONE_WALL_HEIGHT_M, CHUNK_SIZE)
+		size_side = Vector3(ZONE_BORDER_STRIP_M, ZONE_WALL_HEIGHT_M, side_len)
+	else:
+		size_full = Vector3(CHUNK_SIZE, ZONE_WALL_HEIGHT_M, ZONE_BORDER_STRIP_M)
+		size_side = Vector3(side_len, ZONE_WALL_HEIGHT_M, ZONE_BORDER_STRIP_M)
+	if has_gap:
+		var a1: float = along_base + side_len * 0.5
+		var a2: float = along_base + CHUNK_SIZE - side_len * 0.5
+		var p1: Vector3 = (Vector3(perp, half_h, a1) if along_is_z
+			else Vector3(a1, half_h, perp))
+		var p2: Vector3 = (Vector3(perp, half_h, a2) if along_is_z
+			else Vector3(a2, half_h, perp))
+		_spawn_box_wall(parent, p1, size_side)
+		_spawn_box_wall(parent, p2, size_side)
+	else:
+		var am: float = along_base + CHUNK_SIZE * 0.5
+		var pm: Vector3 = (Vector3(perp, half_h, am) if along_is_z
+			else Vector3(am, half_h, perp))
+		_spawn_box_wall(parent, pm, size_full)
+
+
+static func _spawn_box_wall(parent: Node3D, centre: Vector3, size: Vector3) -> void:
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	col.shape = shape
+	body.add_child(col)
+	body.position = centre
+	parent.add_child(body)
+	if DEBUG_SHOW_BORDER_WALLS:
+		var mi := MeshInstance3D.new()
+		var m := BoxMesh.new()
+		m.size = size
+		mi.mesh = m
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.15, 0.15, 0.35)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		body.add_child(mi)
+
+
+# Area3D trigger filling the corridor opening. Non-blocking — body_entered
+# fires when the player crosses into it so zone-transition hooks (fade,
+# HUD label, new-zone generation) can be wired in later. Logs by default
+# and paints a cyan translucent box when DEBUG_SHOW_CORRIDOR_TRIGGERS.
+func _spawn_zone_corridor_trigger(parent: Node3D, key: Vector2i, exit_edge: int) -> void:
+	var rect := _corridor_rect_for_chunk(key)
+	if rect.size.x <= 0.0:
+		return
+	var centre_x: float = rect.position.x + rect.size.x * 0.5
+	var centre_z: float = rect.position.y + rect.size.y * 0.5
+	var box_size := Vector3(rect.size.x, ZONE_WALL_HEIGHT_M, rect.size.y)
+	var area := Area3D.new()
+	area.name = "ZoneCorridor"
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = box_size
+	col.shape = shape
+	area.add_child(col)
+	area.position = Vector3(centre_x, ZONE_WALL_HEIGHT_M * 0.5, centre_z)
+	parent.add_child(area)
+	var from_zone: Vector2i = _chunk_zone(key)
+	var to_zone: Vector2i = from_zone
+	if exit_edge == ZONE_EDGE_W:
+		to_zone.x -= 1
+	elif exit_edge == ZONE_EDGE_E:
+		to_zone.x += 1
+	elif exit_edge == ZONE_EDGE_N:
+		to_zone.y -= 1
+	elif exit_edge == ZONE_EDGE_S:
+		to_zone.y += 1
+	area.set_meta("from_zone", from_zone)
+	area.set_meta("to_zone", to_zone)
+	area.body_entered.connect(_on_corridor_body_entered.bind(area))
+	if DEBUG_SHOW_CORRIDOR_TRIGGERS:
+		var mi := MeshInstance3D.new()
+		var m := BoxMesh.new()
+		m.size = box_size
+		mi.mesh = m
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.2, 0.9, 1.0, 0.25)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		area.add_child(mi)
+
+
+func _on_corridor_body_entered(body: Node3D, area: Area3D) -> void:
+	if body != _player:
+		return
+	var from_zone: Vector2i = area.get_meta("from_zone")
+	var to_zone: Vector2i = area.get_meta("to_zone")
+	print("[zone] crossed corridor %s -> %s" % [from_zone, to_zone])
 
 
 # ── Per-frame fade / push updates ──────────────────
