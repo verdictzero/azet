@@ -40,7 +40,7 @@ const DEBUG_SHOW_CORRIDOR_TRIGGERS: bool = false
 # Border-tree scatter: tighter grid + relaxed min-distance so the canopy
 # reads as an unbroken wall. Meadow cull is skipped so meadow noise can't
 # punch a hole in the perimeter.
-const ZONE_BORDER_TREE_CELL: float = 3.5
+const ZONE_BORDER_TREE_CELL: float = 5.4
 const ZONE_BORDER_TREE_JITTER: float = 0.85
 const ZONE_BORDER_TREE_MIN_DIST: float = 3.5
 # Edge bitmask — returned by `_chunk_edges` / `_is_exit_chunk`.
@@ -56,6 +56,49 @@ const CAM_DIST: float = 80.0
 
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
 const PaneRasterLutShader: Shader = preload("res://assets/shaders/pane_raster_lut.gdshader")
+const PaneFogShader: Shader = preload("res://assets/shaders/pane_fog.gdshader")
+# Fog opacity ramps up as the player approaches any zone edge, hits
+# FOG_BORDER_OPACITY right at the border strip, and relaxes to the base
+# value again in the zone interior.
+const FOG_BASE_OPACITY: float = 0.55
+const FOG_BORDER_OPACITY: float = 1.8
+# Ramp distance kept short so the fog only closes in once the player is
+# already deep in the border strip, right next to the edge wall collider —
+# the interior reads as relatively clear up until the last few metres.
+const FOG_BORDER_RAMP_M: float = 16.0
+# Corridor suppression: when the player is laterally aligned with the exit
+# corridor on the nearest edge, the border boost is ramped back down to base
+# so the path out feels open and clear.
+const FOG_CORRIDOR_CLEAR_M: float = 8.0
+const FOG_CORRIDOR_SOFTEN_M: float = 18.0
+# Exit-path clearing around each corridor. Width = corridor + 2*side margin;
+# depth reaches past the border strip into the zone interior so the approach
+# to the corridor reads as a deliberate clearing, not a doorway in a wall.
+const EXIT_CLEAR_SIDE_MARGIN_M: float = 5.0
+const EXIT_CLEAR_INTERIOR_REACH_M: float = 12.0
+# City-plate path trail peppered into each zone's corridor approach. Full
+# strength from the wall out to PATH_EDGE_FULL_M, fades to nothing by
+# PATH_FADE_END_M so deep zone interiors read as unmarked forest/meadow.
+const PATH_CORRIDOR_LATERAL_HALF: float = 3.5
+const PATH_CORRIDOR_LATERAL_SOFTNESS: float = 2.0
+const PATH_EDGE_FULL_M: float = 100.0
+const PATH_FADE_END_M: float = 150.0
+const PATH_PEPPER_FREQ: float = 0.7
+const PATH_PEPPER_THRESHOLD: float = 0.55
+const PATH_PEPPER_SOFTNESS: float = 0.05
+const PATH_STRENGTH: float = 1.0
+# Marker obelisks flanking each corridor entrance. Placed at the inner
+# corner of the exit clearance so they sit in BORDER chunks (loaded as
+# soon as the player nears an edge) and frame the visible throat of the
+# corridor. lateral = corridor_half + clearance_margin = 9m off centreline;
+# depth = border_strip + interior_reach = 44m from the wall.
+# Sit the obelisks right at the outer edge of the corridor (1m outside the
+# 4m-half-width path) so they hug the plate trail rather than the clearing
+# margin. Depth unchanged — still at the inner corner of the clearing.
+const OBELISK_SIDE_OFFSET_M: float = ZONE_CORRIDOR_WIDTH_M * 0.5 + 1.0
+const OBELISK_DEPTH_M: float = ZONE_BORDER_STRIP_M + EXIT_CLEAR_INTERIOR_REACH_M
+const OBELISK_SCALE: float = 4.0
+const OBELISK_NO_TREE_HEIGHT_MULT: float = 2.0
 # LUT-palette post-fx: build a sega-cube palette LUT once and use the LUT
 # variant of the raster shader. Flip to false to revert to the plain
 # grayscale-dither shader bit-identically.
@@ -70,7 +113,9 @@ const TREE_MATCAP_TEX: Texture2D = preload("res://assets/matcap/matcap_1.png")
 const BUSH_MATCAP_TEX: Texture2D = preload("res://assets/matcap/matcap_2.png")
 const GROUND_MEADOW_TEX: Texture2D = preload("res://assets/biomes/test/new_meadow_grass_checkered_v5.png")
 const GROUND_FOREST_TEX: Texture2D = preload("res://assets/biomes/test/pine_forest_terrain.png")
+const GROUND_PATH_TEX: Texture2D = preload("res://assets/biomes/test/city_metal_plate_2.jpg")
 const GROUND_WORLD_PER_TILE: float = 6.4
+const GROUND_PATH_WORLD_PER_TILE: float = 4.0
 # Pine forest is the default ground texture; meadows are pockets cut out
 # where the FBM field rises past the threshold. All noise parameters live in
 # the BiomeConfig Resource below so the splat shader (as material uniforms)
@@ -83,6 +128,7 @@ const PineTreeScene: PackedScene = preload("res://assets/models/pine_tree_0.glb"
 const PineBushScene: PackedScene = preload("res://assets/models/pine_bush_0.glb")
 const FernScene: PackedScene = preload("res://assets/models/fern_0.glb")
 const RockScene: PackedScene = preload("res://assets/models/rock_0.glb")
+const ObeliskScene: PackedScene = preload("res://assets/models/marker_obelisk_0.glb")
 const RockMatcapShader: Shader = preload("res://assets/shaders/rock_matcap.gdshader")
 # Rocks share the same matcap as the bushes + ferns — all ground-level
 # clutter pulls from a single sphere so the scene's lighting reads uniform.
@@ -114,9 +160,27 @@ const FERN_SHADOW_SIZE_MULT: float = 4.0
 # world-Y extent is ~0.15–0.28 m — below the default mask floor of 0.4 —
 # so the shared wind params would leave them completely static. Wind
 # amplitude is also smaller to suit a much shorter plant.
-const FERN_WIND_STRENGTH: float = 0.07
+const FERN_WIND_STRENGTH: float = 0.18
 const FERN_WIND_MASK_Y_MIN: float = -0.1
 const FERN_WIND_MASK_Y_MAX: float = 0.35
+# Isolated fern patches — small standalone clumps in the forest interior
+# with no parent tree. Same anchor-placement style as bush clusters:
+# reject meadow, too-close-to-tree, or too-close-to-existing-fern.
+const FERN_ISO_CLUSTERS_PER_CHUNK_MIN: int = 3
+const FERN_ISO_CLUSTERS_PER_CHUNK_MAX: int = 6
+const FERN_ISO_ANCHOR_PLACEMENT_ATTEMPTS: int = 20
+const FERN_ISO_ANCHOR_TREE_MIN_DIST: float = 3.5
+const FERN_ISO_ANCHOR_FERN_MIN_DIST: float = 3.0
+const FERN_ISO_CLUSTER_RADIUS: float = 1.4
+const FERN_ISO_PER_CLUSTER_MIN: int = 4
+const FERN_ISO_PER_CLUSTER_MAX: int = 9
+# Ferns ringing each obelisk inside the same no-tree/bush/rock exclusion
+# radius. Fill the dead ring the exclusion opened up so the obelisks read
+# as deliberately-tended markers rather than bald patches.
+const FERN_AROUND_OBELISK_COUNT_MIN: int = 28
+const FERN_AROUND_OBELISK_COUNT_MAX: int = 44
+const FERN_AROUND_OBELISK_INNER_MULT: float = 0.15
+const FERN_AROUND_OBELISK_OUTER_MULT: float = 0.55
 
 # Vegetation is placed in three passes that layer differently:
 #   1. Trees — jittered-grid scatter across the chunk.
@@ -128,7 +192,7 @@ const FERN_WIND_MASK_Y_MAX: float = 0.35
 # Trees: jittered-grid scatter over the whole chunk. Sparser cells + a
 # larger min-dist open the canopy up so ferns and bushes read as the
 # dominant cover; trees become the scattered crown layer above them.
-const TREE_GRID_CELL: float = 7.5
+const TREE_GRID_CELL: float = 12.4
 const TREE_JITTER: float = 2.8
 const TREE_DIAMETER_MIN: float = 3.0
 const TREE_DIAMETER_MAX: float = 5.5
@@ -268,6 +332,9 @@ var _blob_shadow_mesh: PlaneMesh
 var _tree_mesh: ArrayMesh
 var _rock_mesh: ArrayMesh
 var _rock_material: ShaderMaterial
+var _obelisk_mesh: ArrayMesh
+var _obelisk_material: ShaderMaterial
+var _obelisk_aabb_height: float = 0.0
 var _bush_foliage_mesh: ArrayMesh
 var _fern_foliage_mesh: ArrayMesh
 var _terrain_base_mesh: ArrayMesh
@@ -306,6 +373,8 @@ var _last_log_trees: int = 0
 var _last_log_bushes: int = 0
 var _last_log_ferns: int = 0
 var _raster_mat: ShaderMaterial
+var _fog_rect: ColorRect
+var _fog_mat: ShaderMaterial
 # Cached LUT texture — built once on first demo entry. Re-entering the demo
 # reuses the cached texture.
 var _palette_lut: ImageTexture3D = null
@@ -346,6 +415,7 @@ func draw(cols: int, rows: int) -> void:
 	# (see terrain_player.enable_xray_outline). _update_tree_fades is kept on
 	# the source so a future stage can re-enable it without re-implementing.
 	_update_bush_push()
+	_update_fog_opacity()
 	if _player and _hud_label:
 		var px: float = _player.global_position.x
 		var pz: float = _player.global_position.z
@@ -417,6 +487,17 @@ func _build_world() -> void:
 	_ground_material.set_shader_parameter("noise_softness", _biome_config.meadow_softness)
 	_ground_material.set_shader_parameter("warp_freq", _biome_config.warp_freq)
 	_ground_material.set_shader_parameter("warp_amp", _biome_config.warp_amp)
+	_ground_material.set_shader_parameter("path_tex", GROUND_PATH_TEX)
+	_ground_material.set_shader_parameter("path_world_per_tile", GROUND_PATH_WORLD_PER_TILE)
+	_ground_material.set_shader_parameter("zone_size_m", float(ZONE_CHUNKS_PER_SIDE) * CHUNK_SIZE)
+	_ground_material.set_shader_parameter("corridor_lateral_half", PATH_CORRIDOR_LATERAL_HALF)
+	_ground_material.set_shader_parameter("corridor_lateral_softness", PATH_CORRIDOR_LATERAL_SOFTNESS)
+	_ground_material.set_shader_parameter("path_edge_full_m", PATH_EDGE_FULL_M)
+	_ground_material.set_shader_parameter("path_fade_end_m", PATH_FADE_END_M)
+	_ground_material.set_shader_parameter("path_pepper_freq", PATH_PEPPER_FREQ)
+	_ground_material.set_shader_parameter("path_pepper_threshold", PATH_PEPPER_THRESHOLD)
+	_ground_material.set_shader_parameter("path_pepper_softness", PATH_PEPPER_SOFTNESS)
+	_ground_material.set_shader_parameter("path_strength", PATH_STRENGTH)
 
 	_tree_outline_material = ShaderMaterial.new()
 	_tree_outline_material.shader = ToonOutlineShader
@@ -503,6 +584,20 @@ func _build_world() -> void:
 	_texture_rect.material = _raster_mat
 	grid.add_child(_texture_rect)
 
+	# Fog lives INSIDE the SubViewport so pane_raster's grain + dither + palette
+	# LUT process the fog along with the 3D render. Size it to the viewport's
+	# own (half-)resolution; pixel_cells in the shader snaps the noise sample
+	# coord to a further-reduced grid for the deliberately-chunky fog look.
+	_fog_rect = ColorRect.new()
+	_fog_rect.position = Vector2.ZERO
+	_fog_rect.size = Vector2(_viewport.size)
+	_fog_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fog_rect.color = Color(1, 1, 1, 1)
+	_fog_mat = ShaderMaterial.new()
+	_fog_mat.shader = PaneFogShader
+	_fog_rect.material = _fog_mat
+	_viewport.add_child(_fog_rect)
+
 	_hud_label = Label.new()
 	_hud_label.position = Vector2(10, 10)
 	_hud_label.add_theme_font_size_override("font_size", 14)
@@ -521,6 +616,8 @@ func _cleanup() -> void:
 			state.node.queue_free()
 	_chunks_state.clear()
 	if _hud_label: _hud_label.queue_free(); _hud_label = null
+	if _fog_rect: _fog_rect.queue_free(); _fog_rect = null
+	_fog_mat = null
 	if _texture_rect: _texture_rect.queue_free(); _texture_rect = null
 	if _viewport: _viewport.queue_free(); _viewport = null
 	_player = null; _camera = null; _chunk_container = null
@@ -536,12 +633,14 @@ func _cleanup() -> void:
 	_bush_foliage_mesh = null
 	_fern_foliage_mesh = null
 	_rock_mesh = null
+	_obelisk_mesh = null
 	_terrain_base_mesh = null
 	_tree_trunk_material = null
 	_tree_foliage_material = null
 	_bush_foliage_material = null
 	_fern_foliage_material = null
 	_rock_material = null
+	_obelisk_material = null
 	_terrain_mm_instance = null
 
 
@@ -552,7 +651,10 @@ func _build_mesh_catalog() -> void:
 	_bush_foliage_mesh = _bake_mesh_from_template(PineBushScene, [])
 	_fern_foliage_mesh = _bake_mesh_from_template(FernScene, [])
 	_rock_mesh = _bake_mesh_from_template(RockScene, [])
+	_obelisk_mesh = _bake_mesh_from_template(ObeliskScene, [])
 	_terrain_base_mesh = _build_terrain_local_mesh()
+	if _obelisk_mesh != null:
+		_obelisk_aabb_height = _obelisk_mesh.get_aabb().size.y
 
 
 # Bake a single tree ArrayMesh with two surfaces: trunk + foliage. Each
@@ -744,6 +846,18 @@ func _build_shared_materials() -> void:
 	_rock_material.set_shader_parameter("matcap_tint_strength", 1.0)
 	if _rock_mesh != null and _rock_mesh.get_surface_count() >= 1:
 		_rock_mesh.surface_set_material(0, _rock_material)
+
+	# Obelisks share the rock matcap shader but tuned for a polished metallic
+	# read: low tint strength lets the matcap highlights dominate (smoother,
+	# shinier), cool silver-blue tint shifts them away from the warm-gray rock
+	# palette so they stand out as worked metal.
+	_obelisk_material = ShaderMaterial.new()
+	_obelisk_material.shader = RockMatcapShader
+	_obelisk_material.set_shader_parameter("matcap", ROCK_MATCAP_TEX)
+	_obelisk_material.set_shader_parameter("tint", Color(0.78, 0.82, 0.9))
+	_obelisk_material.set_shader_parameter("matcap_tint_strength", 0.3)
+	if _obelisk_mesh != null and _obelisk_mesh.get_surface_count() >= 1:
+		_obelisk_mesh.surface_set_material(0, _obelisk_material)
 
 
 func _set_wind_params(mat: ShaderMaterial) -> void:
@@ -957,6 +1071,7 @@ func _load_chunk(key: Vector2i) -> void:
 
 	if chunk_edges != 0:
 		_spawn_zone_border_walls(chunk, key, chunk_edges)
+	_spawn_zone_obelisks(chunk, key)
 
 	_chunks_state[key] = {
 		"node": chunk,
@@ -1071,6 +1186,10 @@ func _collect_glades(rng: RandomNumberGenerator, key: Vector2i,
 			if _is_meadow_at(density_grid, chunk_ox, chunk_oz, wx, wz):
 				tree_rej_meadow += 1
 				continue
+			if _exit_clearance_contains(wx, wz):
+				continue
+			if _near_obelisk_exclusion(wx, wz):
+				continue
 			var too_close: bool = false
 			for p: Dictionary in placed_trees:
 				var ddx: float = p.x - wx
@@ -1095,6 +1214,93 @@ func _collect_glades(rng: RandomNumberGenerator, key: Vector2i,
 		_collect_ferns_around_tree(rng, Vector2(t.x, t.z), t.scale,
 			placed_trees, density_grid, chunk_ox, chunk_oz, fern_out)
 
+	# ── Isolated fern patches (no tree nucleus) ───
+	# Standalone clumps dropped in the forest interior. Runs after the
+	# per-tree rings so the proximity check can steer clear of them; the
+	# bush-cluster pass below already avoids all ferns.
+	var iso_fern_tree_avoid_sq: float = FERN_ISO_ANCHOR_TREE_MIN_DIST * FERN_ISO_ANCHOR_TREE_MIN_DIST
+	var iso_fern_fern_avoid_sq: float = FERN_ISO_ANCHOR_FERN_MIN_DIST * FERN_ISO_ANCHOR_FERN_MIN_DIST
+	var iso_fern_target: int = rng.randi_range(
+		FERN_ISO_CLUSTERS_PER_CHUNK_MIN, FERN_ISO_CLUSTERS_PER_CHUNK_MAX)
+	for _c in range(iso_fern_target):
+		for _attempt in range(FERN_ISO_ANCHOR_PLACEMENT_ATTEMPTS):
+			var ax: float = scatter_ox + rng.randf() * span
+			var az: float = scatter_oz + rng.randf() * span
+			if _is_meadow_at(density_grid, chunk_ox, chunk_oz, ax, az):
+				continue
+			if _exit_clearance_contains(ax, az):
+				continue
+			var near_tree: bool = false
+			for p: Dictionary in placed_trees:
+				var ddx: float = p.x - ax
+				var ddz: float = p.z - az
+				if ddx * ddx + ddz * ddz < iso_fern_tree_avoid_sq:
+					near_tree = true
+					break
+			if near_tree:
+				continue
+			var near_fern: bool = false
+			for f: Dictionary in fern_out:
+				var ddx2: float = f.xz.x - ax
+				var ddz2: float = f.xz.y - az
+				if ddx2 * ddx2 + ddz2 * ddz2 < iso_fern_fern_avoid_sq:
+					near_fern = true
+					break
+			if near_fern:
+				continue
+			var count: int = rng.randi_range(FERN_ISO_PER_CLUSTER_MIN, FERN_ISO_PER_CLUSTER_MAX)
+			for i in range(count):
+				var theta: float = rng.randf() * TAU
+				var r: float = sqrt(rng.randf()) * FERN_ISO_CLUSTER_RADIUS
+				var fwx: float = ax + cos(theta) * r
+				var fwz: float = az + sin(theta) * r
+				if _is_meadow_at(density_grid, chunk_ox, chunk_oz, fwx, fwz):
+					continue
+				if _exit_clearance_contains(fwx, fwz):
+					continue
+				var fsc: float = lerp(FERN_SCALE_MIN, FERN_SCALE_MAX, rng.randf())
+				var fry: float = rng.randf() * TAU
+				var xform := _make_world_xform(Vector2(fwx, fwz), fsc, fry)
+				fern_out.append({
+					"xz": Vector2(fwx, fwz),
+					"scale": fsc,
+					"xform": xform,
+					"basis_inv": xform.basis.inverse(),
+				})
+			break
+
+	# ── Fern rings around obelisks ────────────────
+	# The bush/rock/tree exclusion opened a dead ring around each obelisk in
+	# this chunk. Fill it with ferns so the markers read as tended. Same dict
+	# shape as every other fern pass so shadows/wind/push pick them up.
+	if _obelisk_aabb_height > 0.0:
+		var excl_r: float = _obelisk_aabb_height * OBELISK_SCALE * OBELISK_NO_TREE_HEIGHT_MULT
+		var chunk_rect := Rect2(Vector2(chunk_ox, chunk_oz), Vector2(CHUNK_SIZE, CHUNK_SIZE))
+		for info: Dictionary in _obelisk_world_positions(_chunk_zone(key)):
+			var op: Vector3 = info.pos
+			if not chunk_rect.has_point(Vector2(op.x, op.z)):
+				continue
+			var count: int = rng.randi_range(FERN_AROUND_OBELISK_COUNT_MIN,
+				FERN_AROUND_OBELISK_COUNT_MAX)
+			var inner: float = excl_r * FERN_AROUND_OBELISK_INNER_MULT
+			var outer: float = excl_r * FERN_AROUND_OBELISK_OUTER_MULT
+			for i in range(count):
+				var theta: float = rng.randf() * TAU
+				var r: float = lerp(inner, outer, sqrt(rng.randf()))
+				var fwx: float = op.x + cos(theta) * r
+				var fwz: float = op.z + sin(theta) * r
+				if _is_meadow_at(density_grid, chunk_ox, chunk_oz, fwx, fwz):
+					continue
+				var fsc: float = lerp(FERN_SCALE_MIN, FERN_SCALE_MAX, rng.randf())
+				var fry: float = rng.randf() * TAU
+				var xform := _make_world_xform(Vector2(fwx, fwz), fsc, fry)
+				fern_out.append({
+					"xz": Vector2(fwx, fwz),
+					"scale": fsc,
+					"xform": xform,
+					"basis_inv": xform.basis.inverse(),
+				})
+
 	# ── Bush clumps in open gaps ──────────────────
 	# Bushes form standalone clumps in the breaks between trees. Anchor
 	# candidates are drawn uniformly across the chunk, then rejected if they
@@ -1111,6 +1317,10 @@ func _collect_glades(rng: RandomNumberGenerator, key: Vector2i,
 			var cx: float = scatter_ox + rng.randf() * span
 			var cz: float = scatter_oz + rng.randf() * span
 			if _is_meadow_at(density_grid, chunk_ox, chunk_oz, cx, cz):
+				continue
+			if _exit_clearance_contains(cx, cz):
+				continue
+			if _near_obelisk_exclusion(cx, cz):
 				continue
 			var near_tree: bool = false
 			for p: Dictionary in placed_trees:
@@ -1232,6 +1442,10 @@ func _collect_rocks(rng: RandomNumberGenerator, key: Vector2i,
 		for _try in ROCK_PLACEMENT_ATTEMPTS:
 			cx = ox + margin + rng.randf() * span
 			cz = oz + margin + rng.randf() * span
+			if _exit_clearance_contains(cx, cz):
+				continue
+			if _near_obelisk_exclusion(cx, cz):
+				continue
 			if _rock_pos_clear(cx, cz, ROCK_ANCHOR_CLEARANCE, avoid):
 				anchor_ok = true
 				break
@@ -1283,6 +1497,10 @@ func _append_rock_ring(rng: RandomNumberGenerator, cx: float, cz: float,
 			var r: float = lerp(r_inner, r_outer, sqrt(rng.randf()))
 			var wx: float = cx + cos(theta) * r
 			var wz: float = cz + sin(theta) * r
+			if _exit_clearance_contains(wx, wz):
+				continue
+			if _near_obelisk_exclusion(wx, wz):
+				continue
 			var sc: float = lerp(scale_min, scale_max, rng.randf())
 			# Own clearance scales with rock size so a big rock pushes
 			# further from vegetation than a small pebble does.
@@ -1353,6 +1571,10 @@ func _spawn_bush_cluster(rng: RandomNumberGenerator, cx: float, cz: float,
 		if sibling_collides:
 			continue
 		if _is_meadow_at(density_grid, chunk_ox, chunk_oz, bwx, bwz):
+			continue
+		if _exit_clearance_contains(bwx, bwz):
+			continue
+		if _near_obelisk_exclusion(bwx, bwz):
 			continue
 		var bsc: float = diameter * BUSH_SCALE_FACTOR * lerp(0.85, 1.25, rng.randf())
 		var bry: float = rng.randf() * TAU
@@ -1467,6 +1689,47 @@ static func _border_rects_for_edges(key: Vector2i, edges: int) -> Array[Rect2]:
 	return rects
 
 
+# True if the world point (wx, wz) falls inside the clearing skirted around
+# any of the four exit corridors of its zone. The skirt extends past the
+# border strip into the zone interior so the approach to a corridor is
+# visibly cleared of vegetation, not just the corridor throat itself.
+# No-tree zone around each obelisk (2× scaled obelisk height by default).
+# Returns true for any point within the exclusion radius of any of its zone's
+# eight obelisks. Requires `_obelisk_aabb_height` to have been probed first.
+func _near_obelisk_exclusion(wx: float, wz: float) -> bool:
+	if _obelisk_aabb_height <= 0.0:
+		return false
+	var radius: float = _obelisk_aabb_height * OBELISK_SCALE * OBELISK_NO_TREE_HEIGHT_MULT
+	var r2: float = radius * radius
+	var zone_size: float = float(ZONE_CHUNKS_PER_SIDE) * CHUNK_SIZE
+	var zone := Vector2i(floori(wx / zone_size), floori(wz / zone_size))
+	for info: Dictionary in _obelisk_world_positions(zone):
+		var p: Vector3 = info.pos
+		var ddx: float = p.x - wx
+		var ddz: float = p.z - wz
+		if ddx * ddx + ddz * ddz < r2:
+			return true
+	return false
+
+
+static func _exit_clearance_contains(wx: float, wz: float) -> bool:
+	var zone_size: float = float(ZONE_CHUNKS_PER_SIDE) * CHUNK_SIZE
+	var lx: float = fposmod(wx, zone_size)
+	var lz: float = fposmod(wz, zone_size)
+	var edge_mid: float = zone_size * 0.5
+	var half_w: float = ZONE_CORRIDOR_WIDTH_M * 0.5 + EXIT_CLEAR_SIDE_MARGIN_M
+	var depth: float = ZONE_BORDER_STRIP_M + EXIT_CLEAR_INTERIOR_REACH_M
+	if lz <= depth and absf(lx - edge_mid) <= half_w:
+		return true
+	if lz >= zone_size - depth and absf(lx - edge_mid) <= half_w:
+		return true
+	if lx <= depth and absf(lz - edge_mid) <= half_w:
+		return true
+	if lx >= zone_size - depth and absf(lz - edge_mid) <= half_w:
+		return true
+	return false
+
+
 # Rect covering the corridor opening (world XZ) for exit chunks, or an empty
 # Rect2 for interior / corner / non-exit border chunks.
 static func _corridor_rect_for_chunk(key: Vector2i) -> Rect2:
@@ -1518,6 +1781,10 @@ func _collect_border_trees(rng: RandomNumberGenerator, key: Vector2i, edges: int
 				wz = clampf(wz, rect.position.y, rect.position.y + rect.size.y)
 				if has_corridor and corridor.has_point(Vector2(wx, wz)):
 					continue
+				if _exit_clearance_contains(wx, wz):
+					continue
+				if _near_obelisk_exclusion(wx, wz):
+					continue
 				var too_close: bool = false
 				for p: Dictionary in tree_out:
 					var ddx: float = p.xz.x - wx
@@ -1534,6 +1801,82 @@ func _collect_border_trees(rng: RandomNumberGenerator, key: Vector2i, edges: int
 				tree_out.append({"xz": Vector2(wx, wz), "scale": sc, "xform": xform})
 
 
+# Marker obelisks flanking each exit corridor. Placed at the inner corner
+# of the exit clearance so they sit in a border chunk (always loaded when
+# the player nears an edge) and frame the corridor entrance. Rendered via
+# MultiMeshInstance3D like the rest of the vegetation — one MMI per chunk
+# that hosts obelisks, plus a per-instance StaticBody3D for collision.
+func _spawn_zone_obelisks(parent: Node3D, key: Vector2i) -> void:
+	if _obelisk_mesh == null or _obelisk_material == null:
+		return
+	var zone: Vector2i = _chunk_zone(key)
+	var ox: float = float(key.x) * CHUNK_SIZE
+	var oz: float = float(key.y) * CHUNK_SIZE
+	var chunk_rect := Rect2(Vector2(ox, oz), Vector2(CHUNK_SIZE, CHUNK_SIZE))
+	var placements: Array[Dictionary] = []
+	for info: Dictionary in _obelisk_world_positions(zone):
+		var p: Vector3 = info.pos
+		if chunk_rect.has_point(Vector2(p.x, p.z)):
+			placements.append(info)
+	if placements.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = false
+	mm.mesh = _obelisk_mesh
+	mm.instance_count = placements.size()
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "mm_obelisks"
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mmi)
+	var aabb: AABB = _obelisk_mesh.get_aabb()
+	var aabb_ok: bool = aabb.size.length_squared() > 0.0
+	for i in placements.size():
+		var info: Dictionary = placements[i]
+		var p: Vector3 = info.pos
+		var y_rot: float = float(info.yrot)
+		var rot_only := Basis.IDENTITY.rotated(Vector3.UP, y_rot) if y_rot != 0.0 else Basis.IDENTITY
+		var scaled_basis := rot_only.scaled(Vector3(OBELISK_SCALE, OBELISK_SCALE, OBELISK_SCALE))
+		mm.set_instance_transform(i, Transform3D(scaled_basis, Vector3(p.x, 0.0, p.z)))
+		if aabb_ok:
+			var body := StaticBody3D.new()
+			var col := CollisionShape3D.new()
+			var shape := BoxShape3D.new()
+			# Pre-scale the collider in world units so the physics body keeps a
+			# unit basis (Godot's physics engine dislikes non-unit scales).
+			shape.size = aabb.size * OBELISK_SCALE
+			col.shape = shape
+			col.position = (aabb.position + aabb.size * 0.5) * OBELISK_SCALE
+			body.add_child(col)
+			body.transform = Transform3D(rot_only, Vector3(p.x, 0.0, p.z))
+			parent.add_child(body)
+	print("[obelisk] chunk=", key, " zone=", zone, " spawned=", placements.size())
+
+
+static func _obelisk_world_positions(zone: Vector2i) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var zs: float = float(ZONE_CHUNKS_PER_SIDE) * CHUNK_SIZE
+	var zone_ox: float = float(zone.x) * zs
+	var zone_oz: float = float(zone.y) * zs
+	var mid: float = zs * 0.5
+	var dist: float = OBELISK_DEPTH_M
+	var off: float = OBELISK_SIDE_OFFSET_M
+	# N — corridor at (mid, 0), path runs inward along +z.
+	out.append({"pos": Vector3(zone_ox + mid - off, 0.0, zone_oz + dist), "yrot": 0.0})
+	out.append({"pos": Vector3(zone_ox + mid + off, 0.0, zone_oz + dist), "yrot": 0.0})
+	# S — corridor at (mid, zs), path runs inward along -z.
+	out.append({"pos": Vector3(zone_ox + mid - off, 0.0, zone_oz + zs - dist), "yrot": 0.0})
+	out.append({"pos": Vector3(zone_ox + mid + off, 0.0, zone_oz + zs - dist), "yrot": 0.0})
+	# W — corridor at (0, mid), path runs inward along +x.
+	out.append({"pos": Vector3(zone_ox + dist, 0.0, zone_oz + mid - off), "yrot": PI * 0.5})
+	out.append({"pos": Vector3(zone_ox + dist, 0.0, zone_oz + mid + off), "yrot": PI * 0.5})
+	# E — corridor at (zs, mid), path runs inward along -x.
+	out.append({"pos": Vector3(zone_ox + zs - dist, 0.0, zone_oz + mid - off), "yrot": PI * 0.5})
+	out.append({"pos": Vector3(zone_ox + zs - dist, 0.0, zone_oz + mid + off), "yrot": PI * 0.5})
+	return out
+
+
 # Tall box-shape collider along each outer edge of a zone-boundary chunk.
 # For exit chunks the wall is split into two flanks with a corridor-width
 # gap so the player can walk through into the neighbouring zone.
@@ -1545,7 +1888,12 @@ func _spawn_zone_border_walls(parent: Node3D, key: Vector2i, edges: int) -> void
 		_spawn_zone_corridor_trigger(parent, key, exit_edge)
 	var half_thick: float = ZONE_BORDER_STRIP_M * 0.5
 	var half_h: float = ZONE_WALL_HEIGHT_M * 0.5
-	var side_len: float = (CHUNK_SIZE - ZONE_CORRIDOR_WIDTH_M) * 0.5
+	# Physical gap matches the VISUAL clearing (corridor + side clearance on
+	# each flank) so invisible walls never spill past the treeline into the
+	# cleared approach. Without this, the 8m-wide corridor gap left the
+	# 5m-wide clearance margins blocked by the flanking wall segments.
+	var gap_width: float = ZONE_CORRIDOR_WIDTH_M + 2.0 * EXIT_CLEAR_SIDE_MARGIN_M
+	var side_len: float = (CHUNK_SIZE - gap_width) * 0.5
 	if edges & ZONE_EDGE_W:
 		_spawn_edge_wall_segment(parent, ox + half_thick, oz, true,
 			exit_edge == ZONE_EDGE_W, half_h, side_len)
@@ -1797,6 +2145,39 @@ func _update_push_entries(mm: MultiMesh, entries: Array[Dictionary],
 
 
 # ── Camera ─────────────────────────────────────────
+
+func _update_fog_opacity() -> void:
+	if _fog_mat == null or _player == null:
+		return
+	var zone_size: float = float(ZONE_CHUNKS_PER_SIDE) * CHUNK_SIZE
+	var lx: float = fposmod(_player.global_position.x, zone_size)
+	var lz: float = fposmod(_player.global_position.z, zone_size)
+	var dx_min: float = minf(lx, zone_size - lx)
+	var dz_min: float = minf(lz, zone_size - lz)
+	# Lateral offset from the nearest edge's corridor centreline — corridors
+	# sit at the zone midpoint of each edge's perpendicular axis.
+	var edge_mid: float = zone_size * 0.5
+	var dist_to_edge: float
+	var corridor_offset: float
+	if dx_min < dz_min:
+		dist_to_edge = dx_min
+		corridor_offset = absf(lz - edge_mid)
+	else:
+		dist_to_edge = dz_min
+		corridor_offset = absf(lx - edge_mid)
+	# Border ramp: 0 far from edge, 1 at edge. sqrt curve rises fast early so
+	# the fog is well into boost territory before the player hits the strip.
+	var border_t: float = 1.0 - clampf(dist_to_edge / FOG_BORDER_RAMP_M, 0.0, 1.0)
+	border_t = sqrt(border_t)
+	# Corridor factor: 0 inside corridor (boost suppressed), 1 away from it.
+	var corridor_factor: float = clampf(
+		(corridor_offset - FOG_CORRIDOR_CLEAR_M)
+			/ maxf(FOG_CORRIDOR_SOFTEN_M - FOG_CORRIDOR_CLEAR_M, 0.0001),
+		0.0, 1.0)
+	var boost: float = border_t * corridor_factor
+	var opacity: float = lerpf(FOG_BASE_OPACITY, FOG_BORDER_OPACITY, boost)
+	_fog_mat.set_shader_parameter("fog_opacity", opacity)
+
 
 func _update_camera() -> void:
 	if _camera == null or _player == null:
