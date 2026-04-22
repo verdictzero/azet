@@ -24,6 +24,21 @@ uniform float noise_softness : hint_range(0.001, 0.5) = 0.03;
 uniform float warp_freq = 0.18;
 uniform float warp_amp = 2.5;
 
+// Third layer: city-metal-plate path peppered into each zone's corridor
+// approach axis. Fully GPU-side — sampled in world XZ via fposmod against
+// zone_size_m so every zone gets four corridor-aligned paths for free.
+uniform sampler2D path_tex : source_color, filter_nearest_mipmap_anisotropic;
+uniform float path_world_per_tile = 4.0;
+uniform float zone_size_m = 448.0;
+uniform float corridor_lateral_half = 6.0;
+uniform float corridor_lateral_softness = 3.0;
+uniform float path_edge_full_m = 100.0;
+uniform float path_fade_end_m = 150.0;
+uniform float path_pepper_freq = 0.35;
+uniform float path_pepper_threshold : hint_range(0.0, 1.0) = 0.45;
+uniform float path_pepper_softness : hint_range(0.001, 0.5) = 0.06;
+uniform float path_strength : hint_range(0.0, 1.0) = 1.0;
+
 varying vec3 v_world_pos;
 
 void vertex() {
@@ -74,5 +89,37 @@ void fragment() {
 	float n = fbm(sample_xz * noise_freq);
 	float t = smoothstep(noise_threshold - noise_softness, noise_threshold + noise_softness, n);
 	// Forest is the default; `t` rises where meadow pockets form.
-	ALBEDO = mix(forest, meadow, t);
+	vec3 biome = mix(forest, meadow, t);
+
+	// Path mask: corridor-aligned strip × along-axis fade × FBM pepper. The
+	// strip sits on each zone's four corridor centrelines; the fade is full
+	// near the zone edge and dies off toward the interior so deep zone
+	// interiors stay unmarked.
+	vec2 lxz = mod(wxz, vec2(zone_size_m));
+	float edge_mid = zone_size_m * 0.5;
+	float dx_min = min(lxz.x, zone_size_m - lxz.x);
+	float dz_min = min(lxz.y, zone_size_m - lxz.y);
+	float edge_dist;
+	float lateral_off;
+	if (dx_min < dz_min) {
+		edge_dist = dx_min;
+		lateral_off = abs(lxz.y - edge_mid);
+	} else {
+		edge_dist = dz_min;
+		lateral_off = abs(lxz.x - edge_mid);
+	}
+	float strip = 1.0 - smoothstep(
+		corridor_lateral_half,
+		corridor_lateral_half + corridor_lateral_softness,
+		lateral_off);
+	float along = 1.0 - smoothstep(path_edge_full_m, path_fade_end_m, edge_dist);
+	float pepper_raw = fbm(wxz * path_pepper_freq + vec2(137.1, 241.7));
+	float pepper = smoothstep(
+		path_pepper_threshold - path_pepper_softness,
+		path_pepper_threshold + path_pepper_softness,
+		pepper_raw);
+	float path_mask = strip * along * pepper * path_strength;
+
+	vec3 path_col = texture(path_tex, wxz / path_world_per_tile).rgb;
+	ALBEDO = mix(biome, path_col, path_mask);
 }

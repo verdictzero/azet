@@ -1,2 +1,2 @@
-﻿43723
-/snap/godot-4/21/godot-4
+﻿34589
+/snap/godot-4/22/godot-4

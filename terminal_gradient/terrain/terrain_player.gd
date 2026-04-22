@@ -23,6 +23,8 @@ const PlayerSpriteShader: Shader = preload("res://assets/shaders/player_sprite.g
 const PlayerXrayOutlineShader: Shader = preload("res://assets/shaders/player_xray_outline.gdshader")
 const PlayerSpriteTex: Texture2D = preload("res://assets/sprites/player/tg_player_char_sprite.png")
 const BlobShadowShader: Shader = preload("res://assets/shaders/blob_shadow.gdshader")
+const RainbowOrbShader: Shader = preload("res://assets/shaders/rainbow_orb.gdshader")
+const RainbowSparkShader: Shader = preload("res://assets/shaders/rainbow_spark.gdshader")
 
 const SHADOW_Y: float = 0.05
 const SHADOW_DIAMETER: float = 1.5
@@ -31,6 +33,24 @@ const SHADOW_ALPHA: float = 0.55
 enum Facing { DOWN = 0, LEFT = 1, RIGHT = 2, UP = 3 }
 
 var move_speed: float = 7.5
+# Debug turbo: backtick (`) toggles a 3× movement multiplier. Polled in
+# _physics_process with an edge-detect latch so we don't depend on input
+# routing through the SubViewport.
+const TURBO_MULT: float = 3.0
+# Turbo form: replaces the sprite with a hue-shifting sphere that hovers
+# above ground, ignores collision, and trails tiny shrinking sparks.
+const TURBO_SPHERE_RADIUS_M: float = 0.55
+const TURBO_SPHERE_CENTRE_Y_M: float = 1.1
+const TURBO_HOVER_AMP_M: float = 0.25
+const TURBO_HOVER_FREQ_HZ: float = 1.3
+const TURBO_HUE_SPEED: float = 0.4
+const TURBO_BRIGHTNESS: float = 1.1
+const TURBO_SPARK_COUNT: int = 14
+const TURBO_SPARK_LIFETIME: float = 1.1
+const TURBO_SPARK_SIZE_M: float = 0.09
+var _turbo: bool = false
+var _turbo_key_was_down: bool = false
+var _turbo_time: float = 0.0
 # When false, the walk-cycle frame swap is discrete — no cross-fade between
 # consecutive frames (mix_t is held at 0). Pixel-art-style stepped animation.
 # Default true preserves v1 demo's smooth cross-fade.
@@ -44,22 +64,50 @@ var _xray_mat: ShaderMaterial = null
 var _facing: int = Facing.DOWN
 var _anim_time: float = 0.0
 
+# References for the turbo form-swap: hide normal visuals + toggle the
+# sphere + sparks in one place.
+var _sprite_mi: MeshInstance3D = null
+var _shadow_mi: MeshInstance3D = null
+var _xray_mi: MeshInstance3D = null
+var _orb_mi: MeshInstance3D = null
+var _orb_mat: ShaderMaterial = null
+var _orb_sparks: GPUParticles3D = null
+var _saved_collision_layer: int = 0
+var _saved_collision_mask: int = 0
+
 
 func _ready() -> void:
 	_build_shadow()
 	_build_sprite()
 	_apply_frames(1, 1, 0.0)
+	_build_turbo_orb()
+	_saved_collision_layer = collision_layer
+	_saved_collision_mask = collision_mask
 
 
 func _physics_process(delta: float) -> void:
+	var turbo_down: bool = Input.is_key_pressed(KEY_QUOTELEFT)
+	if turbo_down and not _turbo_key_was_down:
+		_turbo = not _turbo
+		_apply_turbo_visuals(_turbo)
+	_turbo_key_was_down = turbo_down
+	var speed: float = move_speed * (TURBO_MULT if _turbo else 1.0)
 	var mx: float = Input.get_axis("move_left", "move_right")
 	var mz: float = Input.get_axis("move_up", "move_down")
 	var moving: bool = absf(mx) > 0.0 or absf(mz) > 0.0
 	if moving:
 		_update_facing(mx, mz)
 	var dir := Vector3(mx, 0.0, mz).normalized()
-	velocity.x = dir.x * move_speed
-	velocity.z = dir.z * move_speed
+	velocity.x = dir.x * speed
+	velocity.z = dir.z * speed
+	if _turbo:
+		_turbo_time += delta
+		if _orb_mi != null:
+			# Bias the sine so hover is strictly non-negative — sphere kisses the
+			# ground at the low point instead of clipping through it.
+			var hover: float = (sin(_turbo_time * TAU * TURBO_HOVER_FREQ_HZ) + 1.0) * TURBO_HOVER_AMP_M
+			_orb_mi.position = Vector3(0.0,
+				TURBO_SPHERE_CENTRE_Y_M - GROUND_Y + hover, 0.0)
 	# Vertical: gravity accumulates unless we're grounded on a real collider
 	# or at the invisible GROUND_Y floor. Keeps the door open for step-up /
 	# walk-on-rock behaviour — when future rock colliders give the player
@@ -141,6 +189,7 @@ func _build_sprite() -> void:
 	mi.material_override = _mat
 	mi.position = Vector3(0.0, -GROUND_Y, 0.0)
 	add_child(mi)
+	_sprite_mi = mi
 
 
 # Opt-in: build a second silhouette mesh that draws first with depth_test off,
@@ -181,6 +230,7 @@ func enable_xray_outline(color: Color = Color(0.55, 0.85, 1.0, 0.28)) -> void:
 	mi.position = Vector3(0.0, -GROUND_Y, 0.0)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+	_xray_mi = mi
 
 
 func _build_shadow() -> void:
@@ -199,3 +249,87 @@ func _build_shadow() -> void:
 	mi.position = Vector3(0.0, SHADOW_Y - GROUND_Y, 0.0)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+	_shadow_mi = mi
+
+
+func _build_turbo_orb() -> void:
+	var sphere := SphereMesh.new()
+	sphere.radius = TURBO_SPHERE_RADIUS_M
+	sphere.height = TURBO_SPHERE_RADIUS_M * 2.0
+	sphere.rings = 8
+	sphere.radial_segments = 16
+
+	_orb_mat = ShaderMaterial.new()
+	_orb_mat.shader = RainbowOrbShader
+	_orb_mat.set_shader_parameter("hue_speed", TURBO_HUE_SPEED)
+	_orb_mat.set_shader_parameter("brightness", TURBO_BRIGHTNESS)
+	sphere.material = _orb_mat
+
+	_orb_mi = MeshInstance3D.new()
+	_orb_mi.name = "TurboOrb"
+	_orb_mi.mesh = sphere
+	_orb_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_orb_mi.position = Vector3(0.0, TURBO_SPHERE_CENTRE_Y_M - GROUND_Y, 0.0)
+	_orb_mi.visible = false
+	add_child(_orb_mi)
+
+	_orb_sparks = _build_turbo_sparks()
+	_orb_sparks.visible = false
+	_orb_sparks.emitting = false
+	_orb_mi.add_child(_orb_sparks)
+
+
+func _build_turbo_sparks() -> GPUParticles3D:
+	var quad := QuadMesh.new()
+	quad.size = Vector2(TURBO_SPARK_SIZE_M, TURBO_SPARK_SIZE_M)
+	var mat := ShaderMaterial.new()
+	mat.shader = RainbowSparkShader
+	mat.set_shader_parameter("hue_speed", TURBO_HUE_SPEED)
+	quad.material = mat
+
+	# Shrink-to-nothing curve (1.0 → 0.0 over life).
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 1.0))
+	curve.add_point(Vector2(1.0, 0.0))
+	var ctex := CurveTexture.new()
+	ctex.curve = curve
+
+	var proc := ParticleProcessMaterial.new()
+	proc.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	proc.emission_sphere_radius = TURBO_SPHERE_RADIUS_M * 0.7
+	proc.direction = Vector3(0.0, 0.0, 0.0)
+	proc.spread = 60.0
+	proc.initial_velocity_min = 0.15
+	proc.initial_velocity_max = 0.55
+	proc.gravity = Vector3.ZERO
+	proc.scale_min = 0.8
+	proc.scale_max = 1.2
+	proc.scale_curve = ctex
+
+	var p := GPUParticles3D.new()
+	p.name = "TurboSparks"
+	p.amount = TURBO_SPARK_COUNT
+	p.lifetime = TURBO_SPARK_LIFETIME
+	p.explosiveness = 0.0
+	p.one_shot = false
+	p.local_coords = false
+	p.process_material = proc
+	p.draw_pass_1 = quad
+	return p
+
+
+func _apply_turbo_visuals(on: bool) -> void:
+	if _sprite_mi != null: _sprite_mi.visible = not on
+	if _xray_mi != null: _xray_mi.visible = not on
+	if _shadow_mi != null: _shadow_mi.visible = not on
+	if _orb_mi != null: _orb_mi.visible = on
+	if _orb_sparks != null:
+		_orb_sparks.visible = on
+		_orb_sparks.emitting = on
+	if on:
+		collision_layer = 0
+		collision_mask = 0
+	else:
+		collision_layer = _saved_collision_layer
+		collision_mask = _saved_collision_mask
+		_turbo_time = 0.0
