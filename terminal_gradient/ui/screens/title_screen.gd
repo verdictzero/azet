@@ -294,7 +294,7 @@ func _reject_menu_item() -> void:
 	_reject_tween.tween_callback(func(): _reject_label = null)
 
 	# Red flash via grid modulate
-	if _flash_tween:
+	if _flash_tween: 
 		_flash_tween.kill()
 	grid.modulate = Color.WHITE
 	_flash_tween = grid.create_tween()

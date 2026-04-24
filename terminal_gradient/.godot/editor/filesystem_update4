@@ -1,4 +1,2 @@
-res://ui/screens/terrain_demo_2_screen.gd
-res://assets/shaders/terrain_splat.gdshader
-res://ui/screens/title_screen.gd
-res://terrain/terrain_player.gd
+res://assets/prefabs/desert_rock.tscn
+res://assets/prefabs/cactus_flesh_short.tres

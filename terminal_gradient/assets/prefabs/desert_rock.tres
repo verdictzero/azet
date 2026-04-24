@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://assets/shaders/rock_matcap.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" uid="uid://daun0pwsm5pbi" path="res://assets/matcap/matcap_2.png" id="2_matcap"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/matcap = ExtResource("2_matcap")
+shader_parameter/tint = Color(0.62, 0.52, 0.4, 1)
+shader_parameter/matcap_tint_strength = 1.0
