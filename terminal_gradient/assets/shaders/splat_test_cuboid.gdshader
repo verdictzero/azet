@@ -1,9 +1,6 @@
 shader_type spatial;
 render_mode unshaded;
 
-// Force fp32 precision (matches the ground shader; see splat_test_zone.gdshaderinc).
-precision highp float;
-
 // Cuboid body for the SPLATMAP SPAWN TEST.
 // - Wind block copied verbatim from toon_tree.gdshader so cuboids sway
 //   exactly like real vegetation.

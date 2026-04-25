@@ -1,6 +1,6 @@
 class_name SplatTestZone
 extends RefCounted
-## Single source of truth for the SPLATMAP SPAWN TEST sampler.
+## CPU-only zone classifier for the SPLATMAP SPAWN TEST.
 ##
 ## Maps a world XZ coordinate to one of 5 zone ids (0..4) using a layered
 ## noise splat-map: each id has its own FBM weight field, and the id whose
@@ -8,14 +8,14 @@ extends RefCounted
 ## splat-map pattern used by MicroSplat / Gaia / Map Magic — organic, curved
 ## boundaries; no axis-aligned grid hints to hide drift bugs.
 ##
-## **MUST MATCH `assets/shaders/splat_test_zone.gdshaderinc` byte-for-byte.**
-## - hash21 (we reuse `BiomeField.hash21`, mirrored in the .gdshaderinc)
-## - value_noise (mirrored)
-## - fbm3 — 3 octaves, 2.03 lacunarity, 0.5 gain (mirrored)
-## - layer phase offsets (17.3, 11.1) etc.
-## - base frequency (NOISE_FREQ)
-## - id derivation: argmax over 5 fbm weights
-## - the 5 colours
+## Single source of truth for zone IDs. Consumed once per texel by the
+## splat-test screen's per-chunk bake, then BOTH the spawn loop and the
+## ground shader read from the baked image — so prefab placement vs ground
+## colour can no longer drift on a sampler mismatch.
+##
+## `ZONE_COLORS` IS still mirrored in `assets/shaders/splat_test_ground.gdshader`
+## as a 5-entry GLSL constant array; that's the only remaining cross-language
+## drift surface and it's five hex tuples, trivial to keep aligned.
 
 # Base frequency for the layered FBM. Smaller = bigger zone patches. Tuned so
 # zones average ~30–50 m across at this value.
@@ -25,6 +25,8 @@ const NOISE_FREQ: float = 0.018
 # instantly identifiable through the matcap modulation. The ground shader
 # pulls these toward grey (see `splat_test_ground.gdshader`) so a cuboid
 # always reads as more saturated than the tile under it.
+# **MUST match the `ZONE_COLORS` constant array in
+# `assets/shaders/splat_test_ground.gdshader`.**
 const ZONE_COLORS: Array[Color] = [
 	Color(1.00, 0.15, 0.15),  # 0 red
 	Color(0.15, 0.35, 1.00),  # 1 blue

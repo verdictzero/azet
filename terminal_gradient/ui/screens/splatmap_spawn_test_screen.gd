@@ -1,9 +1,17 @@
 class_name SplatmapSpawnTestScreen
 extends BaseScreen
 ## Splat↔spawn alignment test. Paints an infinite grid of 5-coloured zones on
-## the ground and scatters cuboids whose colour is sampled at their world XZ.
-## If ANY cuboid's colour disagrees with the ground tile beneath it, the
-## shared GDScript / GDShader sampler has drifted — no drift, no bug.
+## the ground and scatters cuboids whose type/colour is sampled at their world
+## XZ. If ANY cuboid disagrees with the ground tile beneath it, the proxy
+## splat-map → spawn → ground-shader pipeline has a positional bug.
+##
+## Architecture: per chunk we bake an L8 `Image` of zone IDs (one byte per
+## texel, value `id * 51`), wrap it in an `ImageTexture`, and bind that to
+## a per-chunk `ShaderMaterial.duplicate()` of the ground material. The
+## spawn loop samples the SAME `Image` to decide each prefab's type, so CPU
+## and GPU read identical bytes — no possible noise-math drift between the
+## two paths. `SplatTestZone.zone_id_at` is the single source of truth and
+## is consumed only at bake time.
 ##
 ## Stripped clone of TerrainDemo2Screen: chunk streaming + MMI pattern are
 ## preserved, but every biome / fog / zone-wall / rock system is cut. No
@@ -13,6 +21,13 @@ extends BaseScreen
 const CHUNK_SIZE: float = 64.0
 const CHUNK_LOAD_MARGIN: float = 16.0
 const CHUNK_FOOTPRINT_OVERSCAN: float = 2.0
+
+# Per-chunk splat-image resolution. 128² at CHUNK_SIZE = 64 → 2 px / metre,
+# 16 KB per chunk in L8. Keep a power of two so any future mip chain or GPU
+# upload alignment stays trivial. Boundaries between zones become visibly
+# pixelated under filter_nearest at this resolution — that's intentional:
+# crisp seams make spawn-vs-ground misalignment instantly visible.
+const SPLAT_GRID_N: int = 128
 
 # Cuboid candidates per chunk. Purely uniform scatter; no biome gate. 120
 # per 64×64 m ≈ 1 every 6 m, enough density that every cell (~28 m) is
@@ -73,7 +88,7 @@ const CUBOID_MATCAP_TEX: Texture2D = preload("res://assets/matcap/matcap_1.png")
 const GROUND_SATURATION: float = 0.6
 # Set true to dump every cuboid's colour vs predicted ground colour on
 # chunk load. Verbose (~120 lines per chunk × ~25 visible chunks at boot).
-const INTENSIVE_LOG: bool = true
+const INTENSIVE_LOG: bool = false
 
 var _full_w: int = 0
 var _full_h: int = 0
@@ -91,11 +106,15 @@ var _ground_mesh: PlaneMesh
 var _shadow_mesh: PlaneMesh
 
 var _cuboid_material: ShaderMaterial
+# Template: every chunk's ground MMI gets `_ground_material.duplicate()` as
+# its `material_override`, populated with that chunk's `splat_tex` and
+# `chunk_origin`. Per-chunk material instances are required because a
+# `sampler2D` can't ride MMI INSTANCE_CUSTOM (which is a single vec4).
 var _ground_material: ShaderMaterial
 var _shadow_material: ShaderMaterial
 
 # key: Vector2i -> Dictionary { node, mm_per_type: Array[MultiMeshInstance3D],
-#                               mm_ground, mm_shadow, id_counts }
+#                               mm_ground, mm_shadow, id_counts, splat_img }
 var _chunks_state: Dictionary = {}
 
 # Running count of cuboids per zone id across loaded chunks — drives the HUD
@@ -237,9 +256,10 @@ func _build_meshes() -> void:
 
 	_zone_meshes = [box, capsule, sphere, cylinder, prism]
 
-	# One flat quad per chunk. The ground shader paints from world XZ, so a
-	# single unsubdivided quad is enough — seams between chunks are invisible
-	# because adjacent fragments compute the same zone id.
+	# One flat quad per chunk. The ground shader reconstructs UV from world XZ
+	# so a single unsubdivided quad is enough; seams between chunks are
+	# invisible because the per-chunk splat textures bake the same world XZ
+	# to the same id at their shared border.
 	_ground_mesh = PlaneMesh.new()
 	_ground_mesh.size = Vector2(CHUNK_SIZE, CHUNK_SIZE)
 	_ground_mesh.subdivide_width = 0
@@ -346,10 +366,28 @@ func _load_chunk(key: Vector2i) -> void:
 	var origin_x: float = float(key.x) * CHUNK_SIZE
 	var origin_z: float = float(key.y) * CHUNK_SIZE
 
-	# Ground: single instance of the shared flat quad, positioned at chunk
-	# origin. PlaneMesh sits on the XZ plane centred on origin, so shift by
-	# half a chunk so chunk-local (0,0) lands on the chunk-origin corner.
-	var mm_ground := _make_ground_mmi(1)
+	# Bake the proxy splat: one byte per texel, value `id * 51`. The same
+	# `Image` is then consumed below by `_sample_baked_id` for spawn gating
+	# AND uploaded as `splat_tex` for the ground shader, so CPU + GPU read
+	# identical bytes — drift between prefab type and ground colour is
+	# physically impossible.
+	var splat_img: Image = _bake_chunk_splat(origin_x, origin_z)
+	var splat_tex := ImageTexture.create_from_image(splat_img)
+
+	# Per-chunk material: duplicate the template, attach this chunk's splat.
+	# A `sampler2D` can't ride MMI INSTANCE_CUSTOM, so material-per-chunk is
+	# the only option. Cost is one ShaderMaterial per active chunk (~25).
+	var ground_mat: ShaderMaterial = _ground_material.duplicate()
+	ground_mat.set_shader_parameter("splat_tex", splat_tex)
+	ground_mat.set_shader_parameter("chunk_origin", Vector2(origin_x, origin_z))
+
+	# Ground: single instance of the flat quad, positioned at chunk origin.
+	# PlaneMesh sits on the XZ plane centred on origin, so shift by half a
+	# chunk so chunk-local (0,0) lands on the chunk-origin corner. The
+	# ground shader does NOT use the mesh's UVs — it reconstructs UV from
+	# `(world.xz - chunk_origin) / 64.0`, so this transform is purely about
+	# where the quad geometry covers in world XZ.
+	var mm_ground := _make_ground_mmi(1, ground_mat)
 	mm_ground.multimesh.set_instance_transform(0, Transform3D(
 		Basis.IDENTITY,
 		Vector3(origin_x + CHUNK_SIZE * 0.5, 0.0, origin_z + CHUNK_SIZE * 0.5)))
@@ -366,10 +404,9 @@ func _load_chunk(key: Vector2i) -> void:
 		print("[splat-test] === LOAD chunk (%d, %d) origin=(%.2f, %.2f) ===" % [
 			key.x, key.y, origin_x, origin_z])
 
-	# Phase 1: generate candidates and bucket by zone id. RNG is consumed in
-	# a single linear pass (one randf pair per candidate) so chunk seeds
-	# reproduce identical point sets — the zone classifier just routes each
-	# point to a different per-type MM than before.
+	# Phase 1: generate candidates and bucket by zone id, sampled from the
+	# baked splat image. RNG is consumed in a single linear pass (one randf
+	# pair per candidate) so chunk seeds reproduce identical point sets.
 	var buckets: Array = [[], [], [], [], []]  # 5 arrays of Vector2 (wx, wz)
 	var chunk_id_counts: PackedInt32Array = PackedInt32Array([0, 0, 0, 0, 0])
 	for i in CANDIDATES_PER_CHUNK:
@@ -377,25 +414,28 @@ func _load_chunk(key: Vector2i) -> void:
 		var lz: float = rng.randf() * CHUNK_SIZE
 		var wx: float = origin_x + lx
 		var wz: float = origin_z + lz
-		# Zone classification gates which prefab type spawns here. This is
-		# the production decision path: "what does the splat say lives at
-		# this XZ?" If the GPU/CPU sampler diverged, the prefab's type would
-		# end up wrong relative to the ground colour beneath it.
-		var id: int = SplatTestZone.zone_id_at(wx, wz)
+		# Zone classification gates which prefab type spawns here. The image
+		# we sample is the SAME bytes the ground shader will read at the
+		# same (wx, wz), so by construction the prefab type matches the tile
+		# colour beneath it.
+		var id: int = _sample_baked_id(splat_img, lx, lz)
 		buckets[id].append(Vector2(wx, wz))
 		_id_counts[id] += 1
 		chunk_id_counts[id] += 1
 
 		if INTENSIVE_LOG:
-			# Re-classify here on a separate call so any future change to
-			# `zone_id_at` that breaks self-consistency would surface. By
+			# Re-sample on a separate call so any future change that breaks
+			# `_sample_baked_id`'s self-consistency would surface here. By
 			# construction it must agree with `id`.
-			var ground_id: int = SplatTestZone.zone_id_at(wx, wz)
+			var ground_id: int = _sample_baked_id(splat_img, lx, lz)
 			var col: Color = SplatTestZone.zone_color(id)
 			var ground_col: Color = _predict_ground_color(ground_id)
 			var match_str: String = "MATCH" if ground_id == id else "!! MISMATCH !!"
-			print("[splat-test] chunk=(%d,%d) i=%03d wx=%.3f wz=%.3f prefab=%s id=%d rgb=(%.2f,%.2f,%.2f) ground_id=%d ground_rgb=(%.2f,%.2f,%.2f) %s" % [
-				key.x, key.y, i, wx, wz,
+			var step: float = CHUNK_SIZE / float(SPLAT_GRID_N)
+			var tex_ix: int = int(floor(lx / step))
+			var tex_iz: int = int(floor(lz / step))
+			print("[splat-test] chunk=(%d,%d) i=%03d wx=%.3f wz=%.3f tex=(%d,%d) prefab=%s id=%d rgb=(%.2f,%.2f,%.2f) ground_id=%d ground_rgb=(%.2f,%.2f,%.2f) %s" % [
+				key.x, key.y, i, wx, wz, tex_ix, tex_iz,
 				PREFAB_NAMES[id], id, col.r, col.g, col.b,
 				ground_id, ground_col.r, ground_col.g, ground_col.b,
 				match_str,
@@ -441,7 +481,42 @@ func _load_chunk(key: Vector2i) -> void:
 		"mm_ground": mm_ground,
 		"mm_shadow": mm_shadow,
 		"id_counts": chunk_id_counts,
+		# Stashed for offline diagnostics — the on-disk PNG of `splat_img`
+		# is the easiest way to eyeball whether the bake matches the
+		# rendered ground.
+		"splat_img": splat_img,
 	}
+
+
+# Bake the per-chunk proxy splat. One byte per texel, value `id * 51` so the
+# 5 IDs map to evenly-spaced 8-bit values (0/51/102/153/204) that round-trip
+# cleanly through the shader's `int(round(v * 5.0))` decode under any
+# 8-bit driver quantisation. Sample at TEXEL CENTRES (`(ix + 0.5) * step`)
+# to match the GPU's NEAREST sampler convention; `_sample_baked_id` then
+# uses `floor(local / step)` and the two resolve to the same texel index
+# for any (lx, lz) inside the chunk.
+static func _bake_chunk_splat(origin_x: float, origin_z: float) -> Image:
+	var img := Image.create(SPLAT_GRID_N, SPLAT_GRID_N, false, Image.FORMAT_L8)
+	var step: float = CHUNK_SIZE / float(SPLAT_GRID_N)
+	for iz in SPLAT_GRID_N:
+		var wz: float = origin_z + (float(iz) + 0.5) * step
+		for ix in SPLAT_GRID_N:
+			var wx: float = origin_x + (float(ix) + 0.5) * step
+			var id: int = SplatTestZone.zone_id_at(wx, wz)
+			img.set_pixel(ix, iz, Color8(id * 51, 0, 0, 255))
+	return img
+
+
+# CPU equivalent of the ground shader's `texture(splat_tex, uv).r` lookup
+# under `filter_nearest`. For a chunk-local (lx, lz), pick the texel whose
+# centre the world point falls into, then decode the byte to an id 0..4.
+# Bit-identical to the shader's NEAREST sampling.
+static func _sample_baked_id(img: Image, local_x: float, local_z: float) -> int:
+	var step: float = CHUNK_SIZE / float(SPLAT_GRID_N)
+	var ix: int = clampi(int(floor(local_x / step)), 0, SPLAT_GRID_N - 1)
+	var iz: int = clampi(int(floor(local_z / step)), 0, SPLAT_GRID_N - 1)
+	var byte_v: int = int(round(img.get_pixel(ix, iz).r * 255.0))
+	return clampi(int(round(float(byte_v) / 51.0)), 0, 4)
 
 
 # CPU mirror of the ground shader's `ALBEDO = mix(luma, color, ground_saturation)`
@@ -482,7 +557,7 @@ func _make_prefab_mmi(mesh: Mesh, count: int) -> MultiMeshInstance3D:
 	return mmi
 
 
-func _make_ground_mmi(count: int) -> MultiMeshInstance3D:
+func _make_ground_mmi(count: int, mat: ShaderMaterial) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = false
@@ -490,7 +565,7 @@ func _make_ground_mmi(count: int) -> MultiMeshInstance3D:
 	mm.instance_count = maxi(count, 0)
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
-	mmi.material_override = _ground_material
+	mmi.material_override = mat
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return mmi
 
