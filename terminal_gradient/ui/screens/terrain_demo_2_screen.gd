@@ -160,7 +160,7 @@ const FERN_SHADOW_SIZE_MULT: float = 4.0
 # world-Y extent is ~0.15–0.28 m — below the default mask floor of 0.4 —
 # so the shared wind params would leave them completely static. Wind
 # amplitude is also smaller to suit a much shorter plant.
-const FERN_WIND_STRENGTH: float = 0.18
+const FERN_WIND_STRENGTH: float = 0.12
 const FERN_WIND_MASK_Y_MIN: float = -0.1
 const FERN_WIND_MASK_Y_MAX: float = 0.35
 # Isolated fern patches — small standalone clumps in the forest interior
@@ -297,6 +297,13 @@ const WIND_SPEED: float = 0.8
 const WIND_MASK_Y_MIN: float = 0.4
 const WIND_MASK_Y_MAX: float = 5.0
 const WIND_SPATIAL_FREQ: Vector2 = Vector2(0.07, 0.05)
+# Phase-jitter amount fed to the wind shader (radians). Non-zero values break
+# up the pure-sine sway into gust-like chaos.
+const WIND_TURBULENCE: float = 0.4
+# Trees sway a bit more sedately than the bush/meadow layer — lower amplitude
+# and less turbulence so the canopy reads as weight-bearing rather than jittery.
+const TREE_WIND_STRENGTH: float = 0.12
+const TREE_WIND_TURBULENCE: float = 0.2
 
 const TERRAIN_VERTS_PER_SIDE: int = 33
 # Ground tile UV is local (0..1 per chunk). With uv1_scale=10, each chunk
@@ -314,6 +321,7 @@ var _biome_config: BiomeConfig
 # so MultiMesh doesn't help), outline next_pass, and the ground.
 var _ground_material: ShaderMaterial
 var _tree_outline_material: ShaderMaterial
+var _bush_outline_material: ShaderMaterial
 var _fern_outline_material: ShaderMaterial
 var _blob_shadow_material: ShaderMaterial
 var _bush_shadow_material: ShaderMaterial
@@ -499,14 +507,20 @@ func _build_world() -> void:
 	_ground_material.set_shader_parameter("path_pepper_softness", PATH_PEPPER_SOFTNESS)
 	_ground_material.set_shader_parameter("path_strength", PATH_STRENGTH)
 
+	# Outline shaders must mirror their body's wind block exactly or the
+	# inverted-hull silhouette detaches from the swaying mesh. Trees, bushes,
+	# and ferns each run different wind amplitudes, so each gets its own
+	# outline material (even though the shader itself is shared).
 	_tree_outline_material = ShaderMaterial.new()
 	_tree_outline_material.shader = ToonOutlineShader
 	_tree_outline_material.set_shader_parameter("outline_color", Color(0.12, 0.12, 0.12, 1.0))
-	_set_wind_params(_tree_outline_material)
+	_apply_tree_wind_params(_tree_outline_material)
 
-	# Ferns need a separate outline with their own (lower) wind mask so the
-	# inverted-hull silhouette stays glued to the fern body. Outline shaders
-	# must mirror their body's wind block exactly or the shell detaches.
+	_bush_outline_material = ShaderMaterial.new()
+	_bush_outline_material.shader = ToonOutlineShader
+	_bush_outline_material.set_shader_parameter("outline_color", Color(0.12, 0.12, 0.12, 1.0))
+	_set_wind_params(_bush_outline_material)
+
 	_fern_outline_material = ShaderMaterial.new()
 	_fern_outline_material.shader = ToonOutlineShader
 	_fern_outline_material.set_shader_parameter("outline_color", Color(0.12, 0.12, 0.12, 1.0))
@@ -580,6 +594,7 @@ func _build_world() -> void:
 	var wppx: float = (2.0 * ORTHO_SIZE) / vp_h
 	var block_world: float = wppx * maxf(1.0, float(_block_h) * 0.5)
 	_tree_outline_material.set_shader_parameter("outline_width", block_world * 0.7)
+	_bush_outline_material.set_shader_parameter("outline_width", block_world * 0.7)
 	_fern_outline_material.set_shader_parameter("outline_width", block_world * 0.5)
 	_texture_rect.material = _raster_mat
 	grid.add_child(_texture_rect)
@@ -625,6 +640,7 @@ func _cleanup() -> void:
 	_ground_material = null
 	_raster_mat = null
 	_tree_outline_material = null
+	_bush_outline_material = null
 	_fern_outline_material = null
 	_blob_shadow_material = null
 	_bush_shadow_material = null
@@ -777,7 +793,7 @@ func _build_shared_materials() -> void:
 	_tree_trunk_material.set_shader_parameter("model_y_max", MODEL_Y_MAX_APPROX)
 	_tree_trunk_material.set_shader_parameter("darken_top", TRUNK_DARKEN_TOP)
 	_tree_trunk_material.set_shader_parameter("darken_bottom", 0.0)
-	_set_wind_params(_tree_trunk_material)
+	_apply_tree_wind_params(_tree_trunk_material)
 	_tree_trunk_material.next_pass = _tree_outline_material
 
 	# Tree foliage: canonical green remapped into dark fir territory.
@@ -789,7 +805,7 @@ func _build_shared_materials() -> void:
 	_tree_foliage_material.set_shader_parameter("model_y_max", MODEL_Y_MAX_APPROX)
 	_tree_foliage_material.set_shader_parameter("darken_top", 0.0)
 	_tree_foliage_material.set_shader_parameter("darken_bottom", FOLIAGE_DARKEN_BOTTOM)
-	_set_wind_params(_tree_foliage_material)
+	_apply_tree_wind_params(_tree_foliage_material)
 	_tree_foliage_material.next_pass = _tree_outline_material
 
 	# Bushes + ferns are rendered unlit via the matcap shader, so the matcap
@@ -811,7 +827,7 @@ func _build_shared_materials() -> void:
 	_bush_foliage_material.set_shader_parameter("darken_top", 0.0)
 	_bush_foliage_material.set_shader_parameter("darken_bottom", BUSH_DARKEN_BOTTOM_OVERRIDE)
 	_set_wind_params(_bush_foliage_material)
-	_bush_foliage_material.next_pass = _tree_outline_material
+	_bush_foliage_material.next_pass = _bush_outline_material
 
 	_fern_foliage_material = ShaderMaterial.new()
 	_fern_foliage_material.shader = TreeMatcapShader
@@ -866,6 +882,19 @@ func _set_wind_params(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("wind_mask_y_min", WIND_MASK_Y_MIN)
 	mat.set_shader_parameter("wind_mask_y_max", WIND_MASK_Y_MAX)
 	mat.set_shader_parameter("wind_spatial_freq", WIND_SPATIAL_FREQ)
+	mat.set_shader_parameter("wind_turbulence", WIND_TURBULENCE)
+
+
+# Trees share the canopy-height mask and spatial frequency with the generic
+# wind block, but run at a lower amplitude + less turbulence so big trunks
+# don't visibly wobble.
+func _apply_tree_wind_params(mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("wind_strength", TREE_WIND_STRENGTH)
+	mat.set_shader_parameter("wind_speed", WIND_SPEED)
+	mat.set_shader_parameter("wind_mask_y_min", WIND_MASK_Y_MIN)
+	mat.set_shader_parameter("wind_mask_y_max", WIND_MASK_Y_MAX)
+	mat.set_shader_parameter("wind_spatial_freq", WIND_SPATIAL_FREQ)
+	mat.set_shader_parameter("wind_turbulence", TREE_WIND_TURBULENCE)
 
 
 # Apply fern-specific wind: lower mask window so the whole plant sways, and a
@@ -876,6 +905,7 @@ func _apply_fern_wind_params(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("wind_mask_y_min", FERN_WIND_MASK_Y_MIN)
 	mat.set_shader_parameter("wind_mask_y_max", FERN_WIND_MASK_Y_MAX)
 	mat.set_shader_parameter("wind_spatial_freq", WIND_SPATIAL_FREQ)
+	mat.set_shader_parameter("wind_turbulence", WIND_TURBULENCE)
 
 
 # ── Terrain MultiMesh ──────────────────────────────
