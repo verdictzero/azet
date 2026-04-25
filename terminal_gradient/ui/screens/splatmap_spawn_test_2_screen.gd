@@ -1,37 +1,60 @@
-class_name SplatmapSpawnTestScreen
+class_name SplatmapSpawnTest2Screen
 extends BaseScreen
-## Splat↔spawn alignment test. Paints an infinite grid of 5-coloured zones on
-## the ground and scatters cuboids whose type/colour is sampled at their world
-## XZ. If ANY cuboid disagrees with the ground tile beneath it, the proxy
-## splat-map → spawn → ground-shader pipeline has a positional bug.
+## SPLATMAP SPAWN TEST 2 — same proxy-splatmap architecture as Test 1, but
+## with a domain-warp displacement applied per-texel before classification
+## so zone boundaries swirl organically instead of tracing the argmax
+## contours of the underlying noise.
 ##
-## Architecture: per chunk we bake an L8 `Image` of zone IDs (one byte per
-## texel, value `id * 51`), wrap it in an `ImageTexture`, and bind that to
-## a per-chunk `ShaderMaterial.duplicate()` of the ground material. The
-## spawn loop samples the SAME `Image` to decide each prefab's type, so CPU
-## and GPU read identical bytes — no possible noise-math drift between the
-## two paths. `SplatTestZone.zone_id_at` is the single source of truth and
-## is consumed only at bake time.
+## Architecture (unchanged from Test 1): per chunk we bake an L8 `Image` of
+## zone IDs, bind it to a per-chunk `ShaderMaterial.duplicate()` of the
+## ground material, and the spawn loop samples the SAME `Image` to decide
+## each prefab's type — CPU and GPU read identical bytes. The warp lives
+## entirely at bake time, so neither the shader nor the spawn loop needs to
+## know about it; both just read the warped result from the texture.
 ##
-## Stripped clone of TerrainDemo2Screen: chunk streaming + MMI pattern are
-## preserved, but every biome / fog / zone-wall / rock system is cut. The
-## raster-block + dither + palette-LUT post-pass IS ported (no fog) so the
-## test renders in the same pixel-art look as the production demo. Under
-## LUT mode the 5 zone hues snap to nearest palette neighbours; that's the
-## intended chunky look — block-level alignment between cuboid and ground
-## stays readable because the raster blocks are well below the 2 px / metre
-## splat resolution.
+## Two deltas vs. Test 1:
+## 1. `_warp_xz()` perturbs (wx, wz) by an FBM noise displacement before
+##    `SplatTestZone.zone_id_at()`. With a ~25 m warp wavelength and ±6 m
+##    peak displacement (~11 % of the classifier's 55 m noise wavelength),
+##    zone boundaries bend into organically swirling curves instead of
+##    tracing the smooth argmax fault-lines of the underlying field.
+## 2. The bake is dispatched to `WorkerThreadPool` (see `_start_chunk_bake`
+##    / `_finish_chunk_load`) instead of running synchronously inside
+##    `_load_chunk`. The main thread never blocks on chunk generation —
+##    chunks just appear once their worker thread completes.
+##
+## Sits alongside Test 1 (does not replace it) so the strict-aligned
+## baseline remains available for A/B visual comparison.
 
 const CHUNK_SIZE: float = 64.0
 const CHUNK_LOAD_MARGIN: float = 16.0
 const CHUNK_FOOTPRINT_OVERSCAN: float = 2.0
 
-# Per-chunk splat-image resolution. 128² at CHUNK_SIZE = 64 → 2 px / metre,
-# 16 KB per chunk in L8. Keep a power of two so any future mip chain or GPU
-# upload alignment stays trivial. Boundaries between zones become visibly
-# pixelated under filter_nearest at this resolution — that's intentional:
-# crisp seams make spawn-vs-ground misalignment instantly visible.
+# Per-chunk splat-image resolution. 128² → 2 px / metre, 50 cm per texel
+# (matching Test 1). Bake cost ~700 ms per chunk in GDScript, but the
+# main thread doesn't see it: bakes run on `WorkerThreadPool` worker
+# threads (see `_start_chunk_bake`) and finalise on the main thread once
+# done.
 const SPLAT_GRID_N: int = 128
+
+# Domain-warp at bake time: each texel's lookup is displaced by an FBM
+# noise vector before `SplatTestZone.zone_id_at()` is called. The warp
+# turns straight-ish argmax fault-lines into organic swirling boundaries.
+# Lives entirely on the CPU at bake time — the shader never sees the warp.
+#
+# Calibration: the classifier's underlying noise has ~55 m wavelength
+# (1 / SplatTestZone.NOISE_FREQ). For the warp to *visibly* deform zone
+# boundaries, peak displacement must be a meaningful fraction of that —
+# below ~5 % the perturbation gets lost in the smooth field. WARP_AMP is
+# scaled by `(value_noise - 0.5)` so peak displacement is `WARP_AMP / 2`.
+#
+# WARP_FREQ 0.04 → 25 m warp wavelength (about half the zone wavelength,
+# so warp ripples sit visibly inside each zone).
+# WARP_AMP 12 → ±6 m peak displacement (~11 % of zone wavelength), enough
+# to bend boundary curves into clearly organic shapes without scrambling
+# the classification into noise.
+const WARP_FREQ: float = 0.04
+const WARP_AMP: float = 12.0
 
 # Cuboid candidates per chunk. Purely uniform scatter; no biome gate. 120
 # per 64×64 m ≈ 1 every 6 m, enough density that every cell (~28 m) is
@@ -139,6 +162,23 @@ var _shadow_material: ShaderMaterial
 # key: Vector2i -> Dictionary { node, mm_per_type: Array[MultiMeshInstance3D],
 #                               mm_ground, mm_shadow, id_counts, splat_img }
 var _chunks_state: Dictionary = {}
+
+# In-flight chunk bakes running on `WorkerThreadPool` worker threads. The
+# worker thread runs `_bake_chunk_splat` (pure CPU; touches no engine APIs)
+# and writes the result into the shared `BakeJob` holder. The main thread
+# polls each tick, finalises completed bakes, and never blocks waiting.
+# key: Vector2i -> { task_id: int, job: BakeJob }
+var _pending_bakes: Dictionary = {}
+
+
+# Holder for a per-chunk async bake. A worker thread populates `img`;
+# main thread reads it once `WorkerThreadPool.is_task_completed` returns
+# true. RefCounted so the lambda's captured reference keeps the holder
+# alive until both the worker AND main thread have released it.
+class BakeJob extends RefCounted:
+	var img: Image = null
+	var origin_x: float = 0.0
+	var origin_z: float = 0.0
 
 # Running count of cuboids per zone id across loaded chunks — drives the HUD
 # histogram sanity check (all five buckets should sit within ~20 %).
@@ -352,6 +392,15 @@ func _build_materials() -> void:
 
 
 func _cleanup() -> void:
+	# Drain any in-flight worker bakes so they don't try to write to BakeJobs
+	# whose owning screen is going away. wait_for_task_completion blocks the
+	# main thread, but each bake is ~700 ms worst case and there are at most
+	# a handful pending — acceptable on screen exit. The result is
+	# discarded since we're not finalising the chunk anyway.
+	for entry: Dictionary in _pending_bakes.values():
+		WorkerThreadPool.wait_for_task_completion(entry.task_id)
+	_pending_bakes.clear()
+
 	for state: Dictionary in _chunks_state.values():
 		if state.node != null:
 			state.node.queue_free()
@@ -400,10 +449,33 @@ func _update_chunks() -> void:
 		for cz in range(cz_min, cz_max + 1):
 			desired[Vector2i(cx, cz)] = true
 
-	for key: Vector2i in desired:
-		if not _chunks_state.has(key):
-			_load_chunk(key)
+	# Phase 1: harvest any bakes that finished on worker threads since last
+	# tick. We only finalise a chunk if it's still desired — if the player
+	# walked away while it was baking, drop the result on the floor. The
+	# wait_for_task_completion call is non-blocking here because we already
+	# checked is_task_completed; it just acks the result so the pool can
+	# reclaim the task slot.
+	var finalised: Array[Vector2i] = []
+	for key: Vector2i in _pending_bakes:
+		var entry: Dictionary = _pending_bakes[key]
+		if WorkerThreadPool.is_task_completed(entry.task_id):
+			WorkerThreadPool.wait_for_task_completion(entry.task_id)
+			finalised.append(key)
+			if desired.has(key) and entry.job.img != null:
+				_finish_chunk_load(key, entry.job.img)
+	for key in finalised:
+		_pending_bakes.erase(key)
 
+	# Phase 2: kick off async bakes for any desired chunks not yet loaded
+	# and not currently baking. Worker threads pick the tasks up — main
+	# thread never blocks here.
+	for key: Vector2i in desired:
+		if not _chunks_state.has(key) and not _pending_bakes.has(key):
+			_start_chunk_bake(key)
+
+	# Phase 3: unload chunks no longer desired. Pending bakes for those
+	# keys will land in Phase 1 next tick and be discarded (still desired
+	# check fails).
 	var stale: Array[Vector2i] = []
 	for key: Vector2i in _chunks_state:
 		if not desired.has(key):
@@ -412,7 +484,30 @@ func _update_chunks() -> void:
 		_unload_chunk(key)
 
 
-func _load_chunk(key: Vector2i) -> void:
+# Kicks off an async bake on a worker thread. The main thread returns
+# immediately — chunk geometry is not created until `_finish_chunk_load`
+# runs (next frame after the worker completes). For a ~700 ms bake at
+# 128² that means the chunk simply isn't visible for ~40 frames at 60 fps,
+# but the main thread keeps drawing the rest of the world at full rate.
+func _start_chunk_bake(key: Vector2i) -> void:
+	var job := BakeJob.new()
+	job.origin_x = float(key.x) * CHUNK_SIZE
+	job.origin_z = float(key.y) * CHUNK_SIZE
+	# Worker thread runs only the pure-CPU bake. ImageTexture creation,
+	# ShaderMaterial.duplicate, MultiMesh population — anything touching
+	# Godot's rendering APIs — must stay on the main thread.
+	var task_id: int = WorkerThreadPool.add_task(
+		func() -> void: job.img = _bake_chunk_splat(job.origin_x, job.origin_z),
+		false,
+		"splat-test-2 chunk bake (%d, %d)" % [key.x, key.y]
+	)
+	_pending_bakes[key] = { "task_id": task_id, "job": job }
+
+
+# Runs on the main thread once a worker bake has produced its `Image`.
+# Identical to the synchronous body of the original `_load_chunk` — just
+# takes the splat image as an argument instead of computing it inline.
+func _finish_chunk_load(key: Vector2i, splat_img: Image) -> void:
 	var chunk := Node3D.new()
 	chunk.name = "chunk_%d_%d" % [key.x, key.y]
 	_chunk_container.add_child(chunk)
@@ -420,12 +515,8 @@ func _load_chunk(key: Vector2i) -> void:
 	var origin_x: float = float(key.x) * CHUNK_SIZE
 	var origin_z: float = float(key.y) * CHUNK_SIZE
 
-	# Bake the proxy splat: one byte per texel, value `id * 51`. The same
-	# `Image` is then consumed below by `_sample_baked_id` for spawn gating
-	# AND uploaded as `splat_tex` for the ground shader, so CPU + GPU read
-	# identical bytes — drift between prefab type and ground colour is
-	# physically impossible.
-	var splat_img: Image = _bake_chunk_splat(origin_x, origin_z)
+	# Worker thread already populated `splat_img`; main thread does the
+	# texture upload + per-chunk material wiring.
 	var splat_tex := ImageTexture.create_from_image(splat_img)
 
 	# Per-chunk material: duplicate the template, attach this chunk's splat.
@@ -542,6 +633,17 @@ func _load_chunk(key: Vector2i) -> void:
 	}
 
 
+# Domain-warp helper: returns (wx, wz) displaced by an FBM noise vector.
+# Two independent value-noise samples (one per axis) with phase offsets
+# matching `BiomeField._warp_then_fbm` for consistency with the production
+# warp convention. The `- 0.5` recentres value_noise's [0,1] output to
+# [-0.5, +0.5] so displacement is symmetric around the input.
+static func _warp_xz(wx: float, wz: float) -> Vector2:
+	var dx: float = BiomeField.value_noise(wx * WARP_FREQ + 7.3, wz * WARP_FREQ + 11.1) - 0.5
+	var dz: float = BiomeField.value_noise(wx * WARP_FREQ + 23.7, wz * WARP_FREQ + 37.3) - 0.5
+	return Vector2(wx + dx * WARP_AMP, wz + dz * WARP_AMP)
+
+
 # Bake the per-chunk proxy splat. One byte per texel, value `id * 51` so the
 # 5 IDs map to evenly-spaced 8-bit values (0/51/102/153/204) that round-trip
 # cleanly through the shader's `int(round(v * 5.0))` decode under any
@@ -549,16 +651,28 @@ func _load_chunk(key: Vector2i) -> void:
 # to match the GPU's NEAREST sampler convention; `_sample_baked_id` then
 # uses `floor(local / step)` and the two resolve to the same texel index
 # for any (lx, lz) inside the chunk.
+#
+# Test 2 delta vs Test 1: each texel's (wx, wz) is run through `_warp_xz`
+# before classification. The warp encodes ENTIRELY into the baked bytes,
+# so the shader, the spawn loop, and `_sample_baked_id` need no changes —
+# they all read the warped result transparently.
 static func _bake_chunk_splat(origin_x: float, origin_z: float) -> Image:
-	var img := Image.create(SPLAT_GRID_N, SPLAT_GRID_N, false, Image.FORMAT_L8)
+	# Inner loop fills a flat PackedByteArray and finalises with
+	# `Image.create_from_data` — far cheaper than per-pixel
+	# `Color8` construction + `set_pixel` virtual calls. Roughly 4×
+	# faster on the bake hot path at 256².
+	var data := PackedByteArray()
+	data.resize(SPLAT_GRID_N * SPLAT_GRID_N)
 	var step: float = CHUNK_SIZE / float(SPLAT_GRID_N)
 	for iz in SPLAT_GRID_N:
 		var wz: float = origin_z + (float(iz) + 0.5) * step
+		var row: int = iz * SPLAT_GRID_N
 		for ix in SPLAT_GRID_N:
 			var wx: float = origin_x + (float(ix) + 0.5) * step
-			var id: int = SplatTestZone.zone_id_at(wx, wz)
-			img.set_pixel(ix, iz, Color8(id * 51, 0, 0, 255))
-	return img
+			var warped: Vector2 = _warp_xz(wx, wz)
+			var id: int = SplatTestZone.zone_id_at(warped.x, warped.y)
+			data[row + ix] = id * 51
+	return Image.create_from_data(SPLAT_GRID_N, SPLAT_GRID_N, false, Image.FORMAT_L8, data)
 
 
 # CPU equivalent of the ground shader's `texture(splat_tex, uv).r` lookup
