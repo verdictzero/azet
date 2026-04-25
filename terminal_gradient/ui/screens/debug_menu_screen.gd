@@ -5,10 +5,12 @@ extends BaseScreen
 
 const MENU_ITEMS: Array[String] = [
 	"FIRE DEMO", "UI SHELL DEMO", "TERRAIN DEMO", "TERRAIN DEMO 2",
+	"SPLATMAP SPAWN TEST",
 ]
 
 const MENU_ACTIONS: Array[String] = [
 	"open_fire_demo", "ui_shell_demo", "open_terrain_demo", "open_terrain_demo_2",
+	"open_splatmap_spawn_test",
 ]
 
 const MENU_DESCRIPTIONS: Array[String] = [
@@ -16,6 +18,7 @@ const MENU_DESCRIPTIONS: Array[String] = [
 	"UIShell pane layout demo. Exercises every content type: ASCII, raster, text, menu, fire.",
 	"TERRAIN DEMO",
 	"TERRAIN DEMO 2",
+	"Splatmap → spawn alignment test. Five bold-colour zones; cuboids inherit the colour of the zone they land in. Any mismatch between a cuboid and the ground beneath it = drift in the shared CPU/GPU sampler.",
 ]
 
 var _shell: UIShell

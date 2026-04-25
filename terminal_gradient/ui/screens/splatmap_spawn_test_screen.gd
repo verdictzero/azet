@@ -1,0 +1,525 @@
+class_name SplatmapSpawnTestScreen
+extends BaseScreen
+## Splat↔spawn alignment test. Paints an infinite grid of 5-coloured zones on
+## the ground and scatters cuboids whose colour is sampled at their world XZ.
+## If ANY cuboid's colour disagrees with the ground tile beneath it, the
+## shared GDScript / GDShader sampler has drifted — no drift, no bug.
+##
+## Stripped clone of TerrainDemo2Screen: chunk streaming + MMI pattern are
+## preserved, but every biome / fog / zone-wall / rock system is cut. No
+## raster-LUT post-pass either — its palette would quantise the bold zone
+## colours.
+
+const CHUNK_SIZE: float = 64.0
+const CHUNK_LOAD_MARGIN: float = 16.0
+const CHUNK_FOOTPRINT_OVERSCAN: float = 2.0
+
+# Cuboid candidates per chunk. Purely uniform scatter; no biome gate. 120
+# per 64×64 m ≈ 1 every 6 m, enough density that every cell (~28 m) is
+# populated while the candidates stay cheap.
+const CANDIDATES_PER_CHUNK: int = 120
+
+# Separate seed component so this screen's layout doesn't collide with the
+# terrain demo's if we ever share chunk coords in a debug overlay.
+const WORLD_SEED: int = 0xA2E7
+
+# Each zone owns a distinct prefab mesh so the type is identifiable by SHAPE,
+# not just colour. If matcap / post-fx / driver quirks ever skew the rendered
+# colour, the geometric silhouette still tells you which type a prefab is —
+# so any "blue capsule on red ground" mismatch reads as a real spawn-gating
+# bug, not a rendering bug.
+const PREFAB_WIDTH: float = 0.8
+const PREFAB_HEIGHT: float = 1.6
+# Per-mesh Y offset compensating for the primitive's pivot. Box / Capsule /
+# Cylinder / Prism are centred on origin (offset = half-height); Sphere is
+# also centred but its visible bottom is at -radius (offset = radius).
+const PREFAB_Y_OFFSETS: Array[float] = [
+	0.8,  # 0 cube     — centred BoxMesh, half of 1.6
+	0.8,  # 1 capsule  — centred CapsuleMesh, half of 1.6
+	0.7,  # 2 sphere   — centred SphereMesh, radius 0.7
+	0.8,  # 3 cylinder — centred CylinderMesh, half of 1.6
+	0.8,  # 4 prism    — centred PrismMesh, half of 1.6
+]
+const PREFAB_NAMES: Array[String] = ["cube", "capsule", "sphere", "cylinder", "prism"]
+# Big, dark shadows — they double as a placement-matching aid: the dark disc
+# under a prefab sits squarely on the (slightly desaturated) ground tile, so
+# a misplaced prefab is framed by a shadow on a wrong-colour tile.
+const PREFAB_SHADOW_SIZE_MULT: float = 5.0
+const BLOB_SHADOW_Y: float = 0.05
+const SHADOW_COLOR: Color = Color(0.0, 0.0, 0.0, 0.95)
+
+# Wind — kept modest. Match tree values rather than bush/fern since cuboids
+# are tall and would read as jittery under full-strength wind.
+const WIND_STRENGTH: float = 0.10
+const WIND_SPEED: float = 0.8
+const WIND_MASK_Y_MIN: float = 0.1
+const WIND_MASK_Y_MAX: float = 1.8
+const WIND_SPATIAL_FREQ: Vector2 = Vector2(0.07, 0.05)
+const WIND_TURBULENCE: float = 0.3
+
+const CAM_LERP: float = 0.1
+const ORTHO_SIZE: float = 11.0
+const CAM_PITCH_DEG: float = -30.0
+const CAM_DIST: float = 80.0
+
+const CuboidShader: Shader = preload("res://assets/shaders/splat_test_cuboid.gdshader")
+const GroundShader: Shader = preload("res://assets/shaders/splat_test_ground.gdshader")
+const BlobShadowShader: Shader = preload("res://assets/shaders/blob_shadow.gdshader")
+const CUBOID_MATCAP_TEX: Texture2D = preload("res://assets/matcap/matcap_1.png")
+
+# Matches the desaturation factor in splat_test_ground.gdshader's
+# `ground_saturation` uniform — used in CPU-side logging to predict the
+# ground's rendered colour and confirm the cuboid colour rides above it.
+const GROUND_SATURATION: float = 0.6
+# Set true to dump every cuboid's colour vs predicted ground colour on
+# chunk load. Verbose (~120 lines per chunk × ~25 visible chunks at boot).
+const INTENSIVE_LOG: bool = true
+
+var _full_w: int = 0
+var _full_h: int = 0
+var _viewport: SubViewport
+var _texture_rect: TextureRect
+var _hud_label: Label
+
+var _scene_root: Node3D
+var _chunk_container: Node3D
+var _camera: Camera3D
+var _player: CharacterBody3D
+
+var _zone_meshes: Array[Mesh] = []  # one per zone id (0..4)
+var _ground_mesh: PlaneMesh
+var _shadow_mesh: PlaneMesh
+
+var _cuboid_material: ShaderMaterial
+var _ground_material: ShaderMaterial
+var _shadow_material: ShaderMaterial
+
+# key: Vector2i -> Dictionary { node, mm_per_type: Array[MultiMeshInstance3D],
+#                               mm_ground, mm_shadow, id_counts }
+var _chunks_state: Dictionary = {}
+
+# Running count of cuboids per zone id across loaded chunks — drives the HUD
+# histogram sanity check (all five buckets should sit within ~20 %).
+var _id_counts: PackedInt32Array = PackedInt32Array([0, 0, 0, 0, 0])
+
+
+func on_enter(context: Dictionary = {}) -> void:
+	super.on_enter(context)
+	_build_world()
+
+
+func on_exit() -> void:
+	_cleanup()
+	super.on_exit()
+
+
+func handle_input(action: String) -> void:
+	if action == "cancel":
+		request_action("goto_debug_menu")
+
+
+func draw(cols: int, rows: int) -> void:
+	grid.fill_region(0, 0, cols, rows, " ", Color.BLACK, Color.BLACK)
+	_update_chunks()
+	_update_camera()
+	if _player and _hud_label:
+		var px: float = _player.global_position.x
+		var pz: float = _player.global_position.z
+		var cx: int = int(floor(px / CHUNK_SIZE))
+		var cz: int = int(floor(pz / CHUNK_SIZE))
+		var fps: int = int(Engine.get_frames_per_second())
+		_hud_label.text = (
+			"FPS %d  Chunk (%d,%d)  %d chunks  [ESC] Back\n"
+			+ "cubes %d  caps %d  spheres %d  cyls %d  prisms %d"
+		) % [fps, cx, cz, _chunks_state.size(),
+			_id_counts[0], _id_counts[1], _id_counts[2], _id_counts[3], _id_counts[4]]
+
+
+# ── World setup ────────────────────────────────────
+
+func _build_world() -> void:
+	var full_w: int = grid.cols * grid.cell_width
+	var full_h: int = grid.rows * grid.cell_height
+	_full_w = full_w
+	_full_h = full_h
+
+	_viewport = SubViewport.new()
+	# MSAA disabled: the ground shader draws hard zone boundaries and any MSAA
+	# softening would blur the very edge we're asking the user to eyeball for
+	# cuboid-vs-tile alignment.
+	_viewport.msaa_3d = Viewport.MSAA_DISABLED
+	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_viewport.handle_input_locally = false
+	_viewport.transparent_bg = false
+	_viewport.size = Vector2i(full_w / 2, full_h / 2)
+	grid.add_child(_viewport)
+
+	_scene_root = Node3D.new()
+	_scene_root.name = "SplatTestScene"
+	_viewport.add_child(_scene_root)
+
+	var world_env := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color("#1a1a2e")
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
+	world_env.environment = env
+	_scene_root.add_child(world_env)
+
+	_build_meshes()
+	_build_materials()
+
+	_chunk_container = Node3D.new()
+	_chunk_container.name = "Chunks"
+	_scene_root.add_child(_chunk_container)
+
+	_player = CharacterBody3D.new()
+	_player.name = "Player"
+	_player.set_script(preload("res://terrain/terrain_player.gd"))
+	var col := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.4; cap.height = 1.8
+	col.shape = cap
+	_player.add_child(col)
+	_scene_root.add_child(_player)
+	_player.position = Vector3(0.0, 0.9, 0.0)
+
+	_camera = Camera3D.new()
+	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	_camera.size = ORTHO_SIZE
+	_camera.near = 1.0; _camera.far = 200.0
+	_camera.current = true
+	_scene_root.add_child(_camera)
+
+	_texture_rect = TextureRect.new()
+	_texture_rect.texture = _viewport.get_texture()
+	_texture_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_texture_rect.position = Vector2.ZERO
+	_texture_rect.size = Vector2(full_w, full_h)
+	_texture_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grid.add_child(_texture_rect)
+
+	_hud_label = Label.new()
+	_hud_label.position = Vector2(10, 10)
+	_hud_label.add_theme_font_size_override("font_size", 14)
+	_hud_label.add_theme_color_override("font_color", Color.WHITE)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0, 0, 0, 0.6)
+	bg.content_margin_left = 6.0; bg.content_margin_right = 6.0
+	bg.content_margin_top = 2.0; bg.content_margin_bottom = 2.0
+	_hud_label.add_theme_stylebox_override("normal", bg)
+	grid.add_child(_hud_label)
+
+
+func _build_meshes() -> void:
+	# Five distinct primitives, one per zone id. All ≈1.6 m tall so they read
+	# as comparable scale next to the player. Order MUST line up with
+	# PREFAB_Y_OFFSETS / PREFAB_NAMES / SplatTestZone.ZONE_COLORS.
+	var box := BoxMesh.new()
+	box.size = Vector3(PREFAB_WIDTH, PREFAB_HEIGHT, PREFAB_WIDTH)
+
+	var capsule := CapsuleMesh.new()
+	capsule.radius = 0.4
+	capsule.height = PREFAB_HEIGHT  # total height including caps
+
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.7
+	sphere.height = 1.4
+
+	var cylinder := CylinderMesh.new()
+	cylinder.top_radius = 0.4
+	cylinder.bottom_radius = 0.4
+	cylinder.height = PREFAB_HEIGHT
+
+	var prism := PrismMesh.new()
+	prism.size = Vector3(PREFAB_WIDTH, PREFAB_HEIGHT, PREFAB_WIDTH)
+
+	_zone_meshes = [box, capsule, sphere, cylinder, prism]
+
+	# One flat quad per chunk. The ground shader paints from world XZ, so a
+	# single unsubdivided quad is enough — seams between chunks are invisible
+	# because adjacent fragments compute the same zone id.
+	_ground_mesh = PlaneMesh.new()
+	_ground_mesh.size = Vector2(CHUNK_SIZE, CHUNK_SIZE)
+	_ground_mesh.subdivide_width = 0
+	_ground_mesh.subdivide_depth = 0
+
+	_shadow_mesh = PlaneMesh.new()
+	_shadow_mesh.size = Vector2.ONE
+
+
+func _build_materials() -> void:
+	_ground_material = ShaderMaterial.new()
+	_ground_material.shader = GroundShader
+	_ground_material.set_shader_parameter("ground_saturation", GROUND_SATURATION)
+
+	_cuboid_material = ShaderMaterial.new()
+	_cuboid_material.shader = CuboidShader
+	_cuboid_material.set_shader_parameter("matcap", CUBOID_MATCAP_TEX)
+	# Matcap contributes brightness only — the zone hue rides INSTANCE_CUSTOM
+	# unfiltered. See splat_test_cuboid.gdshader for the rationale.
+	_cuboid_material.set_shader_parameter("matcap_shade_strength", 1.0)
+	_cuboid_material.set_shader_parameter("wind_strength", WIND_STRENGTH)
+	_cuboid_material.set_shader_parameter("wind_speed", WIND_SPEED)
+	_cuboid_material.set_shader_parameter("wind_mask_y_min", WIND_MASK_Y_MIN)
+	_cuboid_material.set_shader_parameter("wind_mask_y_max", WIND_MASK_Y_MAX)
+	_cuboid_material.set_shader_parameter("wind_spatial_freq", WIND_SPATIAL_FREQ)
+	_cuboid_material.set_shader_parameter("wind_turbulence", WIND_TURBULENCE)
+
+	_shadow_material = ShaderMaterial.new()
+	_shadow_material.shader = BlobShadowShader
+	_shadow_material.set_shader_parameter("color", SHADOW_COLOR)
+
+	# Attach the shared cuboid material to every per-zone mesh so each MMI
+	# picks it up per-surface without needing material_override (matches the
+	# terrain_demo_2 pattern). All zones share one material — per-instance
+	# colour rides INSTANCE_CUSTOM, which the shader uses as ALBEDO.
+	for mesh in _zone_meshes:
+		if mesh.get_surface_count() >= 1:
+			mesh.surface_set_material(0, _cuboid_material)
+
+
+func _cleanup() -> void:
+	for state: Dictionary in _chunks_state.values():
+		if state.node != null:
+			state.node.queue_free()
+	_chunks_state.clear()
+	for i in _id_counts.size():
+		_id_counts[i] = 0
+
+	if _hud_label: _hud_label.queue_free(); _hud_label = null
+	if _texture_rect: _texture_rect.queue_free(); _texture_rect = null
+	if _viewport: _viewport.queue_free(); _viewport = null
+	_player = null; _camera = null
+	_chunk_container = null; _scene_root = null
+	_ground_material = null
+	_cuboid_material = null
+	_shadow_material = null
+	_zone_meshes.clear()
+	_ground_mesh = null
+	_shadow_mesh = null
+
+
+# ── Chunk management ───────────────────────────────
+
+func _update_chunks() -> void:
+	if _player == null or _viewport == null:
+		return
+	var px: float = _player.global_position.x
+	var pz: float = _player.global_position.z
+
+	var vp_w: float = float(_viewport.size.x)
+	var vp_h: float = float(_viewport.size.y)
+	var aspect: float = vp_w / maxf(vp_h, 1.0)
+	var pitch: float = deg_to_rad(CAM_PITCH_DEG)
+	var half_x: float = ORTHO_SIZE * 0.5 * aspect * CHUNK_FOOTPRINT_OVERSCAN
+	var half_z: float = (ORTHO_SIZE * 0.5 / maxf(cos(pitch), 0.1)) * CHUNK_FOOTPRINT_OVERSCAN
+
+	var cx_min: int = int(floor((px - half_x - CHUNK_LOAD_MARGIN) / CHUNK_SIZE))
+	var cx_max: int = int(floor((px + half_x + CHUNK_LOAD_MARGIN) / CHUNK_SIZE))
+	var cz_min: int = int(floor((pz - half_z - CHUNK_LOAD_MARGIN) / CHUNK_SIZE))
+	var cz_max: int = int(floor((pz + half_z + CHUNK_LOAD_MARGIN) / CHUNK_SIZE))
+
+	var desired: Dictionary = {}
+	for cx in range(cx_min, cx_max + 1):
+		for cz in range(cz_min, cz_max + 1):
+			desired[Vector2i(cx, cz)] = true
+
+	for key: Vector2i in desired:
+		if not _chunks_state.has(key):
+			_load_chunk(key)
+
+	var stale: Array[Vector2i] = []
+	for key: Vector2i in _chunks_state:
+		if not desired.has(key):
+			stale.append(key)
+	for key in stale:
+		_unload_chunk(key)
+
+
+func _load_chunk(key: Vector2i) -> void:
+	var chunk := Node3D.new()
+	chunk.name = "chunk_%d_%d" % [key.x, key.y]
+	_chunk_container.add_child(chunk)
+
+	var origin_x: float = float(key.x) * CHUNK_SIZE
+	var origin_z: float = float(key.y) * CHUNK_SIZE
+
+	# Ground: single instance of the shared flat quad, positioned at chunk
+	# origin. PlaneMesh sits on the XZ plane centred on origin, so shift by
+	# half a chunk so chunk-local (0,0) lands on the chunk-origin corner.
+	var mm_ground := _make_ground_mmi(1)
+	mm_ground.multimesh.set_instance_transform(0, Transform3D(
+		Basis.IDENTITY,
+		Vector3(origin_x + CHUNK_SIZE * 0.5, 0.0, origin_z + CHUNK_SIZE * 0.5)))
+	chunk.add_child(mm_ground)
+
+	# Deterministic chunk seed: layout reproduces identically across unload /
+	# reload cycles. key.x multiplier is a prime that spreads neighbouring
+	# chunks' RNG streams apart. WORLD_SEED keeps this test's layout disjoint
+	# from any future demo that reuses the same (cx, cz) keys.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = key.x * 100003 + key.y * 37 + WORLD_SEED
+
+	if INTENSIVE_LOG:
+		print("[splat-test] === LOAD chunk (%d, %d) origin=(%.2f, %.2f) ===" % [
+			key.x, key.y, origin_x, origin_z])
+
+	# Phase 1: generate candidates and bucket by zone id. RNG is consumed in
+	# a single linear pass (one randf pair per candidate) so chunk seeds
+	# reproduce identical point sets — the zone classifier just routes each
+	# point to a different per-type MM than before.
+	var buckets: Array = [[], [], [], [], []]  # 5 arrays of Vector2 (wx, wz)
+	var chunk_id_counts: PackedInt32Array = PackedInt32Array([0, 0, 0, 0, 0])
+	for i in CANDIDATES_PER_CHUNK:
+		var lx: float = rng.randf() * CHUNK_SIZE
+		var lz: float = rng.randf() * CHUNK_SIZE
+		var wx: float = origin_x + lx
+		var wz: float = origin_z + lz
+		# Zone classification gates which prefab type spawns here. This is
+		# the production decision path: "what does the splat say lives at
+		# this XZ?" If the GPU/CPU sampler diverged, the prefab's type would
+		# end up wrong relative to the ground colour beneath it.
+		var id: int = SplatTestZone.zone_id_at(wx, wz)
+		buckets[id].append(Vector2(wx, wz))
+		_id_counts[id] += 1
+		chunk_id_counts[id] += 1
+
+		if INTENSIVE_LOG:
+			# Re-classify here on a separate call so any future change to
+			# `zone_id_at` that breaks self-consistency would surface. By
+			# construction it must agree with `id`.
+			var ground_id: int = SplatTestZone.zone_id_at(wx, wz)
+			var col: Color = SplatTestZone.zone_color(id)
+			var ground_col: Color = _predict_ground_color(ground_id)
+			var match_str: String = "MATCH" if ground_id == id else "!! MISMATCH !!"
+			print("[splat-test] chunk=(%d,%d) i=%03d wx=%.3f wz=%.3f prefab=%s id=%d rgb=(%.2f,%.2f,%.2f) ground_id=%d ground_rgb=(%.2f,%.2f,%.2f) %s" % [
+				key.x, key.y, i, wx, wz,
+				PREFAB_NAMES[id], id, col.r, col.g, col.b,
+				ground_id, ground_col.r, ground_col.g, ground_col.b,
+				match_str,
+			])
+
+	# Phase 2: build one MMI per zone type, sized to its bucket. Empty
+	# buckets get a 0-instance MM (Godot handles cleanly).
+	var mm_per_type: Array[MultiMeshInstance3D] = []
+	for type_id in 5:
+		var bucket: Array = buckets[type_id]
+		var mmi := _make_prefab_mmi(_zone_meshes[type_id], bucket.size())
+		mm_per_type.append(mmi)
+		chunk.add_child(mmi)
+		var col: Color = SplatTestZone.zone_color(type_id)
+		var y_offset: float = PREFAB_Y_OFFSETS[type_id]
+		var mm: MultiMesh = mmi.multimesh
+		for j in bucket.size():
+			var pos: Vector2 = bucket[j]
+			mm.set_instance_transform(j, Transform3D(
+				Basis.IDENTITY, Vector3(pos.x, y_offset, pos.y)))
+			mm.set_instance_custom_data(j, Color(col.r, col.g, col.b, 0.0))
+
+	# Shadows are type-agnostic — one MM per chunk holding all candidates.
+	var mm_shadow := _make_shadow_mmi(CANDIDATES_PER_CHUNK)
+	chunk.add_child(mm_shadow)
+	var shadow_idx: int = 0
+	for type_id in 5:
+		var bucket: Array = buckets[type_id]
+		for pos: Vector2 in bucket:
+			mm_shadow.multimesh.set_instance_transform(shadow_idx, _shadow_xform(
+				pos, PREFAB_WIDTH * PREFAB_SHADOW_SIZE_MULT))
+			shadow_idx += 1
+
+	if INTENSIVE_LOG:
+		print("[splat-test] chunk (%d, %d) loaded %d prefabs; cubes=%d caps=%d spheres=%d cyls=%d prisms=%d" % [
+			key.x, key.y, CANDIDATES_PER_CHUNK,
+			chunk_id_counts[0], chunk_id_counts[1], chunk_id_counts[2],
+			chunk_id_counts[3], chunk_id_counts[4]])
+
+	_chunks_state[key] = {
+		"node": chunk,
+		"mm_per_type": mm_per_type,
+		"mm_ground": mm_ground,
+		"mm_shadow": mm_shadow,
+		"id_counts": chunk_id_counts,
+	}
+
+
+# CPU mirror of the ground shader's `ALBEDO = mix(luma, color, ground_saturation)`
+# desaturation. Used only for logging — the shader does the real desat per-pixel.
+static func _predict_ground_color(id: int) -> Color:
+	var z: Color = SplatTestZone.zone_color(id)
+	var lum: float = z.r * 0.299 + z.g * 0.587 + z.b * 0.114
+	return Color(
+		lerp(lum, z.r, GROUND_SATURATION),
+		lerp(lum, z.g, GROUND_SATURATION),
+		lerp(lum, z.b, GROUND_SATURATION),
+	)
+
+
+func _unload_chunk(key: Vector2i) -> void:
+	var state: Dictionary = _chunks_state[key]
+	# Subtract this chunk's per-id contribution so the HUD histogram stays in
+	# lockstep with what's actually on screen.
+	var chunk_counts: PackedInt32Array = state.id_counts
+	for i in chunk_counts.size():
+		_id_counts[i] -= chunk_counts[i]
+	if state.node != null:
+		state.node.queue_free()
+	_chunks_state.erase(key)
+
+
+# ── MMI factories ──────────────────────────────────
+
+func _make_prefab_mmi(mesh: Mesh, count: int) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true  # INSTANCE_CUSTOM carries the zone colour
+	mm.mesh = mesh
+	mm.instance_count = maxi(count, 0)
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mmi
+
+
+func _make_ground_mmi(count: int) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = false
+	mm.mesh = _ground_mesh
+	mm.instance_count = maxi(count, 0)
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = _ground_material
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mmi
+
+
+func _make_shadow_mmi(count: int) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = false
+	mm.mesh = _shadow_mesh
+	mm.instance_count = maxi(count, 0)
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = _shadow_material
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mmi
+
+
+static func _shadow_xform(xz: Vector2, size: float) -> Transform3D:
+	var basis := Basis.IDENTITY.scaled(Vector3(size, 1.0, size))
+	return Transform3D(basis, Vector3(xz.x, BLOB_SHADOW_Y, xz.y))
+
+
+# ── Camera ─────────────────────────────────────────
+
+func _update_camera() -> void:
+	if _camera == null or _player == null:
+		return
+	var pitch: float = deg_to_rad(CAM_PITCH_DEG)
+	var offset := Vector3(0.0, -sin(pitch), cos(pitch)) * CAM_DIST
+	var tp: Vector3 = _player.global_position + offset
+	_camera.global_position = _camera.global_position.lerp(tp, CAM_LERP)
+	_camera.rotation_degrees = Vector3(CAM_PITCH_DEG, 0.0, 0.0)

@@ -24,6 +24,7 @@ uniform float wind_speed = 1.4;
 uniform float wind_mask_y_min = 0.5;
 uniform float wind_mask_y_max = 5.0;
 uniform vec2 wind_spatial_freq = vec2(0.22, 0.17);
+uniform float wind_turbulence = 0.0;
 
 varying float v_world_y;
 varying float v_model_scale;
@@ -45,7 +46,8 @@ void dither_discard(vec2 frag_xy, float amt) {
 
 void vertex() {
 	vec3 wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float phase = TIME * wind_speed + wpos.x * wind_spatial_freq.x + wpos.z * wind_spatial_freq.y;
+	float turb = sin(TIME * wind_speed * 3.3 + wpos.x * 0.91 + wpos.z * 0.73) * wind_turbulence;
+	float phase = TIME * wind_speed + wpos.x * wind_spatial_freq.x + wpos.z * wind_spatial_freq.y + turb;
 	float mask = smoothstep(wind_mask_y_min, wind_mask_y_max, wpos.y);
 	float scl = max(length(MODEL_MATRIX[0].xyz), 0.0001);
 	v_model_scale = scl;
