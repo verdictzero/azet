@@ -55,6 +55,17 @@ uniform float path_pepper_threshold : hint_range(0.0, 1.0) = 0.45;
 uniform float path_pepper_softness : hint_range(0.001, 0.5) = 0.06;
 uniform float path_strength : hint_range(0.0, 1.0) = 1.0;
 
+// Per-chunk metal-plating layer. Same proxy-splatmap convention as
+// `splat_tex` — bilinear-sampled at the same `bake_origin` /
+// `texture_world_size` UV so CPU bakers and the GPU shader read identical
+// bytes. `hint_default_black` makes the layer a no-op when the texture is
+// unbound (Godot 4's sampler2D defaults to WHITE without this hint, which
+// would render every Demo 3 / Demo 4 chunk as solid metal — the visible
+// regression that prompted this fix).
+uniform sampler2D metal_weight_tex : hint_default_black, filter_linear, repeat_disable;
+uniform sampler2D metal_albedo_tex : source_color, filter_nearest_mipmap_anisotropic;
+uniform float metal_world_per_tile = 4.0;
+
 varying vec3 v_world_pos;
 
 void vertex() {
@@ -137,5 +148,13 @@ void fragment() {
 	float path_mask = strip * along * pepper * path_strength;
 
 	vec3 path_col = texture(path_tex, wxz / path_world_per_tile).rgb;
-	ALBEDO = mix(biome, path_col, path_mask);
+	vec3 col = mix(biome, path_col, path_mask);
+
+	// Metal plating overlay. Sampled with the same UV as splat_tex so the
+	// CPU bake and GPU read are bit-identical (proxy-splatmap pattern).
+	// `metal_w` is 0 by default → Demo 4 keeps Demo-3 visuals; Demo 5 bakes
+	// a non-zero weight in a small disc + noisy band around the platform.
+	float metal_w = texture(metal_weight_tex, splat_uv).r;
+	vec3 metal_col = texture(metal_albedo_tex, wxz / metal_world_per_tile).rgb;
+	ALBEDO = mix(col, metal_col, metal_w);
 }
