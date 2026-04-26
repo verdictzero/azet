@@ -25,8 +25,10 @@ const NOISE_FREQ: float = 0.018
 # instantly identifiable through the matcap modulation. The ground shader
 # pulls these toward grey (see `splat_test_ground.gdshader`) so a cuboid
 # always reads as more saturated than the tile under it.
-# **MUST match the `ZONE_COLORS` constant array in
-# `assets/shaders/splat_test_ground.gdshader`.**
+# **MUST match the `ZONE_COLORS` constant array in BOTH
+# `assets/shaders/splat_test_ground.gdshader` AND
+# `assets/shaders/splat_test_3_ground.gdshader` — five hex tuples mirrored
+# in two shaders, trivial to keep aligned.**
 const ZONE_COLORS: Array[Color] = [
 	Color(1.00, 0.15, 0.15),  # 0 red
 	Color(0.15, 0.35, 1.00),  # 1 blue
@@ -70,21 +72,34 @@ static func _fbm3(px: float, pz: float) -> float:
 static func zone_id_at(wx: float, wz: float) -> int:
 	# 5 weight fields — same FBM, different phase offsets so each id has a
 	# decorrelated coverage pattern. argmax picks the dominant zone.
+	var w: PackedFloat32Array = zone_weights_at(wx, wz)
+	var best: int = 0
+	var best_w: float = w[0]
+	if w[1] > best_w: best = 1; best_w = w[1]
+	if w[2] > best_w: best = 2; best_w = w[2]
+	if w[3] > best_w: best = 3; best_w = w[3]
+	if w[4] > best_w: best = 4; best_w = w[4]
+	return best
+
+
+# Returns the 5 raw `_fbm3` weights `zone_id_at` argmaxes over. Test 3
+# bakes these continuously (instead of just the winning id) and bilinear-
+# samples them in the shader so the argmax flip-line becomes a sub-texel-
+# sharp curve — gives smooth boundaries while keeping CPU/GPU agreement
+# (both sides bilinear-blend the same baked bytes and run the same
+# argmax). Test 1 / Test 2 don't need the weights since they only care
+# about the winning id.
+static func zone_weights_at(wx: float, wz: float) -> PackedFloat32Array:
 	var fx: float = wx * NOISE_FREQ
 	var fz: float = wz * NOISE_FREQ
-	var w0: float = _fbm3(fx,         fz)
-	var w1: float = _fbm3(fx + 17.3,  fz + 11.1)
-	var w2: float = _fbm3(fx + 31.5,  fz +  7.7)
-	var w3: float = _fbm3(fx + 52.1,  fz + 23.7)
-	var w4: float = _fbm3(fx + 73.4,  fz + 41.5)
-
-	var best: int = 0
-	var best_w: float = w0
-	if w1 > best_w: best = 1; best_w = w1
-	if w2 > best_w: best = 2; best_w = w2
-	if w3 > best_w: best = 3; best_w = w3
-	if w4 > best_w: best = 4; best_w = w4
-	return best
+	var out := PackedFloat32Array()
+	out.resize(5)
+	out[0] = _fbm3(fx,         fz)
+	out[1] = _fbm3(fx + 17.3,  fz + 11.1)
+	out[2] = _fbm3(fx + 31.5,  fz +  7.7)
+	out[3] = _fbm3(fx + 52.1,  fz + 23.7)
+	out[4] = _fbm3(fx + 73.4,  fz + 41.5)
+	return out
 
 
 static func zone_color(id: int) -> Color:

@@ -102,3 +102,7 @@ Concrete candidates in this codebase:
   - `_load_chunk()` — wires bake → texture → per-chunk material → spawn.
 - `assets/shaders/splat_test_ground.gdshader` — GPU lookup + colour LUT.
 - `core/splat_test_zone.gd` — single source of truth (`zone_id_at`).
+
+## Extension: smooth-edge boundaries
+
+The simplest version of this pattern bakes a single discrete *ID* per texel and the GPU samples NEAREST.  That gives stairstepped boundaries because every fragment commits to one of N solid colours.  If you also need smooth (non-stairstepped) boundaries with the same spawn-precision invariant, switch to baking continuous weight *fields* (one scalar per zone) and have the GPU softmax-blend the colours while CPU still argmaxes for spawn.  See [`splatmap-terrain-shader.md`](splatmap-terrain-shader.md) for that build on top of this pattern.

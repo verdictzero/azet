@@ -5,12 +5,12 @@ extends BaseScreen
 
 const MENU_ITEMS: Array[String] = [
 	"FIRE DEMO", "UI SHELL DEMO", "TERRAIN DEMO", "TERRAIN DEMO 2",
-	"SPLATMAP SPAWN TEST", "SPLATMAP SPAWN TEST 2",
+	"SPLATMAP SPAWN TEST", "SPLATMAP SPAWN TEST 2", "SPLATMAP SPAWN TEST 3",
 ]
 
 const MENU_ACTIONS: Array[String] = [
 	"open_fire_demo", "ui_shell_demo", "open_terrain_demo", "open_terrain_demo_2",
-	"open_splatmap_spawn_test", "open_splatmap_spawn_test_2",
+	"open_splatmap_spawn_test", "open_splatmap_spawn_test_2", "open_splatmap_spawn_test_3",
 ]
 
 const MENU_DESCRIPTIONS: Array[String] = [
@@ -20,6 +20,7 @@ const MENU_DESCRIPTIONS: Array[String] = [
 	"TERRAIN DEMO 2",
 	"Splatmap → spawn alignment test. Five bold-colour zones; cuboids inherit the colour of the zone they land in. Any mismatch between a cuboid and the ground beneath it = drift in the shared CPU/GPU sampler.",
 	"Splatmap spawn test with domain-warp + higher-res bake. Same proxy-splatmap architecture as Test 1 but with organic, swirling boundaries instead of straight argmax cuts. Strict spawn/ground alignment is preserved by construction (warp lives at bake time only).",
+	"Smooth-edge splatmap with spawn-precise alignment. Bakes 5 continuous-valued FBM weights per texel (RGBA8 + L8 pair); GPU bilinear-samples + argmaxes per fragment for sub-pixel-sharp boundaries. CPU spawn does the same bilinear-then-argmax on the same baked bytes — both sides agree at every world XZ.",
 ]
 
 var _shell: UIShell
