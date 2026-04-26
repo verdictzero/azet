@@ -106,3 +106,71 @@ static func sample_density_grid(grid: PackedFloat32Array, grid_n: int,
 
 static func is_meadow(density: float, config: BiomeConfig) -> bool:
 	return density > config.meadow_cull_gate()
+
+
+# ── Per-chunk density IMAGE (Test-3-style proxy splatmap) ────────────────
+#
+# The grid-based bake above is what Terrain Demo 2 uses; the GPU shader
+# recomputes the FBM procedurally per fragment, so the grid-vs-procedural
+# split is the source of the visible drift. Terrain Demo 3 / future
+# screens use the texture-based bake below: CPU bakes an L8 Image, GPU
+# samples THE SAME bytes (filter_linear), and CPU spawn lookups bilinear-
+# sample THE SAME bytes — drift is structurally impossible. Pattern is
+# documented in `docs/proxy-splatmap-pattern.md`.
+
+# Bake an `n × n` L8 Image of warped FBM density values covering one
+# chunk plus a 1-texel overhang on every side (so adjacent chunks bake
+# the same world XZ at their shared overhang positions and the GPU's
+# bilinear filter blends seamlessly across chunk seams). `n` here is the
+# texture-side count BEFORE adding the overhang — so the returned Image
+# is `(n + 2) × (n + 2)`.
+#
+# Texel `i` (0..n+1) sits at chunk-local lx = `(i − 0.5) × step` where
+# `step = chunk_size / n` — texel 0 reaches half a step past the LEFT/UP
+# edge; texel n+1 reaches half a step past the RIGHT/DOWN edge.
+#
+# Storage: density `_warp_then_fbm` returns roughly [0, 0.875]; we
+# multiply by 255 and clamp into a single 8-bit channel. Boundary
+# location depends only on the relative ordering of densities, so 8-bit
+# quantisation is fine.
+static func bake_chunk_density_image(origin_x: float, origin_z: float,
+		chunk_size: float, n: int, config: BiomeConfig) -> Image:
+	var bake_n: int = n + 2
+	var data := PackedByteArray()
+	data.resize(bake_n * bake_n)
+	var step: float = chunk_size / float(n)
+	for iz in bake_n:
+		var wz: float = origin_z + (float(iz) - 0.5) * step
+		var row: int = iz * bake_n
+		for ix in bake_n:
+			var wx: float = origin_x + (float(ix) - 0.5) * step
+			var density: float = _warp_then_fbm(wx, wz, config)
+			data[row + ix] = clampi(int(density * 255.0 + 0.5), 0, 255)
+	return Image.create_from_data(bake_n, bake_n, false, Image.FORMAT_L8, data)
+
+
+# CPU equivalent of the ground shader's `texture(splat_tex, uv).r` lookup
+# under `filter_linear` + `repeat_disable`. Pixel-position math accounts
+# for the 1-texel overhang baked at index 0: pixel pos = `local / step
+# + 0.5` (the +0.5 shifts because texel 0 sits at lx = -step/2).
+# Bit-identical to the GPU's bilinear sample at the same world XZ.
+static func sample_density_image_bilinear(img: Image, local_x: float,
+		local_z: float, chunk_size: float, n: int) -> float:
+	var bake_n: int = n + 2
+	var step: float = chunk_size / float(n)
+	var px: float = local_x / step + 0.5
+	var py: float = local_z / step + 0.5
+	# Clamp to mirror CLAMP_TO_EDGE.
+	px = clampf(px, 0.0, float(bake_n - 1))
+	py = clampf(py, 0.0, float(bake_n - 1))
+	var ix0: int = int(floor(px))
+	var iy0: int = int(floor(py))
+	var ix1: int = mini(ix0 + 1, bake_n - 1)
+	var iy1: int = mini(iy0 + 1, bake_n - 1)
+	var fx: float = px - float(ix0)
+	var fy: float = py - float(iy0)
+	var a: float = img.get_pixel(ix0, iy0).r
+	var b: float = img.get_pixel(ix1, iy0).r
+	var c: float = img.get_pixel(ix0, iy1).r
+	var d: float = img.get_pixel(ix1, iy1).r
+	return lerp(lerp(a, b, fx), lerp(c, d, fx), fy)

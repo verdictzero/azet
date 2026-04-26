@@ -33,6 +33,15 @@ const SHADOW_ALPHA: float = 0.55
 enum Facing { DOWN = 0, LEFT = 1, RIGHT = 2, UP = 3 }
 
 var move_speed: float = 7.5
+# Camera-yaw orientation in radians. Default 0 → world-axis WASD (current
+# behaviour for every screen that doesn't set this). Demos with an orbit
+# camera (e.g. terrain_demo_4) write to this each frame so input becomes
+# camera-relative: pressing W always moves the player "into the screen"
+# regardless of where the camera is.
+# Sprite facing stays based on RAW input direction (not the rotated
+# velocity) so a billboard sprite still visibly faces "up on screen" when
+# the player walks "up".
+var camera_yaw_rad: float = 0.0
 # Debug turbo: backtick (`) toggles a 3× movement multiplier. Polled in
 # _physics_process with an edge-detect latch so we don't depend on input
 # routing through the SubViewport.
@@ -96,8 +105,18 @@ func _physics_process(delta: float) -> void:
 	var mz: float = Input.get_axis("move_up", "move_down")
 	var moving: bool = absf(mx) > 0.0 or absf(mz) > 0.0
 	if moving:
+		# Facing uses RAW (screen-space) input so the sprite tracks
+		# what's "up" / "right" on screen, not the rotated world axis.
 		_update_facing(mx, mz)
-	var dir := Vector3(mx, 0.0, mz).normalized()
+	# Rotate input by camera yaw so "up on screen" maps to the camera's
+	# current forward direction in world. With camera_yaw_rad = 0 (default)
+	# this collapses to world-axis movement — every existing screen is
+	# unaffected. R_y(yaw) * (mx, 0, mz):
+	var c: float = cos(camera_yaw_rad)
+	var s: float = sin(camera_yaw_rad)
+	var world_mx: float = mx * c + mz * s
+	var world_mz: float = mz * c - mx * s
+	var dir := Vector3(world_mx, 0.0, world_mz).normalized()
 	velocity.x = dir.x * speed
 	velocity.z = dir.z * speed
 	if _turbo:
