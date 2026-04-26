@@ -5,12 +5,14 @@ extends BaseScreen
 
 const MENU_ITEMS: Array[String] = [
 	"FIRE DEMO", "UI SHELL DEMO", "TERRAIN DEMO", "TERRAIN DEMO 2", "TERRAIN DEMO 3", "TERRAIN DEMO 4",
+	"TERRAIN DEMO 5",
 	"SPLATMAP SPAWN TEST", "SPLATMAP SPAWN TEST 2", "SPLATMAP SPAWN TEST 3",
 ]
 
 const MENU_ACTIONS: Array[String] = [
 	"open_fire_demo", "ui_shell_demo", "open_terrain_demo", "open_terrain_demo_2",
 	"open_terrain_demo_3", "open_terrain_demo_4",
+	"open_terrain_demo_5",
 	"open_splatmap_spawn_test", "open_splatmap_spawn_test_2", "open_splatmap_spawn_test_3",
 ]
 
@@ -21,6 +23,7 @@ const MENU_DESCRIPTIONS: Array[String] = [
 	"TERRAIN DEMO 2",
 	"Terrain Demo 2 with the proxy-splatmap pattern wired through. Per-chunk L8 density Image baked on a worker thread; ground shader and CPU spawn culler bilinear-sample the same bytes — vegetation no longer drifts off the splat. Bushes spawn in MEADOW only (Demo 2 had them in forest).",
 	"Terrain Demo 3 + Q/E orbit camera. Hold Q / E to rotate the camera around the player at constant CAM_DIST. Player movement still uses world-axis WASD — controls won't match screen orientation when the camera is rotated; that's intentional.",
+	"Terrain Demo 4 + inciting-incident spawn area: central platform with metal-plating splat (solid core, noisy edge), large object-spawn occlusion radius around it, thick fern band on the perimeter, player spawns standing on the platform. Plus a 3D HUD compass in the lower-right whose rotor counter-rotates the orbit yaw to always point world-north — sits above the fog noise but below the LUT/dither pass.",
 	"Splatmap → spawn alignment test. Five bold-colour zones; cuboids inherit the colour of the zone they land in. Any mismatch between a cuboid and the ground beneath it = drift in the shared CPU/GPU sampler.",
 	"Splatmap spawn test with domain-warp + higher-res bake. Same proxy-splatmap architecture as Test 1 but with organic, swirling boundaries instead of straight argmax cuts. Strict spawn/ground alignment is preserved by construction (warp lives at bake time only).",
 	"Smooth-edge splatmap with spawn-precise alignment. Bakes 5 continuous-valued FBM weights per texel (RGBA8 + L8 pair); GPU bilinear-samples + argmaxes per fragment for sub-pixel-sharp boundaries. CPU spawn does the same bilinear-then-argmax on the same baked bytes — both sides agree at every world XZ.",
