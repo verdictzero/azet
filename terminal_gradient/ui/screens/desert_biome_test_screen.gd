@@ -52,6 +52,7 @@ const CactusTallBScene: PackedScene = preload("res://assets/prefabs/cactus_tall_
 const CactusTallCScene: PackedScene = preload("res://assets/prefabs/cactus_tall_c.tscn")
 const DesertRockScene: PackedScene = preload("res://assets/prefabs/desert_rock.tscn")
 const TumbleweedScene: PackedScene = preload("res://assets/models/tumbleweed_0.glb")
+const WindParticlesShader: Shader = preload("res://assets/shaders/wind_particles.gdshader")
 const CactusScenes: Array[PackedScene] = [
 	CactusShortScene, CactusTallAScene, CactusTallBScene, CactusTallCScene,
 ]
@@ -102,6 +103,57 @@ const TUMBLEWEED_GROUND_Y: float = 0.0
 # revolution).
 const TUMBLEWEED_SPIN_PER_SPEED: float = 0.9
 
+# ── Tumbleweed dynamic forces (gusts, bumps, thermals, mass) ──
+# Each tumbleweed has its own per-instance phase, frequency, and timing for
+# these forces, so you see fast gust-driven sprints alongside slow heavy
+# rollers, sudden hops mid-roll, and the occasional one catching a thermal.
+#
+# Gust: per-tumbleweed sinusoidal modulation of horizontal target velocity.
+# v.x is lerped toward `base_speed_x + WIND_DIR.x * gust * strength` so
+# tumbleweeds visibly accelerate during gusts and lull during dead spots.
+const TUMBLEWEED_GUST_STRENGTH: float = 4.5
+const TUMBLEWEED_GUST_FREQ_MIN: float = 0.25
+const TUMBLEWEED_GUST_FREQ_MAX: float = 0.75
+# How fast v.x converges toward the gust target (1 / characteristic time).
+const TUMBLEWEED_GUST_LERP_RATE: float = 1.6
+# Bumps: timed kicks (boost v.y + perturb v.z) — like hitting a hidden rock.
+const TUMBLEWEED_BUMP_INTERVAL_MIN: float = 2.5
+const TUMBLEWEED_BUMP_INTERVAL_MAX: float = 7.0
+const TUMBLEWEED_BUMP_VY_MIN: float = 2.5
+const TUMBLEWEED_BUMP_VY_MAX: float = 7.0
+const TUMBLEWEED_BUMP_VZ_RANGE: float = 3.5
+# Thermals: small probability per second of catching a strong updraft.
+const TUMBLEWEED_THERMAL_CHANCE_PER_SEC: float = 0.04
+const TUMBLEWEED_THERMAL_VY_MIN: float = 6.0
+const TUMBLEWEED_THERMAL_VY_MAX: float = 12.0
+# Mass: scales gravity per-tumbleweed. Heavier ones fall slower (visual
+# variety — feels like different weights of dried plant matter).
+const TUMBLEWEED_MASS_MIN: float = 0.7
+const TUMBLEWEED_MASS_MAX: float = 1.5
+
+# Wind dust particle cloud. A single MultiMesh of billboarded quads with
+# all motion + lifecycle handled in `wind_particles.gdshader`. Each particle
+# has its own randomized lifetime period + phase, born at its seed XZ on the
+# ground, drifting along WIND_DIR, billowing up + growing in size, and
+# fading in/out via a bell curve. `cloud_origin` is updated each frame to
+# follow the player so the cloud always surrounds them.
+const WIND_PARTICLE_COUNT: int = 1500
+const WIND_PARTICLE_TILE_SIZE: float = 90.0
+const WIND_PARTICLE_SPEED: float = 5.0
+const WIND_PARTICLE_LIFETIME_MIN: float = 4.0
+const WIND_PARTICLE_LIFETIME_MAX: float = 9.0
+const WIND_PARTICLE_SIZE_START: float = 0.6
+const WIND_PARTICLE_SIZE_END: float = 4.5
+# Per-particle size multiplier — applied independently to X and Y so puffs
+# squash, stretch, and vary in apparent volume aggressively. Range is wide:
+# tiny wisps sit next to fat billowing balls.
+const WIND_PARTICLE_SIZE_JITTER_MIN: float = 0.3
+const WIND_PARTICLE_SIZE_JITTER_MAX: float = 3.0
+const WIND_PARTICLE_RISE_HEIGHT: float = 6.0
+const WIND_PARTICLE_TURB_STRENGTH: float = 0.9
+const WIND_PARTICLE_FADE_BAND: float = 16.0
+const WIND_PARTICLE_COLOR: Color = Color(1.0, 0.88, 0.66, 0.275)
+
 # Central platform: spawn anchor + metal-plating splat + cactus/rock occlusion.
 # Same pattern as Demo 5, but the prefab variant swaps the GLB's authored
 # diffuse for `platform_0_desert_test.png` — see `platform_desert.tscn` /
@@ -122,17 +174,51 @@ const R_BREAKUP_BAND: float = 6.0
 # deliberately cleared.
 const R_OCCLUDE: float = 30.0
 
-# Cactus scatter: jittered grid across the chunk, gated to the dirt-rocks
-# side. Counts intentionally modest — Godot auto-batches the StandardMaterial3D
-# draws so per-instance Node3D scales fine to a few dozen per chunk.
+# Big cacti: scattered widely via jittered grid (the original distribution).
+# Scale range matches the prior "2–3×" tuning so the wide silhouette of the
+# desert looks the same as before — the cluster system below is additive.
 const CACTUS_GRID_CELL: float = 11.0
 const CACTUS_JITTER: float = 2.4
 const CACTUS_MIN_DIST: float = 6.0
-const CACTUS_SCALE_MIN: float = 2.0
-const CACTUS_SCALE_MAX: float = 3.0
+const CACTUS_BIG_SCALE_MIN: float = 2.0
+const CACTUS_BIG_SCALE_MAX: float = 3.0
+
+# Small-cactus clusters: independent anchors per chunk, each producing a
+# medium ring + wide tiny halo. Big cacti are NOT involved as anchors —
+# clusters are their own thing, scattered separately from the big cactus
+# grid so the two layers can overlap or sit apart.
+const CACTUS_CLUSTERS_PER_CHUNK_MIN: int = 1
+const CACTUS_CLUSTERS_PER_CHUNK_MAX: int = 3
+const CACTUS_CLUSTER_ANCHOR_MARGIN: float = 4.0
+const CACTUS_PLACEMENT_ATTEMPTS: int = 8
+# Middle tier — 8-12 medium cacti filling the cluster's interior.
+const CACTUS_MID_COUNT_MIN: int = 8
+const CACTUS_MID_COUNT_MAX: int = 12
+const CACTUS_MID_RING_R_INNER: float = 0.0
+const CACTUS_MID_RING_R_OUTER: float = 5.0
+const CACTUS_MID_SCALE_MIN: float = 1.4
+const CACTUS_MID_SCALE_MAX: float = 2.2
+# Outer tier — many tiny cacti spattered around the edge.
+const CACTUS_TINY_COUNT_MIN: int = 15
+const CACTUS_TINY_COUNT_MAX: int = 25
+const CACTUS_TINY_RING_R_INNER: float = 5.0
+const CACTUS_TINY_RING_R_OUTER: float = 11.0
+const CACTUS_TINY_SCALE_MIN: float = 0.5
+const CACTUS_TINY_SCALE_MAX: float = 1.0
+# Tiny cacti skip colliders — player walks through them as ground clutter.
+const CACTUS_COLLIDER_MIN_SCALE: float = 1.1
 const CACTUS_COLLIDER_RADIUS: float = 0.3
 const CACTUS_COLLIDER_HEIGHT: float = 1.6
 const CACTUS_SHADOW_SIZE_MULT: float = 1.4
+
+# Spawn breathing room — every collision-bearing prop (and tiny cacti for
+# visual clearance) is added to a per-chunk avoid list. Each candidate is
+# rejected if its avoid radius (`scale * AVOID_RADIUS_MULT + BUFFER`)
+# overlaps any existing entry's. Cacti and rocks share the same list so
+# rocks won't sit inside cactus footprints and vice versa.
+const PROP_BREATHING_BUFFER: float = 0.4
+const CACTUS_AVOID_RADIUS_MULT: float = 0.45
+const ROCK_AVOID_RADIUS_MULT: float = 0.5
 
 # Rock cluster widening (vs Demo 5): user explicitly asked for "extremely
 # random rotation and size and scattering patterns".
@@ -210,6 +296,10 @@ var _tumbleweed_rng: RandomNumberGenerator = null
 # returning 0, freezing all tumbleweed motion.
 var _tumbleweed_last_usec: int = -1
 
+# Wind dust cloud — single MultiMesh with vertex-shader-driven motion.
+var _wind_particles_mmi: MultiMeshInstance3D = null
+var _wind_particles_material: ShaderMaterial = null
+
 
 # Holder for a per-chunk async bake. Worker thread writes `img` + `metal_img`;
 # main thread reads them once `WorkerThreadPool.is_task_completed` returns true.
@@ -266,6 +356,11 @@ func draw(cols: int, rows: int) -> void:
 			dt = clampf(float(now_usec - _tumbleweed_last_usec) / 1_000_000.0, 0.0, 0.1)
 		_tumbleweed_last_usec = now_usec
 		_update_tumbleweeds(dt)
+		# Move the wind-dust cloud's centre to the player so the volume
+		# always surrounds them. Shader handles wrap + scroll on its own.
+		if _wind_particles_material != null:
+			_wind_particles_material.set_shader_parameter("cloud_origin",
+				_player.global_position)
 	if _player and _hud_label:
 		var px: float = _player.global_position.x
 		var pz: float = _player.global_position.z
@@ -359,6 +454,15 @@ func _build_world() -> void:
 	_player = CharacterBody3D.new()
 	_player.name = "Player"
 	_player.set_script(preload("res://terrain/terrain_player.gd"))
+	# Layer setup for tumbleweed collision filtering:
+	#   layer 1 = world statics (platform, cacti, rocks)
+	#   layer 2 = player
+	#   layer 3 = tumbleweeds
+	# Player on layer 2 only, mask = layer 1 (sees statics). Tumbleweeds use
+	# mask = layer 1 too, so they hit statics but not the player (layer 2)
+	# and not each other (layer 3).
+	_player.collision_layer = 2
+	_player.collision_mask = 1
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.4; cap.height = 1.8
@@ -384,6 +488,9 @@ func _build_world() -> void:
 	_tumbleweed_rng.randomize()
 	for i in TUMBLEWEED_COUNT:
 		_spawn_tumbleweed(true)
+
+	# Wind dust cloud — single MultiMesh, all motion shader-side.
+	_build_wind_particles(scene)
 
 	_camera = Camera3D.new()
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -447,6 +554,8 @@ func _cleanup() -> void:
 	_tumbleweeds.clear()
 	_tumbleweed_rng = null
 	_tumbleweed_last_usec = -1
+	if _wind_particles_mmi: _wind_particles_mmi.queue_free(); _wind_particles_mmi = null
+	_wind_particles_material = null
 	if _platform_root: _platform_root.queue_free(); _platform_root = null
 	_platform_footprint_r = 0.0
 	if _texture_rect: _texture_rect.queue_free(); _texture_rect = null
@@ -645,7 +754,8 @@ func _finish_chunk_load(key: Vector2i, density_img: Image, metal_img: Image) -> 
 		chunk.add_child(inst)
 		mm_cactus_shadow.multimesh.set_instance_transform(i, _shadow_xform(
 			c.xz, c.scale * CACTUS_SHADOW_SIZE_MULT))
-		_spawn_cactus_collider(chunk, Vector3(c.xz.x, 0.0, c.xz.y), c.scale)
+		if c.has_collider:
+			_spawn_cactus_collider(chunk, Vector3(c.xz.x, 0.0, c.xz.y), c.scale)
 
 	for i in rock_count:
 		var r: Dictionary = rock_positions[i]
@@ -699,8 +809,17 @@ func _collect_desert_props(rng: RandomNumberGenerator, key: Vector2i,
 	var scatter_oz: float = chunk_oz + margin
 	var span: float = CHUNK_SIZE - margin * 2.0
 
-	# ── Cactus jittered grid (dirt-rocks only) ──
-	var placed: Array[Dictionary] = []
+	# Shared per-chunk avoid list. Every prop with a footprint (cacti at all
+	# tiers + rocks at all tiers) appends to it on accept and tests against
+	# it on candidate. Tiny cacti participate even though they don't get a
+	# physics collider — visual breathing room matters too. Format:
+	# `{x: float, z: float, r: float}`.
+	var avoid: Array[Dictionary] = []
+
+	# ── Big cacti (jittered grid, dirt-rocks only) ──
+	# Wide scatter across the chunk, the original pre-cluster behaviour. The
+	# cluster pass below runs independently after — clusters don't centre on
+	# big cacti.
 	var cells: int = int(ceil(span / CACTUS_GRID_CELL))
 	for gi in range(cells):
 		for gj in range(cells):
@@ -708,21 +827,22 @@ func _collect_desert_props(rng: RandomNumberGenerator, key: Vector2i,
 			var base_z: float = scatter_oz + (float(gj) + 0.5) * CACTUS_GRID_CELL
 			var wx: float = base_x + (rng.randf() - 0.5) * CACTUS_JITTER * 2.0
 			var wz: float = base_z + (rng.randf() - 0.5) * CACTUS_JITTER * 2.0
-			# Cactus rule: dirt-rocks only (= NOT in the sand "meadow" pocket).
+			# Cactus rule: dirt-rocks only.
 			if _is_meadow_at(density_img, chunk_ox, chunk_oz, wx, wz):
 				continue
 			if _near_platform_exclusion(wx, wz):
 				continue
-			var too_close: bool = false
-			for p: Dictionary in placed:
-				var ddx: float = p.x - wx
-				var ddz: float = p.z - wz
-				if ddx * ddx + ddz * ddz < CACTUS_MIN_DIST * CACTUS_MIN_DIST:
-					too_close = true
-					break
-			if too_close:
+			# Per-cell min-distance check against other big cacti (preserves
+			# the old grid spacing) — handled by the avoid list since every
+			# cactus pushed onto it has a CACTUS_AVOID radius.
+			var sc: float = lerp(CACTUS_BIG_SCALE_MIN, CACTUS_BIG_SCALE_MAX,
+				rng.randf())
+			var self_r: float = sc * CACTUS_AVOID_RADIUS_MULT + PROP_BREATHING_BUFFER
+			# Also enforce the legacy CACTUS_MIN_DIST as a hard floor so the
+			# wide-canopy spacing reads as before.
+			if not _prop_pos_clear(wx, wz, maxf(self_r, CACTUS_MIN_DIST * 0.5),
+					avoid):
 				continue
-			var sc: float = lerp(CACTUS_SCALE_MIN, CACTUS_SCALE_MAX, rng.randf())
 			var ry: float = rng.randf() * TAU
 			var scene_idx: int = rng.randi_range(0, CactusScenes.size() - 1)
 			var xform := _make_world_xform(Vector2(wx, wz), sc, ry)
@@ -731,13 +851,49 @@ func _collect_desert_props(rng: RandomNumberGenerator, key: Vector2i,
 				"scale": sc,
 				"xform": xform,
 				"scene_idx": scene_idx,
+				"has_collider": sc >= CACTUS_COLLIDER_MIN_SCALE,
 			})
-			placed.append({"x": wx, "z": wz})
+			avoid.append({"x": wx, "z": wz, "r": self_r})
+
+	# ── Small-cactus clusters (independent anchors, dirt-rocks only) ──
+	# Each anchor produces a medium ring (filling the centre) + tiny halo.
+	# Anchors are not tied to big cactus positions; clusters can sit between
+	# big cacti or overlap them.
+	var cactus_anchor_margin: float = CACTUS_CLUSTER_ANCHOR_MARGIN
+	var cactus_anchor_span: float = CHUNK_SIZE - cactus_anchor_margin * 2.0
+	var cactus_cluster_count: int = rng.randi_range(
+		CACTUS_CLUSTERS_PER_CHUNK_MIN, CACTUS_CLUSTERS_PER_CHUNK_MAX)
+	for _c in cactus_cluster_count:
+		var ax: float = 0.0
+		var az: float = 0.0
+		var anchor_ok: bool = false
+		for _try in CACTUS_PLACEMENT_ATTEMPTS:
+			ax = chunk_ox + cactus_anchor_margin + rng.randf() * cactus_anchor_span
+			az = chunk_oz + cactus_anchor_margin + rng.randf() * cactus_anchor_span
+			if _is_meadow_at(density_img, chunk_ox, chunk_oz, ax, az):
+				continue
+			if _near_platform_exclusion(ax, az):
+				continue
+			anchor_ok = true
+			break
+		if not anchor_ok:
+			continue
+
+		_append_cactus_ring(rng, ax, az,
+			CACTUS_MID_COUNT_MIN, CACTUS_MID_COUNT_MAX,
+			CACTUS_MID_RING_R_INNER, CACTUS_MID_RING_R_OUTER,
+			CACTUS_MID_SCALE_MIN, CACTUS_MID_SCALE_MAX,
+			density_img, chunk_ox, chunk_oz, cactus_out, avoid)
+		_append_cactus_ring(rng, ax, az,
+			CACTUS_TINY_COUNT_MIN, CACTUS_TINY_COUNT_MAX,
+			CACTUS_TINY_RING_R_INNER, CACTUS_TINY_RING_R_OUTER,
+			CACTUS_TINY_SCALE_MIN, CACTUS_TINY_SCALE_MAX,
+			density_img, chunk_ox, chunk_oz, cactus_out, avoid)
 
 	# ── Rock cluster anchors (sand pockets only) ──
-	# Three concentric tiers per anchor. Widened scale + tilt ranges and
-	# anchor count vs Demo 5 — user explicitly asked for "extremely random
-	# rotation and size and scattering patterns".
+	# Three concentric tiers per anchor. Avoid list is shared with cacti so
+	# rocks don't bury themselves in cactus footprints (and vice versa) at
+	# the sand/dirt boundary.
 	var anchor_margin: float = ROCK_CLUSTER_ANCHOR_MARGIN
 	var anchor_span: float = CHUNK_SIZE - anchor_margin * 2.0
 	var cluster_count: int = rng.randi_range(
@@ -749,7 +905,7 @@ func _collect_desert_props(rng: RandomNumberGenerator, key: Vector2i,
 		for _try in ROCK_PLACEMENT_ATTEMPTS:
 			cx = chunk_ox + anchor_margin + rng.randf() * anchor_span
 			cz = chunk_oz + anchor_margin + rng.randf() * anchor_span
-			# Rock rule: sand only (= IS in the "meadow" sand pocket).
+			# Rock rule: sand only.
 			if not _is_meadow_at(density_img, chunk_ox, chunk_oz, cx, cz):
 				continue
 			if _near_platform_exclusion(cx, cz):
@@ -763,17 +919,31 @@ func _collect_desert_props(rng: RandomNumberGenerator, key: Vector2i,
 			ROCK_LARGE_COUNT_MIN, ROCK_LARGE_COUNT_MAX,
 			ROCK_LARGE_RING_R_INNER, ROCK_LARGE_RING_R_OUTER,
 			ROCK_LARGE_SCALE_MIN, ROCK_LARGE_SCALE_MAX,
-			density_img, chunk_ox, chunk_oz, rock_out)
+			density_img, chunk_ox, chunk_oz, rock_out, avoid)
 		_append_rock_ring(rng, cx, cz,
 			ROCK_MED_COUNT_MIN, ROCK_MED_COUNT_MAX,
 			ROCK_MED_RING_R_INNER, ROCK_MED_RING_R_OUTER,
 			ROCK_MED_SCALE_MIN, ROCK_MED_SCALE_MAX,
-			density_img, chunk_ox, chunk_oz, rock_out)
+			density_img, chunk_ox, chunk_oz, rock_out, avoid)
 		_append_rock_ring(rng, cx, cz,
 			ROCK_SMALL_COUNT_MIN, ROCK_SMALL_COUNT_MAX,
 			ROCK_SMALL_RING_R_INNER, ROCK_SMALL_RING_R_OUTER,
 			ROCK_SMALL_SCALE_MIN, ROCK_SMALL_SCALE_MAX,
-			density_img, chunk_ox, chunk_oz, rock_out)
+			density_img, chunk_ox, chunk_oz, rock_out, avoid)
+
+
+# Reject sampler: returns true if (wx, wz) is at least `self_r + e.r` from
+# every entry. Mirrors Demo 5's `_rock_pos_clear`. Linear scan — chunks have
+# at most a few hundred props so this is cheap.
+static func _prop_pos_clear(wx: float, wz: float, self_r: float,
+		avoid: Array[Dictionary]) -> bool:
+	for e: Dictionary in avoid:
+		var dx: float = float(e.x) - wx
+		var dz: float = float(e.z) - wz
+		var min_d: float = self_r + float(e.r)
+		if dx * dx + dz * dz < min_d * min_d:
+			return false
+	return true
 
 
 # Each rock instance still respects the sand gate so the outer-tier scatter
@@ -784,7 +954,8 @@ func _append_rock_ring(rng: RandomNumberGenerator, cx: float, cz: float,
 		r_inner: float, r_outer: float,
 		scale_min: float, scale_max: float,
 		density_img: Image, chunk_ox: float, chunk_oz: float,
-		rock_out: Array[Dictionary]) -> void:
+		rock_out: Array[Dictionary],
+		avoid: Array[Dictionary]) -> void:
 	var count: int = rng.randi_range(count_min, count_max)
 	for _i in count:
 		for _try in ROCK_PLACEMENT_ATTEMPTS:
@@ -797,6 +968,10 @@ func _append_rock_ring(rng: RandomNumberGenerator, cx: float, cz: float,
 			if _near_platform_exclusion(wx, wz):
 				continue
 			var sc: float = lerp(scale_min, scale_max, rng.randf())
+			# Rocks are append-only on the avoid list — they freely clump
+			# with each other (per user preference: "rocks can clump up").
+			# Cacti and tumbleweeds still avoid rocks via the appended entry.
+			var self_r: float = sc * ROCK_AVOID_RADIUS_MULT + PROP_BREATHING_BUFFER
 			var ry: float = rng.randf() * TAU
 			var tilt_x: float = (rng.randf() - 0.5) * 2.0 * ROCK_TILT_MAX
 			var tilt_z: float = (rng.randf() - 0.5) * 2.0 * ROCK_TILT_MAX
@@ -809,12 +984,58 @@ func _append_rock_ring(rng: RandomNumberGenerator, cx: float, cz: float,
 				"xform": xform,
 				"has_collider": sc >= ROCK_COLLIDER_MIN_SCALE,
 			})
+			avoid.append({"x": wx, "z": wz, "r": self_r})
 			break
 
 
 static func _make_world_xform(xz: Vector2, sc: float, ry: float) -> Transform3D:
 	var basis := Basis.from_euler(Vector3(0.0, ry, 0.0)).scaled(Vector3(sc, sc, sc))
 	return Transform3D(basis, Vector3(xz.x, 0.0, xz.y))
+
+
+# Cactus version of `_append_rock_ring`. Picks N cacti within a ring around
+# (cx, cz), each placement gated to dirt-rocks (NOT meadow) and outside the
+# platform exclusion. Random Y rotation, random scale within the tier's
+# range, random cactus scene per instance. `has_collider` is set per-cactus
+# so the loader skips colliders for tiny ones.
+func _append_cactus_ring(rng: RandomNumberGenerator, cx: float, cz: float,
+		count_min: int, count_max: int,
+		r_inner: float, r_outer: float,
+		scale_min: float, scale_max: float,
+		density_img: Image, chunk_ox: float, chunk_oz: float,
+		cactus_out: Array[Dictionary],
+		avoid: Array[Dictionary]) -> void:
+	var count: int = rng.randi_range(count_min, count_max)
+	for _i in count:
+		for _try in CACTUS_PLACEMENT_ATTEMPTS:
+			var theta: float = rng.randf() * TAU
+			# sqrt() gives uniform area distribution over the ring.
+			var r: float = lerp(r_inner, r_outer, sqrt(rng.randf()))
+			var wx: float = cx + cos(theta) * r
+			var wz: float = cz + sin(theta) * r
+			if _is_meadow_at(density_img, chunk_ox, chunk_oz, wx, wz):
+				continue
+			if _near_platform_exclusion(wx, wz):
+				continue
+			var sc: float = lerp(scale_min, scale_max, rng.randf())
+			# Cacti reject overlapping anything in the avoid list — they
+			# need physical breathing room from each other AND from rocks
+			# at the sand/dirt boundary.
+			var self_r: float = sc * CACTUS_AVOID_RADIUS_MULT + PROP_BREATHING_BUFFER
+			if not _prop_pos_clear(wx, wz, self_r, avoid):
+				continue
+			var ry: float = rng.randf() * TAU
+			var scene_idx: int = rng.randi_range(0, CactusScenes.size() - 1)
+			var xform := _make_world_xform(Vector2(wx, wz), sc, ry)
+			cactus_out.append({
+				"xz": Vector2(wx, wz),
+				"scale": sc,
+				"xform": xform,
+				"scene_idx": scene_idx,
+				"has_collider": sc >= CACTUS_COLLIDER_MIN_SCALE,
+			})
+			avoid.append({"x": wx, "z": wz, "r": self_r})
+			break
 
 
 # ── Colliders ──────────────────────────────────────
@@ -1078,13 +1299,36 @@ static func _transform_to_root(node: Node, root: Node) -> Transform3D:
 func _spawn_tumbleweed(initial: bool) -> void:
 	if _tumbleweed_root == null:
 		return
+	var sc: float = lerp(TUMBLEWEED_SCALE_MIN, TUMBLEWEED_SCALE_MAX,
+		_tumbleweed_rng.randf())
+
+	# CharacterBody3D wrapper so each tumbleweed has its own collider and
+	# can use move_and_collide to bounce off world statics. Layer 3 / mask
+	# layer 1 = collides with platform/cacti/rocks but ignores the player
+	# (layer 2) and other tumbleweeds (layer 3).
+	var body := CharacterBody3D.new()
+	body.collision_layer = 4  # bit 2 = layer 3
+	body.collision_mask = 1   # bit 0 = layer 1 (world statics)
+
+	# Sphere collider at explicit scaled radius — body itself stays unit-
+	# scale so move_and_collide isn't confused by non-unit transforms.
+	var col := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = sc * 0.5
+	col.shape = sphere
+	body.add_child(col)
+
+	# Visual GLB lives under a scaled wrapper so the body's transform stays
+	# clean; rotating the body still spins the visuals (sphere collider is
+	# rotationally symmetric so this is fine).
+	var visual_root := Node3D.new()
+	visual_root.scale = Vector3(sc, sc, sc)
+	body.add_child(visual_root)
 	var inst: Node = TumbleweedScene.instantiate()
 	if not (inst is Node3D):
-		inst.queue_free()
+		body.queue_free()
 		return
-	var n3: Node3D = inst as Node3D
-	var sc: float = lerp(TUMBLEWEED_SCALE_MIN, TUMBLEWEED_SCALE_MAX, _tumbleweed_rng.randf())
-	n3.scale = Vector3(sc, sc, sc)
+	visual_root.add_child(inst as Node3D)
 
 	var px: float = 0.0
 	var pz: float = 0.0
@@ -1092,29 +1336,43 @@ func _spawn_tumbleweed(initial: bool) -> void:
 		px = _player.global_position.x
 		pz = _player.global_position.z
 
-	# Spawn position: upwind of player (east, +X). Initial pass spreads
-	# across the whole spawn range so the area is populated immediately.
-	var spawn_x: float
-	if initial:
-		spawn_x = px + (_tumbleweed_rng.randf() - 0.5) * 2.0 * TUMBLEWEED_SPAWN_RANGE_X
-	else:
-		# Strictly east, in the outer 70% of the spawn range.
-		spawn_x = px + TUMBLEWEED_SPAWN_RANGE_X * (0.7 + _tumbleweed_rng.randf() * 0.3)
-	var spawn_z: float = pz + (_tumbleweed_rng.randf() - 0.5) * 2.0 * TUMBLEWEED_SPAWN_RANGE_Z
-	# Resting Y = ground + scale (treat the GLB as roughly unit-radius before
-	# scaling — bottom of the sphere lands at TUMBLEWEED_GROUND_Y).
-	n3.position = Vector3(spawn_x, TUMBLEWEED_GROUND_Y + sc, spawn_z)
+	# Roll a candidate XZ + verify it's clear of any world static collider via
+	# a physics shape query. If something's there (cactus, rock, platform),
+	# re-roll up to 5 times. If still no clear spot, give up — the pool
+	# refill in `_update_tumbleweeds` will retry next frame.
+	var space_state := _tumbleweed_root.get_world_3d().direct_space_state
+	var probe := SphereShape3D.new()
+	probe.radius = sc * 0.5
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = probe
+	query.collision_mask = 1  # world statics only
 
-	# Velocity: WIND_DIR * speed for the horizontal push, Z drift for natural
-	# turbulence, initial upward kick so it enters mid-bounce.
-	var speed: float = lerp(TUMBLEWEED_SPEED_MIN, TUMBLEWEED_SPEED_MAX, _tumbleweed_rng.randf())
+	var spawn_x: float = 0.0
+	var spawn_z: float = 0.0
+	var spawn_y: float = TUMBLEWEED_GROUND_Y + sc
+	var clear: bool = false
+	for _attempt in 5:
+		if initial:
+			spawn_x = px + (_tumbleweed_rng.randf() - 0.5) * 2.0 * TUMBLEWEED_SPAWN_RANGE_X
+		else:
+			spawn_x = px + TUMBLEWEED_SPAWN_RANGE_X * (0.7 + _tumbleweed_rng.randf() * 0.3)
+		spawn_z = pz + (_tumbleweed_rng.randf() - 0.5) * 2.0 * TUMBLEWEED_SPAWN_RANGE_Z
+		query.transform = Transform3D(Basis.IDENTITY,
+			Vector3(spawn_x, spawn_y, spawn_z))
+		if space_state.intersect_shape(query, 1).is_empty():
+			clear = true
+			break
+	if not clear:
+		body.queue_free()
+		return
+	body.position = Vector3(spawn_x, spawn_y, spawn_z)
+
+	var speed: float = lerp(TUMBLEWEED_SPEED_MIN, TUMBLEWEED_SPEED_MAX,
+		_tumbleweed_rng.randf())
 	var drift_z: float = (_tumbleweed_rng.randf() - 0.5) * 2.0 * TUMBLEWEED_DRIFT_Z_MAX
 	var vy: float = TUMBLEWEED_HOP_INITIAL * (0.4 + _tumbleweed_rng.randf() * 0.6)
 	var velocity := Vector3(WIND_DIR.x * speed, vy, drift_z)
 
-	# Spin around an axis biased toward +Z (perpendicular to the wind axis) so
-	# the visible roll reads as forward-tumble. Slight random tilt so each
-	# tumbleweed spins on its own axis.
 	var spin_axis := Vector3(
 		(_tumbleweed_rng.randf() - 0.5) * 0.4,
 		(_tumbleweed_rng.randf() - 0.5) * 0.4,
@@ -1122,19 +1380,35 @@ func _spawn_tumbleweed(initial: bool) -> void:
 	).normalized()
 	var spin_rate: float = (speed / sc) * TUMBLEWEED_SPIN_PER_SPEED
 
-	# Random initial orientation so they don't all line up.
-	n3.rotation = Vector3(
+	body.rotation = Vector3(
 		_tumbleweed_rng.randf() * TAU,
 		_tumbleweed_rng.randf() * TAU,
 		_tumbleweed_rng.randf() * TAU,
 	)
-	_tumbleweed_root.add_child(n3)
+	# Per-tumbleweed dynamic-force parameters. Sampled once at spawn so each
+	# tumbleweed has its own gust phase + bump cadence + mass profile.
+	var time_now: float = Time.get_ticks_usec() / 1_000_000.0
+	var gust_phase: float = _tumbleweed_rng.randf() * TAU
+	var gust_freq: float = _tumbleweed_rng.randf_range(
+		TUMBLEWEED_GUST_FREQ_MIN, TUMBLEWEED_GUST_FREQ_MAX)
+	var next_bump_time: float = time_now + _tumbleweed_rng.randf_range(
+		TUMBLEWEED_BUMP_INTERVAL_MIN, TUMBLEWEED_BUMP_INTERVAL_MAX)
+	var mass: float = _tumbleweed_rng.randf_range(
+		TUMBLEWEED_MASS_MIN, TUMBLEWEED_MASS_MAX)
+
+	_tumbleweed_root.add_child(body)
 	_tumbleweeds.append({
-		"node": n3,
+		"node": body,
 		"scale": sc,
 		"velocity": velocity,
 		"spin_axis": spin_axis,
 		"spin_rate": spin_rate,
+		# Dynamic forces.
+		"base_speed_x": WIND_DIR.x * speed,
+		"gust_phase": gust_phase,
+		"gust_freq": gust_freq,
+		"next_bump_time": next_bump_time,
+		"mass": mass,
 	})
 
 
@@ -1146,6 +1420,10 @@ func _update_tumbleweeds(dt: float) -> void:
 		return
 	var px: float = _player.global_position.x
 	var pz: float = _player.global_position.z
+	var time_now: float = Time.get_ticks_usec() / 1_000_000.0
+	# Lerp factor for the gust convergence — clamped because small dt would
+	# leave it ineffective and large dt could overshoot.
+	var gust_alpha: float = clampf(dt * TUMBLEWEED_GUST_LERP_RATE, 0.0, 1.0)
 
 	# Indices to recycle this frame.
 	var to_recycle: Array[int] = []
@@ -1154,11 +1432,45 @@ func _update_tumbleweeds(dt: float) -> void:
 		var node: Node3D = tw.node
 		var v: Vector3 = tw.velocity
 
-		# Gravity.
-		v.y -= TUMBLEWEED_GRAVITY * dt
+		# ── Dynamic forces (overlap to give very different motion profiles) ──
+		# Gust: per-tumbleweed sinusoidal target velocity. Both signs of `gust`
+		# are used so wind both pushes (gust > 0) and lulls (gust < 0).
+		var gust: float = sin(time_now * tw.gust_freq + tw.gust_phase)
+		var target_vx: float = tw.base_speed_x + WIND_DIR.x * gust * TUMBLEWEED_GUST_STRENGTH
+		v.x = lerp(v.x, target_vx, gust_alpha)
 
-		# Move.
-		node.position += v * dt
+		# Bumps: hit a hidden rock — random Y kick + Z perturbation. Reset the
+		# next bump time afterwards so each tumbleweed has its own cadence.
+		if time_now >= tw.next_bump_time:
+			v.y += _tumbleweed_rng.randf_range(
+				TUMBLEWEED_BUMP_VY_MIN, TUMBLEWEED_BUMP_VY_MAX)
+			v.z += _tumbleweed_rng.randf_range(
+				-TUMBLEWEED_BUMP_VZ_RANGE, TUMBLEWEED_BUMP_VZ_RANGE)
+			tw.next_bump_time = time_now + _tumbleweed_rng.randf_range(
+				TUMBLEWEED_BUMP_INTERVAL_MIN, TUMBLEWEED_BUMP_INTERVAL_MAX)
+
+		# Thermals: rare strong updraft — Poisson-style per-frame chance.
+		# Multiplying by `dt` keeps the per-second rate stable across framerates.
+		if _tumbleweed_rng.randf() < TUMBLEWEED_THERMAL_CHANCE_PER_SEC * dt:
+			v.y += _tumbleweed_rng.randf_range(
+				TUMBLEWEED_THERMAL_VY_MIN, TUMBLEWEED_THERMAL_VY_MAX)
+
+		# Gravity, mass-scaled. Heavier tumbleweeds fall slower (visual variety
+		# rather than a strict physical model).
+		v.y -= TUMBLEWEED_GRAVITY * dt / tw.mass
+
+		# Move via the physics body so the tumbleweed bounces off cacti,
+		# rocks, and the platform. Player is on a different collision layer
+		# so we ignore them entirely.
+		var collision: KinematicCollision3D = node.move_and_collide(v * dt)
+		if collision != null:
+			# Reflect velocity off the surface and damp. Extra horizontal
+			# damp on impact keeps tumbleweeds from ricocheting forever
+			# between two cacti.
+			var normal: Vector3 = collision.get_normal()
+			v = v.bounce(normal) * 0.55
+			v.x *= 0.92
+			v.z *= 0.92
 
 		# Ground bounce. Resting Y = scale (bottom of a unit-radius sphere
 		# scaled by `tw.scale`). Two regimes:
@@ -1206,3 +1518,82 @@ func _update_tumbleweeds(dt: float) -> void:
 		_tumbleweeds.remove_at(i)
 	while _tumbleweeds.size() < TUMBLEWEED_COUNT:
 		_spawn_tumbleweed(false)
+
+
+# ── Wind dust particles ────────────────────────────
+
+# Build a single MultiMesh of billboarded quads. Each instance has a static
+# world position scattered uniformly across a tile-sized box; the shader
+# scrolls + wraps + adds turbulence so motion is fully GPU-side. Cloud
+# centre is updated each frame in `draw()` to follow the player.
+func _build_wind_particles(parent: Node3D) -> void:
+	var quad := QuadMesh.new()
+	# QuadMesh defaults to a 2×2 unit quad in XY (vertices at ±1). The
+	# shader multiplies VERTEX.xy by `particle_size` so size is uniform-driven.
+	quad.size = Vector2(1.0, 1.0)
+
+	_wind_particles_material = ShaderMaterial.new()
+	_wind_particles_material.shader = WindParticlesShader
+	_wind_particles_material.set_shader_parameter("wind_dir", WIND_DIR)
+	_wind_particles_material.set_shader_parameter("wind_speed", WIND_PARTICLE_SPEED)
+	_wind_particles_material.set_shader_parameter("tile_size", WIND_PARTICLE_TILE_SIZE)
+	_wind_particles_material.set_shader_parameter("cloud_origin", Vector3.ZERO)
+	_wind_particles_material.set_shader_parameter("lifetime_min", WIND_PARTICLE_LIFETIME_MIN)
+	_wind_particles_material.set_shader_parameter("lifetime_max", WIND_PARTICLE_LIFETIME_MAX)
+	_wind_particles_material.set_shader_parameter("size_start", WIND_PARTICLE_SIZE_START)
+	_wind_particles_material.set_shader_parameter("size_end", WIND_PARTICLE_SIZE_END)
+	_wind_particles_material.set_shader_parameter("size_jitter_min", WIND_PARTICLE_SIZE_JITTER_MIN)
+	_wind_particles_material.set_shader_parameter("size_jitter_max", WIND_PARTICLE_SIZE_JITTER_MAX)
+	_wind_particles_material.set_shader_parameter("rise_height", WIND_PARTICLE_RISE_HEIGHT)
+	_wind_particles_material.set_shader_parameter("turb_strength", WIND_PARTICLE_TURB_STRENGTH)
+	_wind_particles_material.set_shader_parameter("base_color", WIND_PARTICLE_COLOR)
+	_wind_particles_material.set_shader_parameter("fade_band", WIND_PARTICLE_FADE_BAND)
+	# Bell-curve knees — pulled in from the cycle end so puffs disappear
+	# visibly before the next emission ("puff and gone" rhythm).
+	_wind_particles_material.set_shader_parameter("fade_in_end", 0.12)
+	_wind_particles_material.set_shader_parameter("fade_out_start", 0.35)
+	_wind_particles_material.set_shader_parameter("fade_out_end", 0.65)
+	# Biome sample params — sourced from `_biome_config` (same instance the
+	# splat bake uses) so the shader's sand mask lines up with the visible
+	# meadow/forest boundary, no drift.
+	_wind_particles_material.set_shader_parameter("biome_noise_freq",
+		_biome_config.noise_freq)
+	_wind_particles_material.set_shader_parameter("biome_threshold",
+		_biome_config.meadow_threshold)
+	_wind_particles_material.set_shader_parameter("biome_softness",
+		_biome_config.meadow_softness)
+	_wind_particles_material.set_shader_parameter("biome_warp_freq",
+		_biome_config.warp_freq)
+	_wind_particles_material.set_shader_parameter("biome_warp_amp",
+		_biome_config.warp_amp)
+
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = false
+	mm.mesh = quad
+	mm.instance_count = WIND_PARTICLE_COUNT
+
+	# Distribute random emission points (XZ) uniformly across the tile. Y in
+	# the seed transform is unused — the shader recomputes Y per frame from
+	# the particle's age. Each random seed is the particle's emission
+	# anchor, so 1000 seeds = 1000 random emission points across the cloud.
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var half_tile: float = WIND_PARTICLE_TILE_SIZE * 0.5
+	for i in WIND_PARTICLE_COUNT:
+		var sx: float = rng.randf_range(-half_tile, half_tile)
+		var sz: float = rng.randf_range(-half_tile, half_tile)
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(sx, 0.0, sz)))
+
+	_wind_particles_mmi = MultiMeshInstance3D.new()
+	_wind_particles_mmi.name = "WindParticles"
+	_wind_particles_mmi.multimesh = mm
+	_wind_particles_mmi.material_override = _wind_particles_material
+	_wind_particles_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Disable frustum culling on this MMI. The MultiMesh's AABB is computed
+	# from the static instance positions (centred on world origin), but the
+	# shader transforms them to follow the player — so a tight AABB would
+	# cull the cloud as soon as the player walked more than `tile_size`
+	# from origin. Max-out the cull margin so the renderer never rejects it.
+	_wind_particles_mmi.extra_cull_margin = 16384.0
+	parent.add_child(_wind_particles_mmi)
