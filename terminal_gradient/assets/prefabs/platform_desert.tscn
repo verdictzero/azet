@@ -1,0 +1,9 @@
+[gd_scene format=4 uid="uid://b5x2v6dt7r4qa"]
+
+[ext_resource type="Script" path="res://assets/prefabs/platform_desert.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://ci3wndiholkai" path="res://assets/models/platform_0.glb" id="2"]
+
+[node name="PlatformDesert" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Platform" parent="." instance=ExtResource("2")]

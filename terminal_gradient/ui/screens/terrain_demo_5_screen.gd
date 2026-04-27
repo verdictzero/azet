@@ -198,6 +198,9 @@ const RockMatcapShader: Shader = preload("res://assets/shaders/rock_matcap.gdsha
 # Rocks share the same matcap as the bushes + ferns — all ground-level
 # clutter pulls from a single sphere so the scene's lighting reads uniform.
 const ROCK_MATCAP_TEX: Texture2D = preload("res://assets/matcap/matcap_2.png")
+# The compass HUD uses its own matcap so its metal reads distinct from the
+# ground-clutter sphere.
+const COMPASS_MATCAP_TEX: Texture2D = preload("res://assets/matcap/compass_matcap.png")
 
 # ── Demo 5 additions ──────────────────────────────
 # Central platform: spawn anchor + metal-plating splat + occlusion + fern ring.
@@ -3008,7 +3011,7 @@ func _build_compass_viewport() -> void:
 	# surface tints it red — all the surfaces share one matcap-lit look
 	# while keeping their authored colors.
 	_apply_matcap_with_authored_tints(_compass_root, RockMatcapShader,
-		ROCK_MATCAP_TEX, Color(0.7, 0.7, 0.75))
+		COMPASS_MATCAP_TEX, Color(0.7, 0.7, 0.75))
 
 	# Tilt the compass back so it reads as a 3D object rather than a flat
 	# overlay. Rotation is around the model's +X axis (= compass-camera's
@@ -3054,6 +3057,24 @@ func _build_compass_viewport() -> void:
 		Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)),
 		Vector3(centre.x, centre.y + height_above, centre.z))
 	_compass_viewport.add_child(_compass_camera)
+
+	# Subtle blob shadow under the (tilted) compass. Sibling of `_compass_root`
+	# so it stays flat in the X-Z plane while the compass tips back. Y is
+	# pinned to the post-tilt min Y so the shadow sits just under the deepest
+	# part of the dial; depth-test (shadow uses depth_draw_never) hides it
+	# behind the opaque compass body.
+	var post_tilt_aabb: AABB = _gather_local_aabb(_compass_root, _compass_viewport)
+	var shadow_size: float = ortho_size * 0.9
+	var shadow_mesh := PlaneMesh.new()
+	shadow_mesh.size = Vector2(shadow_size, shadow_size)
+	var shadow_mat := ShaderMaterial.new()
+	shadow_mat.shader = BlobShadowShader
+	shadow_mat.set_shader_parameter("color", Color(0.0, 0.0, 0.0, 0.35))
+	var shadow_inst := MeshInstance3D.new()
+	shadow_inst.mesh = shadow_mesh
+	shadow_inst.material_override = shadow_mat
+	shadow_inst.position = Vector3(centre.x, post_tilt_aabb.position.y - 0.02, centre.z)
+	_compass_viewport.add_child(shadow_inst)
 
 	# TextureRect lives inside the main viewport so the LUT/dither pass picks
 	# it up. Anchored to the lower-right with COMPASS_INSET_PX padding.

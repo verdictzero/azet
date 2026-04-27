@@ -11,8 +11,15 @@ shader_type spatial;
 // per-axis texture sampling can be added later without restructuring the
 // shader.
 //
-// Wind block mirrors toon_tree / toon_solid for uniformity; `wind_strength`
-// defaults to 0.0 so cacti read rigid out of the box but can be dialed in.
+// Wind block: directional gust-and-turbulence model.
+// - `wind_dir` is the world-XZ vector wind blows ALONG (default east → west).
+// - `wind_strength` is the base displacement amplitude (`wind_strength / scale`
+//   keeps absolute sway distance roughly constant across cactus sizes).
+// - `wind_gust_freq` controls the slow strength-pulsing (gusts).
+// - `wind_speed` + `wind_spatial_freq` drive per-position high-frequency
+//   turbulence on top of the gust.
+// - `wind_turbulence` is the turbulence amplitude relative to the gust.
+// `push` is always ≥ 0 — wind never reverses direction, it just pulses.
 
 uniform vec3 color_top : source_color = vec3(0.42, 0.62, 0.30);
 uniform vec3 color_bottom : source_color = vec3(0.14, 0.28, 0.14);
@@ -29,6 +36,9 @@ uniform float wind_speed = 1.4;
 uniform float wind_mask_y_min = 0.3;
 uniform float wind_mask_y_max = 1.5;
 uniform vec2 wind_spatial_freq = vec2(0.22, 0.17);
+uniform vec2 wind_dir = vec2(-1.0, 0.0);
+uniform float wind_gust_freq = 0.3;
+uniform float wind_turbulence = 0.4;
 
 varying float v_world_y;
 varying float v_model_scale;
@@ -36,14 +46,29 @@ varying vec3 v_world_normal;
 
 void vertex() {
 	vec3 wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float phase = TIME * wind_speed + wpos.x * wind_spatial_freq.x + wpos.z * wind_spatial_freq.y;
-	float mask = smoothstep(wind_mask_y_min, wind_mask_y_max, wpos.y);
 	float scl = max(length(MODEL_MATRIX[0].xyz), 0.0001);
 	v_model_scale = scl;
+
+	// Per-position seed scrambles gust + turbulence phase across plants so
+	// neighbouring cacti don't sway in lockstep.
+	float pos_seed = wpos.x * wind_spatial_freq.x + wpos.z * wind_spatial_freq.y;
+	// Gust: smooth low-freq strength pulse in [0, 1].
+	float gust = 0.5 + 0.5 * sin(TIME * wind_gust_freq + pos_seed * 0.4);
+	// Turbulence: high-freq oscillation, clamped non-negative so wind never
+	// reverses (the directional read survives).
+	float fast_phase = TIME * wind_speed + pos_seed;
+	float turb = sin(fast_phase) * wind_turbulence;
+	float push_strength = max(0.0, gust + turb * 0.3);
+
+	float mask = smoothstep(wind_mask_y_min, wind_mask_y_max, wpos.y);
 	float amp = wind_strength / scl;
-	VERTEX.x += sin(phase) * amp * mask;
-	VERTEX.z += cos(phase * 0.73 + 1.3) * amp * mask * 0.7;
-	VERTEX.y += sin(phase * 1.9) * amp * mask * 0.15;
+	float push = push_strength * amp * mask;
+
+	VERTEX.x += wind_dir.x * push;
+	VERTEX.z += wind_dir.y * push;
+	// Subtle Y bobbing — independent of wind direction, smaller amplitude.
+	VERTEX.y += sin(fast_phase * 1.9) * amp * mask * 0.1;
+
 	v_world_y = (MODEL_MATRIX * vec4(VERTEX, 1.0)).y;
 	v_world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
