@@ -8,6 +8,7 @@ const MENU_ITEMS: Array[String] = [
 	"TERRAIN DEMO 5",
 	"SPLATMAP SPAWN TEST", "SPLATMAP SPAWN TEST 2", "SPLATMAP SPAWN TEST 3",
 	"DESERT BIOME TEST",
+	"DESERT BIOME TEST 2",
 ]
 
 const MENU_ACTIONS: Array[String] = [
@@ -16,6 +17,7 @@ const MENU_ACTIONS: Array[String] = [
 	"open_terrain_demo_5",
 	"open_splatmap_spawn_test", "open_splatmap_spawn_test_2", "open_splatmap_spawn_test_3",
 	"open_desert_biome_test",
+	"open_desert_biome_test_2",
 ]
 
 const MENU_DESCRIPTIONS: Array[String] = [
@@ -30,6 +32,7 @@ const MENU_DESCRIPTIONS: Array[String] = [
 	"Splatmap spawn test with domain-warp + higher-res bake. Same proxy-splatmap architecture as Test 1 but with organic, swirling boundaries instead of straight argmax cuts. Strict spawn/ground alignment is preserved by construction (warp lives at bake time only).",
 	"Smooth-edge splatmap with spawn-precise alignment. Bakes 5 continuous-valued FBM weights per texel (RGBA8 + L8 pair); GPU bilinear-samples + argmaxes per fragment for sub-pixel-sharp boundaries. CPU spawn does the same bilinear-then-argmax on the same baked bytes — both sides agree at every world XZ.",
 	"Infinite desert biome test — Demo 5's chunk-streaming + proxy-splatmap pipeline reduced to two ground textures (sand pockets carved out of a desert-dirt-rocks default). Cacti scatter across the dirt-rocks side; desert rocks form widely-varied clumps in the sand pockets (3 concentric size tiers, full-TAU yaw, ±0.5 rad tilt). No zone walls, no platform, no compass — just terrain.",
+	"Desert Biome Test + a procedurally-noised matcap building east of the platform. Body and roof use a custom unlit-matcap shader with triplanar-sampled normal noise; walking inside the structure dither-fades the roof out (Bayer4 discard) so the interior is visible from above. Walking back out fades the roof back in.",
 ]
 
 var _shell: UIShell

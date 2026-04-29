@@ -51,6 +51,7 @@ enum State {
 	SPLATMAP_SPAWN_TEST_2,
 	SPLATMAP_SPAWN_TEST_3,
 	DESERT_BIOME_TEST,
+	DESERT_BIOME_TEST_2,
 }
 
 var current_state: State = State.PREAMBLE
@@ -96,6 +97,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.SPLATMAP_SPAWN_TEST_2, SplatmapSpawnTest2Screen.new(ascii_grid))
 	ui_manager.register_screen(State.SPLATMAP_SPAWN_TEST_3, SplatmapSpawnTest3Screen.new(ascii_grid))
 	ui_manager.register_screen(State.DESERT_BIOME_TEST, DesertBiomeTestScreen.new(ascii_grid))
+	ui_manager.register_screen(State.DESERT_BIOME_TEST_2, DesertBiomeTest2Screen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -215,6 +217,8 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.SPLATMAP_SPAWN_TEST_3)
 		"open_desert_biome_test":
 			set_state(State.DESERT_BIOME_TEST)
+		"open_desert_biome_test_2":
+			set_state(State.DESERT_BIOME_TEST_2)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:

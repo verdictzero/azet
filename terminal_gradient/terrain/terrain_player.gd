@@ -11,6 +11,16 @@ const GROUND_Y: float = 0.9
 # true, Y velocity zeroes, and the clamp is inactive — leaving room for
 # walk-over-rocks behaviour to be wired up later without a player rewrite.
 const GRAVITY: float = 28.0
+# Stair traversal: when a horizontal move is blocked by a wall whose top is
+# within STEP_HEIGHT_MAX of our feet, we lift onto it after move_and_slide().
+# STEP_HEIGHT_MAX is generous enough for the 0.5 m steps on test_structure_0
+# (and small rocks that are now walk-on-able) but short enough to still feel
+# like a wall blocks tall obstacles.
+const STEP_HEIGHT_MAX: float = 0.6
+# Ride a small distance below the player to keep the capsule glued to floors
+# when descending stairs — without it, each step launches the player into a
+# brief airborne arc.
+const STEP_FLOOR_SNAP: float = 0.5
 const ANIM_FPS: float = 9.0
 const WALK_PATTERN: PackedInt32Array = [1, 0, 1, 2]
 const HFRAMES: int = 3
@@ -92,6 +102,12 @@ func _ready() -> void:
 	_build_turbo_orb()
 	_saved_collision_layer = collision_layer
 	_saved_collision_mask = collision_mask
+	# Stair-friendly floor handling. Snap pulls us back onto a step when
+	# walking off its edge; raising floor_max_angle lets the body treat the
+	# top edge of a step (a near-vertical micro-slope from the body's POV)
+	# as floor instead of wall after we've snapped onto it.
+	floor_snap_length = STEP_FLOOR_SNAP
+	floor_max_angle = deg_to_rad(60.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -136,11 +152,72 @@ func _physics_process(delta: float) -> void:
 		velocity.y = 0.0
 	else:
 		velocity.y -= GRAVITY * delta
+	var horiz_velocity := Vector3(velocity.x, 0.0, velocity.z)
 	move_and_slide()
+	# Step-up: if the horizontal move was blocked by a wall whose top is
+	# within reach, lift onto it. Skipped during turbo (orb passes through
+	# everything), and only meaningful when the player is actually trying to
+	# move horizontally.
+	if not _turbo and horiz_velocity.length_squared() > 0.01:
+		_resolve_step_up(horiz_velocity)
 	if position.y < GROUND_Y:
 		position.y = GROUND_Y
 		velocity.y = 0.0
 	_update_anim(delta, moving)
+
+
+func _resolve_step_up(horiz_velocity: Vector3) -> void:
+	# For each wall collision opposing our motion, probe at the collision
+	# point (offset slightly into the wall) for a horizontal step-top
+	# surface within reach. First success wins.
+	var horiz_dir := horiz_velocity.normalized()
+	var space := get_world_3d().direct_space_state
+	var foot_y: float = global_position.y - 0.9
+	for i in get_slide_collision_count():
+		var col := get_slide_collision(i)
+		var n := col.get_normal()
+		if absf(n.y) >= 0.7:
+			continue  # not a wall — floor or ceiling hit
+		if horiz_dir.dot(-n) <= 0.3:
+			continue  # wall isn't opposing our motion direction
+		var into_xz := Vector2(-n.x, -n.z)
+		if into_xz.length_squared() < 0.0001:
+			continue
+		into_xz = into_xz.normalized() * 0.1
+		var col_pos: Vector3 = col.get_position()
+		var probe_x: float = col_pos.x + into_xz.x
+		var probe_z: float = col_pos.z + into_xz.y
+		# Cast down from STEP_HEIGHT_MAX above the foot to just below it.
+		var ray := PhysicsRayQueryParameters3D.create(
+			Vector3(probe_x, foot_y + STEP_HEIGHT_MAX + 0.1, probe_z),
+			Vector3(probe_x, foot_y - 0.05, probe_z))
+		ray.collision_mask = collision_mask
+		ray.exclude = [get_rid()]
+		var hit := space.intersect_ray(ray)
+		if hit.is_empty():
+			continue
+		# Confirm we hit a near-horizontal surface (an actual step top, not
+		# the side of an adjacent wall taller than our reach).
+		var step_normal: Vector3 = hit["normal"]
+		if step_normal.y < 0.7:
+			continue
+		var step_top_y: float = (hit["position"] as Vector3).y
+		var step_height: float = step_top_y - foot_y
+		if step_height <= 0.05 or step_height > STEP_HEIGHT_MAX:
+			continue
+		# Headroom: 1.8 m capsule must fit at the new position.
+		var head_ray := PhysicsRayQueryParameters3D.create(
+			Vector3(probe_x, step_top_y + 0.1, probe_z),
+			Vector3(probe_x, step_top_y + 1.85, probe_z))
+		head_ray.collision_mask = collision_mask
+		head_ray.exclude = [get_rid()]
+		if not space.intersect_ray(head_ray).is_empty():
+			continue
+		# Lift onto the step. Reset vertical velocity so the next gravity
+		# tick doesn't immediately yank us back off.
+		global_position.y = step_top_y + 0.9 + 0.02
+		velocity.y = 0.0
+		return
 
 
 func _update_facing(mx: float, mz: float) -> void:

@@ -1,2 +1,4 @@
+res://assets/prefabs/PRE_test_structure_0.tscn
+res://assets/materials/MAT_test_structure_0.tres
+res://ui/screens/desert_biome_test_2_screen.gd
 res://ui/screens/desert_biome_test_screen.gd
-res://assets/shaders/wind_particles.gdshader

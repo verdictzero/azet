@@ -44,8 +44,9 @@ const BiomeConfigDefault: Resource = preload("res://core/biome_config_default.tr
 const BIOME_GRID_N: int = 128
 const BAKE_GRID_N: int = BIOME_GRID_N + 2
 
-# Desert prefab catalog. Cacti come in four shapes; we pick at random per
-# instance. `desert_rock` is one shape, scaled aggressively to fake variety.
+# Desert prefab catalog. Tall cacti (A/B/C) drive the wide-grid scatter;
+# cactus_short drives the small-cactus clusters. `desert_rock` is one shape,
+# scaled aggressively to fake variety.
 const CactusShortScene: PackedScene = preload("res://assets/prefabs/cactus_short.tscn")
 const CactusTallAScene: PackedScene = preload("res://assets/prefabs/cactus_tall_a.tscn")
 const CactusTallBScene: PackedScene = preload("res://assets/prefabs/cactus_tall_b.tscn")
@@ -53,8 +54,14 @@ const CactusTallCScene: PackedScene = preload("res://assets/prefabs/cactus_tall_
 const DesertRockScene: PackedScene = preload("res://assets/prefabs/desert_rock.tscn")
 const TumbleweedScene: PackedScene = preload("res://assets/models/tumbleweed_0.glb")
 const WindParticlesShader: Shader = preload("res://assets/shaders/wind_particles.gdshader")
-const CactusScenes: Array[PackedScene] = [
-	CactusShortScene, CactusTallAScene, CactusTallBScene, CactusTallCScene,
+# Tall cacti are big-only — they never appear in clusters, so the wide-grid
+# scatter always reads as "big silhouettes evenly distributed across dirt-rocks".
+const TallCactusScenes: Array[PackedScene] = [
+	CactusTallAScene, CactusTallBScene, CactusTallCScene,
+]
+# Short cacti are cluster-only — they never appear standalone in the wide grid.
+const ShortCactusScenes: Array[PackedScene] = [
+	CactusShortScene,
 ]
 
 # Wind direction (world XZ). Matches the cactus shader's default `wind_dir`
@@ -174,50 +181,72 @@ const R_BREAKUP_BAND: float = 6.0
 # deliberately cleared.
 const R_OCCLUDE: float = 30.0
 
-# Big cacti: scattered widely via jittered grid (the original distribution).
-# Scale range matches the prior "2–3×" tuning so the wide silhouette of the
-# desert looks the same as before — the cluster system below is additive.
+# Tall cacti: scattered widely via jittered grid across all dirt-rocks splats.
+# Tall is the only family that uses this path — shorts are cluster-exclusive —
+# so every tall cactus in the world is a "big" silhouette by construction.
 const CACTUS_GRID_CELL: float = 11.0
 const CACTUS_JITTER: float = 2.4
 const CACTUS_MIN_DIST: float = 6.0
 const CACTUS_BIG_SCALE_MIN: float = 2.0
 const CACTUS_BIG_SCALE_MAX: float = 3.0
 
-# Small-cactus clusters: independent anchors per chunk, each producing a
-# medium ring + wide tiny halo. Big cacti are NOT involved as anchors —
-# clusters are their own thing, scattered separately from the big cactus
-# grid so the two layers can overlap or sit apart.
-const CACTUS_CLUSTERS_PER_CHUNK_MIN: int = 1
-const CACTUS_CLUSTERS_PER_CHUNK_MAX: int = 3
-const CACTUS_CLUSTER_ANCHOR_MARGIN: float = 4.0
-const CACTUS_PLACEMENT_ATTEMPTS: int = 8
-# Middle tier — 8-12 medium cacti filling the cluster's interior.
-const CACTUS_MID_COUNT_MIN: int = 8
-const CACTUS_MID_COUNT_MAX: int = 12
-const CACTUS_MID_RING_R_INNER: float = 0.0
-const CACTUS_MID_RING_R_OUTER: float = 5.0
-const CACTUS_MID_SCALE_MIN: float = 1.4
-const CACTUS_MID_SCALE_MAX: float = 2.2
-# Outer tier — many tiny cacti spattered around the edge.
-const CACTUS_TINY_COUNT_MIN: int = 15
-const CACTUS_TINY_COUNT_MAX: int = 25
-const CACTUS_TINY_RING_R_INNER: float = 5.0
-const CACTUS_TINY_RING_R_OUTER: float = 11.0
-const CACTUS_TINY_SCALE_MIN: float = 0.5
-const CACTUS_TINY_SCALE_MAX: float = 1.0
-# Tiny cacti skip colliders — player walks through them as ground clutter.
+# Short-cactus clusters: independent anchors per chunk, each producing three
+# concentric tiers — a few "relatively bigger" cacti at the centre, ringed by
+# medium ones, ringed by many small ones. Anchors are unrelated to the tall
+# cactus grid; clusters can sit between or under tall cacti.
+#
+# cactus_short's mesh AABB has a Y range of ~0.66 m. Inner tier now caps at
+# scale 2.5 (~1.65 m, ~92% capsule height); middle at 1.7 (~1.12 m); outer
+# at 1.1 (~0.73 m). Counts are roughly 50% higher than the previous tuning,
+# ring radii are pulled in (~2.0 m total vs prior 2.5 m / earlier 5.5 m),
+# and the rings deliberately overlap so a single cluster mixes tier sizes
+# instead of separating into clean bands. SHORT_CACTUS_AVOID_RADIUS_MULT is
+# halved and CACTUS_PLACEMENT_ATTEMPTS doubled to keep the dense rings
+# from rejecting too many candidates as the bigger cacti pack closer.
+const CACTUS_CLUSTERS_PER_CHUNK_MIN: int = 2
+const CACTUS_CLUSTERS_PER_CHUNK_MAX: int = 4
+const CACTUS_CLUSTER_ANCHOR_MARGIN: float = 7.0
+const CACTUS_PLACEMENT_ATTEMPTS: int = 16
+# Inner tier — a few "relatively bigger" cacti at the cluster centre.
+const CACTUS_INNER_COUNT_MIN: int = 3
+const CACTUS_INNER_COUNT_MAX: int = 6
+const CACTUS_INNER_RING_R_INNER: float = 0.0
+const CACTUS_INNER_RING_R_OUTER: float = 0.6
+const CACTUS_INNER_SCALE_MIN: float = 1.5
+const CACTUS_INNER_SCALE_MAX: float = 2.5
+# Middle tier — medium cacti ringing the inner cluster (overlaps inner).
+const CACTUS_MIDDLE_COUNT_MIN: int = 8
+const CACTUS_MIDDLE_COUNT_MAX: int = 14
+const CACTUS_MIDDLE_RING_R_INNER: float = 0.3
+const CACTUS_MIDDLE_RING_R_OUTER: float = 1.2
+const CACTUS_MIDDLE_SCALE_MIN: float = 0.8
+const CACTUS_MIDDLE_SCALE_MAX: float = 1.7
+# Outer tier — many small cacti spattered around the edge (overlaps middle).
+const CACTUS_OUTER_COUNT_MIN: int = 16
+const CACTUS_OUTER_COUNT_MAX: int = 28
+const CACTUS_OUTER_RING_R_INNER: float = 0.9
+const CACTUS_OUTER_RING_R_OUTER: float = 2.0
+const CACTUS_OUTER_SCALE_MIN: float = 0.5
+const CACTUS_OUTER_SCALE_MAX: float = 1.1
+# Sub-threshold cacti (smallest outer ones) skip colliders — player walks
+# through them as ground clutter.
 const CACTUS_COLLIDER_MIN_SCALE: float = 1.1
 const CACTUS_COLLIDER_RADIUS: float = 0.3
 const CACTUS_COLLIDER_HEIGHT: float = 1.6
 const CACTUS_SHADOW_SIZE_MULT: float = 1.4
 
-# Spawn breathing room — every collision-bearing prop (and tiny cacti for
+# Spawn breathing room — every collision-bearing prop (and small cacti for
 # visual clearance) is added to a per-chunk avoid list. Each candidate is
 # rejected if its avoid radius (`scale * AVOID_RADIUS_MULT + BUFFER`)
 # overlaps any existing entry's. Cacti and rocks share the same list so
 # rocks won't sit inside cactus footprints and vice versa.
+#
+# Tall cacti get a wider radius mult than shorts because their mesh footprint
+# is genuinely wider; the lower SHORT mult also lets cluster cacti pack
+# tightly so the rings actually read as "tightly clumped".
 const PROP_BREATHING_BUFFER: float = 0.4
-const CACTUS_AVOID_RADIUS_MULT: float = 0.45
+const TALL_CACTUS_AVOID_RADIUS_MULT: float = 0.45
+const SHORT_CACTUS_AVOID_RADIUS_MULT: float = 0.12
 const ROCK_AVOID_RADIUS_MULT: float = 0.5
 
 # Rock cluster widening (vs Demo 5): user explicitly asked for "extremely
@@ -280,6 +309,15 @@ var _pending_bakes: Dictionary = {}
 # Central platform state.
 var _platform_root: Node3D = null
 var _platform_center_xz: Vector2 = Vector2.ZERO
+# Optional second metal-splat curtain anchor (e.g. a building). Vector2.INF
+# disables it. Subclasses set these BEFORE super.on_enter() so the chunk-bake
+# job lambda captures them on the first chunk request.
+var _extra_curtain_xz: Vector2 = Vector2.INF
+var _extra_curtain_footprint_r: float = 0.0
+# Cactus / rock exclusion radius around the extra curtain anchor — keeps the
+# concrete-curtain plaza around a structure clear of vegetation, mirroring
+# R_OCCLUDE around the platform. 0.0 disables.
+var _extra_clearing_radius: float = 0.0
 # World-space horizontal radius of the (scaled) platform mesh. Drives both
 # the metal splat's solid-core radius and the cactus/rock exclusion ring.
 var _platform_footprint_r: float = 0.0
@@ -698,13 +736,16 @@ func _start_chunk_bake(key: Vector2i) -> void:
 	var biome_config: BiomeConfig = _biome_config
 	var platform_xz: Vector2 = _platform_center_xz
 	var footprint_r: float = _platform_footprint_r + R_PLATFORM_MARGIN
+	var extra_xz: Vector2 = _extra_curtain_xz
+	var extra_footprint_r: float = _extra_curtain_footprint_r
 	var task_id: int = WorkerThreadPool.add_task(
 		func() -> void:
 			job.img = BiomeField.bake_chunk_density_image(
 				job.origin_x, job.origin_z, CHUNK_SIZE, BIOME_GRID_N, biome_config)
 			job.metal_img = _bake_chunk_metal_image(
 				job.origin_x, job.origin_z, platform_xz,
-				footprint_r, R_BREAKUP_BAND, BIOME_GRID_N),
+				footprint_r, R_BREAKUP_BAND, BIOME_GRID_N,
+				extra_xz, extra_footprint_r),
 		false,
 		"desert-biome-test chunk bake (%d, %d)" % [key.x, key.y]
 	)
@@ -748,7 +789,7 @@ func _finish_chunk_load(key: Vector2i, density_img: Image, metal_img: Image) -> 
 
 	for i in cactus_count:
 		var c: Dictionary = cactus_positions[i]
-		var inst: Node = (CactusScenes[c.scene_idx] as PackedScene).instantiate()
+		var inst: Node = (c.scene as PackedScene).instantiate()
 		if inst is Node3D:
 			(inst as Node3D).transform = c.xform
 		chunk.add_child(inst)
@@ -816,10 +857,11 @@ func _collect_desert_props(rng: RandomNumberGenerator, key: Vector2i,
 	# `{x: float, z: float, r: float}`.
 	var avoid: Array[Dictionary] = []
 
-	# ── Big cacti (jittered grid, dirt-rocks only) ──
-	# Wide scatter across the chunk, the original pre-cluster behaviour. The
-	# cluster pass below runs independently after — clusters don't centre on
-	# big cacti.
+	# ── Tall cacti (jittered grid, dirt-rocks only) ──
+	# Wide scatter across the chunk so every dirt-rocks splat carries some big
+	# silhouettes. Tall is the only family used here — short cacti are
+	# cluster-only — and the scale floor of CACTUS_BIG_SCALE_MIN guarantees
+	# nothing small sneaks in.
 	var cells: int = int(ceil(span / CACTUS_GRID_CELL))
 	for gi in range(cells):
 		for gj in range(cells):
@@ -832,33 +874,35 @@ func _collect_desert_props(rng: RandomNumberGenerator, key: Vector2i,
 				continue
 			if _near_platform_exclusion(wx, wz):
 				continue
-			# Per-cell min-distance check against other big cacti (preserves
+			# Per-cell min-distance check against other tall cacti (preserves
 			# the old grid spacing) — handled by the avoid list since every
-			# cactus pushed onto it has a CACTUS_AVOID radius.
+			# cactus pushed onto it has a TALL_CACTUS_AVOID radius.
 			var sc: float = lerp(CACTUS_BIG_SCALE_MIN, CACTUS_BIG_SCALE_MAX,
 				rng.randf())
-			var self_r: float = sc * CACTUS_AVOID_RADIUS_MULT + PROP_BREATHING_BUFFER
+			var self_r: float = sc * TALL_CACTUS_AVOID_RADIUS_MULT + PROP_BREATHING_BUFFER
 			# Also enforce the legacy CACTUS_MIN_DIST as a hard floor so the
 			# wide-canopy spacing reads as before.
 			if not _prop_pos_clear(wx, wz, maxf(self_r, CACTUS_MIN_DIST * 0.5),
 					avoid):
 				continue
 			var ry: float = rng.randf() * TAU
-			var scene_idx: int = rng.randi_range(0, CactusScenes.size() - 1)
+			var scene: PackedScene = TallCactusScenes[
+				rng.randi_range(0, TallCactusScenes.size() - 1)]
 			var xform := _make_world_xform(Vector2(wx, wz), sc, ry)
 			cactus_out.append({
 				"xz": Vector2(wx, wz),
 				"scale": sc,
 				"xform": xform,
-				"scene_idx": scene_idx,
+				"scene": scene,
 				"has_collider": sc >= CACTUS_COLLIDER_MIN_SCALE,
 			})
 			avoid.append({"x": wx, "z": wz, "r": self_r})
 
-	# ── Small-cactus clusters (independent anchors, dirt-rocks only) ──
-	# Each anchor produces a medium ring (filling the centre) + tiny halo.
-	# Anchors are not tied to big cactus positions; clusters can sit between
-	# big cacti or overlap them.
+	# ── Short-cactus clusters (independent anchors, dirt-rocks only) ──
+	# Each anchor produces three concentric rings: a few "relatively bigger"
+	# inner cacti, ringed by medium ones, ringed by many small ones. Anchors
+	# are unrelated to the tall cactus grid; clusters can sit between or
+	# under tall cacti.
 	var cactus_anchor_margin: float = CACTUS_CLUSTER_ANCHOR_MARGIN
 	var cactus_anchor_span: float = CHUNK_SIZE - cactus_anchor_margin * 2.0
 	var cactus_cluster_count: int = rng.randi_range(
@@ -880,14 +924,19 @@ func _collect_desert_props(rng: RandomNumberGenerator, key: Vector2i,
 			continue
 
 		_append_cactus_ring(rng, ax, az,
-			CACTUS_MID_COUNT_MIN, CACTUS_MID_COUNT_MAX,
-			CACTUS_MID_RING_R_INNER, CACTUS_MID_RING_R_OUTER,
-			CACTUS_MID_SCALE_MIN, CACTUS_MID_SCALE_MAX,
+			CACTUS_INNER_COUNT_MIN, CACTUS_INNER_COUNT_MAX,
+			CACTUS_INNER_RING_R_INNER, CACTUS_INNER_RING_R_OUTER,
+			CACTUS_INNER_SCALE_MIN, CACTUS_INNER_SCALE_MAX,
 			density_img, chunk_ox, chunk_oz, cactus_out, avoid)
 		_append_cactus_ring(rng, ax, az,
-			CACTUS_TINY_COUNT_MIN, CACTUS_TINY_COUNT_MAX,
-			CACTUS_TINY_RING_R_INNER, CACTUS_TINY_RING_R_OUTER,
-			CACTUS_TINY_SCALE_MIN, CACTUS_TINY_SCALE_MAX,
+			CACTUS_MIDDLE_COUNT_MIN, CACTUS_MIDDLE_COUNT_MAX,
+			CACTUS_MIDDLE_RING_R_INNER, CACTUS_MIDDLE_RING_R_OUTER,
+			CACTUS_MIDDLE_SCALE_MIN, CACTUS_MIDDLE_SCALE_MAX,
+			density_img, chunk_ox, chunk_oz, cactus_out, avoid)
+		_append_cactus_ring(rng, ax, az,
+			CACTUS_OUTER_COUNT_MIN, CACTUS_OUTER_COUNT_MAX,
+			CACTUS_OUTER_RING_R_INNER, CACTUS_OUTER_RING_R_OUTER,
+			CACTUS_OUTER_SCALE_MIN, CACTUS_OUTER_SCALE_MAX,
 			density_img, chunk_ox, chunk_oz, cactus_out, avoid)
 
 	# ── Rock cluster anchors (sand pockets only) ──
@@ -993,11 +1042,14 @@ static func _make_world_xform(xz: Vector2, sc: float, ry: float) -> Transform3D:
 	return Transform3D(basis, Vector3(xz.x, 0.0, xz.y))
 
 
-# Cactus version of `_append_rock_ring`. Picks N cacti within a ring around
-# (cx, cz), each placement gated to dirt-rocks (NOT meadow) and outside the
-# platform exclusion. Random Y rotation, random scale within the tier's
-# range, random cactus scene per instance. `has_collider` is set per-cactus
-# so the loader skips colliders for tiny ones.
+# Short-cactus ring placement. Picks N cactus_short instances within a ring
+# around (cx, cz), each placement gated to dirt-rocks (NOT meadow) and outside
+# the platform exclusion. Random Y rotation, random scale within the tier's
+# range. `has_collider` is set per-cactus so the loader skips colliders for
+# the smallest ones, letting the player walk through them as ground clutter.
+#
+# Uses SHORT_CACTUS_AVOID_RADIUS_MULT (smaller than tall) so the rings can
+# pack tightly enough to read as "tightly clumped".
 func _append_cactus_ring(rng: RandomNumberGenerator, cx: float, cz: float,
 		count_min: int, count_max: int,
 		r_inner: float, r_outer: float,
@@ -1021,17 +1073,18 @@ func _append_cactus_ring(rng: RandomNumberGenerator, cx: float, cz: float,
 			# Cacti reject overlapping anything in the avoid list — they
 			# need physical breathing room from each other AND from rocks
 			# at the sand/dirt boundary.
-			var self_r: float = sc * CACTUS_AVOID_RADIUS_MULT + PROP_BREATHING_BUFFER
+			var self_r: float = sc * SHORT_CACTUS_AVOID_RADIUS_MULT + PROP_BREATHING_BUFFER
 			if not _prop_pos_clear(wx, wz, self_r, avoid):
 				continue
 			var ry: float = rng.randf() * TAU
-			var scene_idx: int = rng.randi_range(0, CactusScenes.size() - 1)
+			var scene: PackedScene = ShortCactusScenes[
+				rng.randi_range(0, ShortCactusScenes.size() - 1)]
 			var xform := _make_world_xform(Vector2(wx, wz), sc, ry)
 			cactus_out.append({
 				"xz": Vector2(wx, wz),
 				"scale": sc,
 				"xform": xform,
-				"scene_idx": scene_idx,
+				"scene": scene,
 				"has_collider": sc >= CACTUS_COLLIDER_MIN_SCALE,
 			})
 			avoid.append({"x": wx, "z": wz, "r": self_r})
@@ -1181,12 +1234,20 @@ func _spawn_platform(scene: Node3D, xz: Vector2) -> float:
 	return top_y
 
 
-# Cactus/rock dead-zone around the platform. Returns true if (wx, wz) is
-# within R_OCCLUDE of the platform centre — keeps the central plaza clear.
+# Cactus/rock dead-zone around the platform AND the optional extra clearing
+# anchor (e.g. a building). Returns true if (wx, wz) falls inside either
+# clearing — keeps both plazas clear of vegetation.
 func _near_platform_exclusion(wx: float, wz: float) -> bool:
 	var dx: float = wx - _platform_center_xz.x
 	var dz: float = wz - _platform_center_xz.y
-	return dx * dx + dz * dz < R_OCCLUDE * R_OCCLUDE
+	if dx * dx + dz * dz < R_OCCLUDE * R_OCCLUDE:
+		return true
+	if _extra_clearing_radius > 0.0 and _extra_curtain_xz != Vector2.INF:
+		var ex: float = wx - _extra_curtain_xz.x
+		var ez: float = wz - _extra_curtain_xz.y
+		if ex * ex + ez * ez < _extra_clearing_radius * _extra_clearing_radius:
+			return true
+	return false
 
 
 # ── Metal splat bake ───────────────────────────────
@@ -1204,34 +1265,60 @@ func _near_platform_exclusion(wx: float, wz: float) -> bool:
 # the solid core / clear-ground field, so the FBM only modulates the rim.
 static func _bake_chunk_metal_image(origin_x: float, origin_z: float,
 		platform_xz: Vector2, footprint_r: float, breakup_band: float,
-		n: int) -> Image:
+		n: int,
+		extra_xz: Vector2 = Vector2.INF,
+		extra_footprint_r: float = 0.0) -> Image:
 	var bake_n: int = n + 2
 	var data := PackedByteArray()
 	data.resize(bake_n * bake_n)
 	var step: float = CHUNK_SIZE / float(n)
 	var max_radius: float = footprint_r + breakup_band
-	# Cheap chunk-level reject: distance from chunk AABB to platform centre.
-	# Anything further than (max_radius + 1 step) is guaranteed all-zero.
+	var has_extra: bool = extra_xz != Vector2.INF and extra_footprint_r > 0.0
+	var extra_max_radius: float = extra_footprint_r + breakup_band
+	# Chunk-level reject: skip the inner loops only if BOTH anchors are
+	# guaranteed to contribute zero to every texel in this chunk.
 	var clamped_x: float = clampf(platform_xz.x, origin_x, origin_x + CHUNK_SIZE)
 	var clamped_z: float = clampf(platform_xz.y, origin_z, origin_z + CHUNK_SIZE)
 	var ddx0: float = clamped_x - platform_xz.x
 	var ddz0: float = clamped_z - platform_xz.y
-	if ddx0 * ddx0 + ddz0 * ddz0 > (max_radius + step) * (max_radius + step):
+	var platform_far: bool = ddx0 * ddx0 + ddz0 * ddz0 > (max_radius + step) * (max_radius + step)
+	var extra_far: bool = true
+	if has_extra:
+		var ex: float = clampf(extra_xz.x, origin_x, origin_x + CHUNK_SIZE)
+		var ez: float = clampf(extra_xz.y, origin_z, origin_z + CHUNK_SIZE)
+		var ddx1: float = ex - extra_xz.x
+		var ddz1: float = ez - extra_xz.y
+		extra_far = ddx1 * ddx1 + ddz1 * ddz1 > (extra_max_radius + step) * (extra_max_radius + step)
+	if platform_far and extra_far:
 		return Image.create_from_data(bake_n, bake_n, false, Image.FORMAT_L8, data)
 	var edge_in: float = footprint_r
 	var edge_out: float = footprint_r + breakup_band
+	var extra_edge_in: float = extra_footprint_r
+	var extra_edge_out: float = extra_footprint_r + breakup_band
 	for iz in bake_n:
 		var wz: float = origin_z + (float(iz) - 0.5) * step
 		var row: int = iz * bake_n
 		for ix in bake_n:
 			var wx: float = origin_x + (float(ix) - 0.5) * step
+			# fbm sampled once per texel, shared between both anchors so the
+			# noisy edge pattern stays continuous across the curtain field.
+			var n_val: float = BiomeField.fbm(wx * 0.35, wz * 0.35)
+			# Platform anchor weight.
 			var ddx: float = wx - platform_xz.x
 			var ddz: float = wz - platform_xz.y
 			var d: float = sqrt(ddx * ddx + ddz * ddz)
 			var t: float = 1.0 - smoothstep(edge_in, edge_out, d)
-			var n_val: float = BiomeField.fbm(wx * 0.35, wz * 0.35)
 			var win: float = 1.0 - absf(2.0 * t - 1.0)
 			var w: float = clampf(t + (n_val - 0.5) * 0.6 * win, 0.0, 1.0)
+			# Extra anchor weight (max-blended with platform).
+			if has_extra:
+				var edx: float = wx - extra_xz.x
+				var edz: float = wz - extra_xz.y
+				var ed: float = sqrt(edx * edx + edz * edz)
+				var et: float = 1.0 - smoothstep(extra_edge_in, extra_edge_out, ed)
+				var ewin: float = 1.0 - absf(2.0 * et - 1.0)
+				var ew: float = clampf(et + (n_val - 0.5) * 0.6 * ewin, 0.0, 1.0)
+				w = maxf(w, ew)
 			data[row + ix] = clampi(int(w * 255.0 + 0.5), 0, 255)
 	return Image.create_from_data(bake_n, bake_n, false, Image.FORMAT_L8, data)
 

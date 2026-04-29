@@ -1,0 +1,19 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://cvsklwk1t22yn"]
+
+[ext_resource type="Shader" uid="uid://cj2v5hr0uyy2s" path="res://assets/shaders/structure_pbr.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" uid="uid://lfg65fp8ipy2" path="res://assets/textures/concrete_wall_007_diff_1k.jpg" id="2_diff"]
+[ext_resource type="Texture2D" uid="uid://bkgh1hmt3ljmb" path="res://assets/textures/concrete_wall_007_nor_gl_1k.jpg" id="3_norm"]
+[ext_resource type="Texture2D" uid="uid://cjdq6jgtgmq68" path="res://assets/textures/concrete_wall_007_rough_1k.jpg" id="4_rough"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/albedo_tex = ExtResource("2_diff")
+shader_parameter/normal_tex = ExtResource("3_norm")
+shader_parameter/roughness_tex = ExtResource("4_rough")
+shader_parameter/albedo_tint = Color(1, 1, 1, 1)
+shader_parameter/world_per_tile = 8.0
+shader_parameter/normal_strength = 1.5000000712500001
+shader_parameter/roughness_scale = 1.0
+shader_parameter/blend_sharpness = 4.0
+shader_parameter/fade_amount = 0.0
