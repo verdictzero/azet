@@ -7,6 +7,7 @@ const TestStructureScene: PackedScene = preload("res://assets/prefabs/PRE_test_s
 # any screen-side override. The roof needs its own copy so fade_amount can
 # tween independently per spawn — we duplicate the same source material.
 const StructureMat: ShaderMaterial = preload("res://assets/materials/MAT_test_structure_0.tres")
+const ExteriorDimShader: Shader = preload("res://assets/shaders/exterior_dim.gdshader")
 
 const STRUCTURE_SCALE: float = 0.75
 # Lift the building up from the terrain plane. Mesh AABB local Y range is
@@ -22,11 +23,19 @@ const STRUCTURE_OFFSET: Vector3 = Vector3(-30.0, 0.0, -30.0)
 const STRUCTURE_YAW_RAD: float = PI / 2.0
 const ROOF_FADE_DURATION: float = 0.35
 
-# Interior trigger inset from the rotated exterior. Mesh AABB at scale 1.0
-# is 23 × 9 × 18 m; the 90° yaw swaps the world X/Z extents, then 0.75×
-# scale gives ~13.5 × 6.75 × 17.25 m. Inset ~1 m for wall thickness.
-const INTERIOR_BOX_SIZE: Vector3 = Vector3(11.5, 4.5, 15.0)
+# Interior trigger sized so the player's CENTER must be solidly past the
+# building walls before the roof fade starts — not just their capsule edge
+# overlapping a doorway. Building world AABB is 13.5 × 6.75 × 17.25 m at
+# scale 0.75 (after the 90° yaw); a 9.5 × 4.5 × 13.0 box leaves ~2 m of
+# wall+threshold buffer on each horizontal axis, so body_entered fires only
+# once the player is well inside.
+const INTERIOR_BOX_SIZE: Vector3 = Vector3(9.5, 4.5, 13.0)
 const INTERIOR_BOX_Y: float = 2.25
+
+# Outside-dim overlay: how dark the "everything outside the structure" gets
+# at full strength. 0.7 ≈ outside reads as in shadow. Tweens 0 → DIM_TARGET
+# in lockstep with the roof fade.
+const DIM_TARGET: float = 0.7
 
 # Metal-plating curtain margin past the building's footprint, matching the
 # platform's R_PLATFORM_MARGIN convention so the splat reads consistently.
@@ -39,6 +48,8 @@ const CLEARING_MARGIN: float = 18.0
 var _structure_root: Node3D = null
 var _roof_material: ShaderMaterial = null
 var _roof_tween: Tween = null
+var _dim_material: ShaderMaterial = null
+var _dim_tween: Tween = null
 
 
 func _init(ascii_grid: AsciiGrid) -> void:
@@ -62,10 +73,22 @@ func on_enter(context: Dictionary = {}) -> void:
 func on_exit() -> void:
 	if _roof_tween:
 		_roof_tween.kill()
+	if _dim_tween:
+		_dim_tween.kill()
 	_roof_tween = null
+	_dim_tween = null
 	_roof_material = null
+	_dim_material = null
 	_structure_root = null
 	super.on_exit()
+
+
+# Per-frame: keep the dim overlay's bright centre locked to the player's
+# screen-space position so the bright disc follows the camera even as it
+# orbits/lerps. Cheap — one unproject_position call.
+func draw(cols: int, rows: int) -> void:
+	super.draw(cols, rows)
+	_update_dim_center()
 
 
 func _spawn_structure() -> void:
@@ -95,6 +118,8 @@ func _spawn_structure() -> void:
 	scene.add_child(s)
 	_structure_root = s
 
+	_spawn_dim_overlay()
+
 	var area := Area3D.new()
 	area.name = "StructureInterior"
 	area.collision_layer = 0
@@ -111,15 +136,21 @@ func _spawn_structure() -> void:
 
 
 func _on_interior_entered(body: Node3D) -> void:
-	if body != _player or _roof_material == null:
+	if body != _player:
 		return
-	_start_roof_tween(1.0)
+	if _roof_material != null:
+		_start_roof_tween(1.0)
+	if _dim_material != null:
+		_start_dim_tween(DIM_TARGET)
 
 
 func _on_interior_exited(body: Node3D) -> void:
-	if body != _player or _roof_material == null:
+	if body != _player:
 		return
-	_start_roof_tween(0.0)
+	if _roof_material != null:
+		_start_roof_tween(0.0)
+	if _dim_material != null:
+		_start_dim_tween(0.0)
 
 
 func _start_roof_tween(target: float) -> void:
@@ -133,3 +164,53 @@ func _start_roof_tween(target: float) -> void:
 func _set_roof_fade(v: float) -> void:
 	if _roof_material:
 		_roof_material.set_shader_parameter("fade_amount", v)
+
+
+# ── Outside-dim overlay ──────────────────────────────────────────────
+
+# Build a viewport-sized ColorRect inside the SubViewport with the
+# `exterior_dim` shader. Lives until the screen tears down via super._cleanup.
+func _spawn_dim_overlay() -> void:
+	if _viewport == null:
+		return
+	_dim_material = ShaderMaterial.new()
+	_dim_material.shader = ExteriorDimShader
+	_dim_material.set_shader_parameter("dim_amount", 0.0)
+	_dim_material.set_shader_parameter("bright_center_uv", Vector2(0.5, 0.5))
+	_dim_material.set_shader_parameter("dim_inner_radius_uv", 0.18)
+	_dim_material.set_shader_parameter("dim_outer_radius_uv", 0.42)
+	var vs := Vector2(_viewport.size)
+	var aspect: float = (vs.x / vs.y) if vs.y > 0.0 else 1.778
+	_dim_material.set_shader_parameter("aspect_correction", aspect)
+
+	var rect := ColorRect.new()
+	rect.name = "ExteriorDimOverlay"
+	rect.position = Vector2.ZERO
+	rect.size = vs
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.color = Color.WHITE  # blend_mul: brightness lives in shader output
+	rect.material = _dim_material
+	_viewport.add_child(rect)
+
+
+func _start_dim_tween(target: float) -> void:
+	if _dim_tween:
+		_dim_tween.kill()
+	var current: float = _dim_material.get_shader_parameter("dim_amount")
+	_dim_tween = grid.create_tween()
+	_dim_tween.tween_method(_set_dim_amount, current, target, ROOF_FADE_DURATION)
+
+
+func _set_dim_amount(v: float) -> void:
+	if _dim_material:
+		_dim_material.set_shader_parameter("dim_amount", v)
+
+
+func _update_dim_center() -> void:
+	if _camera == null or _player == null or _dim_material == null:
+		return
+	var vs := Vector2(_viewport.size)
+	if vs.x <= 0.0 or vs.y <= 0.0:
+		return
+	var sp: Vector2 = _camera.unproject_position(_player.global_position)
+	_dim_material.set_shader_parameter("bright_center_uv", sp / vs)
