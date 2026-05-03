@@ -26,7 +26,7 @@ const WALK_PATTERN: PackedInt32Array = [1, 0, 1, 2]
 const HFRAMES: int = 3
 const VFRAMES: int = 4
 const FRAME_PX: Vector2 = Vector2(100.0, 170.0)
-const SPRITE_HEIGHT_M: float = 3.6
+const SPRITE_HEIGHT_M: float = 2.88
 const WIDTH_SCALE: float = 0.9
 
 const PlayerSpriteShader: Shader = preload("res://assets/shaders/player_sprite.gdshader")

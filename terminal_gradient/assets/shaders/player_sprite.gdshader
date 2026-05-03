@@ -2,11 +2,11 @@ shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_opaque, blend_mix;
 
 // Y-axis billboarded sprite-sheet quad that cross-fades between two frames
-// (`frame_a` → `frame_b` by `mix_t`). Samples in pixel space and clamps to the
-// current frame's bounds so there is no bleed across frames or wrap across
-// the texture edge.
+// (`frame_a` → `frame_b` by `mix_t`). Samples bilinearly within the current
+// frame; the UV is clamped half a texel inside the frame's bounds so the
+// bilinear taps can never reach an adjacent frame on the sprite sheet.
 
-uniform sampler2D tex : source_color, filter_nearest, repeat_disable;
+uniform sampler2D tex : source_color, filter_linear, repeat_disable;
 uniform vec2 frame_size = vec2(0.333333, 0.25); // normalized size of one frame (1/hframes, 1/vframes)
 uniform vec2 frame_a = vec2(0.0);                // normalized origin of current frame
 uniform vec2 frame_b = vec2(0.0);                // normalized origin of next frame
@@ -45,13 +45,14 @@ void fragment() {
 	vec2 tex_size = vec2(textureSize(tex, 0));
 	vec2 frame_px = frame_size * tex_size;
 
-	// Pick the texel within the current frame; clamp so UV at the edges
-	// can never spill into an adjacent frame or wrap across the texture.
-	vec2 sample_px = clamp(floor(UV * frame_px), vec2(0.0), frame_px - 1.0);
-	vec2 pixel_center = sample_px + 0.5;
+	// Continuous frame-local position in texels, clamped half a texel inside
+	// the frame so bilinear taps stay within the current frame. Without this
+	// clamp the four-tap blend at a frame edge would pull in pixels from the
+	// neighbouring frame on the sheet.
+	vec2 frame_pos = clamp(UV * frame_px, vec2(0.5), frame_px - vec2(0.5));
 
-	vec2 uv_a = (frame_a * tex_size + pixel_center) / tex_size;
-	vec2 uv_b = (frame_b * tex_size + pixel_center) / tex_size;
+	vec2 uv_a = (frame_a * tex_size + frame_pos) / tex_size;
+	vec2 uv_b = (frame_b * tex_size + frame_pos) / tex_size;
 
 	vec4 a = texture(tex, uv_a);
 	vec4 b = texture(tex, uv_b);
