@@ -117,4 +117,3 @@ debug_menu={
 [rendering]
 
 renderer/rendering_method="mobile"
-renderer/rendering_method.mobile="mobile"

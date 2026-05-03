@@ -14,7 +14,7 @@ const MENU_ACTIONS: Array[String] = [
 ]
 
 const MENU_DESCRIPTIONS: Array[String] = [
-	"Forest biome reference scene (formerly Splatmap Spawn Test 3). Smooth-edge splatmap with spawn-precise alignment — bakes 5 continuous-valued FBM weights per texel; GPU bilinear-samples + argmaxes per fragment. Lit by the forest_day HDRI panorama only — no directional light, no shadows, ambient + reflections come straight from the sky.",
+	"Forest biome reference scene (formerly Terrain Demo 5). Meadow + pine-forest chunked terrain via the proxy-splatmap pattern, central platform spawn area, HUD compass that always points world-north. Lit by the forest_day HDRI panorama only — no directional light, no shadows, ambient + reflections come straight from the sky.",
 	"Desert biome reference scene with the PBR concrete structure. Lit by the desert_day HDRI panorama only — no directional light, no shadows. Walking inside dither-fades the roof out so the interior is visible from above; walking back out fades it in.",
 ]
 
