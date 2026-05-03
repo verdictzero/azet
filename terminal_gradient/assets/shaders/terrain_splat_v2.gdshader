@@ -1,5 +1,4 @@
 shader_type spatial;
-render_mode unshaded;
 
 // World-space splat-mapped terrain — proxy-splatmap variant of
 // `terrain_splat.gdshader`. Same forest/meadow texture blend and same

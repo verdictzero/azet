@@ -1,20 +1,11 @@
 shader_type spatial;
-render_mode unshaded;
 
-// Cuboid body for the SPLATMAP SPAWN TEST.
+// Cuboid body for the FOREST BIOME TEST (was Splatmap Spawn Test 3).
 // - Wind block copied verbatim from toon_tree.gdshader so cuboids sway
 //   exactly like real vegetation.
-// - Albedo: per-instance zone colour, *shaded* by the matcap's luminance
-//   only. We do NOT multiply by `matcap.rgb` because matcap_1 (tree matcap)
-//   is heavily green/brown-tinted, which would filter the zone hue and
-//   defeat the entire point of the test (e.g. red zone × green matcap =
-//   muddy olive, indistinguishable from green). Using mc_luma keeps the
-//   toon-shaded look (highlights / shadow regions across the cuboid faces)
-//   while preserving the zone colour exactly.
-
-uniform sampler2D matcap : filter_linear, repeat_disable;
-// 0 = unshaded flat zone colour. 1 = full matcap-luma shading.
-uniform float matcap_shade_strength : hint_range(0.0, 1.0) = 1.0;
+// - Lit by HDRI environment lighting only — no matcap luma, no fake
+//   shading. Albedo = per-instance zone colour; the engine + HDRI ambient
+//   handles all per-face brightness variation.
 
 uniform float wind_strength = 0.0;
 uniform float wind_speed = 1.4;
@@ -39,18 +30,9 @@ void vertex() {
 }
 
 void fragment() {
-	// Matcap lookup: project the world-space normal into view space and map
-	// [-1,1] → [0,1] on XY. Same pattern as toon_tree_matcap.gdshader.
-	vec3 n = normalize(NORMAL);
-	vec3 view_normal = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
-	vec2 mc_uv = view_normal.xy * 0.5 + 0.5;
-	vec3 mc = texture(matcap, mc_uv).rgb;
-	// Use ONLY the matcap's luminance as a per-face brightness scalar; the
-	// matcap's *chroma* is discarded so the zone colour comes through
-	// unfiltered. Mix between flat (1.0) and matcap-shaded (mc_luma).
-	float mc_luma = dot(mc, vec3(0.299, 0.587, 0.114));
-	float shade = mix(1.0, mc_luma, matcap_shade_strength);
-	ALBEDO = v_color * shade;
-	ROUGHNESS = 1.0;
+	// Per-instance zone colour as albedo; the engine's HDRI environment
+	// lighting paints the per-face shading.
+	ALBEDO = v_color;
+	ROUGHNESS = 0.9;
 	SPECULAR = 0.0;
 }

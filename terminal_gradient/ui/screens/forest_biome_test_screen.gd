@@ -126,7 +126,6 @@ const GroundShader: Shader = preload("res://assets/shaders/splat_test_3_ground.g
 const BlobShadowShader: Shader = preload("res://assets/shaders/blob_shadow.gdshader")
 const PaneRasterShader: Shader = preload("res://assets/shaders/pane_raster.gdshader")
 const PaneRasterLutShader: Shader = preload("res://assets/shaders/pane_raster_lut.gdshader")
-const CUBOID_MATCAP_TEX: Texture2D = preload("res://assets/matcap/matcap_1.png")
 
 # Post-FX: raster block snapping + Bayer dither + film grain, optionally
 # palette-LUT-snapped to a 256-colour palette. Mirrors the production demo
@@ -397,10 +396,8 @@ func _build_materials() -> void:
 
 	_cuboid_material = ShaderMaterial.new()
 	_cuboid_material.shader = CuboidShader
-	_cuboid_material.set_shader_parameter("matcap", CUBOID_MATCAP_TEX)
-	# Matcap contributes brightness only — the zone hue rides INSTANCE_CUSTOM
-	# unfiltered. See splat_test_cuboid.gdshader for the rationale.
-	_cuboid_material.set_shader_parameter("matcap_shade_strength", 1.0)
+	# Cuboid albedo = INSTANCE_CUSTOM zone hue; HDRI environment provides
+	# all per-face lighting. No matcap.
 	_cuboid_material.set_shader_parameter("wind_strength", WIND_STRENGTH)
 	_cuboid_material.set_shader_parameter("wind_speed", WIND_SPEED)
 	_cuboid_material.set_shader_parameter("wind_mask_y_min", WIND_MASK_Y_MIN)
