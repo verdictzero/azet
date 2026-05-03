@@ -2,7 +2,7 @@
 
 ## Project: Terminal Gradient
 
-ASCII roguelike set in an O'Neill cylinder space colony. Godot 4.6, GL compatibility renderer, 1280x720 viewport. Single project lives in `terminal_gradient/`.
+ASCII roguelike set in an O'Neill cylinder space colony. Godot 4.6, Mobile renderer (Vulkan), 1280x720 viewport. Single project lives in `terminal_gradient/`.
 
 - Main scene: `terminal_gradient/rendering/ascii_grid.tscn`
 - Project file: `terminal_gradient/project.godot`
@@ -31,6 +31,6 @@ WASD / arrows for movement, Space/Enter `interact`, Esc `cancel`, `I` inventory,
 ## Gotchas
 
 - `UIManager` looks like an autoload but isn't — it's a node inside the main scene tree. Don't try to access it as a global.
-- Renderer is `gl_compatibility`, not Forward+ — shaders must stay GLES3-compatible.
+- Renderer is `mobile` (Vulkan), not Forward+. Shaders need to be Vulkan-compatible spatial shaders; HDRI panorama IBL drives lighting, no directional light, no shadows.
 - Cell data textures regenerate every frame; performance is bound by upload bandwidth, not draw calls.
 - CRT post-process is optional; if the screen looks flat, check `crt_postprocess.gdshader` is wired into the viewport chain.

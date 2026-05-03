@@ -1,7 +1,8 @@
-class_name SplatmapSpawnTest3Screen
+class_name ForestBiomeTestScreen
 extends BaseScreen
-## SPLATMAP SPAWN TEST 3 — combines the smooth-edge rendering of Test 1
-## with the spawn-precision invariant of Test 2.
+## FOREST BIOME TEST — formerly Splatmap Spawn Test 3.
+## Smooth-edge splatmap with spawn-precise alignment, repurposed as the
+## forest biome reference scene for the HDRI lighting revamp.
 ##
 ## Test 1 has smooth boundaries (GPU classifies per fragment) but spawn
 ## drift (CPU and GPU run separate noise math). Test 2 has perfect spawn
@@ -260,11 +261,20 @@ func _build_world() -> void:
 	_scene_root.name = "SplatTestScene"
 	_viewport.add_child(_scene_root)
 
+	# HDRI-only lighting (no directional light, no shadows). Forest day
+	# panorama drives the sky background, ambient term, and reflections.
 	var world_env := WorldEnvironment.new()
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#1a1a2e")
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
+	var sky := Sky.new()
+	var sky_mat := PanoramaSkyMaterial.new()
+	sky_mat.panorama = preload("res://assets/hdri/forest_day_test.exr")
+	sky.sky_material = sky_mat
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 1.0
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	world_env.environment = env
 	_scene_root.add_child(world_env)
 

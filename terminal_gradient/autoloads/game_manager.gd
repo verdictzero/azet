@@ -39,20 +39,9 @@ enum State {
 	ASCII_CUTSCENE,
 	VIDEO_CUTSCENE,
 	ENGINEERING_SPACE,
-	FIRE_DEMO,
 	TITLE_SCREEN,
-	UI_SHELL_DEMO,
-	TERRAIN_DEMO,
-	TERRAIN_DEMO_2,
-	TERRAIN_DEMO_3,
-	TERRAIN_DEMO_4,
-	TERRAIN_DEMO_5,
-	SPLATMAP_SPAWN_TEST,
-	SPLATMAP_SPAWN_TEST_2,
-	SPLATMAP_SPAWN_TEST_3,
-	DESERT_BIOME_TEST,
+	FOREST_BIOME_TEST,
 	DESERT_BIOME_TEST_2,
-	DESERT_BIOME_SCALE_TEST,
 }
 
 var current_state: State = State.PREAMBLE
@@ -85,21 +74,10 @@ func initialize(grid: AsciiGrid) -> void:
 	# Register Phase 1 screens
 	ui_manager.register_screen(State.PREAMBLE, PreambleScreen.new(ascii_grid))
 	ui_manager.register_screen(State.MENU, MainMenuScreen.new(ascii_grid))
-	ui_manager.register_screen(State.FIRE_DEMO, FireDemoScreen.new(ascii_grid))
 	ui_manager.register_screen(State.TITLE_SCREEN, TitleScreen.new(ascii_grid))
-	ui_manager.register_screen(State.UI_SHELL_DEMO, UIShellDemoScreen.new(ascii_grid))
 	ui_manager.register_screen(State.DEBUG_MENU, DebugMenuScreen.new(ascii_grid))
-	ui_manager.register_screen(State.TERRAIN_DEMO, TerrainDemoScreen.new(ascii_grid))
-	ui_manager.register_screen(State.TERRAIN_DEMO_2, TerrainDemo2Screen.new(ascii_grid))
-	ui_manager.register_screen(State.TERRAIN_DEMO_3, TerrainDemo3Screen.new(ascii_grid))
-	ui_manager.register_screen(State.TERRAIN_DEMO_4, TerrainDemo4Screen.new(ascii_grid))
-	ui_manager.register_screen(State.TERRAIN_DEMO_5, TerrainDemo5Screen.new(ascii_grid))
-	ui_manager.register_screen(State.SPLATMAP_SPAWN_TEST, SplatmapSpawnTestScreen.new(ascii_grid))
-	ui_manager.register_screen(State.SPLATMAP_SPAWN_TEST_2, SplatmapSpawnTest2Screen.new(ascii_grid))
-	ui_manager.register_screen(State.SPLATMAP_SPAWN_TEST_3, SplatmapSpawnTest3Screen.new(ascii_grid))
-	ui_manager.register_screen(State.DESERT_BIOME_TEST, DesertBiomeTestScreen.new(ascii_grid))
+	ui_manager.register_screen(State.FOREST_BIOME_TEST, ForestBiomeTestScreen.new(ascii_grid))
 	ui_manager.register_screen(State.DESERT_BIOME_TEST_2, DesertBiomeTest2Screen.new(ascii_grid))
-	ui_manager.register_screen(State.DESERT_BIOME_SCALE_TEST, DesertBiomeScaleTestScreen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -195,34 +173,12 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.SETTINGS)
 		"open_help":
 			set_state(State.HELP)
-		"ui_shell_demo":
-			set_state(State.UI_SHELL_DEMO)
 		"open_debug_menu", "goto_debug_menu":
 			set_state(State.DEBUG_MENU)
-		"open_fire_demo":
-			set_state(State.FIRE_DEMO)
-		"open_terrain_demo":
-			set_state(State.TERRAIN_DEMO)
-		"open_terrain_demo_2":
-			set_state(State.TERRAIN_DEMO_2)
-		"open_terrain_demo_3":
-			set_state(State.TERRAIN_DEMO_3)
-		"open_terrain_demo_4":
-			set_state(State.TERRAIN_DEMO_4)
-		"open_terrain_demo_5":
-			set_state(State.TERRAIN_DEMO_5)
-		"open_splatmap_spawn_test":
-			set_state(State.SPLATMAP_SPAWN_TEST)
-		"open_splatmap_spawn_test_2":
-			set_state(State.SPLATMAP_SPAWN_TEST_2)
-		"open_splatmap_spawn_test_3":
-			set_state(State.SPLATMAP_SPAWN_TEST_3)
-		"open_desert_biome_test":
-			set_state(State.DESERT_BIOME_TEST)
+		"open_forest_biome_test":
+			set_state(State.FOREST_BIOME_TEST)
 		"open_desert_biome_test_2":
 			set_state(State.DESERT_BIOME_TEST_2)
-		"open_desert_biome_scale_test":
-			set_state(State.DESERT_BIOME_SCALE_TEST)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:

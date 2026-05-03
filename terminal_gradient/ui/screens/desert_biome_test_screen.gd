@@ -430,22 +430,24 @@ func _build_world() -> void:
 	scene.name = "DesertScene"
 	_viewport.add_child(scene)
 
+	# HDRI-only lighting (no directional light, no shadows). The panorama
+	# drives both the visible sky and the IBL ambient + reflections; PBR
+	# materials pick this up automatically. Point lights added later sit on
+	# top of this base illumination.
 	var world_env := WorldEnvironment.new()
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#2a2018")
-	# Cactus + desert_rock prefabs are PBR (StandardMaterial3D) — they need
-	# both ambient and a directional light to read correctly.
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.7, 0.62, 0.5)
+	var sky := Sky.new()
+	var sky_mat := PanoramaSkyMaterial.new()
+	sky_mat.panorama = preload("res://assets/hdri/desert_day_test.exr")
+	sky.sky_material = sky_mat
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 1.0
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	world_env.environment = env
 	scene.add_child(world_env)
-	var sun := DirectionalLight3D.new()
-	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
-	sun.light_energy = 1.4
-	scene.add_child(sun)
 
 	_blob_shadow_material = ShaderMaterial.new()
 	_blob_shadow_material.shader = BlobShadowShader
