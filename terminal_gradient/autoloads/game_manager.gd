@@ -42,6 +42,7 @@ enum State {
 	TITLE_SCREEN,
 	FOREST_BIOME_TEST,
 	DESERT_BIOME_TEST_2,
+	DESERT_BIOME_TEST_3,
 }
 
 var current_state: State = State.PREAMBLE
@@ -78,6 +79,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.DEBUG_MENU, DebugMenuScreen.new(ascii_grid))
 	ui_manager.register_screen(State.FOREST_BIOME_TEST, ForestBiomeTestScreen.new(ascii_grid))
 	ui_manager.register_screen(State.DESERT_BIOME_TEST_2, DesertBiomeTest2Screen.new(ascii_grid))
+	ui_manager.register_screen(State.DESERT_BIOME_TEST_3, DesertBiomeTest3Screen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -179,6 +181,8 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.FOREST_BIOME_TEST)
 		"open_desert_biome_test_2":
 			set_state(State.DESERT_BIOME_TEST_2)
+		"open_desert_biome_test_3":
+			set_state(State.DESERT_BIOME_TEST_3)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:

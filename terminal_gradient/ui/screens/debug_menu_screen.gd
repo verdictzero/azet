@@ -6,16 +6,19 @@ extends BaseScreen
 const MENU_ITEMS: Array[String] = [
 	"FOREST BIOME TEST",
 	"DESERT BIOME TEST 2",
+	"DESERT BIOME TEST 3",
 ]
 
 const MENU_ACTIONS: Array[String] = [
 	"open_forest_biome_test",
 	"open_desert_biome_test_2",
+	"open_desert_biome_test_3",
 ]
 
 const MENU_DESCRIPTIONS: Array[String] = [
 	"Forest biome reference scene (formerly Terrain Demo 5). Meadow + pine-forest chunked terrain via the proxy-splatmap pattern, central platform spawn area, HUD compass that always points world-north. Lit by the forest_day HDRI panorama only — no directional light, no shadows, ambient + reflections come straight from the sky.",
 	"Desert biome reference scene with the PBR concrete structure. Lit by the desert_day HDRI panorama only — no directional light, no shadows. Walking inside dither-fades the roof out so the interior is visible from above; walking back out fades it in.",
+	"Desert biome reference scene with HDRI-lit wind dust + test_structure_1. Wind dust runs through wind_particles_lit.gdshader so the desert_day panorama shapes its color (world-up NORMAL + ROUGHNESS=1 → warm, sun-tinted dust instead of the flat unshaded tan of Tests 1 and 2). The structure northwest of the platform is test_structure_1.glb at 0.75× scale, sunk so its bottom 25% is below the ground plane. At load time every descendant MeshInstance3D gets a trimesh ConcavePolygonShape3D collider so walls/roof/props/stairs are all solid; stair traversal uses terrain_player's existing 0.6 m step-up logic.",
 ]
 
 var _shell: UIShell
