@@ -49,6 +49,8 @@ enum State {
 	FOREST_BIOME_TEST,
 	DESERT_BIOME_TEST_2,
 	DESERT_BIOME_TEST_3,
+	DESERT_BIOME_TEST_5,
+	DESERT_BIOME_TEST_6,
 	JRPG_UI_TEST,
 }
 
@@ -87,6 +89,8 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.FOREST_BIOME_TEST, ForestBiomeTestScreen.new(ascii_grid))
 	ui_manager.register_screen(State.DESERT_BIOME_TEST_2, DesertBiomeTest2Screen.new(ascii_grid))
 	ui_manager.register_screen(State.DESERT_BIOME_TEST_3, DesertBiomeTest3Screen.new(ascii_grid))
+	ui_manager.register_screen(State.DESERT_BIOME_TEST_5, DesertBiomeTest5Screen.new(ascii_grid))
+	ui_manager.register_screen(State.DESERT_BIOME_TEST_6, DesertBiomeTest6Screen.new(ascii_grid))
 	ui_manager.register_screen(State.JRPG_UI_TEST, JrpgUiTestScreen.new(ascii_grid))
 
 	# Start at title screen
@@ -191,6 +195,10 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.DESERT_BIOME_TEST_2)
 		"open_desert_biome_test_3":
 			set_state(State.DESERT_BIOME_TEST_3)
+		"open_desert_biome_test_5":
+			set_state(State.DESERT_BIOME_TEST_5)
+		"open_desert_biome_test_6":
+			set_state(State.DESERT_BIOME_TEST_6)
 		"open_jrpg_ui_test":
 			set_state(State.JRPG_UI_TEST)
 		"goto_title":
