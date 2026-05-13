@@ -1,2 +1,4 @@
-res://ui/screens/debug_menu_screen.gd
-res://ui/screens/forest_biome_test_screen.gd
+res://autoloads/game_manager.gd
+res://ui/jrpg/ui_test.gd
+res://ui/screens/desert_biome_test_3_screen.gd
+res://ui/jrpg/primitives/portrait.gd
