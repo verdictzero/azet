@@ -1,0 +1,71 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://ui/jrpg/ui_test.gd" id="1_root"]
+[ext_resource type="Script" path="res://ui/jrpg/primitives/j_menu.gd" id="2_jmenu"]
+[ext_resource type="Theme" path="res://ui/jrpg/theme/jrpg_theme.tres" id="3_theme"]
+
+[node name="JrpgUiTest" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme = ExtResource("3_theme")
+script = ExtResource("1_root")
+
+[node name="Bg" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.039216, 0.039216, 0.039216, 1)
+
+[node name="Layout" type="HBoxContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+theme_override_constants/separation = 12
+
+[node name="NavPanel" type="PanelContainer" parent="Layout"]
+custom_minimum_size = Vector2(220, 0)
+size_flags_vertical = 3
+
+[node name="NavCol" type="VBoxContainer" parent="Layout/NavPanel"]
+theme_override_constants/separation = 8
+
+[node name="Header" type="Label" parent="Layout/NavPanel/NavCol"]
+text = "JRPG UI · TEST"
+theme_type_variation = &"TextLG"
+
+[node name="Sep1" type="HSeparator" parent="Layout/NavPanel/NavCol"]
+
+[node name="Nav" type="VBoxContainer" parent="Layout/NavPanel/NavCol"]
+unique_name_in_owner = true
+size_flags_vertical = 3
+script = ExtResource("2_jmenu")
+
+[node name="Sep2" type="HSeparator" parent="Layout/NavPanel/NavCol"]
+
+[node name="Footer" type="Label" parent="Layout/NavPanel/NavCol"]
+text = "ESC: BACK"
+theme_type_variation = &"TextDim"
+
+[node name="Stage" type="PanelContainer" parent="Layout"]
+theme_type_variation = &"JWindowFlat"
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="StageCol" type="VBoxContainer" parent="Layout/Stage"]
+theme_override_constants/separation = 6
+
+[node name="TopBar" type="HBoxContainer" parent="Layout/Stage/StageCol"]
+
+[node name="Crumb" type="Label" parent="Layout/Stage/StageCol/TopBar"]
+unique_name_in_owner = true
+text = "—"
+theme_type_variation = &"TextDim"
+
+[node name="Sep3" type="HSeparator" parent="Layout/Stage/StageCol"]
+
+[node name="ContentHost" type="Control" parent="Layout/Stage/StageCol"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+size_flags_vertical = 3

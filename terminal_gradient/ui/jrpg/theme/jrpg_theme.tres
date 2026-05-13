@@ -1,0 +1,53 @@
+[gd_resource type="Theme" load_steps=6 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansMono-Medium.ttf" id="1_font"]
+[ext_resource type="StyleBox" path="res://ui/jrpg/theme/style_window_default.tres" id="2_window"]
+[ext_resource type="StyleBox" path="res://ui/jrpg/theme/style_window_tight.tres" id="3_tight"]
+[ext_resource type="StyleBox" path="res://ui/jrpg/theme/style_window_flat.tres" id="4_flat"]
+[ext_resource type="StyleBox" path="res://ui/jrpg/theme/style_button_empty.tres" id="5_empty"]
+
+[resource]
+default_font = ExtResource("1_font")
+default_font_size = 16
+Button/colors/font_color = Color(1, 1, 1, 1)
+Button/colors/font_disabled_color = Color(0.24314, 0.24314, 0.24314, 1)
+Button/colors/font_focus_color = Color(1, 1, 1, 1)
+Button/colors/font_hover_color = Color(1, 1, 1, 1)
+Button/colors/font_hover_pressed_color = Color(1, 1, 1, 1)
+Button/colors/font_outline_color = Color(0, 0, 0, 1)
+Button/colors/font_pressed_color = Color(1, 1, 1, 1)
+Button/constants/h_separation = 4
+Button/constants/icon_max_width = 0
+Button/constants/outline_size = 0
+Button/font_sizes/font_size = 16
+Button/styles/disabled = ExtResource("5_empty")
+Button/styles/focus = ExtResource("5_empty")
+Button/styles/hover = ExtResource("5_empty")
+Button/styles/hover_pressed = ExtResource("5_empty")
+Button/styles/normal = ExtResource("5_empty")
+Button/styles/pressed = ExtResource("5_empty")
+Label/colors/font_color = Color(1, 1, 1, 1)
+Label/colors/font_outline_color = Color(0, 0, 0, 1)
+Label/constants/outline_size = 0
+Label/font_sizes/font_size = 16
+PanelContainer/styles/panel = ExtResource("2_window")
+RichTextLabel/colors/default_color = Color(1, 1, 1, 1)
+RichTextLabel/font_sizes/normal_font_size = 16
+JWindowTight/base_type = &"PanelContainer"
+JWindowTight/styles/panel = ExtResource("3_tight")
+JWindowFlat/base_type = &"PanelContainer"
+JWindowFlat/styles/panel = ExtResource("4_flat")
+TextDim/base_type = &"Label"
+TextDim/colors/font_color = Color(0.54118, 0.54118, 0.54118, 1)
+TextDisabled/base_type = &"Label"
+TextDisabled/colors/font_color = Color(0.24314, 0.24314, 0.24314, 1)
+TextXS/base_type = &"Label"
+TextXS/font_sizes/font_size = 11
+TextSM/base_type = &"Label"
+TextSM/font_sizes/font_size = 13
+TextMD/base_type = &"Label"
+TextMD/font_sizes/font_size = 16
+TextLG/base_type = &"Label"
+TextLG/font_sizes/font_size = 18
+TextXL/base_type = &"Label"
+TextXL/font_sizes/font_size = 22

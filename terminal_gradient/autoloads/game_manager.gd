@@ -6,6 +6,12 @@ extends Node
 ## Screens communicate back via action_requested signals, not direct GameMgr calls.
 
 enum State {
+	
+	
+	
+	
+	
+	
 	PREAMBLE,
 	MENU,
 	CHAR_CREATE,
@@ -43,6 +49,7 @@ enum State {
 	FOREST_BIOME_TEST,
 	DESERT_BIOME_TEST_2,
 	DESERT_BIOME_TEST_3,
+	JRPG_UI_TEST,
 }
 
 var current_state: State = State.PREAMBLE
@@ -80,6 +87,7 @@ func initialize(grid: AsciiGrid) -> void:
 	ui_manager.register_screen(State.FOREST_BIOME_TEST, ForestBiomeTestScreen.new(ascii_grid))
 	ui_manager.register_screen(State.DESERT_BIOME_TEST_2, DesertBiomeTest2Screen.new(ascii_grid))
 	ui_manager.register_screen(State.DESERT_BIOME_TEST_3, DesertBiomeTest3Screen.new(ascii_grid))
+	ui_manager.register_screen(State.JRPG_UI_TEST, JrpgUiTestScreen.new(ascii_grid))
 
 	# Start at title screen
 	set_state(State.TITLE_SCREEN)
@@ -183,6 +191,8 @@ func _handle_screen_action(action_name: String, data: Variant) -> void:
 			set_state(State.DESERT_BIOME_TEST_2)
 		"open_desert_biome_test_3":
 			set_state(State.DESERT_BIOME_TEST_3)
+		"open_jrpg_ui_test":
+			set_state(State.JRPG_UI_TEST)
 		"goto_title":
 			set_state(State.TITLE_SCREEN)
 		_:
