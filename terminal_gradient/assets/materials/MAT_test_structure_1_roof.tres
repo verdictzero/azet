@@ -1,0 +1,17 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/shaders/structure_uv_pbr.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://assets/models/test_structure_1_blender_ts1_fromPaint_MAT_ts1_roof_diffuse.png" id="2_alb"]
+[ext_resource type="Texture2D" path="res://assets/models/test_structure_1_blender_ts1_fromPaint_MAT_ts1_roof_normalmap.png" id="3_nrm"]
+[ext_resource type="Texture2D" path="res://assets/models/test_structure_1_blender_ts1_fromPaint_MAT_ts1_roof_metalness-blender_ts1_fromPaint_MAT_ts1_roof_roughness.png" id="4_orm"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/albedo_tex = ExtResource("2_alb")
+shader_parameter/normal_tex = ExtResource("3_nrm")
+shader_parameter/orm_tex = ExtResource("4_orm")
+shader_parameter/albedo_tint = Color(1, 1, 1, 1)
+shader_parameter/normal_strength = 1.0
+shader_parameter/roughness_scale = 1.0
+shader_parameter/fade_amount = 0.0

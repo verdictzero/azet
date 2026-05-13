@@ -16,12 +16,14 @@ extends DesertBiomeTestScreen
 ##      sibling under a fresh StaticBody3D, so the player collides with the
 ##      whole structure rather than just the building shell.
 ##
-## We deliberately don't extend Test 2: that scene's roof-fade + outside-
-## dim machinery is bound to test_structure_0's known mesh layout and would
-## fail or read wrong on test_structure_1.
+## Roof-fade + interior trigger follow Test 2's pattern but resolve the roof
+## by mesh name (`test_structure_1_roof`) since this GLB doesn't share Test 0's
+## prefab layout. The roof material is swapped to MAT_test_structure_1_roof so
+## fade_amount can be tweened per spawn without bleeding into the source asset.
 
 const WindParticlesLitShader: Shader = preload("res://assets/shaders/wind_particles_lit.gdshader")
 const TestStructureScene: PackedScene = preload("res://assets/models/test_structure_1.glb")
+const RoofMat: ShaderMaterial = preload("res://assets/materials/MAT_test_structure_1_roof.tres")
 
 const STRUCTURE_SCALE: float = 0.75
 # Sink the building so this fraction of its scaled height ends up below the
@@ -30,7 +32,7 @@ const STRUCTURE_SCALE: float = 0.75
 # 0.75 the post-scale step heights stay well within that envelope. If
 # stairs end up too tall, either lower STRUCTURE_SCALE further or raise
 # STEP_HEIGHT_MAX in terrain_player.gd.
-const SINK_RATIO: float = 0.25
+const SINK_RATIO: float = 0.10
 # Northwest of the platform. -X = west, -Z = north (Godot default convention,
 # matching how the base desert test treats wind/orientation).
 const STRUCTURE_OFFSET: Vector3 = Vector3(-30.0, 0.0, -30.0)
@@ -39,8 +41,18 @@ const STRUCTURE_YAW_RAD: float = 0.0
 const CURTAIN_MARGIN: float = 1.0
 # Vegetation/rock exclusion margin around the building.
 const CLEARING_MARGIN: float = 6.0
+const ROOF_FADE_DURATION: float = 0.35
+# Interior trigger sized inside the building footprint so the player's CENTER
+# has to be solidly inside before the fade fires. Mesh AABB is 23 × 9 × 18 m;
+# at scale 0.75 the world extents are 17.25 × 6.75 × 13.5 (yaw 0). A
+# 12 × 5 × 9 box leaves ~2.6 m horizontal buffer past walls/thresholds.
+const INTERIOR_BOX_SIZE: Vector3 = Vector3(12.0, 5.0, 9.0)
+# Vertical offset above the structure's pivot (which sits at the floor + sink).
+const INTERIOR_BOX_Y: float = 2.5
 
 var _structure_root: Node3D = null
+var _roof_material: ShaderMaterial = null
+var _roof_tween: Tween = null
 
 
 func _init(ascii_grid: AsciiGrid) -> void:
@@ -76,6 +88,10 @@ func on_enter(context: Dictionary = {}) -> void:
 
 
 func on_exit() -> void:
+	if _roof_tween:
+		_roof_tween.kill()
+	_roof_tween = null
+	_roof_material = null
 	_structure_root = null
 	super.on_exit()
 
@@ -97,6 +113,53 @@ func _attach_structure(s: Node3D, local_aabb: AABB) -> void:
 		_platform_center_xz.y + STRUCTURE_OFFSET.z)
 	scene.add_child(s)
 	_structure_root = s
+
+	# Roof fade — per-spawn material so tweens don't bleed into the .tres on disk.
+	var roof_mi: MeshInstance3D = s.get_node_or_null("test_structure_1_roof") as MeshInstance3D
+	if roof_mi:
+		_roof_material = RoofMat.duplicate(true) as ShaderMaterial
+		roof_mi.material_override = _roof_material
+
+	# Interior trigger box. Centered on the structure's XZ with a vertical
+	# offset, so the fade fires only when the player is clearly inside.
+	var area := Area3D.new()
+	area.name = "StructureInterior"
+	area.collision_layer = 0
+	area.collision_mask = 2
+	var col := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = INTERIOR_BOX_SIZE
+	col.shape = box
+	area.add_child(col)
+	area.position = s.position + Vector3(0.0, INTERIOR_BOX_Y, 0.0)
+	scene.add_child(area)
+	area.body_entered.connect(_on_interior_entered)
+	area.body_exited.connect(_on_interior_exited)
+
+
+func _on_interior_entered(body: Node3D) -> void:
+	if body != _player or _roof_material == null:
+		return
+	_start_roof_tween(1.0)
+
+
+func _on_interior_exited(body: Node3D) -> void:
+	if body != _player or _roof_material == null:
+		return
+	_start_roof_tween(0.0)
+
+
+func _start_roof_tween(target: float) -> void:
+	if _roof_tween:
+		_roof_tween.kill()
+	var current: float = _roof_material.get_shader_parameter("fade_amount")
+	_roof_tween = grid.create_tween()
+	_roof_tween.tween_method(_set_roof_fade, current, target, ROOF_FADE_DURATION)
+
+
+func _set_roof_fade(v: float) -> void:
+	if _roof_material:
+		_roof_material.set_shader_parameter("fade_amount", v)
 
 
 # ── Mesh collider generation ──────────────────────────────────────────
