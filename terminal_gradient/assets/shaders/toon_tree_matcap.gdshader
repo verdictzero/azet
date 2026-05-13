@@ -1,11 +1,10 @@
 shader_type spatial;
-render_mode unshaded;
 
-// Matcap variant of toon_tree: same wind / per-instance fade / bottom-top
-// darken-gradient machinery, but the lighting term is a matcap texture lookup
-// (view-space normal → UV) instead of a light() function driven by a
-// DirectionalLight3D. Since matcap IS the lighting model, the shader runs
-// unshaded — no scene lights are involved.
+// Lit variant of the toon-tree shader. Same wind / per-instance fade /
+// bottom-top darken-gradient machinery as toon_tree; albedo = base colour
+// times the vertical darken gradient. The HDRI environment provides all
+// per-face lighting; the matcap sampler is retained as a no-op uniform for
+// backwards-compatible material resources but is not sampled.
 //
 // INSTANCE_CUSTOM mirrors toon_tree:
 //   rgb = local-space push offset (bushes — unused here unless reused)
@@ -69,18 +68,6 @@ void fragment() {
 	float span = max(grad_y_max - grad_y_min, 0.0001);
 	float t = clamp((v_world_y - grad_y_min) / span, 0.0, 1.0);
 	float darken = mix(darken_bottom, darken_top, t);
-	vec3 base = albedo * (1.0 - darken);
-
-	// Matcap lookup: project the world-space normal into view space, map
-	// [-1,1] → [0,1] on XY, sample the matcap sphere.
-	vec3 n = normalize(NORMAL);
-	vec3 view_normal = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
-	vec2 mc_uv = view_normal.xy * 0.5 + 0.5;
-	vec3 mc = texture(matcap, mc_uv).rgb;
-
-	// Mix between raw matcap (unlit preview) and matcap-tinted-by-albedo.
-	// At strength 1 the matcap colors are fully tinted by the tree's albedo;
-	// at 0 the raw matcap is shown (useful for A/B sanity checks).
-	vec3 tinted = mix(mc, mc * base, matcap_tint_strength);
-	ALBEDO = tinted;
+	ALBEDO = albedo * (1.0 - darken);
+	ROUGHNESS = 0.9;
 }

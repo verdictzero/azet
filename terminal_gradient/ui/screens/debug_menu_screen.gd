@@ -4,38 +4,21 @@ extends BaseScreen
 ## Stub items that have no screen yet trigger a violent shake + red flash.
 
 const MENU_ITEMS: Array[String] = [
-	"FIRE DEMO", "UI SHELL DEMO", "TERRAIN DEMO", "TERRAIN DEMO 2", "TERRAIN DEMO 3", "TERRAIN DEMO 4",
-	"TERRAIN DEMO 5",
-	"SPLATMAP SPAWN TEST", "SPLATMAP SPAWN TEST 2", "SPLATMAP SPAWN TEST 3",
-	"DESERT BIOME TEST",
+	"FOREST BIOME TEST",
 	"DESERT BIOME TEST 2",
-	"DESERT BIOME SCALE TEST",
+	"DESERT BIOME TEST 3",
 ]
 
 const MENU_ACTIONS: Array[String] = [
-	"open_fire_demo", "ui_shell_demo", "open_terrain_demo", "open_terrain_demo_2",
-	"open_terrain_demo_3", "open_terrain_demo_4",
-	"open_terrain_demo_5",
-	"open_splatmap_spawn_test", "open_splatmap_spawn_test_2", "open_splatmap_spawn_test_3",
-	"open_desert_biome_test",
+	"open_forest_biome_test",
 	"open_desert_biome_test_2",
-	"open_desert_biome_scale_test",
+	"open_desert_biome_test_3",
 ]
 
 const MENU_DESCRIPTIONS: Array[String] = [
-	"Full-screen Voronoi fire shader demo. 100% GPU-driven with 10 animated seed points.",
-	"UIShell pane layout demo. Exercises every content type: ASCII, raster, text, menu, fire.",
-	"TERRAIN DEMO",
-	"TERRAIN DEMO 2",
-	"Terrain Demo 2 with the proxy-splatmap pattern wired through. Per-chunk L8 density Image baked on a worker thread; ground shader and CPU spawn culler bilinear-sample the same bytes — vegetation no longer drifts off the splat. Bushes spawn in MEADOW only (Demo 2 had them in forest).",
-	"Terrain Demo 3 + Q/E orbit camera. Hold Q / E to rotate the camera around the player at constant CAM_DIST. Player movement still uses world-axis WASD — controls won't match screen orientation when the camera is rotated; that's intentional.",
-	"Terrain Demo 4 + inciting-incident spawn area: central platform with metal-plating splat (solid core, noisy edge), large object-spawn occlusion radius around it, thick fern band on the perimeter, player spawns standing on the platform. Plus a 3D HUD compass in the lower-right whose rotor counter-rotates the orbit yaw to always point world-north — sits above the fog noise but below the LUT/dither pass.",
-	"Splatmap → spawn alignment test. Five bold-colour zones; cuboids inherit the colour of the zone they land in. Any mismatch between a cuboid and the ground beneath it = drift in the shared CPU/GPU sampler.",
-	"Splatmap spawn test with domain-warp + higher-res bake. Same proxy-splatmap architecture as Test 1 but with organic, swirling boundaries instead of straight argmax cuts. Strict spawn/ground alignment is preserved by construction (warp lives at bake time only).",
-	"Smooth-edge splatmap with spawn-precise alignment. Bakes 5 continuous-valued FBM weights per texel (RGBA8 + L8 pair); GPU bilinear-samples + argmaxes per fragment for sub-pixel-sharp boundaries. CPU spawn does the same bilinear-then-argmax on the same baked bytes — both sides agree at every world XZ.",
-	"Infinite desert biome test — Demo 5's chunk-streaming + proxy-splatmap pipeline reduced to two ground textures (sand pockets carved out of a desert-dirt-rocks default). Cacti scatter across the dirt-rocks side; desert rocks form widely-varied clumps in the sand pockets (3 concentric size tiers, full-TAU yaw, ±0.5 rad tilt). No zone walls, no platform, no compass — just terrain.",
-	"Desert Biome Test + a procedurally-noised matcap building east of the platform. Body and roof use a custom unlit-matcap shader with triplanar-sampled normal noise; walking inside the structure dither-fades the roof out (Bayer4 discard) so the interior is visible from above. Walking back out fades the roof back in.",
-	"Desert Biome Test + a calibration field east of the platform: ten rows of solid-colored thin cuboids stepping 1 m → 10 m, each with a billboard label showing its height. Cacti and rocks are cleared from the field's footprint so the ruler reads cleanly. Lets you eyeball the real height of cacti, rocks, and the player capsule against known references.",
+	"Forest biome reference scene (formerly Terrain Demo 5). Meadow + pine-forest chunked terrain via the proxy-splatmap pattern, central platform spawn area, HUD compass that always points world-north. Lit by the forest_day HDRI panorama only — no directional light, no shadows, ambient + reflections come straight from the sky.",
+	"Desert biome reference scene with the PBR concrete structure. Lit by the desert_day HDRI panorama only — no directional light, no shadows. Walking inside dither-fades the roof out so the interior is visible from above; walking back out fades it in.",
+	"Desert biome reference scene with HDRI-lit wind dust + test_structure_1. Wind dust runs through wind_particles_lit.gdshader so the desert_day panorama shapes its color (world-up NORMAL + ROUGHNESS=1 → warm, sun-tinted dust instead of the flat unshaded tan of Tests 1 and 2). The structure northwest of the platform is test_structure_1.glb at 0.75× scale, sunk so its bottom 25% is below the ground plane. At load time every descendant MeshInstance3D gets a trimesh ConcavePolygonShape3D collider so walls/roof/props/stairs are all solid; stair traversal uses terrain_player's existing 0.6 m step-up logic.",
 ]
 
 var _shell: UIShell

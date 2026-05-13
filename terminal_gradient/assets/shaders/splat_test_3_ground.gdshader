@@ -1,7 +1,6 @@
 shader_type spatial;
-render_mode unshaded;
 
-// Ground shader for SPLATMAP SPAWN TEST 3 — classic splatmap-terrain
+// Ground shader for FOREST BIOME TEST (was Splatmap Spawn Test 3) — classic splatmap-terrain
 // pattern. Reads two per-chunk weight textures baked on the CPU by
 // `splatmap_spawn_test_3_screen.gd`, bilinear-samples them, then BLENDS
 // the 5 zone colours softmax-weighted by the splat values. Output is a
